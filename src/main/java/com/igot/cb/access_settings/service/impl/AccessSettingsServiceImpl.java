@@ -30,7 +30,6 @@ public class AccessSettingsServiceImpl implements AccessSettingsService {
   private final PayloadValidation payloadValidation;
   private final CassandraOperation cassandraOperation;
 
-  private final CassandraOperation cassandraOperation;
 
   @Autowired
   public AccessSettingsServiceImpl(CassandraOperation cassandraOperation, PayloadValidation payloadValidation) {

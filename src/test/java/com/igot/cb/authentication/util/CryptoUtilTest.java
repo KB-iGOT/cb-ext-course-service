@@ -1,19 +1,24 @@
 package com.igot.cb.authentication.util;
 
-import static org.junit.Assert.assertFalse;
+
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.PublicKey;
 import java.security.Signature;
-import org.junit.Test;
 
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+@ExtendWith(MockitoExtension.class)
 public class CryptoUtilTest {
 
     /**
      * Test verifyRSASign method with an invalid algorithm.
-     * This test checks if the method returns false when an invalid algorithm is provided.
+     * This test checks if the method returns false when an invalid algorithm is provided
      */
     @Test
     public void test_verifyRSASign_invalidAlgorithm() {
@@ -23,7 +28,7 @@ public class CryptoUtilTest {
         String invalidAlgorithm = "InvalidAlgorithm";
 
         boolean result = CryptoUtil.verifyRSASign(payLoad, signature, key, invalidAlgorithm);
-        assertFalse("verifyRSASign should return false for an invalid algorithm", result);
+        assertFalse(result, "verifyRSASign should return false for an invalid algorithm");
     }
 
     /**
@@ -38,7 +43,7 @@ public class CryptoUtilTest {
         String algorithm = "RSA";
 
         boolean result = CryptoUtil.verifyRSASign(payLoad, signature, invalidKey, algorithm);
-        assertFalse("verifyRSASign should return false for an invalid public key", result);
+        assertFalse(result, "verifyRSASign should return false for an invalid public key");
     }
 
     /**

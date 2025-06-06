@@ -18,4 +18,6 @@ public class Constants {
   public static final Object CREATED_RULES = "Access settings created successfully";
   public static final String DATA = "data";
   public static final String IS_ARCHIVED = "isarchived";
+  public static final String API_ACCESS_RULE_READ = "api.read.access.rule";
+  public static final String ERROR = "ERROR";
 }

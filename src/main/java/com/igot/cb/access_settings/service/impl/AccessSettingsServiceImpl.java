@@ -1,5 +1,7 @@
 package com.igot.cb.access_settings.service.impl;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.igot.cb.access_settings.service.AccessSettingsService;
 import com.igot.cb.access_settings.util.Constants;
@@ -7,10 +9,10 @@ import com.igot.cb.access_settings.util.PayloadValidation;
 import com.igot.cb.transactional.cassandrautils.CassandraOperation;
 import com.igot.cb.transactional.util.ApiResponse;
 import com.igot.cb.transactional.util.ProjectUtil;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+
+import java.util.*;
+
+import com.igot.cb.transactional.util.exceptions.CustomException;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang.StringUtils;
 import org.slf4j.Logger;
@@ -26,13 +28,13 @@ public class AccessSettingsServiceImpl implements AccessSettingsService {
   private final Logger logger = LoggerFactory.getLogger(AccessSettingsServiceImpl.class);
 
   private final PayloadValidation payloadValidation;
-
   private final CassandraOperation cassandraOperation;
 
+
   @Autowired
-  public AccessSettingsServiceImpl(PayloadValidation payloadValidation, CassandraOperation cassandraOperation) {
-    this.payloadValidation = payloadValidation;
+  public AccessSettingsServiceImpl(CassandraOperation cassandraOperation, PayloadValidation payloadValidation) {
     this.cassandraOperation = cassandraOperation;
+    this.payloadValidation = payloadValidation;
   }
 
   ObjectMapper objectMapper = new ObjectMapper();
@@ -61,8 +63,11 @@ public class AccessSettingsServiceImpl implements AccessSettingsService {
       cassandraOperation.insertRecord(Constants.KEYSPACE_SUNBIRD_COURSE,
               Constants.ACCESS_SETTINGS_RULES_TABLE, accessRuleData);
       response.getResult().put(Constants.MSG, Constants.CREATED_RULES);
-      response.getResult().put(Constants.DATA, createPayloadWithUuid);
-      response.setResponseCode(HttpStatus.OK); // Set success response code
+      // Remove all other keys, and put a single object after message
+      Map<String, Object> payload = new HashMap<>();
+      payload.put(Constants.ACCESS_CONTROL, createPayloadWithUuid.get(Constants.ACCESS_CONTROL));
+      // Remove all keys except message, then put the payload as a single entry
+      response.getResult().putAll(payload);
       return response;
     } catch (Exception e) {
       logger.error("Error while upserting access settings", e);
@@ -70,6 +75,94 @@ public class AccessSettingsServiceImpl implements AccessSettingsService {
       return response;
     }
   }
+
+  @Override
+  public ApiResponse read(String contentId) {
+    logger.info("AccessSettingsService::read:inside");
+    ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_ACCESS_RULE_READ);
+    try {
+      Map<String, Object> propertyMap = new HashMap<>();
+      propertyMap.put(Constants.CONTEXT_ID, contentId);
+      List<String> fields = new ArrayList<>();
+      fields.add(Constants.CONTEXT_ID);
+      fields.add(Constants.CONTEXT_DATA);
+      fields.add(Constants.IS_ARCHIVED);
+      List<Map<String, Object>> accessSettingRule = cassandraOperation.getRecordsByPropertiesWithoutFiltering(
+              Constants.KEYSPACE_SUNBIRD_COURSE, Constants.ACCESS_SETTINGS_RULES_TABLE, propertyMap,
+              fields, null);
+      if (!accessSettingRule.isEmpty()) {
+        Map<String, Object> record = accessSettingRule.get(0);
+        Boolean status = (Boolean) record.get(Constants.IS_ARCHIVED);
+        if (Boolean.FALSE.equals(status)) {
+          Object contextDataObj = record.get(Constants.CONTEXT_DATA);
+          String contextDataJson = (contextDataObj instanceof String) ? (String) contextDataObj : null;
+          if (StringUtils.isNotEmpty(contextDataJson)) {
+            try {
+              Map<String, Object> contextDataMap = objectMapper.readValue(
+                      contextDataJson, new TypeReference<Map<String, Object>>() {});
+              response.setResult(contextDataMap);
+              return response;
+            } catch (Exception e) {
+              logger.error("Failed to parse CONTEXT_DATA JSON", e);
+              throw new CustomException(
+                      Constants.ERROR,
+                      "error while processing",
+                      HttpStatus.INTERNAL_SERVER_ERROR
+              );
+            }
+          } else {
+            response.getParams().setStatus(Constants.FAILED);
+            response.setResponseCode(HttpStatus.NOT_FOUND);
+            response.getParams().setErrMsg("No access settings found for the given contentId");
+            return response;
+          }
+        }
+        response.getParams().setStatus(Constants.FAILED);
+        response.setResponseCode(HttpStatus.NOT_FOUND);
+        response.getParams().setErrMsg("No access settings found for the given contentId");
+        return response;
+      }
+      response.getParams().setStatus(Constants.FAILED);
+      response.setResponseCode(HttpStatus.NOT_FOUND);
+      response.getParams().setErrMsg("No access settings found for the given contentId");
+      return response;
+
+    } catch (Exception e) {
+      logger.error("Error while reading accessRule:", e);
+      throw new CustomException(
+              Constants.ERROR,
+              "error while processing",
+              HttpStatus.INTERNAL_SERVER_ERROR
+      );
+    }
+  }
+
+  @Override
+  public ApiResponse delete(String contentId) {
+    logger.info("AccessSettingsService::delete:inside");
+    ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_ACCESS_RULE_READ);
+    if (StringUtils.isBlank(contentId)) {
+      logger.error("Content ID is null or empty");
+      setFailedResponse(response, "Content ID cannot be null or empty");
+      return response;
+    }
+    try {
+      Map<String, Object> accessRuleData = new HashMap<>();
+      accessRuleData.put(Constants.CONTEXT_ID, contentId);
+      accessRuleData.put(Constants.CONTEXT_DATA, "");
+      accessRuleData.put(Constants.IS_ARCHIVED, false);
+      cassandraOperation.insertRecord(Constants.KEYSPACE_SUNBIRD_COURSE,
+              Constants.ACCESS_SETTINGS_RULES_TABLE, accessRuleData);
+          response.setResponseCode(HttpStatus.OK);
+          response.getResult().put(Constants.MSG, "Access settings deleted successfully");
+          return response;
+    } catch (Exception e) {
+      logger.error("Error while deleting accessRule:", e);
+      setFailedResponse(response, "Failed to delete access settings: " + e);
+      return response;
+    }
+  }
+
   private void setFailedResponse(ApiResponse response, String errorMessage) {
     response.getParams().setStatus(Constants.FAILED);
     response.setResponseCode(HttpStatus.BAD_REQUEST);

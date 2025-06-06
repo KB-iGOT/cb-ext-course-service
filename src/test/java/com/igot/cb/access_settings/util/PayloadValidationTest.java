@@ -1,20 +1,23 @@
 package com.igot.cb.access_settings.util;
 
-import org.junit.Before;
-import org.junit.Test;
+
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.*;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
+
 
 @ExtendWith(MockitoExtension.class)
 public class PayloadValidationTest {
 
   private PayloadValidation payloadValidation;
 
-  @Before
+  @BeforeEach
   public void setUp() {
     payloadValidation = new PayloadValidation();
   }
@@ -38,7 +41,7 @@ public class PayloadValidationTest {
     payload.put(Constants.ACCESS_CONTROL, accessControl);
 
     String result = payloadValidation.validateAccessControlPayload(payload);
-    assertTrue(result.isEmpty());
+    assertTrue(result.isEmpty(), "Result should be empty for valid payload");
   }
 
   @Test
@@ -47,7 +50,7 @@ public class PayloadValidationTest {
     payload.put(Constants.ACCESS_CONTROL, new HashMap<>());
 
     String result = payloadValidation.validateAccessControlPayload(payload);
-    assertTrue(result.contains("contentId"));
+    assertTrue(result.contains("contentId"), "Result should mention missing contentId");
   }
 
   @Test

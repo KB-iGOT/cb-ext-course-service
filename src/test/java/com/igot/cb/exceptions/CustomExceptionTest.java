@@ -1,5 +1,6 @@
-package com.igot.cb.transactional.util.exceptions;
+package com.igot.cb.exceptions;
 
+import com.igot.cb.transactional.util.exceptions.CustomException;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 

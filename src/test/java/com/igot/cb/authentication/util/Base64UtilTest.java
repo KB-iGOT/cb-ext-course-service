@@ -1,10 +1,14 @@
 package com.igot.cb.authentication.util;
 
-import static org.junit.Assert.assertArrayEquals;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
 
-import org.junit.Test;
+
+
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import static org.junit.jupiter.api.Assertions.*;
+
 
 public class Base64UtilTest {
 
@@ -12,19 +16,24 @@ public class Base64UtilTest {
      * Tests that the decode method throws an IllegalArgumentException when given input with incorrect padding.
      * This tests the explicitly handled edge case in the method's implementation where incorrect padding is detected.
      */
-    @Test(expected = IllegalArgumentException.class)
+    @Test
     public void testDecodeWithIncorrectPadding() {
         String inputWithIncorrectPadding = "SGVsbG8gV29ybGQ====="; // Extra padding
-        Base64Util.decode(inputWithIncorrectPadding, Base64Util.DEFAULT);
+        assertThrows(IllegalArgumentException.class, () -> {
+            Base64Util.decode(inputWithIncorrectPadding, Base64Util.DEFAULT);
+        });
     }
 
     /**
      * Tests that decode throws IllegalArgumentException when input contains incorrect padding.
      */
-    @Test(expected = IllegalArgumentException.class)
+
+    @Test
     public void testDecodeWithIncorrectPadding_2() {
         byte[] input = "Invalid==Padding".getBytes();
-        Base64Util.decode(input, Base64Util.DEFAULT);
+        assertThrows(IllegalArgumentException.class, () -> {
+            Base64Util.decode(input, Base64Util.DEFAULT);
+        });
     }
 
     /**

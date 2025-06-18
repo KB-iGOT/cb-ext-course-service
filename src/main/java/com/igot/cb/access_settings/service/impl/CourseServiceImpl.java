@@ -68,10 +68,6 @@ public class CourseServiceImpl implements CourseService {
                 setFailedResponse(response, "'contentIds' is mandatory and should be a non-empty list");
                 return response;
             }
-            if (!requestMap.containsKey(Constants.FIELDS)) {
-                setFailedResponse(response, "'fields' key is mandatory in the request payload");
-                return response;
-            }
             Map<String, Object> propertyMap = new HashMap<>();
             propertyMap.put(Constants.USER_ID_LOWER_CASE, userId);
             propertyMap.put(Constants.RESOURCE_ID, requestMap.get(Constants.CONTENT_IDS));

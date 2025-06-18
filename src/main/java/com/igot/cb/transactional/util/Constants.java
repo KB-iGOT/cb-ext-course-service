@@ -249,6 +249,13 @@ public class Constants {
     public static final String REDIS_CONNECTION_FACTORY = "redisConnectionFactory";
     public static final String REDIS_OBJECT_TEMPLATE = "redisObjectTemplate";
     public static final String REDIS_DATA_CONNECTION_FACTORY = "redisDataConnectionFactory";
+    public static final String API_CONTENT_V2_STATE_READ = "api.content.state.v2.read";
+    public static final String CONTENT_IDS = "contentIds";
+    public static final String RESOURCE_ID = "resourceid";
+    public static final String KEYSPACE_SUNBIRD_RESOURCE = "sunbird_resource";
+    public static final String USER_ENTITY_CONSUMPTION = "user_entity_consumption";
+    public static final String CONTENT_LIST = "contentList";
+    public static final String FIELDS = "fields";
 
     private Constants() {
     }

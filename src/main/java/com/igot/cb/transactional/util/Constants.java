@@ -256,6 +256,8 @@ public class Constants {
     public static final String USER_ENTITY_CONSUMPTION = "user_entity_consumption";
     public static final String CONTENT_LIST = "contentList";
     public static final String FIELDS = "fields";
+    public static final String ACCESS_TOKEN_IS_EXPIRED = "Access token is expired";
+    public static final String ACCESS_TOKEN_VALIDATION_FAILED = "Access token validation is failed";
 
     private Constants() {
     }

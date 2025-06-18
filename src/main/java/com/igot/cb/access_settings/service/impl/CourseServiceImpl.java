@@ -42,7 +42,11 @@ public class CourseServiceImpl implements CourseService {
         logger.info("CourseService::readContentState:inside");
         ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_CONTENT_V2_STATE_READ);
         try {
-            String userId = accessTokenValidator.verifyUserToken(authToken);
+            String userId = "";
+            userId = accessTokenValidator.fetchUserIdFromAccessToken(authToken, response);
+            if (StringUtils.isEmpty(userId)) {
+                return response;
+            }
             if (StringUtils.isBlank(userId)) {
                 response.getParams().setErrMsg(Constants.USER_ID_DOESNT_EXIST);
                 response.setResponseCode(HttpStatus.BAD_REQUEST);

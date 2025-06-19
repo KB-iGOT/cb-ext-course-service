@@ -14,6 +14,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
@@ -36,6 +37,9 @@ public class CourseServiceImpl implements CourseService {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Value("${user.entity.consumption.allowed.fields}")
+    private String allowedFieldsConfig;
 
     @Override
     public ApiResponse readContentState(Map<String, Object> requestBody, String authToken) {
@@ -71,14 +75,25 @@ public class CourseServiceImpl implements CourseService {
             Map<String, Object> propertyMap = new HashMap<>();
             propertyMap.put(Constants.USER_ID_LOWER_CASE, userId);
             propertyMap.put(Constants.RESOURCE_ID, requestMap.get(Constants.CONTENT_IDS));
+
             Object fieldsObj = requestMap.get(Constants.FIELDS);
             log.info("fieldsObj class: {}, value: {}", fieldsObj != null ? fieldsObj.getClass() : "null", fieldsObj);
             List<String> fields = null;
             if (fieldsObj instanceof List<?>) {
-                fields = ((List<?>) fieldsObj).stream()
+                List<String> allowedFields = Arrays.asList(allowedFieldsConfig.split(","));
+                List<String> requestedFields = ((List<?>) fieldsObj).stream()
                         .filter(Objects::nonNull)
                         .map(Object::toString)
                         .collect(Collectors.toList());
+                // Validate requested fields
+                List<String> invalidFields = requestedFields.stream()
+                        .filter(f -> !allowedFields.contains(f))
+                        .collect(Collectors.toList());
+                if (!invalidFields.isEmpty()) {
+                    setFailedResponse(response, "Invalid fields in request: " + invalidFields);
+                    return response;
+                }
+                fields = requestedFields;
             }
             List<Map<String, Object>> userContentDetails = cassandraOperation.getRecordsByPropertiesWithoutFiltering(
                     Constants.KEYSPACE_SUNBIRD_RESOURCE, Constants.USER_ENTITY_CONSUMPTION, propertyMap, fields, null);

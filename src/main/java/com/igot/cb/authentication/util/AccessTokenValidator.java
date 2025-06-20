@@ -2,6 +2,7 @@ package com.igot.cb.authentication.util;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.igot.cb.transactional.util.ApiResponse;
 import com.igot.cb.transactional.util.Constants;
 import com.igot.cb.transactional.util.PropertiesCache;
 import org.apache.commons.lang3.StringUtils;
@@ -9,6 +10,7 @@ import org.keycloak.common.util.Time;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -158,6 +160,33 @@ public class AccessTokenValidator {
                 logger.error(errMsg, ex);
                 clientAccessTokenId = null;
             }
+        }
+        return clientAccessTokenId;
+    }
+
+    public String fetchUserIdFromAccessToken(String accessToken, ApiResponse response) {
+        String clientAccessTokenId = null;
+        if (accessToken != null) {
+            try {
+                clientAccessTokenId = verifyUserToken(accessToken);
+                if (Constants.UNAUTHORIZED.equalsIgnoreCase(clientAccessTokenId)) {
+                    response.getParams().setStatus(Constants.FAILED);
+                    response.getParams().setErrMsg(Constants.ACCESS_TOKEN_IS_EXPIRED);
+                    response.setResponseCode(HttpStatus.UNAUTHORIZED);
+                    clientAccessTokenId = null;
+                }
+            } catch (Exception ex) {
+                String errMsg = "Exception occurred while fetching the userid from the access token. Exception: " + ex.getMessage();
+                logger.error(errMsg, ex);
+                response.getParams().setStatus(Constants.FAILED);
+                response.getParams().setErrMsg(Constants.ACCESS_TOKEN_VALIDATION_FAILED);
+                response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
+                clientAccessTokenId = null;
+            }
+        }else{
+            response.getParams().setStatus(Constants.FAILED);
+            response.getParams().setErrMsg(Constants.ACCESS_TOKEN_VALIDATION_FAILED);
+            response.setResponseCode(HttpStatus.BAD_REQUEST);
         }
         return clientAccessTokenId;
     }

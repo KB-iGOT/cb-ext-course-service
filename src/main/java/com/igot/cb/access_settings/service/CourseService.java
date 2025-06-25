@@ -6,4 +6,6 @@ import java.util.Map;
 
 public interface CourseService {
     ApiResponse readContentState(Map<String, Object> requestBody, String authToken);
+
+    ApiResponse updateContentState(Map<String, Object> requestBody, String authToken);
 }

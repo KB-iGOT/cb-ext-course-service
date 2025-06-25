@@ -20,7 +20,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 
-import java.sql.Timestamp;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.time.Instant;
@@ -50,19 +49,6 @@ public class CourseServiceImpl implements CourseService {
 
     // Example date format: adjust to match your actual format
     private static final SimpleDateFormat dateFormatter = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss:SSSZ");
-
-    private static final Map<String, String> payloadToCassandraMap = new HashMap<>();
-    static {
-        payloadToCassandraMap.put("userId", "userid");
-        payloadToCassandraMap.put("contentId", "resourceid");
-        payloadToCassandraMap.put("lastAccessTime", "last_access_time");
-        payloadToCassandraMap.put("lastCompletedTime", "last_completed_time");
-        payloadToCassandraMap.put("lastUpdatedTime", "last_updated_time");
-        payloadToCassandraMap.put("progress", "progress");
-        payloadToCassandraMap.put("progressDetails", "progressdetails");
-        payloadToCassandraMap.put("status", "status");
-        payloadToCassandraMap.put("completionPercentage", "completion_percentage");
-    }
 
     @Override
     public ApiResponse readContentState(Map<String, Object> requestBody, String authToken) {
@@ -174,7 +160,23 @@ public class CourseServiceImpl implements CourseService {
                                 Constants.KEYSPACE_SUNBIRD_RESOURCE, Constants.USER_ENTITY_CONSUMPTION, propertyMap, null, null);
                         Map<String, Object>  processContentConsumption =processContentConsumption((Map<String, Object>) firstContent, userContentDetails.isEmpty() ? null : userContentDetails.get(0), userId);
 
-                        cassandraOperation.insertRecord(Constants.KEYSPACE_SUNBIRD_RESOURCE, Constants.USER_ENTITY_CONSUMPTION,mapPayloadToCassandraColumns(processContentConsumption, payloadToCassandraMap));
+                        Map<String, String> payloadToCassandraMap = new HashMap<String, String>() {{
+                            put("userId", "userid");
+                            put("contentId", "resourceid");
+                            put("lastAccessTime", "last_access_time");
+                            put("lastCompletedTime", "last_completed_time");
+                            put("lastUpdatedTime", "last_updated_time");
+                            put("progress", "progress");
+                            put("progressDetails", "progressdetails");
+                            put("status", "status");
+                            put("completionPercentage", "completion_percentage");
+                        }};
+                        Map<String, Object> cassandraMap = processContentConsumption.entrySet().stream()
+                                .collect(Collectors.toMap(
+                                        entry -> payloadToCassandraMap.getOrDefault(entry.getKey(), entry.getKey()),
+                                        Map.Entry::getValue
+                                ));
+                        cassandraOperation.insertRecord(Constants.KEYSPACE_SUNBIRD_RESOURCE, Constants.USER_ENTITY_CONSUMPTION,cassandraMap);
                         response.getResult().put((String) contentId, Constants.SUCCESS);
                         // contentId now holds the value "do_11433459960646860815"
                     }
@@ -302,7 +304,7 @@ public class CourseServiceImpl implements CourseService {
 
         updatedContent.put(Constants.LAST_UPDATED_TIME, Instant.now());
         updatedContent.put(Constants.USER_ID, userId);
-        updatedContent.replaceAll((k, v) -> v instanceof Timestamp ? ((Timestamp) v).toInstant() : v);
+        updatedContent.replaceAll((k, v) -> v instanceof Date ? ((Date) v).toInstant() : v);
 
         return updatedContent;
     }
@@ -335,15 +337,15 @@ public class CourseServiceImpl implements CourseService {
         response.getParams().setErrMsg(errorMessage);
     }
 
-    private Timestamp compareTime(Date existingTime, Date inputTime) {
+    private Date compareTime(Date existingTime, Date inputTime) {
         if (existingTime == null && inputTime == null) {
-            return Timestamp.from(Instant.now());
+            return ProjectUtil.getTimeStamp();
         } else if (existingTime == null) {
-            return new Timestamp(inputTime.getTime());
+            return inputTime;
         } else if (inputTime == null) {
-            return new Timestamp(existingTime.getTime());
+            return existingTime;
         } else {
-            return inputTime.after(existingTime) ? new Timestamp(inputTime.getTime()) : new Timestamp(existingTime.getTime());
+            return inputTime.after(existingTime) ? inputTime : existingTime;
         }
     }
 }

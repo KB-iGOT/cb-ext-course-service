@@ -20,7 +20,7 @@ public class CourseController {
         ApiResponse response = courseService.readContentState(requestBody, authToken);
         return new ResponseEntity<>(response, response.getResponseCode());
     }
-
+    // This endpoint is used to update the state of content
     @PatchMapping("/state/update")
     public ResponseEntity<Object> updateContentState(@RequestBody Map<String, Object> requestBody, @RequestHeader(Constants.X_AUTH_TOKEN) String authToken) {
         ApiResponse response = courseService.updateContentState(requestBody, authToken);

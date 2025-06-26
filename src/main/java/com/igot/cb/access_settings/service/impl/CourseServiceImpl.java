@@ -11,6 +11,7 @@ import com.igot.cb.transactional.util.Constants;
 import com.igot.cb.transactional.util.ProjectUtil;
 import com.igot.cb.transactional.util.exceptions.CustomException;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -130,18 +131,13 @@ public class CourseServiceImpl implements CourseService {
             if (StringUtils.isEmpty(userId)) {
                 return response;
             }
-            if (StringUtils.isBlank(userId)) {
-                response.getParams().setErrMsg(Constants.USER_ID_DOESNT_EXIST);
-                response.setResponseCode(HttpStatus.BAD_REQUEST);
-                return response;
-            }
             // Payload validation
-            if (requestBody == null || requestBody.isEmpty()) {
+            if (MapUtils.isEmpty(requestBody)) {
                 setFailedResponse(response, "Request body is empty");
                 return response;
             }
             String errMsg = validateContentStateUpdatePayload(requestBody);
-            if (org.apache.commons.lang.StringUtils.isNotBlank(errMsg)) {
+            if (StringUtils.isNotBlank(errMsg)) {
                 setFailedResponse(response, errMsg);
                 return response;
             }
@@ -150,35 +146,34 @@ public class CourseServiceImpl implements CourseService {
                 Map<String, Object> requestMap = (Map<String, Object>) requestObj;
                 Object contentsObj = requestMap.get(Constants.CONTENTS);
                 if (contentsObj instanceof List && !((List<?>) contentsObj).isEmpty()) {
-                    Object firstContent = ((List<?>) contentsObj).get(0);
-                    if (firstContent instanceof Map) {
-                        Object contentId = ((Map<?, ?>) firstContent).get(Constants.CONTENT_ID);
+                    List<Map<String, Object>> contents = (List<Map<String, Object>>) contentsObj;
+                    Map<String, String> payloadToCassandraMap = new HashMap<String, String>() {{
+                        put(Constants.USER_ID, Constants.USER_ID_LOWER_CASE);
+                        put(Constants.CONTENT_ID, Constants.RESOURCE_ID);
+                        put(Constants.LAST_ACCESS_TIME, Constants.LAST_ACCESS_TIME_LOWER_CASE);
+                        put(Constants.LAST_COMPLETED_TIME, Constants.LAST_COMPLETED_TIME_LOWER_CASE);
+                        put(Constants.LAST_UPDATED_TIME, Constants.LAST_UPDATED_TIME_LOWER_CASE);
+                        put(Constants.PROGRESS, Constants.PROGRESS);
+                        put(Constants.PROGRESSDETAILS, Constants.PROGRESSDETAILS);
+                        put(Constants.STATUS, Constants.STATUS);
+                        put(Constants.COMPLETION_PERCENTAGE, Constants.COMPLETION_PERCENTAGE_LOWER_CASE);
+                    }};
+                    for (Map<String, Object> content : contents) {
+                        Object contentId = content.get(Constants.CONTENT_ID);
                         Map<String, Object> propertyMap = new HashMap<>();
                         propertyMap.put(Constants.USER_ID_LOWER_CASE, userId);
                         propertyMap.put(Constants.RESOURCE_ID, contentId);
                         List<Map<String, Object>> userContentDetails = cassandraOperation.getRecordsByPropertiesWithoutFiltering(
                                 Constants.KEYSPACE_SUNBIRD_RESOURCE, Constants.USER_ENTITY_CONSUMPTION, propertyMap, null, null);
-                        Map<String, Object>  processContentConsumption =processContentConsumption((Map<String, Object>) firstContent, userContentDetails.isEmpty() ? null : userContentDetails.get(0), userId);
-
-                        Map<String, String> payloadToCassandraMap = new HashMap<String, String>() {{
-                            put("userId", "userid");
-                            put("contentId", "resourceid");
-                            put("lastAccessTime", "last_access_time");
-                            put("lastCompletedTime", "last_completed_time");
-                            put("lastUpdatedTime", "last_updated_time");
-                            put("progress", "progress");
-                            put("progressDetails", "progressdetails");
-                            put("status", "status");
-                            put("completionPercentage", "completion_percentage");
-                        }};
+                        Map<String, Object> processContentConsumption = processContentConsumption(
+                                content, userContentDetails.isEmpty() ? null : userContentDetails.get(0), userId);
                         Map<String, Object> cassandraMap = processContentConsumption.entrySet().stream()
                                 .collect(Collectors.toMap(
                                         entry -> payloadToCassandraMap.getOrDefault(entry.getKey(), entry.getKey()),
                                         Map.Entry::getValue
                                 ));
-                        cassandraOperation.insertRecord(Constants.KEYSPACE_SUNBIRD_RESOURCE, Constants.USER_ENTITY_CONSUMPTION,cassandraMap);
+                        cassandraOperation.insertRecord(Constants.KEYSPACE_SUNBIRD_RESOURCE, Constants.USER_ENTITY_CONSUMPTION, cassandraMap);
                         response.getResult().put((String) contentId, Constants.SUCCESS);
-                        // contentId now holds the value "do_11433459960646860815"
                     }
                 }
             }
@@ -200,9 +195,9 @@ public class CourseServiceImpl implements CourseService {
             errList.add(Constants.REQUEST);
         } else {
             Map<String, Object> requestMap = (Map<String, Object>) requestObj;
-            Object contentsObj = requestMap.get("contents");
+            Object contentsObj = requestMap.get(Constants.CONTENTS);
             if (!(contentsObj instanceof List)) {
-                errList.add("contents");
+                errList.add(Constants.CONTENTS);
             } else {
                 List<?> contents = (List<?>) contentsObj;
                 List<String> requiredAttributes = Arrays.asList(requiredFieldsConfig.split(","));

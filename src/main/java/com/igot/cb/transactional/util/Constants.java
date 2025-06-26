@@ -267,6 +267,12 @@ public class Constants {
     public static final String NULL = "null";
     public static final String CONTENTS = "contents";
     public static final String CONTENT_ID = "contentId";
+    public static final String LAST_ACCESS_TIME_LOWER_CASE = "last_access_time";
+    public static final String LAST_COMPLETED_TIME_LOWER_CASE = "last_completed_time";
+    public static final String LAST_UPDATED_TIME_LOWER_CASE = "last_updated_time";
+    public static final String PROGRESSDETAILS = "progressdetails";
+    public static final String COMPLETION_PERCENTAGE = "completionPercentage";
+    public static final String COMPLETION_PERCENTAGE_LOWER_CASE = "completion_percentage";
 
 
     private Constants() {

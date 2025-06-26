@@ -1,5 +1,7 @@
 package com.igot.cb.transactional.util;
 
+import java.sql.Timestamp;
+import java.util.Date;
 import java.util.UUID;
 import org.joda.time.DateTime;
 import org.springframework.http.HttpStatus;
@@ -15,5 +17,9 @@ public class ProjectUtil {
         response.setResponseCode(HttpStatus.OK);
         response.setTs(DateTime.now().toString());
         return response;
+    }
+
+    public static Date getTimeStamp() {
+        return new Timestamp(System.currentTimeMillis());
     }
 }

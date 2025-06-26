@@ -20,4 +20,10 @@ public class CourseController {
         ApiResponse response = courseService.readContentState(requestBody, authToken);
         return new ResponseEntity<>(response, response.getResponseCode());
     }
+
+    @PatchMapping("state/update")
+    public ResponseEntity<Object> updateContentState(@RequestBody Map<String, Object> requestBody, @RequestHeader(Constants.X_AUTH_TOKEN) String authToken) {
+        ApiResponse response = courseService.updateContentState(requestBody, authToken);
+        return new ResponseEntity<>(response, response.getResponseCode());
+    }
 }

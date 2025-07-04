@@ -95,7 +95,7 @@ public class CourseServiceImpl implements CourseService {
                         .filter(Objects::nonNull)
                         .map(Object::toString)
                         .collect(Collectors.toList());
-                // Validate requested fields
+                // Validate requested fields (camelCase)
                 List<String> invalidFields = requestedFields.stream()
                         .filter(f -> !allowedFields.contains(f))
                         .collect(Collectors.toList());
@@ -103,12 +103,58 @@ public class CourseServiceImpl implements CourseService {
                     setFailedResponse(response, "Invalid fields in request: " + invalidFields);
                     return response;
                 }
-                fields = requestedFields;
+                // Map payload fields (camelCase) to Cassandra columns
+                Map<String, String> payloadToCassandraMap = new HashMap<String, String>() {{
+                    put(Constants.USER_ID, Constants.USER_ID_LOWER_CASE);
+                    put(Constants.CONTENT_ID, Constants.RESOURCE_ID);
+                    put(Constants.LAST_ACCESS_TIME, Constants.LAST_ACCESS_TIME_LOWER_CASE);
+                    put(Constants.LAST_COMPLETED_TIME, Constants.LAST_COMPLETED_TIME_LOWER_CASE);
+                    put(Constants.LAST_UPDATED_TIME, Constants.LAST_UPDATED_TIME_LOWER_CASE);
+                    put(Constants.PROGRESS, Constants.PROGRESS);
+                    put(Constants.PROGRESSDETAILS, Constants.PROGRESSDETAILS);
+                    put(Constants.STATUS, Constants.STATUS);
+                    put(Constants.COMPLETION_PERCENTAGE, Constants.COMPLETION_PERCENTAGE_LOWER_CASE);
+                }};
+                fields = requestedFields.stream()
+                        .map(f -> payloadToCassandraMap.getOrDefault(f, f))
+                        .collect(Collectors.toList());
             }
             List<Map<String, Object>> userContentDetails = cassandraOperation.getRecordsByPropertiesWithoutFiltering(
                     Constants.KEYSPACE_SUNBIRD_RESOURCE, Constants.USER_ENTITY_CONSUMPTION, propertyMap, fields, null);
+
+            // Reverse mapping: Cassandra field -> Payload key
+            Map<String, String> cassandraToPayloadMap = new HashMap<>();
+            cassandraToPayloadMap.put(Constants.USER_ID_LOWER_CASE, Constants.USER_ID);
+            cassandraToPayloadMap.put(Constants.RESOURCE_ID, Constants.CONTENT_ID);
+            cassandraToPayloadMap.put(Constants.LAST_ACCESS_TIME_LOWER_CASE, Constants.LAST_ACCESS_TIME);
+            cassandraToPayloadMap.put(Constants.LAST_COMPLETED_TIME_LOWER_CASE, Constants.LAST_COMPLETED_TIME);
+            cassandraToPayloadMap.put(Constants.LAST_UPDATED_TIME_LOWER_CASE, Constants.LAST_UPDATED_TIME);
+            cassandraToPayloadMap.put(Constants.PROGRESS, Constants.PROGRESS);
+            cassandraToPayloadMap.put(Constants.PROGRESSDETAILS, Constants.PROGRESSDETAILS);
+            cassandraToPayloadMap.put(Constants.STATUS, Constants.STATUS);
+            cassandraToPayloadMap.put(Constants.COMPLETION_PERCENTAGE_LOWER_CASE, Constants.COMPLETION_PERCENTAGE);
+            Set<String> allowedCassandraKeys = cassandraToPayloadMap.keySet();
+            // Transform each record to use payload keys and only include allowed keys
+            List<Map<String, Object>> mappedUserContentDetails = userContentDetails.stream().map(record -> {
+                Map<String, Object> mapped = new HashMap<>();
+                for (Map.Entry<String, Object> entry : record.entrySet()) {
+                    if (!allowedCassandraKeys.contains(entry.getKey())) continue;
+                    String payloadKey = cassandraToPayloadMap.getOrDefault(entry.getKey(), entry.getKey());
+                    if (payloadKey.equalsIgnoreCase(Constants.PROGRESSDETAILS) && entry.getValue() instanceof String) {
+                        try {
+                            mapped.put(payloadKey, objectMapper.readValue((String) entry.getValue(), Object.class));
+                        } catch (Exception ex) {
+                            mapped.put(payloadKey, entry.getValue());
+                        }
+                    } else {
+                        mapped.put(payloadKey, entry.getValue());
+                    }
+                }
+                return mapped;
+            }).collect(Collectors.toList());
+
             response.getResult().put(Constants.CONTENT_LIST,
-                    objectMapper.convertValue(userContentDetails, new TypeReference<Object>() {
+                    objectMapper.convertValue(mappedUserContentDetails, new TypeReference<Object>() {
                     }));
             response.setResponseCode(HttpStatus.OK);
             return response;

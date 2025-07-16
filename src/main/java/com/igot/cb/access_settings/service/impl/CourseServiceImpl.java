@@ -291,7 +291,31 @@ public class CourseServiceImpl implements CourseService {
         Date inputAccessTime = parseDate((String) inputContent.getOrDefault(Constants.LAST_ACCESS_TIME, ""));
         Object completionPercentage = updatedContent.get(Constants.COMPLETION_PERCENTAGE);
         if (completionPercentage instanceof Integer) {
-            updatedContent.put(Constants.COMPLETION_PERCENTAGE, ((Integer) completionPercentage).doubleValue());
+            double value = ((Integer) completionPercentage).doubleValue();
+            if (value < 0.0 || value > 100.0) {
+                throw new CustomException(
+                        "INVALID_COMPLETION_PERCENTAGE",
+                        "Completion percentage must be between 0 and 100.",
+                        HttpStatus.BAD_REQUEST
+                );
+            }
+            updatedContent.put(Constants.COMPLETION_PERCENTAGE, value);
+        } else if (completionPercentage instanceof Double) {
+            double value = (Double) completionPercentage;
+            if (value < 0.0 || value > 100.0) {
+                throw new CustomException(
+                        "INVALID_COMPLETION_PERCENTAGE",
+                        "Completion percentage must be between 0 and 100.",
+                        HttpStatus.BAD_REQUEST
+                );
+            }
+            updatedContent.put(Constants.COMPLETION_PERCENTAGE, value);
+        } else {
+            throw new CustomException(
+                    "INVALID_COMPLETION_PERCENTAGE_TYPE",
+                    "Completion percentage must be a number.",
+                    HttpStatus.BAD_REQUEST
+            );
         }
         if (existingContent != null && !existingContent.isEmpty()) {
             Date existingAccessTime;

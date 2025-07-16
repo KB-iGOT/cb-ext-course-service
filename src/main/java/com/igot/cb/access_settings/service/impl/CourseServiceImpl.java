@@ -289,7 +289,10 @@ public class CourseServiceImpl implements CourseService {
 
         Date inputCompletedTime = parseDate((String) inputContent.getOrDefault(Constants.LAST_COMPLETED_TIME, ""));
         Date inputAccessTime = parseDate((String) inputContent.getOrDefault(Constants.LAST_ACCESS_TIME, ""));
-
+        Object completionPercentage = updatedContent.get(Constants.COMPLETION_PERCENTAGE);
+        if (completionPercentage instanceof Integer) {
+            updatedContent.put(Constants.COMPLETION_PERCENTAGE, ((Integer) completionPercentage).doubleValue());
+        }
         if (existingContent != null && !existingContent.isEmpty()) {
             Date existingAccessTime;
             Object existingAccessTimeObj = existingContent.get(Constants.LAST_ACCESS_TIME);
@@ -346,7 +349,6 @@ public class CourseServiceImpl implements CourseService {
         updatedContent.put(Constants.LAST_UPDATED_TIME, Instant.now());
         updatedContent.put(Constants.USER_ID, userId);
         updatedContent.replaceAll((k, v) -> v instanceof Date ? ((Date) v).toInstant() : v);
-
         return updatedContent;
     }
     public Date parseDate(String dateString) {

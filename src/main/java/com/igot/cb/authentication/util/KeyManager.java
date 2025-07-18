@@ -1,15 +1,5 @@
 package com.igot.cb.authentication.util;
 
-import com.igot.cb.authentication.model.KeyData;
-
-import com.igot.cb.transactional.util.Constants;
-import com.igot.cb.transactional.util.PropertiesCache;
-import jakarta.annotation.PostConstruct;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Component;
-
-
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -21,15 +11,24 @@ import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Component;
+
+import com.igot.cb.authentication.model.KeyData;
+import com.igot.cb.transactional.util.Constants;
+import com.igot.cb.transactional.util.PropertiesCache;
+
+import jakarta.annotation.PostConstruct;
 
 
 @Component
 public class KeyManager {
 
     private static final Logger logger = LoggerFactory.getLogger(KeyManager.class.getName());
-    private static final PropertiesCache propertiesCache = PropertiesCache.getInstance();
+    private PropertiesCache propertiesCache = PropertiesCache.getInstance();
 
     private static final Map<String, KeyData> keyMap = new HashMap<>();
 

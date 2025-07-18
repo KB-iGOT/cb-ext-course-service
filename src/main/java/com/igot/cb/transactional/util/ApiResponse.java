@@ -1,6 +1,7 @@
 package com.igot.cb.transactional.util;
 
 import java.sql.Timestamp;
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -94,4 +95,20 @@ public class ApiResponse {
         return response.containsKey(key);
     }
 
+    public static ApiResponse createDefaultResponse(String api) {
+        ApiResponse response = new ApiResponse();
+        response.setId(api);
+        response.setVer(Constants.API_VERSION_1);
+        response.setParams(new ApiRespParam(UUID.randomUUID().toString()));
+        response.getParams().setStatus(Constants.SUCCESS);
+        response.setResponseCode(HttpStatus.OK);
+        response.setTs(Instant.now().toString());
+        return response;
+    }
+
+    public void updateErrorDetails(String errMsg, HttpStatus responseCode) {
+        this.getParams().setStatus(Constants.FAILED);
+        this.getParams().setErrMsg(errMsg);
+        this.setResponseCode(responseCode);
+    }
 }

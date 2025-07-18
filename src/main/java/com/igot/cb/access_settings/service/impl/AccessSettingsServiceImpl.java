@@ -1,6 +1,17 @@
 package com.igot.cb.access_settings.service.impl;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
+import org.apache.commons.lang.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.igot.cb.access_settings.service.AccessSettingsService;
@@ -8,18 +19,9 @@ import com.igot.cb.access_settings.util.Constants;
 import com.igot.cb.access_settings.util.PayloadValidation;
 import com.igot.cb.transactional.cassandrautils.CassandraOperation;
 import com.igot.cb.transactional.util.ApiResponse;
-import com.igot.cb.transactional.util.ProjectUtil;
-
-import java.util.*;
-
 import com.igot.cb.transactional.util.exceptions.CustomException;
+
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang.StringUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpStatus;
-import org.springframework.stereotype.Service;
 
 @Service
 @Slf4j
@@ -30,8 +32,6 @@ public class AccessSettingsServiceImpl implements AccessSettingsService {
   private final PayloadValidation payloadValidation;
   private final CassandraOperation cassandraOperation;
 
-
-  @Autowired
   public AccessSettingsServiceImpl(CassandraOperation cassandraOperation, PayloadValidation payloadValidation) {
     this.cassandraOperation = cassandraOperation;
     this.payloadValidation = payloadValidation;
@@ -42,7 +42,7 @@ public class AccessSettingsServiceImpl implements AccessSettingsService {
   @Override
   public ApiResponse upsert(Map<String, Object> userGroupDetails, String authToken) {
     logger.info("AccessSettingsService::create:inside");
-    ApiResponse response = ProjectUtil.createDefaultResponse(Constants.ACCESS_SETTINGS_CREATE_API);
+    ApiResponse response = ApiResponse.createDefaultResponse(Constants.ACCESS_SETTINGS_CREATE_API);
     if (userGroupDetails == null || userGroupDetails.isEmpty()) {
       logger.error("User group details are null or empty");
       setFailedResponse(response, "User group details cannot be null or empty");
@@ -79,7 +79,7 @@ public class AccessSettingsServiceImpl implements AccessSettingsService {
   @Override
   public ApiResponse read(String contentId) {
     logger.info("AccessSettingsService::read:inside");
-    ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_ACCESS_RULE_READ);
+    ApiResponse response = ApiResponse.createDefaultResponse(Constants.API_ACCESS_RULE_READ);
     try {
       Map<String, Object> propertyMap = new HashMap<>();
       propertyMap.put(Constants.CONTEXT_ID, contentId);
@@ -140,7 +140,7 @@ public class AccessSettingsServiceImpl implements AccessSettingsService {
   @Override
   public ApiResponse delete(String contentId) {
     logger.info("AccessSettingsService::delete:inside");
-    ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_ACCESS_RULE_READ);
+    ApiResponse response = ApiResponse.createDefaultResponse(Constants.API_ACCESS_RULE_READ);
     if (StringUtils.isBlank(contentId)) {
       logger.error("Content ID is null or empty");
       setFailedResponse(response, "Content ID cannot be null or empty");

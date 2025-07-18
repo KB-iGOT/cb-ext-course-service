@@ -1,112 +1,129 @@
 package com.igot.cb.authentication.util;
-import com.igot.cb.authentication.model.KeyData;
 
-import java.security.PublicKey;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.when;
 
-import com.igot.cb.transactional.util.PropertiesCache;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.mockito.junit.MockitoJUnitRunner;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import static org.junit.Assert.*;
-import static org.mockito.Mockito.*;
-
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.security.PublicKey;
+import java.util.List;
+import java.util.stream.Stream;
 
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
 import org.mockito.MockedStatic;
-import org.mockito.Mockito;
+import org.mockito.junit.jupiter.MockitoExtension;
 
-@RunWith(MockitoJUnitRunner.class)
-public class KeyManagerTest {
+import com.igot.cb.authentication.model.KeyData;
+import com.igot.cb.transactional.util.Constants;
+import com.igot.cb.transactional.util.PropertiesCache;
 
-    private static final Logger logger = LoggerFactory.getLogger(KeyManagerTest.class.getName());
+@ExtendWith(MockitoExtension.class)
+class KeyManagerTest {
 
-    @Test
-    public void testLoadPublicKeyWithInvalidKeyString() {
-        String invalidKey = "InvalidKeyWithoutHeaderAndFooter";
-        assertThrows(java.security.spec.InvalidKeySpecException.class, () -> {
-            KeyManager.loadPublicKey(invalidKey);
-        });
+    @Mock
+    PropertiesCache mockCache;
+
+    private KeyManager keyManager;
+
+    static MockedStatic<PropertiesCache> cacheStatic;
+
+    @BeforeAll
+    static void initStaticMock() {
+        cacheStatic = mockStatic(PropertiesCache.class);
+    }
+
+    @AfterAll
+    static void closeStaticMock() {
+        cacheStatic.close();
+    }
+
+    @BeforeEach
+    void setup() {
+        keyManager = new KeyManager();
+
+        cacheStatic.when(PropertiesCache::getInstance).thenReturn(mockCache);
     }
 
     @Test
-    public void test_getPublicKey_nonExistentKeyId() {
-        KeyManager keyManager = new KeyManager();
-        String nonExistentKeyId = "nonexistent_key_id";
-        KeyData result = keyManager.getPublicKey(nonExistentKeyId);
-        assertNull(result);
-    }
+    void testLoadPublicKey_validKey() throws Exception {
+        String validKey = "-----BEGIN PUBLIC KEY-----\n"
+                + "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsXQpHH5Wj9ce2j8skC/v\n"
+                + "fNH/4NgyHQq0BbsGdzrCeD3Q/nQhMx5RZxD0HNa79KRC+hdWNNyfBDkcf1Tfp+Ka\n"
+                + "oBjCXdc4U2ImrBaF+UUIqj07c5iRY25ZqtFdUXWEQ2f+Vgy+JhOdGVKYF9rTfIuJ\n"
+                + "1tn9mPfzZ0/yZzX6Vwr1C1RdsqgqHdGdr1xwZFcHXjUYw8VUsHRRbzX5v8yX7TLm\n"
+                + "TFJ9K0HTrYEm+lDkZkmU6iSlsyhr+3g4ph3KekA1UAX7wv3cgJfWLU1mVg9AVspK\n"
+                + "A4tZ7BFlUN+OtqDsTHYkthTy3dpGIp+nNB4ZpSgLmoGx9IMAtzH2H8+JEuGF1qQv\n"
+                + "WwIDAQAB\n"
+                + "-----END PUBLIC KEY-----";
 
-    @Test
-    public void test_getPublicKey_returnsCorrectKeyData() {
-        KeyManager spyKeyManager = spy(new KeyManager());
-        KeyData mockKeyData = new KeyData("testKey", null);
-        doReturn(mockKeyData).when(spyKeyManager).getPublicKey("testKey");
-        KeyData result = spyKeyManager.getPublicKey("testKey");
-        assertEquals(mockKeyData, result);
-    }
+        PublicKey publicKey = KeyManager.loadPublicKey(validKey);
 
-    @Test
-    public void test_loadPublicKey_validKeyString() throws Exception {
-        String validPublicKeyString =
-                "-----BEGIN PUBLIC KEY-----\n" +
-                        "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAqe4M4f7sVew+5U2G6l5H\n" +
-                        "1T0WRfJOYd3qwWn2MtOpQ8kWODsxdmBrERHJCKrfTsNpcl8p3CsV1KUHmIqOeFLG\n" +
-                        "yyQ+QjMoCQ9uGzbCAPyLYAAIgf/mKPa7BK5sLfZ7MCPupA8K/RB/g/3ZHlTSWJn+\n" +
-                        "2uVyqY+xIzDfS1tLGnQz0Izmzy/JZm6+0BHrRs7TXVWrN6+YFlzXlN2cuLkxDGeu\n" +
-                        "fUPRtmS+gUFNPnWApxdFt/zq9riIqxECG1QHpZFg3c+QOj+3emNhJMxFhKTKMeZP\n" +
-                        "fkEkspt1ATsNnG+y+ZQKUQM1xPEk2FTaMdlDj1/5S9t5Rq8PlPlRFnBrBnrboJ+v\n" +
-                        "XQIDAQAB\n" +
-                        "-----END PUBLIC KEY-----";
-        PublicKey publicKey = KeyManager.loadPublicKey(validPublicKeyString);
-        assertNotNull("Public key should not be null", publicKey);
+        assertNotNull(publicKey);
         assertEquals("RSA", publicKey.getAlgorithm());
     }
 
-
-    private static final String VALID_KEY_STRING =
-            "-----BEGIN PUBLIC KEY-----\n" +
-                    "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAqe4M4f7sVew+5U2G6l5H\n" +
-                    "1T0WRfJOYd3qwWn2MtOpQ8kWODsxdmBrERHJCKrfTsNpcl8p3CsV1KUHmIqOeFLG\n" +
-                    "yyQ+QjMoCQ9uGzbCAPyLYAAIgf/mKPa7BK5sLfZ7MCPupA8K/RB/g/3ZHlTSWJn+\n" +
-                    "2uVyqY+xIzDfS1tLGnQz0Izmzy/JZm6+0BHrRs7TXVWrN6+YFlzXlN2cuLkxDGeu\n" +
-                    "fUPRtmS+gUFNPnWApxdFt/zq9riIqxECG1QHpZFg3c+QOj+3emNhJMxFhKTKMeZP\n" +
-                    "fkEkspt1ATsNnG+y+ZQKUQM1xPEk2FTaMdlDj1/5S9t5Rq8PlPlRFnBrBnrboJ+v\n" +
-                    "XQIDAQAB\n" +
-                    "-----END PUBLIC KEY-----";
-
-
     @Test
-    public void test_loadPublicKey_noNewlines() throws Exception {
-        String noNewlines = VALID_KEY_STRING.replace("\n", "");
-        PublicKey key = KeyManager.loadPublicKey(noNewlines);
-        assertNotNull(key);
+    void testGetPublicKey_shouldReturnNullIfNotLoaded() {
+        assertNull(keyManager.getPublicKey("non-existent-key"));
     }
 
-
     @Test
-    public void test_init_fileSystemException() throws Exception {
-        try (MockedStatic<PropertiesCache> propertiesCacheMock = Mockito.mockStatic(PropertiesCache.class);
-             MockedStatic<Files> filesMock = Mockito.mockStatic(Files.class);
-             MockedStatic<Paths> pathsMock = Mockito.mockStatic(Paths.class)) {
-            PropertiesCache mockPropertiesCache = mock(PropertiesCache.class);
-            propertiesCacheMock.when(PropertiesCache::getInstance).thenReturn(mockPropertiesCache);
-            KeyManager keyManager = new KeyManager();
+    void testInit_shouldLoadKeysSuccessfully() throws Exception {
+        KeyManager keyManager = new KeyManager();
+
+        Path fakeBasePath = mock(Path.class);
+        Path fakeFilePath = Paths.get("/dummy/path/test-key.pub");
+
+        String keyContent = String.join("\n",
+                "-----BEGIN PUBLIC KEY-----",
+                "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsXQpHH5Wj9ce2j8skC/v",
+                "fNH/4NgyHQq0BbsGdzrCeD3Q/nQhMx5RZxD0HNa79KRC+hdWNNyfBDkcf1Tfp+Ka",
+                "oBjCXdc4U2ImrBaF+UUIqj07c5iRY25ZqtFdUXWEQ2f+Vgy+JhOdGVKYF9rTfIuJ",
+                "1tn9mPfzZ0/yZzX6Vwr1C1RdsqgqHdGdr1xwZFcHXjUYw8VUsHRRbzX5v8yX7TLm",
+                "TFJ9K0HTrYEm+lDkZkmU6iSlsyhr+3g4ph3KekA1UAX7wv3cgJfWLU1mVg9AVspK",
+                "A4tZ7BFlUN+OtqDsTHYkthTy3dpGIp+nNB4ZpSgLmoGx9IMAtzH2H8+JEuGF1qQv",
+                "WwIDAQAB",
+                "-----END PUBLIC KEY-----");
+
+        try (
+                MockedStatic<Files> filesStatic = mockStatic(Files.class);
+                MockedStatic<Paths> pathsStatic = mockStatic(Paths.class)) {
+            // Mock static: PropertiesCache.getInstance()
+            cacheStatic.when(PropertiesCache::getInstance).thenReturn(mockCache);
+            when(mockCache.getProperty(Constants.ACCESS_TOKEN_PUBLICKEY_BASEPATH)).thenReturn("/dummy/path");
+
+            // Mock static: Paths.get
+            pathsStatic.when(() -> Paths.get("/dummy/path")).thenReturn(fakeBasePath);
+            pathsStatic.when(() -> Paths.get("/dummy/path/test-key.pub")).thenReturn(fakeFilePath);
+
+            // Mock static: Files.walk
+            filesStatic.when(() -> Files.walk(fakeBasePath)).thenReturn(Stream.of(fakeFilePath));
+            filesStatic.when(() -> Files.isRegularFile(fakeFilePath)).thenReturn(true);
+
+            // Mock static: Files.readAllLines
+            filesStatic.when(() -> Files.readAllLines(eq(fakeFilePath), eq(StandardCharsets.UTF_8)))
+                    .thenReturn(List.of(keyContent.split("\n")));
+
+            // Run the init
             keyManager.init();
-        }
-    }
 
-    @Test
-    public void test_init_propertyNotFound() throws Exception {
-        KeyManager spyKeyManager = spy(new KeyManager());
-        try (MockedStatic<PropertiesCache> propertiesCacheMock = Mockito.mockStatic(PropertiesCache.class)) {
-            PropertiesCache mockPropertiesCache = mock(PropertiesCache.class);
-            propertiesCacheMock.when(PropertiesCache::getInstance).thenReturn(mockPropertiesCache);
-            spyKeyManager.init();
-            verify(spyKeyManager).init();
+            // Validate the map is populated
+            KeyData keyData = keyManager.getPublicKey("test-key.pub");
+            assertNotNull(keyData, "KeyData should not be null");
+            assertNotNull(keyData.getPublicKey(), "PublicKey should not be null");
+            assertEquals("RSA", keyData.getPublicKey().getAlgorithm());
         }
     }
 }

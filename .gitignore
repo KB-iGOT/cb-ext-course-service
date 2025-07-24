@@ -458,3 +458,6 @@ target/test-classes/com/igot/cb/model/CachedIdMapTest.class
 target/test-classes/com/igot/cb/service/AccessSettingMigrationServiceImplTest$1.class
 target/test-classes/com/igot/cb/service/ContentInfoServiceImplTest.class
 target/test-classes/com/igot/cb/service/UserProfileServiceImplTest.class
+target/classes/com/igot/cb/util/BitSetDeserializer.class
+target/classes/com/igot/cb/util/BitSetDeserializer$1.class
+target/classes/com/igot/cb/util/BitSetSerializer.class

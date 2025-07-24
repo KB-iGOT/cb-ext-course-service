@@ -15,9 +15,12 @@ import org.springframework.util.StringUtils;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.igot.cb.cache.IdMapCacheMgr;
 import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.model.ApiResponse;
+import com.igot.cb.util.BitSetDeserializer;
+import com.igot.cb.util.BitSetSerializer;
 import com.igot.cb.util.Constants;
 
 import lombok.extern.slf4j.Slf4j;
@@ -28,13 +31,19 @@ public class AccessSettingMigrationServiceImpl {
     private final CassandraOperation cassandraOperation;
     private final ContentInfoServiceImpl contentService;
     private final IdMapCacheMgr idMapCacheMgr;
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper;
 
-    public AccessSettingMigrationServiceImpl(CassandraOperation cassandraOperation, ContentInfoServiceImpl contentService,
+    public AccessSettingMigrationServiceImpl(CassandraOperation cassandraOperation,
+            ContentInfoServiceImpl contentService,
             IdMapCacheMgr idMapCacheMgr) {
         this.cassandraOperation = cassandraOperation;
         this.contentService = contentService;
         this.idMapCacheMgr = idMapCacheMgr;
+        this.objectMapper = new ObjectMapper();
+        SimpleModule module = new SimpleModule();
+        module.addSerializer(BitSet.class, new BitSetSerializer());
+        module.addDeserializer(BitSet.class, new BitSetDeserializer());
+        objectMapper.registerModule(module);
     }
 
     public ApiResponse migrateAccessSettingRules() {
@@ -166,7 +175,8 @@ public class AccessSettingMigrationServiceImpl {
     /**
      * Creates a BitSet for the given attribute values.
      * 
-     * @param attributeValues Collection of Integer values representing the attribute.
+     * @param attributeValues Collection of Integer values representing the
+     *                        attribute.
      * @return BitSet representing the attribute values.
      */
     BitSet createBitSetForAttribute(Collection<Integer> attributeValues) {

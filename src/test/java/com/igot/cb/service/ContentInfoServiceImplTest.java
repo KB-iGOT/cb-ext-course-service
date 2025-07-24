@@ -25,7 +25,7 @@ import com.igot.cb.util.Constants;
 import com.igot.cb.util.PropertiesCache;
 
 @ExtendWith(MockitoExtension.class)
-class ContentServiceImplTest {
+class ContentInfoServiceImplTest {
 
     @Mock
     private RedisCacheMgr redisCacheMgr;
@@ -37,7 +37,7 @@ class ContentServiceImplTest {
     private ObjectMapper objectMapper = new ObjectMapper();
 
     @InjectMocks
-    private ContentServiceImpl contentService;
+    private ContentInfoServiceImpl contentService;
 
     @BeforeEach
     void init() throws Exception {

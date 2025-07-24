@@ -11,15 +11,15 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.igot.cb.model.ApiResponse;
-import com.igot.cb.service.CourseServiceImpl;
+import com.igot.cb.service.ContentStateServiceImpl;
 import com.igot.cb.util.Constants;
 
 @RestController
 @RequestMapping("/content/v2")
 public class CourseController {
-    private final CourseServiceImpl courseService;
+    private final ContentStateServiceImpl courseService;
 
-    public CourseController(CourseServiceImpl courseService) {
+    public CourseController(ContentStateServiceImpl courseService) {
         this.courseService = courseService;
     }
 

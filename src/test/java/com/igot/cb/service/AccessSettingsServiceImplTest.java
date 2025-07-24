@@ -16,6 +16,10 @@ import org.springframework.http.HttpStatus;
 import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -67,7 +71,7 @@ class AccessSettingsServiceImplTest {
   }
 
   @Test
-  void testUpsert_Success() {
+  void testUpsert_Success() throws Exception {
     String doId = java.util.UUID.randomUUID().toString();
     Map<String, Object> details = new HashMap<>();
     details.put(Constants.CONTENT_ID, doId);
@@ -122,6 +126,7 @@ class AccessSettingsServiceImplTest {
 
     when(payloadValidation.validateAccessControlPayload(details)).thenReturn("");
     when(cassandraOperation.insertRecord(anyString(), anyString(), anyMap())).thenReturn(null);
+    when(accessSettingMigrationService.processAccessSettingRule(anyMap())).thenReturn(true);
 
     ApiResponse response = service.upsert(details, "token");
     assertEquals(HttpStatus.OK, response.getResponseCode());
@@ -131,15 +136,16 @@ class AccessSettingsServiceImplTest {
   }
 
   @Test
-  void testUpsert_Exception() {
+  void testUpsert_Exception() throws Exception {
     Map<String, Object> details = new HashMap<>();
     details.put(Constants.CONTENT_ID, "cid");
     details.put(Constants.ACCESS_CONTROL, new HashMap<>());
     when(payloadValidation.validateAccessControlPayload(details)).thenReturn("");
+    doReturn(true).when(accessSettingMigrationService).processAccessSettingRule(anyMap());
     doThrow(new RuntimeException("db error")).when(cassandraOperation).insertRecord(anyString(), anyString(), anyMap());
 
     ApiResponse response = service.upsert(details, "token");
-    assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
+    assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getResponseCode());
     assertEquals(Constants.FAILED, response.getParams().getStatus());
     assertTrue(response.getParams().getErrMsg().contains("Failed to create access settings"));
   }

@@ -18,16 +18,26 @@ import com.igot.cb.util.PropertiesCache;
 
 import lombok.extern.slf4j.Slf4j;
 
+/**
+ * Service implementation for reading content information.
+ * It fetches content data from cache or service based on the content ID and requested fields.
+ */
 @Service
 @Slf4j
-public class ContentServiceImpl {
+public class ContentInfoServiceImpl {
 
     private final OutboundRequestHandlerServiceImpl outboundRequestHandlerService;
     private final RedisCacheMgr redisCacheMgr;
     private final PropertiesCache propertiesCache;
     private final ObjectMapper mapper;
 
-    public ContentServiceImpl(OutboundRequestHandlerServiceImpl outboundRequestHandlerService,
+    /**
+     * Constructor for ContentInfoServiceImpl.
+     *
+     * @param outboundRequestHandlerService Service to handle outbound requests.
+     * @param redisCacheMgr                 Cache manager for Redis.
+     */
+    public ContentInfoServiceImpl(OutboundRequestHandlerServiceImpl outboundRequestHandlerService,
             RedisCacheMgr redisCacheMgr) {
         this.outboundRequestHandlerService = outboundRequestHandlerService;
         this.redisCacheMgr = redisCacheMgr;
@@ -35,6 +45,13 @@ public class ContentServiceImpl {
         this.mapper = new ObjectMapper();
     }
 
+    /**
+     * Reads content information based on the content ID and requested fields.
+     *
+     * @param contentId The ID of the content to read.
+     * @param fields    The list of fields to retrieve from the content.
+     * @return A map containing the requested fields and their values, or an empty map if not found.
+     */
     public Map<String, Object> readContent(String contentId, List<String> fields) {
         if (!StringUtils.hasText(contentId)) {
             log.error("Content ID is null or empty");
@@ -56,6 +73,14 @@ public class ContentServiceImpl {
         return Collections.emptyMap();
     }
 
+    /**
+     * Reads content information from the cache.
+     *
+     * @param contentId The ID of the content to read.
+     * @param fields    The list of fields to retrieve from the content.
+     * @return A map containing the requested fields and their values, or an empty map if not found.
+     * @throws Exception If there is an error reading from the cache.
+     */
     public Map<String, Object> readContentFromCache(String contentId, List<String> fields) throws Exception {
         log.info("Reading content with ID from redis: {}", contentId);
         Map<String, Object> responseData = new HashMap<>();
@@ -80,6 +105,14 @@ public class ContentServiceImpl {
         return responseData;
     }
 
+    /**
+     * Reads content information from the service.
+     *
+     * @param contentId The ID of the content to read.
+     * @param fields    The list of fields to retrieve from the content.
+     * @return A map containing the requested fields and their values, or an empty map if not found.
+     */
+    @SuppressWarnings("unchecked")
     public Map<String, Object> readContentFromService(String contentId, List<String> fields) {
         StringBuilder url = new StringBuilder();
         url.append(propertiesCache.getProperty(Constants.CONTENT_SERVICE_HOST))
@@ -98,6 +131,12 @@ public class ContentServiceImpl {
         return Collections.emptyMap();
     }
 
+    /**
+     * Reads the course category for a given content ID.
+     *
+     * @param contentId The ID of the content to read.
+     * @return The course category associated with the content ID, or an empty string if not found.
+     */
     public String readCourseCategoryForContent(String contentId) {
         List<String> fields = List.of(Constants.CONTENT_ID, Constants.COURSE_CATEGORY);
         return readContent(contentId, fields).getOrDefault(Constants.COURSE_CATEGORY, "").toString();

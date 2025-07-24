@@ -16,6 +16,8 @@ import com.datastax.oss.driver.api.querybuilder.update.UpdateWithAssignments;
 import com.igot.cb.model.ApiResponse;
 import com.igot.cb.util.Constants;
 
+import lombok.extern.slf4j.Slf4j;
+
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections.MapUtils;
 import org.slf4j.Logger;
@@ -34,10 +36,8 @@ import java.util.stream.Collectors;
  * @author Ruksana
  */
 @Component
+@Slf4j
 public class CassandraOperationImpl implements CassandraOperation {
-
-    private Logger logger = LoggerFactory.getLogger(getClass().getName());
-
     @Autowired
     CassandraConnectionManager connectionManager;
 
@@ -82,7 +82,7 @@ public class CassandraOperationImpl implements CassandraOperation {
             response.put(Constants.RESPONSE, Constants.SUCCESS);
         } catch (Exception e) {
             String errMsg = String.format("Exception occurred while inserting record to %s %s", tableName, e.getMessage());
-            logger.error("Error inserting record into {}: {}", tableName, e.getMessage());
+            log.error("Error inserting record into {}: {}", tableName, e.getMessage(), e);
             response.put(Constants.RESPONSE, Constants.FAILED);
             response.put(Constants.ERROR_MESSAGE, errMsg);
         }
@@ -91,7 +91,6 @@ public class CassandraOperationImpl implements CassandraOperation {
 
     @Override
     public List<Map<String, Object>> getRecordsByProperties(String keyspaceName, String tableName, Map<String, Object> propertyMap, List<String> fields, Integer limit) {
-
         List<Map<String, Object>> response = new ArrayList<>();
         try {
             Select selectQuery = null;
@@ -104,7 +103,7 @@ public class CassandraOperationImpl implements CassandraOperation {
             response = CassandraUtil.createResponse(results);
 
         } catch (Exception e) {
-            logger.error("Error fetching records from {}: {}", tableName, e.getMessage());
+            log.error("Error fetching records from {}: {}", tableName, e.getMessage(), e);
         }
         return response;
     }
@@ -128,7 +127,7 @@ public class CassandraOperationImpl implements CassandraOperation {
             response.put(Constants.RESPONSE, Constants.SUCCESS);
         } catch (Exception e) {
             String errMsg = String.format("Exception occurred while updating record to %s: %s", tableName, e.getMessage());
-            logger.error(errMsg, e);
+            log.error(errMsg, e);
             response.put(Constants.RESPONSE, Constants.FAILED);
             response.put(Constants.ERROR_MESSAGE, errMsg);
             throw e;

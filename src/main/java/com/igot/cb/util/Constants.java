@@ -312,6 +312,16 @@ public class Constants {
     public static final String ID_MAP_SERVICE_PARAM_SEPARATOR = "paramSeparator";
     public static final String VERSION = "version";
     public static final String ACCESS_CONTROL_ID = "accessControlId";
+    public static final String GROUP = "group";
+    public static final String CADRE_NAME = "cadreName";
+    public static final String CIVIL_SERVICE_NAME = "civilServiceName";
+    public static final String CADRE_BATCH = "cadreBatch";
+    public static final String CADRE_DETAILS = "cadreDetails";
+    public static final String CADRE = "cadre";
+    public static final String SERVICE = "service";
+    public static final String BATCH = "batch";
+    public static final String IDENTIFIER = "identifier";
+    public static final String PROFILE_DETAILS_KEY = "profileDetails";
 
     private Constants() {
     }

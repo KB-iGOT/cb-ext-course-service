@@ -11,6 +11,10 @@ import lombok.extern.slf4j.Slf4j;
 import redis.clients.jedis.JedisPool;
 import redis.clients.jedis.JedisPoolConfig;
 
+/**
+ * Configuration class for Redis connection pool.
+ * It sets up the JedisPool with specified configurations and properties.
+ */
 @Configuration
 @EnableCaching
 @Slf4j
@@ -18,10 +22,20 @@ public class RedisConfig {
 
     private final PropertiesCache propertiesCache;
 
+    /**
+     * Constructor for RedisConfig.
+     * Initializes the PropertiesCache instance.
+     */
     public RedisConfig() {
         this.propertiesCache = PropertiesCache.getInstance();
     }
 
+    /**
+     * Creates a JedisPool bean for Redis connection pooling.
+     * It sets the pool configurations and connects to the Redis server using host and port from properties.
+     *
+     * @return JedisPool instance configured with Redis settings.
+     */
     @Bean(name = "jedisPool")
     public JedisPool jedisPool() {
         System.setProperty("org.apache.commons.pool2.registerMbeans", "false");

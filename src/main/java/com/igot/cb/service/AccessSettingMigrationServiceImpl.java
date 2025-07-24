@@ -1,6 +1,8 @@
 package com.igot.cb.service;
 
 import java.util.ArrayList;
+import java.util.BitSet;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -24,11 +26,11 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class AccessSettingMigrationServiceImpl {
     private final CassandraOperation cassandraOperation;
-    private final ContentServiceImpl contentService;
+    private final ContentInfoServiceImpl contentService;
     private final IdMapCacheMgr idMapCacheMgr;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    public AccessSettingMigrationServiceImpl(CassandraOperation cassandraOperation, ContentServiceImpl contentService,
+    public AccessSettingMigrationServiceImpl(CassandraOperation cassandraOperation, ContentInfoServiceImpl contentService,
             IdMapCacheMgr idMapCacheMgr) {
         this.cassandraOperation = cassandraOperation;
         this.contentService = contentService;
@@ -107,7 +109,7 @@ public class AccessSettingMigrationServiceImpl {
     }
 
     @SuppressWarnings("unchecked")
-    private boolean updateContextDataWithIdMap(String contextId, Map<String, Object> accessControl,
+    protected boolean updateContextDataWithIdMap(String contextId, Map<String, Object> accessControl,
             Map<String, Object> accessControlIdMap) {
         List<Map<String, Object>> userGroupsList = (List<Map<String, Object>>) accessControl
                 .get(Constants.USER_GROUPS);
@@ -138,7 +140,7 @@ public class AccessSettingMigrationServiceImpl {
                     return false;
                 }
 
-                Map<String, Long> idResultMap = idMapCacheMgr.getId(criteriaValues);
+                Map<String, Integer> idResultMap = idMapCacheMgr.getId(criteriaValues);
                 if (MapUtils.isEmpty(idResultMap)) {
                     log.error("Failed to fetch criteria ID for criteriaKey: {} in userGroupId: {}", criteriaKey,
                             userGroupId);
@@ -151,7 +153,7 @@ public class AccessSettingMigrationServiceImpl {
                 }
                 Map<String, Object> criteriaIdMap = new HashMap<>();
                 criteriaIdMap.put(Constants.CRITERIA_KEY, criteriaKey);
-                criteriaIdMap.put(Constants.CRITERIA_VALUE, idResultMap.values());
+                criteriaIdMap.put(Constants.CRITERIA_VALUE, createBitSetForAttribute(idResultMap.values()));
 
                 criteriaIdMapList.add(criteriaIdMap);
             }
@@ -159,5 +161,24 @@ public class AccessSettingMigrationServiceImpl {
             userGroupIdMapList.add(userGroupIdMap);
         }
         return true;
+    }
+
+    /**
+     * Creates a BitSet for the given attribute values.
+     * 
+     * @param attributeValues Collection of Integer values representing the attribute.
+     * @return BitSet representing the attribute values.
+     */
+    BitSet createBitSetForAttribute(Collection<Integer> attributeValues) {
+        BitSet bitSet = new BitSet();
+        for (Integer part : attributeValues) {
+            try {
+                bitSet.set(part);
+            } catch (Exception ex) {
+                log.error("Failed to set the bit map positing for value: {}", part, ex);
+                throw ex;
+            }
+        }
+        return bitSet;
     }
 }

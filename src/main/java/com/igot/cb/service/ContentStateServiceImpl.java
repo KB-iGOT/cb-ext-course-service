@@ -34,7 +34,7 @@ import lombok.extern.slf4j.Slf4j;
 
 @Service
 @Slf4j
-public class CourseServiceImpl {
+public class ContentStateServiceImpl {
 
     private final AccessTokenValidator accessTokenValidator;
 
@@ -42,7 +42,7 @@ public class CourseServiceImpl {
 
     private final ObjectMapper objectMapper;
 
-    public CourseServiceImpl(CassandraOperation cassandraOperation, AccessTokenValidator accessTokenValidator) {
+    public ContentStateServiceImpl(CassandraOperation cassandraOperation, AccessTokenValidator accessTokenValidator) {
         this.cassandraOperation = cassandraOperation;
         this.accessTokenValidator = accessTokenValidator;
         this.objectMapper = new ObjectMapper();

@@ -16,10 +16,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -147,24 +144,60 @@ class AccessSettingMigrationServiceImplTest {
         @Test
         void testUpdateContextDataWithIdMap_emptyUserGroups() throws Exception {
                 String contextId = "ctx-empty-groups";
-
                 Map<String, Object> accessControl = new HashMap<>();
-                accessControl.put(Constants.USER_GROUPS, List.of()); // empty list
+                accessControl.put("version", 1);
+                List<Map<String, Object>> userGroups = new ArrayList<>();
+
+                Map<String, Object> userGroup1 = new HashMap<>();
+                userGroup1.put("userGroupId", "uuid1");
+                userGroup1.put("userGroupName", "User Group 1");
+                List<Map<String, Object>> criteriaList1 = new ArrayList<>();
+                Map<String, Object> rule1 = new HashMap<>();
+                rule1.put("ruleGroupKey", "rootOrgId");
+                rule1.put("ruleGroupValue", new ArrayList<>());
+                Map<String, Object> rule2 = new HashMap<>();
+                rule2.put("userGroupKey", "designation");
+                rule2.put("userGroupValue", java.util.Arrays.asList("Post Master", "Accountant"));
+                criteriaList1.add(rule1);
+                criteriaList1.add(rule2);
+                userGroup1.put("userGroupCriteriaList", criteriaList1);
+                userGroups.add(userGroup1);
+
+                // User Group 2
+                Map<String, Object> userGroup2 = new HashMap<>();
+                userGroup2.put("userGroupId", "uuid2");
+                userGroup2.put("userGroupName", "User Group 2");
+                List<Map<String, Object>> criteriaList2 = new ArrayList<>();
+                Map<String, Object> rule3 = new HashMap<>();
+                rule3.put("userGroupKey", "rootOrgId");
+                rule3.put("userGroupValue", java.util.Arrays.asList("orgId3"));
+                criteriaList2.add(rule3);
+                userGroup2.put("userGroupCriteriaList", criteriaList2);
+                userGroups.add(userGroup2);
+
+                // User Group 3
+                Map<String, Object> userGroup3 = new HashMap<>();
+                userGroup3.put("userGroupId", "uuid3");
+                userGroup3.put("userGroupName", "User Group 3");
+                List<Map<String, Object>> criteriaList3 = new ArrayList<>();
+                Map<String, Object> rule4 = new HashMap<>();
+                rule4.put("userGroupKey", "user");
+                rule4.put("userGroupValue", java.util.Arrays.asList("userId1", "userId2"));
+                criteriaList3.add(rule4);
+                userGroup3.put("userGroupCriteriaList", criteriaList3);
+                userGroups.add(userGroup3);
+
+                accessControl.put("userGroups", userGroups);
 
                 Map<String, Object> accessControlIdMap = new HashMap<>();
-
-                migrationService = new AccessSettingMigrationServiceImpl(cassandraOperation, contentService,
-                                idMapCacheMgr);
-
-                // Use reflection to test private method or move it to package-private for
-                // easier testing
+                migrationService = new AccessSettingMigrationServiceImpl(cassandraOperation, contentService, idMapCacheMgr);
                 var method = AccessSettingMigrationServiceImpl.class.getDeclaredMethod(
-                                "updateContextDataWithIdMap", String.class, Map.class, Map.class);
+                        "updateContextDataWithIdMap", String.class, Map.class, Map.class);
                 method.setAccessible(true);
-
-                method.invoke(migrationService, contextId, accessControl, accessControlIdMap);
-
-                assertTrue(accessControlIdMap.isEmpty());
+                boolean result = (boolean) method.invoke(migrationService, contextId, accessControl, accessControlIdMap);
+                assertFalse(result);
+                assertTrue(accessControlIdMap.containsKey(Constants.USER_GROUPS));
+                assertTrue(((List<?>) accessControlIdMap.get(Constants.USER_GROUPS)).isEmpty());
         }
 
         @Test

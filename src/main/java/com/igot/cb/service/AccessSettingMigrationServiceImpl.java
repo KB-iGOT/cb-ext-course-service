@@ -119,16 +119,16 @@ public class AccessSettingMigrationServiceImpl {
 
     @SuppressWarnings("unchecked")
     protected boolean updateContextDataWithIdMap(String contextId, Map<String, Object> accessControl,
-            Map<String, Object> accessControlIdMap) {
+                                                 Map<String, Object> accessControlIdMap) {
         List<Map<String, Object>> userGroupsList = (List<Map<String, Object>>) accessControl
                 .get(Constants.USER_GROUPS);
-        if (CollectionUtils.isEmpty(userGroupsList)) {
-            log.error("User groups are missing in access control for contextId: {}", contextId);
-            return false;
-        }
         List<Map<String, Object>> userGroupIdMapList = new ArrayList<>();
         accessControlIdMap.put(Constants.USER_GROUPS, userGroupIdMapList);
         accessControlIdMap.put(Constants.VERSION, 1);
+        if (CollectionUtils.isEmpty(userGroupsList)) {
+            log.error("User groups are missing in access control for contextId: {}", contextId);
+            return true;
+        }
 
         for (Map<String, Object> userGroup : userGroupsList) {
             String userGroupId = (String) userGroup.get(Constants.USER_GROUP_ID);

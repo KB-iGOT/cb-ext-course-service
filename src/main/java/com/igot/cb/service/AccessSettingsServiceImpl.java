@@ -57,7 +57,7 @@ public class AccessSettingsServiceImpl {
       accessRuleData.put(Constants.IS_ARCHIVED, false);
       if (accessSettingMigrationService.processAccessSettingRule(accessRuleData)) {
         cassandraOperation.insertRecord(Constants.KEYSPACE_SUNBIRD_COURSE,
-            Constants.ACCESS_SETTINGS_RULES_TABLE, accessRuleData);
+            Constants.ACCESS_SETTINGS_RULES_TABLE_V2, accessRuleData);
         response.getResult().put(Constants.MSG, Constants.CREATED_RULES);
         // Remove all other keys, and put a single object after message
         Map<String, Object> payload = new HashMap<>();
@@ -90,7 +90,7 @@ public class AccessSettingsServiceImpl {
       fields.add(Constants.CONTEXT_DATA);
       fields.add(Constants.IS_ARCHIVED);
       List<Map<String, Object>> accessSettingRule = cassandraOperation.getRecordsByProperties(
-          Constants.KEYSPACE_SUNBIRD_COURSE, Constants.ACCESS_SETTINGS_RULES_TABLE, propertyMap,
+          Constants.KEYSPACE_SUNBIRD_COURSE, Constants.ACCESS_SETTINGS_RULES_TABLE_V2, propertyMap,
           fields, null);
       if (!accessSettingRule.isEmpty()) {
         Map<String, Object> record = accessSettingRule.get(0);
@@ -148,7 +148,7 @@ public class AccessSettingsServiceImpl {
       accessRuleData.put(Constants.CONTEXT_DATA, "");
       accessRuleData.put(Constants.IS_ARCHIVED, false);
       cassandraOperation.insertRecord(Constants.KEYSPACE_SUNBIRD_COURSE,
-          Constants.ACCESS_SETTINGS_RULES_TABLE, accessRuleData);
+          Constants.ACCESS_SETTINGS_RULES_TABLE_V2, accessRuleData);
       response.setResponseCode(HttpStatus.OK);
       response.getResult().put(Constants.MSG, "Access settings deleted successfully");
       return response;

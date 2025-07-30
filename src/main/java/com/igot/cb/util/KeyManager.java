@@ -68,14 +68,16 @@ public class KeyManager {
      */
     public static PublicKey loadPublicKey(String key) throws Exception {
         // Remove header and footer from the key string
-        String cleanedKey = key.replaceAll("(-+BEGIN PUBLIC KEY-+)", "")
-                .replaceAll("(-+END PUBLIC KEY-+)", "")
-                .replaceAll("[\\r\\n]+", "");
-        // Decode Base64 content
-        byte[] keyBytes = Base64.getDecoder().decode(cleanedKey);
-        // Generate PublicKey object
-        X509EncodedKeySpec spec = new X509EncodedKeySpec(keyBytes);
-        KeyFactory keyFactory = KeyFactory.getInstance("RSA");
-        return keyFactory.generatePublic(spec);
+        String publicKey = new String(key.getBytes(), StandardCharsets.UTF_8);
+        // Remove header and footer from the key string
+        publicKey = publicKey.replaceAll("(-+BEGIN PUBLIC KEY-+)", "");
+        publicKey = publicKey.replaceAll("(-+END PUBLIC KEY-+)", "");
+        publicKey = publicKey.replaceAll("[\\r\\n]+", "");
+        // Decode the key string from Base64
+        byte[] keyBytes = Base64Util.decode(publicKey.getBytes("UTF-8"), Base64Util.DEFAULT);
+        // Convert the key bytes to a PublicKey object
+        X509EncodedKeySpec x509publicKey = new X509EncodedKeySpec(keyBytes);
+        KeyFactory kf = KeyFactory.getInstance("RSA");
+        return kf.generatePublic(x509publicKey);
     }
 }

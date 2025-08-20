@@ -1,10 +1,15 @@
 package com.igot.cb.service;
 
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections4.MapUtils;
 import org.springframework.stereotype.Service;
@@ -41,6 +46,7 @@ public class UserProfileServiceImpl {
 
         String cacheKey = Constants.USER + ":basicProfile:" + userId;
         String cachedProfile = redisCacheMgr.getFromCache(cacheKey);
+
         try {
             if (StringUtils.hasText(cachedProfile)) {
                 setUserProfile(userProfile, mapper.readValue(cachedProfile,
@@ -69,14 +75,24 @@ public class UserProfileServiceImpl {
     }
 
     @SuppressWarnings("unchecked")
-    private void setUserProfile(Map<String, String> userProfile, Map<String, Object> userBasicProfile) {
+    private void setUserProfile(Map<String, String> userProfile, Map<String, Object> userBasicProfile) throws JsonProcessingException {
         if (MapUtils.isEmpty(userBasicProfile)) {
             log.warn("User basic profile is empty for userId: {}", userProfile.get(Constants.ID));
             return;
         }
         userProfile.put(Constants.USER, (String) userBasicProfile.get(Constants.ID));
-        userProfile.put(Constants.ROOT_ORG_ID.toLowerCase(), (String) userBasicProfile.get(Constants.ROOT_ORG_ID));
-        Map<String, Object> profileDetails = (Map<String, Object>) userBasicProfile.get(Constants.PROFILE_DETAILS_KEY);
+        userProfile.put(Constants.ROOT_ORG_ID.toLowerCase(), (String) userBasicProfile.get(Constants.ROOT_ORG_ID.toLowerCase()));
+        Object rawValue = userBasicProfile.get(Constants.PROFILE_DETAILS.toLowerCase());
+        Map<String, Object> profileDetails;
+
+        if (rawValue instanceof String) {
+            profileDetails = mapper.readValue((String) rawValue, new TypeReference<Map<String, Object>>() {});
+        } else if (rawValue instanceof Map) {
+            profileDetails = (Map<String, Object>) rawValue;
+        } else {
+            throw new IllegalArgumentException("Unsupported type for profileDetails: " + rawValue);
+        }
+
         if (!MapUtils.isEmpty(profileDetails)) {
             List<Map<String, Object>> professionalDetailList = (List<Map<String, Object>>) profileDetails
                     .get(Constants.PROFESSIONAL_DETAILS);
@@ -94,6 +110,9 @@ public class UserProfileServiceImpl {
                 userProfile.put(Constants.SERVICE, (String) cadreDetails.get(Constants.CIVIL_SERVICE_NAME));
                 if (cadreDetails.containsKey(Constants.CADRE_BATCH)) {
                     userProfile.put(Constants.BATCH, String.valueOf(cadreDetails.get(Constants.CADRE_BATCH)));
+                }
+                if (cadreDetails.containsKey(Constants.CENTRAL_DEPUTATION)) {
+                    userProfile.put(Constants.CENTRAL_DEPUTATION, String.valueOf( cadreDetails.get(Constants.CENTRAL_DEPUTATION)));
                 }
             }
         }
@@ -115,8 +134,15 @@ public class UserProfileServiceImpl {
             return;
         }
         for (Map.Entry<String, String> entry : userProfile.entrySet()) {
-            if (idResultMap.containsKey(entry.getValue())) {
-                userProfileBitMap.put(entry.getKey().toLowerCase(), idResultMap.get(entry.getValue()));
+            String encodedValue = null;
+            try {
+                encodedValue = new URI(null, entry.getValue(), null).toASCIIString();
+            } catch (URISyntaxException e) {
+                throw new RuntimeException(e);
+            }
+
+            if (idResultMap.containsKey(encodedValue)) {
+                userProfileBitMap.put(entry.getKey().toLowerCase(), idResultMap.get(encodedValue));
             } else {
                 log.warn("ID-Map does not contain value for User: {}, Key: {}, Value: {}",
                         userProfile.get(Constants.USER), entry.getKey(), entry.getValue());

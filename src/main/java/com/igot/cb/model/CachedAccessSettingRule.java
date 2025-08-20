@@ -28,7 +28,7 @@ public class CachedAccessSettingRule {
             this.contextId = (String) ruleData.get("contextId");
             this.contextIdType = (String) ruleData.get("contextIdType");
             this.contextData = (Map<String, Object>) ruleData.get("contextData");
-            this.isArchived = (Boolean) ruleData.get("isArchived");
+            this.isArchived = (Boolean) ruleData.getOrDefault("isArchived", false);
             this.cachedTimeMillis = System.currentTimeMillis();
         } catch (Exception e) {
             throw new RuntimeException("Failed to parse access setting rule: " + e.getMessage(), e);

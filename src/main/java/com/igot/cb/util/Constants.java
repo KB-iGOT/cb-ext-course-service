@@ -322,6 +322,8 @@ public class Constants {
     public static final String BATCH = "batch";
     public static final String IDENTIFIER = "identifier";
     public static final String PROFILE_DETAILS_KEY = "profileDetails";
+    public static final String CENTRAL_DEPUTATION = "isOnCentralDeputation";
+    public static final String ACCESS_KEY = "access_";
 
     private Constants() {
     }

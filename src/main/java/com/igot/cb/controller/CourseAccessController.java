@@ -3,10 +3,7 @@ package com.igot.cb.controller;
 import java.util.Map;
 
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import com.igot.cb.model.ApiResponse;
 import com.igot.cb.service.CourseAccessServiceImpl;
@@ -34,7 +31,7 @@ public class CourseAccessController {
      * @param authToken   the authentication token for the user
      * @return a ResponseEntity containing the ApiResponse with course details
      */
-    @GetMapping("/user/v1/assignedcourses")
+    @PostMapping("/user/v1/assignedcourses")
     public ResponseEntity<ApiResponse> getCoursesForUser(@RequestBody Map<String, Object> requestBody,
             @RequestHeader(Constants.X_AUTH_TOKEN) String authToken) {
         ApiResponse response = courseAccessService.getCoursesForUser(requestBody, authToken);

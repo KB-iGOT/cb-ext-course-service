@@ -1,11 +1,12 @@
 package com.igot.cb.cache;
 
-import java.util.Collection;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.commons.collections.MapUtils;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import com.igot.cb.cassandra.CassandraOperation;
@@ -27,6 +28,9 @@ public class AccessSettingRuleCacheMgr {
     private final long LOCAL_CACHE_TTL = 3600000;
 
     private final String ACCESS_SETTINGS_CACHE_KEY = "accessSettingRules";
+
+    @Autowired
+    private  ObjectMapper mapper = new ObjectMapper();
 
     /**
      * Constructor for AccessSettingRuleCacheMgr.
@@ -91,8 +95,8 @@ public class AccessSettingRuleCacheMgr {
                         null, null);
                 cachedAccessSettingRules = accessSettingRuleMapList.stream()
                         .map(record -> new CachedAccessSettingRule(
-                                (String) record.get("contextId"),
-                                (String) record.get("contextIdType"),
+                                (String) record.get("contextid"),
+                                (String) record.get("contextidtype"),
                                 (String) record.get(Constants.CONTEXT_DATA),
                                 false))
                         .collect(Collectors.toMap(
@@ -100,6 +104,7 @@ public class AccessSettingRuleCacheMgr {
                                 rule -> rule));
                 // Cache the rules in Redis
                 for (CachedAccessSettingRule rule : cachedAccessSettingRules.values()) {
+
                     redisCacheMgr.setAccessSettingRuleCache(ACCESS_SETTINGS_CACHE_KEY, rule.getCacheKey(),
                             rule.getContextData());
                 }
@@ -109,5 +114,39 @@ public class AccessSettingRuleCacheMgr {
         } catch (Exception e) {
             log.error("Failed to load AccessSettingRule into Cache. Exception: ", e);
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private void normalizeCriteriaValues(Map<String, Object> ruleMap) {
+        if (ruleMap == null) return;
+
+        for (Map.Entry<String, Object> entry : ruleMap.entrySet()) {
+            Object value = entry.getValue();
+
+            if (value instanceof Map) {
+                normalizeCriteriaValues((Map<String, Object>) value);
+            } else if (value instanceof List) {
+                List<Object> list = (List<Object>) value;
+                List<Object> normalizedList = new ArrayList<>();
+                for (Object item : list) {
+                    normalizedList.add(String.valueOf(item));  // ✅ convert everything to String
+                }
+                entry.setValue(normalizedList);
+            }
+        }
+    }
+
+
+    BitSet createBitSetForAttribute(Collection<Integer> attributeValues) {
+        BitSet bitSet = new BitSet();
+        for (Integer part : attributeValues) {
+            try {
+                bitSet.set(part);
+            } catch (Exception ex) {
+                log.error("Failed to set the bit map positing for value: {}", part, ex);
+                throw ex;
+            }
+        }
+        return bitSet;
     }
 }

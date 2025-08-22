@@ -42,7 +42,7 @@ class UserProfileServiceImplTest {
     private final String userId = "user123";
 
     @Test
-    void testGetUserProfile_FromCache_Success() throws Exception {
+    void testGetUserProfile_FromCache_Success() {
         String cachedJson = """
         {
             "id": "user123",
@@ -85,7 +85,7 @@ class UserProfileServiceImplTest {
     }
 
     @Test
-    void testGetUserProfile_FromCassandra_Success() throws Exception {
+    void testGetUserProfile_FromCassandra_Success() {
         when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
         when(cassandraOperation.getRecordsByProperties(eq(Constants.KEYSPACE_SUNBIRD), eq(Constants.USER), any(), any(), isNull()))
             .thenReturn(List.of(Map.of(
@@ -124,7 +124,7 @@ class UserProfileServiceImplTest {
     }
 
     @Test
-    void testGetUserProfile_IdMapMismatch_ShouldReturnEmpty() throws Exception {
+    void testGetUserProfile_IdMapMismatch_ShouldReturnEmpty() {
         String cachedJson = """
         {
             "id": "user123",
@@ -157,7 +157,7 @@ class UserProfileServiceImplTest {
     }
 
     @Test
-    void testGetUserProfile_NullCadreDetails() throws Exception {
+    void testGetUserProfile_NullCadreDetails() {
         when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
         when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), isNull())).thenReturn(List.of(
             Map.of("id", "user123", "rootOrgId", "org1", "profileDetails", Map.of(

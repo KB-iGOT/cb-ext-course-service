@@ -9,7 +9,6 @@ import java.util.Map;
 
 import com.igot.cb.model.ApiResponse;
 import com.igot.cb.service.ContentStateServiceImpl;
-import com.igot.cb.util.Constants;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -20,7 +19,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
 @ExtendWith(MockitoExtension.class)
-public class CourseControllerTest {
+class CourseControllerTest {
 
     @Mock
     private ContentStateServiceImpl courseService;

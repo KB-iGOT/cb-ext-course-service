@@ -20,7 +20,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 
 @ExtendWith(MockitoExtension.class)
-class OutboundRequestHandlerServiceImplTest {
+class OutbondRequestHandlerServiceImplTest {
 
     @Mock
     private RestTemplate restTemplate;

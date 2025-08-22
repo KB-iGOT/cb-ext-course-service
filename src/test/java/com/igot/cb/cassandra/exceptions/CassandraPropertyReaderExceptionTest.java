@@ -7,10 +7,10 @@ import org.junit.jupiter.api.Test;
 
 import com.igot.cb.cassandra.CassandraPropertyReaderException;
 
-public class CassandraPropertyReaderExceptionTest {
+class CassandraPropertyReaderExceptionTest {
 
     @Test
-    public void testCassandraPropertyReaderExceptionConstructor() {
+    void testCassandraPropertyReaderExceptionConstructor() {
         String expectedMessage = "Test error message";
         Throwable expectedCause = new IllegalArgumentException("Test cause");
         CassandraPropertyReaderException exception = new CassandraPropertyReaderException(expectedMessage, expectedCause);
@@ -19,7 +19,7 @@ public class CassandraPropertyReaderExceptionTest {
     }
 
     @Test
-    public void testExceptionWithNullMessage() {
+    void testExceptionWithNullMessage() {
         String expectedMessage = null;
         Throwable expectedCause = new RuntimeException("Some cause");
         CassandraPropertyReaderException exception = new CassandraPropertyReaderException(expectedMessage, expectedCause);
@@ -28,7 +28,7 @@ public class CassandraPropertyReaderExceptionTest {
     }
 
     @Test
-    public void testExceptionWithNullCause() {
+    void testExceptionWithNullCause() {
         String expectedMessage = "Error reading Cassandra properties";
         Throwable expectedCause = null;
         CassandraPropertyReaderException exception = new CassandraPropertyReaderException(expectedMessage, expectedCause);

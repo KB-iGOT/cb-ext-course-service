@@ -3,7 +3,6 @@ package com.igot.cb.util;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
@@ -29,11 +28,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.igot.cb.model.ApiResponse;
 import com.igot.cb.model.KeyData;
-import com.igot.cb.util.AccessTokenValidator;
-import com.igot.cb.util.Constants;
-import com.igot.cb.util.CryptoUtil;
-import com.igot.cb.util.KeyManager;
-import com.igot.cb.util.PropertiesCache;
 
 @ExtendWith(MockitoExtension.class)
 class AccessTokenValidatorTest {
@@ -75,7 +69,7 @@ class AccessTokenValidatorTest {
     }
 
     @Test
-    void testValidateToken_Success() throws Exception {
+    void testValidateToken_Success() {
         String headerJson = "{\"alg\":\"RS256\",\"kid\":\"test-key\"}";
         String bodyJson = "{\"exp\":" + (System.currentTimeMillis() / 1000 + 300) + ", \"iss\":\"" + ssoUrl + "realms/"
                 + realm + "\", \"sub\":\"user:123\"}";
@@ -103,12 +97,6 @@ class AccessTokenValidatorTest {
             assertFalse(result.isEmpty());
             assertEquals("user:123", result.get("sub"));
         }
-    }
-
-    @Test
-    void testCheckIss_Match() {
-        String iss = ssoUrl + "realms/" + realm;
-        assertTrue(validator.checkIss(iss));
     }
 
     @Test

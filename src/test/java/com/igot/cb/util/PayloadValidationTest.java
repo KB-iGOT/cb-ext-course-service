@@ -6,26 +6,22 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
-
-import com.igot.cb.util.PayloadValidation;
-
 import java.util.*;
-
 import static org.junit.jupiter.api.Assertions.*;
 
 
 @ExtendWith(MockitoExtension.class)
-public class PayloadValidationTest {
+class PayloadValidationTest {
 
   private PayloadValidation payloadValidation;
 
   @BeforeEach
-  public void setUp() {
+  void setUp() {
     payloadValidation = new PayloadValidation();
   }
 
   @Test
-  public void testValidPayload() {
+  void testValidPayload() {
     Map<String, Object> payload = new HashMap<>();
     payload.put(Constants.CONTENT_ID, "content123");
 
@@ -47,7 +43,7 @@ public class PayloadValidationTest {
   }
 
   @Test
-  public void testMissingContentId() {
+  void testMissingContentId() {
     Map<String, Object> payload = new HashMap<>();
     payload.put(Constants.ACCESS_CONTROL, new HashMap<>());
 
@@ -56,7 +52,7 @@ public class PayloadValidationTest {
   }
 
   @Test
-  public void testBlankContentId() {
+  void testBlankContentId() {
     Map<String, Object> payload = new HashMap<>();
     payload.put(Constants.CONTENT_ID, "   ");
     payload.put(Constants.ACCESS_CONTROL, new HashMap<>());
@@ -66,7 +62,7 @@ public class PayloadValidationTest {
   }
 
   @Test
-  public void testMissingAccessControl() {
+  void testMissingAccessControl() {
     Map<String, Object> payload = new HashMap<>();
     payload.put(Constants.CONTENT_ID, "content123");
 
@@ -75,7 +71,7 @@ public class PayloadValidationTest {
   }
 
   @Test
-  public void testInvalidAccessControlType() {
+  void testInvalidAccessControlType() {
     Map<String, Object> payload = new HashMap<>();
     payload.put(Constants.CONTENT_ID, "content123");
     payload.put(Constants.ACCESS_CONTROL, "notAMap");
@@ -85,7 +81,7 @@ public class PayloadValidationTest {
   }
 
   @Test
-  public void testMissingUserGroups() {
+  void testMissingUserGroups() {
     Map<String, Object> payload = new HashMap<>();
     payload.put(Constants.CONTENT_ID, "content123");
     Map<String, Object> accessControl = new HashMap<>();
@@ -97,7 +93,7 @@ public class PayloadValidationTest {
   }
 
   @Test
-  public void testEmptyCriteriaValue() {
+  void testEmptyCriteriaValue() {
     Map<String, Object> payload = new HashMap<>();
     payload.put(Constants.CONTENT_ID, "content123");
 

@@ -75,7 +75,7 @@ class AccessSettingRuleCacheMgrTest {
     void testGetAccessSettingRules_fromCassandra_whenRedisEmpty() {
         when(redisCacheMgr.getAllCachedAccessRules(redisKey)).thenReturn(Map.of());
 
-        Map<String, Object> record = Map.of(
+        Map<String, Object> recordMap = Map.of(
                 "contextId", "do_123",
                 "contextIdType", "Course",
                 Constants.CONTEXT_DATA, """
@@ -89,7 +89,7 @@ class AccessSettingRuleCacheMgrTest {
                 "isArchived", false
         );
         when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), isNull(), isNull(), isNull()))
-                .thenReturn(List.of(record));
+                .thenReturn(List.of(recordMap));
 
         var result = cacheMgr.getAccessSettingRules();
 
@@ -114,12 +114,11 @@ class AccessSettingRuleCacheMgrTest {
         Map<String, String> redisMap = Map.of("do_123|Course", validJsonRule);
         when(redisCacheMgr.getAllCachedAccessRules(redisKey)).thenReturn(redisMap);
 
-        var result1 = cacheMgr.getAccessSettingRules(); // load initially
+        cacheMgr.getAccessSettingRules(); // load initially
 
         // Simulate TTL expiry
         var cachedRule = new CachedAccessSettingRule(validJsonRule);
         cachedRule.setCachedTimeMillis(System.currentTimeMillis() - (2 * 3600000));
-        cacheMgr.getAccessSettingRules(); // second call will trigger reload
-        // Success if no exceptions and method executes
+        assertDoesNotThrow(()->cacheMgr.getAccessSettingRules()); // second call will trigger reload
     }
 }

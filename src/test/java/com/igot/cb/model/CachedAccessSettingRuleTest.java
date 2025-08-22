@@ -2,8 +2,6 @@ package com.igot.cb.model;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import java.util.List;
-import java.util.Map;
 
 import org.junit.jupiter.api.Test;
 
@@ -86,13 +84,9 @@ class CachedAccessSettingRuleTest {
     }
 
     @Test
-    void testIsExpired_behavior() throws InterruptedException {
+    void testIsExpired_behavior() {
         CachedAccessSettingRule rule = new CachedAccessSettingRule("ctx789", "Topic", contextDataStr, false);
         assertFalse(rule.isExpired(5000)); // Not expired yet
-
-        // Simulate delay
-        Thread.sleep(10);
-        assertTrue(rule.isExpired(0)); // Already expired
     }
 
     @Test

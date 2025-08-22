@@ -210,7 +210,7 @@ public class Constants {
     public static final String DESIGNATION = "designation";
     public static final String NULL_STRING = "null";
     public static final Object USER_ID_REDIS_KEY = "user_id";
-    public static final String PROFILE_DETAILS = "profiledetails";
+    public static final String PROFILE_DETAILS = "profileDetails";
     public static final String USER_ID_KEY = "user_id";
     public static final String FIRST_NAME_KEY = "first_name";
     public static final String PROFILE_IMG_KEY = "user_profile_img_url";
@@ -324,6 +324,7 @@ public class Constants {
     public static final String PROFILE_DETAILS_KEY = "profileDetails";
     public static final String CENTRAL_DEPUTATION = "isOnCentralDeputation";
     public static final String ACCESS_KEY = "access_";
+    public static final String NO_RECORDS_FOUND = "No records found for this user";
 
     private Constants() {
     }

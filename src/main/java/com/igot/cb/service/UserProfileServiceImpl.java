@@ -81,8 +81,8 @@ public class UserProfileServiceImpl {
             return;
         }
         userProfile.put(Constants.USER, (String) userBasicProfile.get(Constants.ID));
-        userProfile.put(Constants.ROOT_ORG_ID.toLowerCase(), (String) userBasicProfile.get(Constants.ROOT_ORG_ID.toLowerCase()));
-        Object rawValue = userBasicProfile.get(Constants.PROFILE_DETAILS.toLowerCase());
+        userProfile.put(Constants.ROOT_ORG_ID.toLowerCase(), (String) userBasicProfile.get(Constants.ROOT_ORG_ID));
+        Object rawValue = userBasicProfile.get(Constants.PROFILE_DETAILS);
         Map<String, Object> profileDetails;
 
         if (rawValue instanceof String) {

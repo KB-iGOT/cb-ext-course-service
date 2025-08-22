@@ -36,6 +36,7 @@ public class CourseAccessServiceImpl {
     @Autowired
     private RedisCacheMgr redisCacheMgr;
 
+
     @Value("${content.read.fields}")
     private String contentReadFields;
 
@@ -85,6 +86,10 @@ public class CourseAccessServiceImpl {
 
         String cachedCourseForUser = redisCacheMgr.getFromCache(Constants.ACCESS_KEY + userId);
         if (cachedCourseForUser != null && !cachedCourseForUser.isEmpty()){
+            if (cachedCourseForUser.equalsIgnoreCase(Constants.NO_RECORDS_FOUND)){
+                response.getResult().put(Constants.CONTENT, new ArrayList<>());
+                return response;
+            }
             try {
                 response.getResult().put(Constants.CONTENT, mapper.readValue(
                         cachedCourseForUser,
@@ -112,6 +117,8 @@ public class CourseAccessServiceImpl {
                     } catch (JsonProcessingException e) {
                         throw new RuntimeException(e);
                     }
+                }else {
+                    redisCacheMgr.putInCache(Constants.ACCESS_KEY+userId, Constants.NO_RECORDS_FOUND);
                 }
                 response.getResult().put(Constants.CONTENT, userCourses);
             } else {
@@ -140,11 +147,7 @@ public class CourseAccessServiceImpl {
             if (evaluateAccessSettingRule(accessSettingIdMap, userProfile)) {
                 List<String> fieldsToFetch = Arrays.asList(contentReadFields.split(","));
                 Map<String, Object> contentDetails = contentService.readContent(rule.getContextId(), fieldsToFetch);
-                Map<String, Object> eligibleCourseMap = Map.of(
-                        Constants.IDENTIFIER, rule.getContextId(),
-                        Constants.COURSE_CATEGORY, rule.getContextIdType(),
-                        Constants.CONTEXT_DATA, contentDetails);
-                userCourses.add(eligibleCourseMap);
+                userCourses.add(contentDetails);
             }
         }
         return true;
@@ -178,9 +181,9 @@ public class CourseAccessServiceImpl {
             }
             for (Map<String, Object> criteria : criteriaList) {
                 String criteriaKey = (String) criteria.get(Constants.CRITERIA_KEY);
-                List<Integer> criteriaValue = (List<Integer>) criteria.get(Constants.CRITERIA_VALUE);
+                BitSet criteriaValue = (BitSet) criteria.get(Constants.CRITERIA_VALUE);
                 Integer userCriteriaValue = userProfile.get(criteriaKey);
-                if (userCriteriaValue == null || criteriaValue.get(0) != userCriteriaValue) {
+                if (userCriteriaValue == null || !criteriaValue.get(userCriteriaValue)) {
                     log.info("User profile does not contain criteria key: {} in userGroup: {}", criteriaKey,
                             userGroupId);
                     isUserHasAccess = false;

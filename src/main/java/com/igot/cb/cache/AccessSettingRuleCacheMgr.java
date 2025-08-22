@@ -110,11 +110,8 @@ public class AccessSettingRuleCacheMgr {
                                 rule -> rule));
                 // Cache the rules in Redis
                 for (CachedAccessSettingRule rule : cachedAccessSettingRules.values()) {
-                    log.info("Rule JSON: {}", mapper.writeValueAsString(rule));
-
 
                     try {
-                        log.info("Rule JSON: {}", mapper.writeValueAsString(rule));
 
                         Map<String, Object> contextData = rule.getContextData();
                         if (contextData == null) {
@@ -204,26 +201,6 @@ public class AccessSettingRuleCacheMgr {
         }
     }
 
-
-    @SuppressWarnings("unchecked")
-    private void normalizeCriteriaValues(Map<String, Object> ruleMap) {
-        if (ruleMap == null) return;
-
-        for (Map.Entry<String, Object> entry : ruleMap.entrySet()) {
-            Object value = entry.getValue();
-
-            if (value instanceof Map) {
-                normalizeCriteriaValues((Map<String, Object>) value);
-            } else if (value instanceof List) {
-                List<Object> list = (List<Object>) value;
-                List<Object> normalizedList = new ArrayList<>();
-                for (Object item : list) {
-                    normalizedList.add(String.valueOf(item));  // ✅ convert everything to String
-                }
-                entry.setValue(normalizedList);
-            }
-        }
-    }
 
 
     BitSet createBitSetForAttribute(Collection<Integer> attributeValues) {

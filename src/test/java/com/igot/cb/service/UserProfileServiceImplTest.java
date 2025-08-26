@@ -47,8 +47,8 @@ class UserProfileServiceImplTest {
         String cachedJson = """
         {
             "id": "user123",
-            "rootorgid": "org1",
-            "profiledetails": {
+            "rootOrgId": "org1",
+            "profileDetails": {
                 "professionalDetails": [{"designation": "teacher", "group": "A"}],
                 "profileStatus": "VERIFIED",
                 "cadreDetails": {
@@ -101,8 +101,8 @@ class UserProfileServiceImplTest {
                 isNull()))
                 .thenReturn(List.of(Map.of(
                         "id", "user123",
-                        "rootorgid", "org1",
-                        "profiledetails", Map.of(
+                        "rootOrgId", "org1",
+                        "profileDetails", Map.of(
                                 "professionalDetails", List.of(Map.of("designation", "teacher", "group", "A")),
                                 "profileStatus", "ACTIVE",
                                 "designation","teacher",
@@ -155,8 +155,8 @@ class UserProfileServiceImplTest {
         String cachedJson = """
         {
             "id": "user123",
-            "rootorgid": "org1",
-            "profiledetails": {
+            "rootOrgId": "org1",
+            "profileDetails": {
                 "professionalDetails": [{"designation": "teacher", "group": "A"}],
                 "profileStatus": "ACTIVE",
                 "cadreDetails": {
@@ -196,8 +196,8 @@ class UserProfileServiceImplTest {
         when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
         when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), isNull())).thenReturn(List.of(
                 Map.of("id", "user123",
-                        "rootorgid", "org1",
-                        "profiledetails", Map.of(
+                        "rootOrgId", "org1",
+                        "profileDetails", Map.of(
                                 "professionalDetails", List.of(Map.of("designation", "teacher", "group", "A")),
                                 "profileStatus", "ACTIVE"
                         ))));

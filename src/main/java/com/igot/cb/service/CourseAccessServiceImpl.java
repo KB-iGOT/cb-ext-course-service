@@ -1,12 +1,14 @@
 package com.igot.cb.service;
 
-import java.util.ArrayList;
-import java.util.BitSet;
-import java.util.Collection;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.igot.cb.cache.RedisCacheMgr;
 import org.apache.commons.collections4.MapUtils;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
@@ -29,6 +31,16 @@ public class CourseAccessServiceImpl {
     private final AccessTokenValidator accessTokenValidator;
     private final UserProfileServiceImpl userProfileServiceImpl;
     private final AccessSettingRuleCacheMgr accessSettingRuleCacheMgr;
+    private final ContentInfoServiceImpl contentService;
+
+    @Autowired
+    private RedisCacheMgr redisCacheMgr;
+
+
+    @Value("${content.read.fields}")
+    private String contentReadFields;
+
+    private final ObjectMapper mapper = new ObjectMapper();
 
     /**
      * Constructor for CourseAccessServiceImpl.
@@ -38,10 +50,11 @@ public class CourseAccessServiceImpl {
      * @param accessSettingRuleCacheMgr Cache manager for access setting rules.
      */
     public CourseAccessServiceImpl(AccessTokenValidator accessTokenValidator,
-            UserProfileServiceImpl userProfileServiceImpl, AccessSettingRuleCacheMgr accessSettingRuleCacheMgr) {
+            UserProfileServiceImpl userProfileServiceImpl, AccessSettingRuleCacheMgr accessSettingRuleCacheMgr, ContentInfoServiceImpl contentService) {
         this.accessTokenValidator = accessTokenValidator;
         this.userProfileServiceImpl = userProfileServiceImpl;
         this.accessSettingRuleCacheMgr = accessSettingRuleCacheMgr;
+        this.contentService = contentService;
     }
 
     /**
@@ -71,6 +84,24 @@ public class CourseAccessServiceImpl {
             return response;
         }
 
+        String cachedCourseForUser = redisCacheMgr.getFromCache(Constants.ACCESS_KEY + userId);
+        if (cachedCourseForUser != null && !cachedCourseForUser.isEmpty()){
+            if (cachedCourseForUser.equalsIgnoreCase(Constants.NO_RECORDS_FOUND)){
+                response.getResult().put(Constants.CONTENT, new ArrayList<>());
+                return response;
+            }
+            try {
+                response.getResult().put(Constants.CONTENT, mapper.readValue(
+                        cachedCourseForUser,
+                        new TypeReference<List<Map<String, Object>>>() {}
+                ));
+                log.info("AccessSettingRule evalution: UserId: ", userId);
+                return response;
+            } catch (JsonProcessingException e) {
+                throw new RuntimeException(e);
+            }
+        }
+
         // Fetch user profile details
         Map<String, Integer> userProfile = userProfileServiceImpl.getUserProfile(userId);
         // Evaluate the user profile value against all the courses in access settings
@@ -79,6 +110,16 @@ public class CourseAccessServiceImpl {
             List<Map<String, Object>> userCourses = new ArrayList<>();
             if (retrieveUserCourses(userProfile, userCourses)) {
                 log.info("AccessSettingRule evalution: UserId: {} courses retrieved: {}", userId, userCourses.size());
+                if (!userCourses.isEmpty()) {
+                    log.info("No courses found for user profile: {}", userProfile);
+                    try {
+                        redisCacheMgr.putInCache(Constants.ACCESS_KEY+userId, mapper.writeValueAsString(userCourses));
+                    } catch (JsonProcessingException e) {
+                        throw new RuntimeException(e);
+                    }
+                }else {
+                    redisCacheMgr.putInCache(Constants.ACCESS_KEY+userId, Constants.NO_RECORDS_FOUND);
+                }
                 response.getResult().put(Constants.CONTENT, userCourses);
             } else {
                 response.getResult().put(Constants.CONTENT, new ArrayList<>());
@@ -104,10 +145,9 @@ public class CourseAccessServiceImpl {
             Map<String, Object> accessSettingIdMap = (Map<String, Object>) rule.getContextData()
                     .get(Constants.ACCESS_CONTROL_ID);
             if (evaluateAccessSettingRule(accessSettingIdMap, userProfile)) {
-                Map<String, Object> eligibleCourseMap = Map.of(
-                        Constants.IDENTIFIER, rule.getContextId(),
-                        Constants.COURSE_CATEGORY, rule.getContextIdType());
-                userCourses.add(eligibleCourseMap);
+                List<String> fieldsToFetch = Arrays.asList(contentReadFields.split(","));
+                Map<String, Object> contentDetails = contentService.readContent(rule.getContextId(), fieldsToFetch);
+                userCourses.add(contentDetails);
             }
         }
         return true;

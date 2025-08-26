@@ -43,17 +43,19 @@ class UserProfileServiceImplTest {
 
     @Test
     void testGetUserProfile_FromCache_Success() throws Exception {
+        // All keys lowercased to match service expectations
         String cachedJson = """
         {
             "id": "user123",
-            "rootOrgId": "org1",
-            "profileDetails": {
+            "rootorgid": "org1",
+            "profiledetails": {
                 "professionalDetails": [{"designation": "teacher", "group": "A"}],
                 "profileStatus": "VERIFIED",
                 "cadreDetails": {
                     "cadreName": "IAS",
                     "civilServiceName": "Administrative",
-                    "cadreBatch": "2010"
+                    "cadreBatch": "2010",
+                    "isOnCentralDeputation": true
                 }
             }
         }
@@ -73,7 +75,8 @@ class UserProfileServiceImplTest {
 
         Map<String, Integer> result = userProfileService.getUserProfile(userId);
 
-        assertEquals(8, result.size());
+        // ✅ Assert the expected 8 entries
+        assertEquals(9, result.size());
         assertEquals(capturedIdMap.get("user123"), result.get("user"));
         assertEquals(capturedIdMap.get("IAS"), result.get("cadre"));
         assertEquals(capturedIdMap.get("Administrative"), result.get("service"));
@@ -82,21 +85,36 @@ class UserProfileServiceImplTest {
         assertEquals(capturedIdMap.get("A"), result.get("group"));
         assertEquals(capturedIdMap.get("VERIFIED"), result.get("profilestatus"));
         assertEquals(capturedIdMap.get("org1"), result.get("rootorgid"));
+        assertEquals(capturedIdMap.get(true), result.get("isOnCentralDeputation"));
     }
+
+
 
     @Test
     void testGetUserProfile_FromCassandra_Success() throws Exception {
         when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
-        when(cassandraOperation.getRecordsByProperties(eq(Constants.KEYSPACE_SUNBIRD), eq(Constants.USER), any(), any(), isNull()))
-            .thenReturn(List.of(Map.of(
-                "id", "user123",
-                "rootOrgId", "org1",
-                "profileDetails", Map.of(
-                    "professionalDetails", List.of(Map.of("designation", "teacher", "group", "A")),
-                    "profileStatus", "ACTIVE",
-                    "cadreDetails", Map.of("cadreName", "IAS", "civilServiceName", "Administrative", "cadreBatch", "2010")
-                )
-            )));
+        when(cassandraOperation.getRecordsByProperties(
+                eq(Constants.KEYSPACE_SUNBIRD),
+                eq(Constants.USER),
+                any(),
+                any(),
+                isNull()))
+                .thenReturn(List.of(Map.of(
+                        "id", "user123",
+                        "rootorgid", "org1",
+                        "profiledetails", Map.of(
+                                "professionalDetails", List.of(Map.of("designation", "teacher", "group", "A")),
+                                "profileStatus", "ACTIVE",
+                                "designation","teacher",
+                                "group", "A",
+                                "cadreDetails", Map.of(
+                                        "cadreName", "IAS",
+                                        "civilServiceName", "Administrative",
+                                        "cadreBatch", "2010",
+                                        "isOnCentralDeputation", true
+                                )
+                        )
+                )));
 
         final Map<String, Integer> capturedIdMap = new HashMap<>();
         when(idMapCacheMgr.getId(anyList())).thenAnswer(invocation -> {
@@ -110,10 +128,18 @@ class UserProfileServiceImplTest {
 
         Map<String, Integer> result = userProfileService.getUserProfile(userId);
 
-        assertEquals(8, result.size());
+        assertEquals(9, result.size());
         assertEquals(capturedIdMap.get("user123"), result.get("user"));
         assertEquals(capturedIdMap.get("IAS"), result.get("cadre"));
+        assertEquals(capturedIdMap.get("Administrative"), result.get("service"));
+        assertEquals(capturedIdMap.get("2010"), result.get("batch"));
+        assertEquals(capturedIdMap.get("teacher"), result.get("designation"));
+        assertEquals(capturedIdMap.get("A"), result.get("group"));
+        assertEquals(capturedIdMap.get("ACTIVE"), result.get("profilestatus"));
+        assertEquals(capturedIdMap.get("org1"), result.get("rootorgid"));
+        assertEquals(capturedIdMap.get(true), result.get("isOnCentralDeputation"));
     }
+
 
     @Test
     void testGetUserProfile_InvalidCachedJson_ShouldReturnEmpty() {
@@ -125,25 +151,34 @@ class UserProfileServiceImplTest {
 
     @Test
     void testGetUserProfile_IdMapMismatch_ShouldReturnEmpty() throws Exception {
+        // Correct JSON matching service expectations (keys are case-sensitive)
         String cachedJson = """
         {
             "id": "user123",
-            "rootOrgId": "org1",
-            "profileDetails": {
+            "rootorgid": "org1",
+            "profiledetails": {
                 "professionalDetails": [{"designation": "teacher", "group": "A"}],
                 "profileStatus": "ACTIVE",
                 "cadreDetails": {
                     "cadreName": "IAS",
                     "civilServiceName": "Administrative",
-                    "cadreBatch": "2010"
+                    "cadreBatch": "2010",
+                    "isOnCentralDeputation": true
                 }
             }
         }
         """;
-        when(redisCacheMgr.getFromCache(anyString())).thenReturn(cachedJson);
-        when(idMapCacheMgr.getId(anyList())).thenReturn(Map.of()); // force mismatch
 
+        // Redis cache stub returns valid JSON
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn(cachedJson);
+
+        // Force ID map mismatch
+        when(idMapCacheMgr.getId(anyList())).thenReturn(Map.of());
+
+        // Call service
         Map<String, Integer> result = userProfileService.getUserProfile(userId);
+
+        // Verify result is empty because of ID map mismatch
         assertTrue(result.isEmpty());
     }
 
@@ -160,10 +195,12 @@ class UserProfileServiceImplTest {
     void testGetUserProfile_NullCadreDetails() throws Exception {
         when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
         when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), isNull())).thenReturn(List.of(
-            Map.of("id", "user123", "rootOrgId", "org1", "profileDetails", Map.of(
-                "profileStatus", "ACTIVE"
-            ))
-        ));
+                Map.of("id", "user123",
+                        "rootorgid", "org1",
+                        "profiledetails", Map.of(
+                                "professionalDetails", List.of(Map.of("designation", "teacher", "group", "A")),
+                                "profileStatus", "ACTIVE"
+                        ))));
 
         final Map<String, Integer> capturedIdMap = new HashMap<>();
         when(idMapCacheMgr.getId(anyList())).thenAnswer(invocation -> {
@@ -177,9 +214,11 @@ class UserProfileServiceImplTest {
 
         Map<String, Integer> result = userProfileService.getUserProfile(userId);
 
-        assertEquals(3, result.size());
+        assertEquals(5, result.size());
         assertEquals(capturedIdMap.get("user123"), result.get("user"));
         assertEquals(capturedIdMap.get("org1"), result.get("rootorgid"));
         assertEquals(capturedIdMap.get("ACTIVE"), result.get("profilestatus"));
+        assertEquals(capturedIdMap.get("teacher"), result.get("designation"));
+        assertEquals(capturedIdMap.get("A"), result.get("group"));
     }
 }

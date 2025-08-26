@@ -27,7 +27,6 @@ import com.igot.cb.util.Constants;
 @ExtendWith(MockitoExtension.class)
 class UserProfileServiceImplTest {
 
-    // Test class for userProfileService
     @Mock
     private RedisCacheMgr redisCacheMgr;
 

@@ -6,10 +6,15 @@ import static org.mockito.Mockito.*;
 import java.util.*;
 import java.lang.reflect.Field;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentMatchers;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 
@@ -19,6 +24,7 @@ import com.igot.cb.model.ApiResponse;
 import com.igot.cb.model.CachedAccessSettingRule;
 import com.igot.cb.util.AccessTokenValidator;
 import com.igot.cb.util.Constants;
+import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
 class CourseAccessServiceImplTest {
@@ -39,6 +45,7 @@ class CourseAccessServiceImplTest {
 
     @Mock
     private RedisCacheMgr redisCacheMgr;
+    private final String authToken = "validToken";
 
     @BeforeEach
     void setUp() throws Exception {
@@ -225,5 +232,64 @@ class CourseAccessServiceImplTest {
         List<Map<String, Object>> content = (List<Map<String, Object>>) result.getResult().get(Constants.CONTENT);
         assertEquals(1, content.size());
         assertEquals("course123", content.get(0).get("identifier"));
+    }
+
+    @Test
+    void testGetCoursesForUser_shouldThrowRuntimeException_onReadValueError() throws Exception {
+        // Arrange
+        Map<String, Object> request = Map.of("key", "value");
+        ApiResponse.createDefaultResponse("test");
+
+        when(mockAccessTokenValidator.fetchUserIdFromAccessToken(any(), any(ApiResponse.class)))
+                .thenReturn("user123");
+        when(redisCacheMgr.getFromCache(Constants.ACCESS_KEY + "user123")).thenReturn("[{bad json}]");
+
+        ObjectMapper mapperSpy = Mockito.spy(new ObjectMapper());
+        ReflectionTestUtils.setField(courseAccessService, "mapper", mapperSpy);
+
+        doThrow(JsonProcessingException.class)
+                .when(mapperSpy)
+                .readValue(anyString(), ArgumentMatchers.<TypeReference<List<Map<String, Object>>>>any());
+
+        // Act & Assert
+        assertThrows(RuntimeException.class, () ->
+                courseAccessService.getCoursesForUser(request, "token"));
+    }
+
+    @Test
+    void testGetCoursesForUser_1() {
+        // Arrange
+        Map<String, Object> request = Map.of("key", "value");
+
+        when(mockAccessTokenValidator.fetchUserIdFromAccessToken(eq(authToken), any(ApiResponse.class)))
+                .thenReturn("user123");
+        when(redisCacheMgr.getFromCache(Constants.ACCESS_KEY + "user123")).thenReturn("No records found for this user");
+
+        ObjectMapper mapperSpy = Mockito.spy(new ObjectMapper());
+        ReflectionTestUtils.setField(courseAccessService, "mapper", mapperSpy);
+
+        // Act & Assert
+        assertDoesNotThrow(() ->
+                courseAccessService.getCoursesForUser(request, authToken));
+    }
+
+    @Test
+    void testGetCoursesForUser_shouldHandleExceptionFromRetrieveUserCourses() {
+        // Arrange
+        Map<String, Object> request = Map.of("key", "value");
+
+        when(mockAccessTokenValidator.fetchUserIdFromAccessToken(eq(authToken), any(ApiResponse.class)))
+                .thenReturn("user123");
+        when(redisCacheMgr.getFromCache(Constants.ACCESS_KEY + "user123")).thenReturn(null);
+        when(mockUserProfileService.getUserProfile("user123")).thenReturn(Map.of("k", 1));
+
+        when(mockAccessSettingRuleCacheMgr.getAccessSettingRules())
+                .thenThrow(new RuntimeException("Cache error"));
+
+        // Act
+        ApiResponse response = courseAccessService.getCoursesForUser(request, authToken);
+
+        // Assert
+        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getResponseCode());
     }
 }

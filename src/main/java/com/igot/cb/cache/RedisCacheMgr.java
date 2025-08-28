@@ -2,6 +2,7 @@ package com.igot.cb.cache;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 import org.springframework.stereotype.Component;
 
@@ -91,4 +92,15 @@ public class RedisCacheMgr {
             return new HashMap<>();
         }
     }
+
+    public void putInCache(String key, String value) {
+        try (Jedis jedis = jedisPool.getResource()) {
+            jedis.setex(key, TTL_SECONDS, value);
+        } catch (Exception e) {
+            log.error("Failed to write data to Redis with expiry: ", e);
+        }
+    }
+
+
+
 }

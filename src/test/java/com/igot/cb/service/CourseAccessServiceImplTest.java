@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import java.util.*;
+import java.lang.reflect.Field;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -13,6 +14,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 
 import com.igot.cb.cache.AccessSettingRuleCacheMgr;
+import com.igot.cb.cache.RedisCacheMgr;
 import com.igot.cb.model.ApiResponse;
 import com.igot.cb.model.CachedAccessSettingRule;
 import com.igot.cb.util.AccessTokenValidator;
@@ -32,13 +34,29 @@ class CourseAccessServiceImplTest {
     @Mock
     private AccessSettingRuleCacheMgr mockAccessSettingRuleCacheMgr;
 
+    @Mock
+    private ContentInfoServiceImpl contentInfoService;
+
+    @Mock
+    private RedisCacheMgr redisCacheMgr;
+
     @BeforeEach
-    void setUp() {
+    void setUp() throws Exception {
         courseAccessService = new CourseAccessServiceImpl(
             mockAccessTokenValidator, 
-            mockUserProfileService, 
-            mockAccessSettingRuleCacheMgr
+            mockUserProfileService,
+            mockAccessSettingRuleCacheMgr, contentInfoService
         );
+        
+        // Inject the mocked RedisCacheMgr using reflection
+        Field redisCacheMgrField = CourseAccessServiceImpl.class.getDeclaredField("redisCacheMgr");
+        redisCacheMgrField.setAccessible(true);
+        redisCacheMgrField.set(courseAccessService, redisCacheMgr);
+        
+        // Inject contentReadFields using reflection
+        Field contentReadFieldsField = CourseAccessServiceImpl.class.getDeclaredField("contentReadFields");
+        contentReadFieldsField.setAccessible(true);
+        contentReadFieldsField.set(courseAccessService, "identifier,name,description");
     }
 
     @Test
@@ -62,6 +80,7 @@ class CourseAccessServiceImplTest {
     @Test
     void testGetCoursesForUser_NoRules() {
         when(mockAccessTokenValidator.fetchUserIdFromAccessToken(eq("token"), any(ApiResponse.class))).thenReturn("user123");
+        when(redisCacheMgr.getFromCache(Constants.ACCESS_KEY + "user123")).thenReturn(null);
         when(mockUserProfileService.getUserProfile("user123")).thenReturn(Map.of("cadre", 1));
         when(mockAccessSettingRuleCacheMgr.getAccessSettingRules()).thenReturn(Collections.emptyList());
         
@@ -76,6 +95,7 @@ class CourseAccessServiceImplTest {
     @Test
     void testEvaluateAccessSettingRule_EmptyMaps() {
         when(mockAccessTokenValidator.fetchUserIdFromAccessToken(eq("token"), any(ApiResponse.class))).thenReturn("user123");
+        when(redisCacheMgr.getFromCache(Constants.ACCESS_KEY + "user123")).thenReturn(null);
         when(mockUserProfileService.getUserProfile("user123")).thenReturn(Map.of());
         
         CachedAccessSettingRule rule = new CachedAccessSettingRule("course123", "Course", "{\"accessControlId\":{}}", false);
@@ -91,6 +111,7 @@ class CourseAccessServiceImplTest {
     @Test
     void testEvaluateAccessSettingRule_NoUserGroups() {
         when(mockAccessTokenValidator.fetchUserIdFromAccessToken(eq("token"), any(ApiResponse.class))).thenReturn("user123");
+        when(redisCacheMgr.getFromCache(Constants.ACCESS_KEY + "user123")).thenReturn(null);
         when(mockUserProfileService.getUserProfile("user123")).thenReturn(Map.of("cadre", 1));
         
         CachedAccessSettingRule rule = new CachedAccessSettingRule("course123", "Course", "{\"accessControlId\":{\"userGroups\":[]}}", false);
@@ -106,6 +127,7 @@ class CourseAccessServiceImplTest {
     @Test
     void testEvaluateAccessSettingRule_NoCriteria() {
         when(mockAccessTokenValidator.fetchUserIdFromAccessToken(eq("token"), any(ApiResponse.class))).thenReturn("user123");
+        when(redisCacheMgr.getFromCache(Constants.ACCESS_KEY + "user123")).thenReturn(null);
         when(mockUserProfileService.getUserProfile("user123")).thenReturn(Map.of("cadre", 1));
         
         CachedAccessSettingRule rule = new CachedAccessSettingRule("course123", "Course", "{\"accessControlId\":{\"userGroups\":[{\"userGroupId\":\"group1\",\"userGroupCriteriaList\":[]}]}}", false);
@@ -121,9 +143,32 @@ class CourseAccessServiceImplTest {
     @Test
     void testEvaluateAccessSettingRule_UserCriteriaMissing() {
         when(mockAccessTokenValidator.fetchUserIdFromAccessToken(eq("token"), any(ApiResponse.class))).thenReturn("user123");
+        when(redisCacheMgr.getFromCache(Constants.ACCESS_KEY + "user123")).thenReturn(null);
         when(mockUserProfileService.getUserProfile("user123")).thenReturn(Map.of());
         
-        CachedAccessSettingRule rule = new CachedAccessSettingRule("course123", "Course", "{\"accessControlId\":{\"userGroups\":[{\"userGroupId\":\"group1\",\"userGroupCriteriaList\":[{\"criteriaKey\":\"cadre\",\"criteriaValue\":\"AgAAAAAAAAA=\"}]}]}}", false);
+        // Create a BitSet for criteria value
+        BitSet criteriaValue = new BitSet();
+        criteriaValue.set(1); // Set bit 1 to true
+        
+        // Create the rule with proper BitSet in contextData
+        Map<String, Object> contextData = new HashMap<>();
+        Map<String, Object> accessControlId = new HashMap<>();
+        List<Map<String, Object>> userGroups = new ArrayList<>();
+        Map<String, Object> userGroup = new HashMap<>();
+        userGroup.put("userGroupId", "group1");
+        List<Map<String, Object>> criteriaList = new ArrayList<>();
+        Map<String, Object> criteria = new HashMap<>();
+        criteria.put("criteriaKey", "cadre");
+        criteria.put("criteriaValue", criteriaValue);
+        criteriaList.add(criteria);
+        userGroup.put("userGroupCriteriaList", criteriaList);
+        userGroups.add(userGroup);
+        accessControlId.put("userGroups", userGroups);
+        contextData.put("accessControlId", accessControlId);
+        
+        CachedAccessSettingRule rule = mock(CachedAccessSettingRule.class);
+        when(rule.getContextData()).thenReturn(contextData);
+        
         when(mockAccessSettingRuleCacheMgr.getAccessSettingRules()).thenReturn(List.of(rule));
         
         ApiResponse result = courseAccessService.getCoursesForUser(Map.of("key", "value"), "token");
@@ -131,5 +176,54 @@ class CourseAccessServiceImplTest {
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> content = (List<Map<String, Object>>) result.getResult().get(Constants.CONTENT);
         assertEquals(0, content.size());
+    }
+
+    @Test
+    void testEvaluateAccessSettingRule_UserCriteriaMatches() {
+        when(mockAccessTokenValidator.fetchUserIdFromAccessToken(eq("token"), any(ApiResponse.class))).thenReturn("user123");
+        when(redisCacheMgr.getFromCache(Constants.ACCESS_KEY + "user123")).thenReturn(null);
+        when(mockUserProfileService.getUserProfile("user123")).thenReturn(Map.of("cadre", 1));
+        
+        // Create a BitSet for criteria value
+        BitSet criteriaValue = new BitSet();
+        criteriaValue.set(1); // Set bit 1 to true to match user's cadre value
+        
+        // Create the rule with proper BitSet in contextData
+        Map<String, Object> contextData = new HashMap<>();
+        Map<String, Object> accessControlId = new HashMap<>();
+        List<Map<String, Object>> userGroups = new ArrayList<>();
+        Map<String, Object> userGroup = new HashMap<>();
+        userGroup.put("userGroupId", "group1");
+        List<Map<String, Object>> criteriaList = new ArrayList<>();
+        Map<String, Object> criteria = new HashMap<>();
+        criteria.put("criteriaKey", "cadre");
+        criteria.put("criteriaValue", criteriaValue);
+        criteriaList.add(criteria);
+        userGroup.put("userGroupCriteriaList", criteriaList);
+        userGroups.add(userGroup);
+        accessControlId.put("userGroups", userGroups);
+        contextData.put("accessControlId", accessControlId);
+        
+        CachedAccessSettingRule rule = mock(CachedAccessSettingRule.class);
+        when(rule.getContextId()).thenReturn("course123");
+        when(rule.getContextData()).thenReturn(contextData);
+        
+        when(mockAccessSettingRuleCacheMgr.getAccessSettingRules()).thenReturn(List.of(rule));
+        
+        // Mock content service to return course details
+        Map<String, Object> courseDetails = Map.of(
+            "identifier", "course123",
+            "name", "Test Course",
+            "description", "Test Description"
+        );
+        when(contentInfoService.readContent(eq("course123"), any(List.class))).thenReturn(courseDetails);
+        
+        ApiResponse result = courseAccessService.getCoursesForUser(Map.of("key", "value"), "token");
+        
+        assertEquals(HttpStatus.OK, result.getResponseCode());
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> content = (List<Map<String, Object>>) result.getResult().get(Constants.CONTENT);
+        assertEquals(1, content.size());
+        assertEquals("course123", content.get(0).get("identifier"));
     }
 }

@@ -21,7 +21,7 @@ import com.igot.cb.model.ApiResponse;
 import com.igot.cb.service.CourseAccessServiceImpl;
 
 @ExtendWith(MockitoExtension.class)
-public class CourseAccessControllerTest {
+class CourseAccessControllerTest {
 
     @Mock
     private CourseAccessServiceImpl courseAccessService;

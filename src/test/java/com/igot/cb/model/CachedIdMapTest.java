@@ -20,7 +20,7 @@ class CachedIdMapTest {
     }
 
     @Test
-    void testIsExpired_true_whenTTLExceeded() throws InterruptedException {
+    void testIsExpired_true_whenTTLExceeded() {
         long ttl = 10; // 10 ms
         CachedIdMap cached = new CachedIdMap(999, System.currentTimeMillis() - 100);
         assertTrue(cached.isExpired(ttl), "Should be expired if TTL is exceeded");

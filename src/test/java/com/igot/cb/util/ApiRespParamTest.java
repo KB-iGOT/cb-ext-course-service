@@ -7,7 +7,7 @@ import com.igot.cb.model.ApiRespParam;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
-public class ApiRespParamTest {
+class ApiRespParamTest {
 
     @Test
     void testDefaultConstructorAndSettersGetters() {

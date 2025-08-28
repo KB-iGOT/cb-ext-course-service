@@ -5,14 +5,13 @@ import org.springframework.http.HttpStatus;
 
 import com.igot.cb.model.ApiRespParam;
 import com.igot.cb.model.ApiResponse;
-import com.igot.cb.util.Constants;
 
 import java.util.HashMap;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-public class ApiResponseTest {
+class ApiResponseTest {
 
     @Test
     void testDefaultConstructor() {

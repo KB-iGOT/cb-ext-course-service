@@ -3,14 +3,12 @@ package com.igot.cb.util;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import com.igot.cb.util.PropertiesCache;
-
 import java.lang.reflect.Field;
 import java.util.Properties;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-public class PropertiesCacheTest {
+class PropertiesCacheTest {
 
     private PropertiesCache cache;
 

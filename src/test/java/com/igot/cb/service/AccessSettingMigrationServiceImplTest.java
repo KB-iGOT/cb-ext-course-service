@@ -4,7 +4,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyMap;
@@ -344,9 +343,6 @@ class AccessSettingMigrationServiceImplTest {
                 accessSettingMap.put(Constants.CONTEXT_DATA, objectMapper.writeValueAsString(contextData));
 
                 when(contentService.readCourseCategoryForContent(contextId)).thenReturn("Course");
-
-                // Simulate mismatch (returning 0 user groups in output instead of 1)
-                // when(idMapCacheMgr.getId(anyList())).thenReturn(Map.of("A", 1));
 
                 var spyService = new AccessSettingMigrationServiceImpl(cassandraOperation, contentService,
                                 idMapCacheMgr) {

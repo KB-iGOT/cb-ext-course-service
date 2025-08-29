@@ -3,12 +3,10 @@ package com.igot.cb.cassandra.exceptions;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 
-import com.igot.cb.cassandra.exceptions.CustomException;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
-public class CustomExceptionTest {
+class CustomExceptionTest {
 
     @Test
     void testNoArgsConstructor() {

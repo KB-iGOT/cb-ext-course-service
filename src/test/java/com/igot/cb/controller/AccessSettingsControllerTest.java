@@ -1,7 +1,6 @@
 package com.igot.cb.controller;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
 import java.util.Map;
@@ -42,7 +41,7 @@ class AccessSettingsControllerTest {
         Map<String, Object> input = Map.of("groupId", "g1");
         ApiResponse mockResponse = createApiResponse("api.upsert", HttpStatus.OK, Map.of("status", "created"));
 
-        when(accessSettingsService.upsert(eq(input), eq("mock-token"))).thenReturn(mockResponse);
+        when(accessSettingsService.upsert(input, "mock-token")).thenReturn(mockResponse);
 
         ResponseEntity<ApiResponse> response = accessSettingsController.upsert(input, "mock-token");
 

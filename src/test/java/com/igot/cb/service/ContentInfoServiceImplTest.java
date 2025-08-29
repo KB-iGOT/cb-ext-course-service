@@ -73,7 +73,7 @@ class ContentInfoServiceImplTest {
     }
 
     @Test
-    void testReadContent_cacheMiss_callsService() throws Exception {
+    void testReadContent_cacheMiss_callsService() {
         String contentId = "content-456";
         List<String> fields = List.of("name");
 
@@ -91,7 +91,7 @@ class ContentInfoServiceImplTest {
     }
 
     @Test
-    void testReadContent_invalidJson_returnsEmpty() throws Exception {
+    void testReadContent_invalidJson_returnsEmpty() {
         String contentId = "invalid-json";
         when(redisCacheMgr.getFromCache(contentId)).thenReturn("bad-json");
 

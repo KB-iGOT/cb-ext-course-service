@@ -13,17 +13,15 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import com.igot.cb.util.CryptoUtil;
-
 @ExtendWith(MockitoExtension.class)
-public class CryptoUtilTest {
+class CryptoUtilTest {
 
     /**
      * Test verifyRSASign method with an invalid algorithm.
      * This test checks if the method returns false when an invalid algorithm is provided
      */
     @Test
-    public void test_verifyRSASign_invalidAlgorithm() {
+    void test_verifyRSASign_invalidAlgorithm() {
         String payLoad = "test payload";
         byte[] signature = new byte[]{1, 2, 3, 4, 5};
         PublicKey key = null; // We don't need a real key for this test
@@ -38,7 +36,7 @@ public class CryptoUtilTest {
      * This test checks if the method returns false when an invalid public key is provided.
      */
     @Test
-    public void test_verifyRSASign_invalidPublicKey() {
+    void test_verifyRSASign_invalidPublicKey() {
         String payLoad = "test payload";
         byte[] signature = new byte[]{1, 2, 3, 4, 5};
         PublicKey invalidKey = null;
@@ -54,7 +52,7 @@ public class CryptoUtilTest {
      * It expects the verification to be successful.
      */
     @Test
-    public void test_verifyRSASign_validSignature() throws Exception {
+    void test_verifyRSASign_validSignature() throws Exception {
         KeyPairGenerator keyGen = KeyPairGenerator.getInstance("RSA");
         keyGen.initialize(2048);
         KeyPair keyPair = keyGen.generateKeyPair();

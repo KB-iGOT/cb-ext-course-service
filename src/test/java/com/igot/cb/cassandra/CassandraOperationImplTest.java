@@ -125,10 +125,10 @@ class CassandraOperationImplTest {
 
         try (MockedStatic<CassandraUtil> cassandraUtilMockedStatic = Mockito.mockStatic(CassandraUtil.class)) {
             List<Map<String, Object>> expectedResponse = new ArrayList<>();
-            Map<String, Object> record = new HashMap<>();
-            record.put("id", "123");
-            record.put("name", "Test");
-            expectedResponse.add(record);
+            Map<String, Object> recordMap = new HashMap<>();
+            recordMap.put("id", "123");
+            recordMap.put("name", "Test");
+            expectedResponse.add(recordMap);
 
             cassandraUtilMockedStatic.when(() -> CassandraUtil.createResponse(any(ResultSet.class)))
                     .thenReturn(expectedResponse);
@@ -154,10 +154,10 @@ class CassandraOperationImplTest {
 
         try (MockedStatic<CassandraUtil> cassandraUtilMockedStatic = Mockito.mockStatic(CassandraUtil.class)) {
             List<Map<String, Object>> expectedResponse = new ArrayList<>();
-            Map<String, Object> record = new HashMap<>();
-            record.put("id", "123");
-            record.put("name", "Test");
-            expectedResponse.add(record);
+            Map<String, Object> recordMap = new HashMap<>();
+            recordMap.put("id", "123");
+            recordMap.put("name", "Test");
+            expectedResponse.add(recordMap);
 
             cassandraUtilMockedStatic.when(() -> CassandraUtil.createResponse(any(ResultSet.class)))
                     .thenReturn(expectedResponse);

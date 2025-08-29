@@ -26,9 +26,6 @@ import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.igot.cb.model.KeyData;
-import com.igot.cb.util.Constants;
-import com.igot.cb.util.KeyManager;
-import com.igot.cb.util.PropertiesCache;
 
 @ExtendWith(MockitoExtension.class)
 class KeyManagerTest {
@@ -59,15 +56,16 @@ class KeyManagerTest {
 
     @Test
     void testLoadPublicKey_validKey() throws Exception {
-        String validKey = "-----BEGIN PUBLIC KEY-----\n"
-                + "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsXQpHH5Wj9ce2j8skC/v\n"
-                + "fNH/4NgyHQq0BbsGdzrCeD3Q/nQhMx5RZxD0HNa79KRC+hdWNNyfBDkcf1Tfp+Ka\n"
-                + "oBjCXdc4U2ImrBaF+UUIqj07c5iRY25ZqtFdUXWEQ2f+Vgy+JhOdGVKYF9rTfIuJ\n"
-                + "1tn9mPfzZ0/yZzX6Vwr1C1RdsqgqHdGdr1xwZFcHXjUYw8VUsHRRbzX5v8yX7TLm\n"
-                + "TFJ9K0HTrYEm+lDkZkmU6iSlsyhr+3g4ph3KekA1UAX7wv3cgJfWLU1mVg9AVspK\n"
-                + "A4tZ7BFlUN+OtqDsTHYkthTy3dpGIp+nNB4ZpSgLmoGx9IMAtzH2H8+JEuGF1qQv\n"
-                + "WwIDAQAB\n"
-                + "-----END PUBLIC KEY-----";
+        String validKey = """
+        -----BEGIN PUBLIC KEY-----
+        MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsXQpHH5Wj9ce2j8skC/v
+        fNH/4NgyHQq0BbsGdzrCeD3Q/nQhMx5RZxD0HNa79KRC+hdWNNyfBDkcf1Tfp+Ka
+        oBjCXdc4U2ImrBaF+UUIqj07c5iRY25ZqtFdUXWEQ2f+Vgy+JhOdGVKYF9rTfIuJ
+        1tn9mPfzZ0/yZzX6Vwr1C1RdsqgqHdGdr1xwZFcHXjUYw8VUsHRRbzX5v8yX7TLm
+        TFJ9K0HTrYEm+lDkZkmU6iSlsyhr+3g4ph3KekA1UAX7wv3cgJfWLU1mVg9AVspK
+        A4tZ7BFlUN+OtqDsTHYkthTy3dpGIp+nNB4ZpSgLmoGx9IMAtzH2H8+JEuGF1qQv
+        WwIDAQAB
+        -----END PUBLIC KEY-----""";
 
         PublicKey publicKey = KeyManager.loadPublicKey(validKey);
 
@@ -81,8 +79,8 @@ class KeyManagerTest {
     }
 
     @Test
-    void testInit_shouldLoadKeysSuccessfully() throws Exception {
-        KeyManager keyManager = new KeyManager();
+    void testInit_shouldLoadKeysSuccessfully() {
+        keyManager = new KeyManager();
 
         Path fakeBasePath = mock(Path.class);
         Path fakeFilePath = Paths.get("/dummy/path/test-key.pub");

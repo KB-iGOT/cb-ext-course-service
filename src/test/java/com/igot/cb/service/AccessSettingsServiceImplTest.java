@@ -205,14 +205,14 @@ class AccessSettingsServiceImplTest {
 
   @Test
   void testRead_HappyPath() {
-    Map<String, Object> record = new HashMap<>();
-    record.put(Constants.IS_ARCHIVED, false);
-    record.put(Constants.CONTEXT_ID, "cid");
-    record.put(Constants.CONTEXT_DATA, "{\"foo\":\"bar\"}");
+    Map<String, Object> recordMap = new HashMap<>();
+    recordMap.put(Constants.IS_ARCHIVED, false);
+    recordMap.put(Constants.CONTEXT_ID, "cid");
+    recordMap.put(Constants.CONTEXT_DATA, "{\"foo\":\"bar\"}");
 
     when(cassandraOperation.getRecordsByProperties(
             anyString(), anyString(), anyMap(), anyList(), isNull()))
-            .thenReturn(Collections.singletonList(record));
+            .thenReturn(Collections.singletonList(recordMap));
 
     ApiResponse response = service.read("cid");
     assertEquals(HttpStatus.OK, response.getResponseCode());

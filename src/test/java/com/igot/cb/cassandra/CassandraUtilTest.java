@@ -9,8 +9,6 @@ import static org.mockito.Mockito.when;
 import com.datastax.oss.driver.api.core.cql.ColumnDefinitions;
 import com.datastax.oss.driver.api.core.cql.ResultSet;
 import com.datastax.oss.driver.api.core.cql.Row;
-import com.igot.cb.cassandra.CassandraPropertyReader;
-import com.igot.cb.cassandra.CassandraUtil;
 
 import java.util.LinkedHashMap;
 import java.util.List;

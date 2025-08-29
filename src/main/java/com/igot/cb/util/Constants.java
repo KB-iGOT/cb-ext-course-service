@@ -103,6 +103,11 @@ public class Constants {
     public static final String LAST_UPDATED_AT = "lastupdatedat";
     public static final String USER_DETAILS = "userDetails";
     public static final String USER_COUNT = "usersJoinedCount";
+    public static final String PLAN_ID = "planId";
+    public static final String END_DATE = "enddate";
+    public static final String CONTENT_TYPE = "contentType";
+    public static final String COMMENT = "comment";
+    public static final String ALL = "All";
     public static String CommunityId = "communityId";
     public static final String ALREADY_JOINED_COMMUNITY = "This user is already joined this community";
     public static final String API_COMMUNITY_JOIN = "api.community.join";
@@ -123,7 +128,7 @@ public class Constants {
     public static final String ALREADY_CATEGORY_PRESENT = "This Category is already present";
     public static final String DESCRIPTION = "description";
     public static final String CREATED_AT = "createdAt";
-    public static final String UPDATED_AT = "lastUpdatedAt";
+    public static final String UPDATED_AT = "updatedAt";
     public static final String CATEGORY_INDEX_NAME = "community_category_entity_alias";
     public static final String SUB_CATEGORY = "subCategory";
     public static final String CATEGORY_PAYLOAD_VALIDATION_FILE = "/payloadValidation/categoryValidationFile.json";
@@ -325,6 +330,21 @@ public class Constants {
     public static final String CENTRAL_DEPUTATION = "isOnCentralDeputation";
     public static final String ACCESS_KEY = "access_";
     public static final String NO_RECORDS_FOUND = "No records found for this user";
+    public static final String CBP_MANUAL_COURSES_END_DATE = "cbPlanEndDate";
+    public static final String API_CB_PLAN_CREATE = "api.cb.plan.v2.create";
+    public static final String API_CB_PLAN_UPDATE = "api.cb.plan.v2.update";
+    public static final String API_CB_PLAN_PUBLISH = "api.cb.plan.v2.publish";
+    public static final String IS_APAR ="isApar";
+    public static final String DRAFT_DATA = "draftData";
+    public static final String TABLE_CB_PLAN_V2 = "cb_plan_v2";
+    public static final String CREATED = "Cbplan created successfully";
+    public static final String CONTEXT_DATA_REQUEST = "contextData";
+    public static final String SINGLE = "Single";
+    public static final String CUSTOM ="Custom";
+    public static final String ORGIDLIST = "orgIdList";
+    public static final String TABLE_CB_PLAN_V2_LOOKUP_BY_ORG = "cb_plan_v2_lookup_by_org";
+    public static final String TABLE_CB_PLAN_V2_LOOKUP_BY_ALL_ORG = "cb_plan_v2_lookup_by_all_org";
+    public static final String ORG_SCOPE = "orgScope";
 
     private Constants() {
     }

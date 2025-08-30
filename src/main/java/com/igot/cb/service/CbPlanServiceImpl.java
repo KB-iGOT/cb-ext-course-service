@@ -8,6 +8,7 @@ import com.igot.cb.model.ApiRequest;
 import com.igot.cb.model.ApiResponse;
 import com.igot.cb.model.CbPlanDto;
 import com.igot.cb.util.AccessTokenValidator;
+import com.igot.cb.util.CbExtServerProperties;
 import com.igot.cb.util.Constants;
 import com.igot.cb.util.ProjectUtil;
 import jakarta.validation.ConstraintViolation;
@@ -20,12 +21,17 @@ import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
+import java.io.IOException;
 import java.sql.Timestamp;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
 import java.time.Instant;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 @Slf4j
@@ -38,6 +44,12 @@ public class CbPlanServiceImpl {
     private Logger logger = LoggerFactory.getLogger(getClass().getName());
 
     private final CassandraOperation cassandraOperation;
+
+    @Value("${cbplan.allowed.fields.update}")
+    private String allowedFieldsConfig;
+
+    @Autowired
+    CbExtServerProperties serverProperties;
 
     public CbPlanServiceImpl(AccessTokenValidator accessTokenValidator, CassandraOperation cassandraOperation) {
         this.accessTokenValidator = accessTokenValidator;
@@ -156,7 +168,6 @@ public class CbPlanServiceImpl {
     }
 
 
-
     @SuppressWarnings("unchecked")
     private List<String> validateContextData(CbPlanDto cbPlanDto, ApiRequest request) {
         List<String> errors = new ArrayList<>();
@@ -259,7 +270,7 @@ public class CbPlanServiceImpl {
     }
 
     private ApiResponse insertAllOrgLookup(String cbPlanId,
-                                              Date endDate) {
+                                           Date endDate) {
         ApiResponse response = new ApiResponse();
         try {
             Map<String, Object> allOrgMap = new HashMap<>();
@@ -283,6 +294,270 @@ public class CbPlanServiceImpl {
         }
 
         return response;
+    }
+
+
+    public ApiResponse updateCbPlan(ApiRequest request, String userOrgId, String token, List<String> userRoles) {
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_CB_PLAN_UPDATE);
+        try {
+            String userId = accessTokenValidator.fetchUserIdFromAccessToken(token, response);
+            if (StringUtils.isEmpty(userId)) {
+                return response;
+            }
+            Map<String, Object> updatedCbPlan = (Map<String, Object>) request.getRequest();
+            if (updatedCbPlan.get(Constants.ID) != null) {
+                String cbPlanId = (String) updatedCbPlan.get(Constants.ID);
+                Map<String, Object> cbPlanInfo = new HashMap<>();
+                cbPlanInfo.put(Constants.PLAN_ID, cbPlanId);
+                updatedCbPlan.remove(Constants.ID);
+                List<Map<String, Object>> cbPlanMapInfo = cassandraOperation.getRecordsByProperties(
+                        Constants.KEYSPACE_SUNBIRD, Constants.TABLE_CB_PLAN_V2, cbPlanInfo, null, null);
+                if (CollectionUtils.isNotEmpty(cbPlanMapInfo)) {
+                    Map<String, Object> cbPlanInfoMap = cbPlanMapInfo.get(0);
+                    if (!(userId.equals(cbPlanInfoMap.get(Constants.CREATED_BY)) ||
+                            serverProperties.getCbPlanUpdatePublishAuthorizedRoles().stream().anyMatch(roles -> CollectionUtils.isNotEmpty(userRoles) && userRoles.contains(roles)))) {
+                        response.getParams().setStatus(Constants.FAILED);
+                        response.getParams().setErr("Not Authorized to update cbp Plan");
+                        response.setResponseCode(HttpStatus.BAD_REQUEST);
+                        return response;
+                    }
+                    String draftInfo = null;
+                    try {
+                        draftInfo = mapper.writeValueAsString(updatedCbPlan);
+                    } catch (JsonProcessingException e) {
+                        throw new RuntimeException(e);
+                    }
+                    if (Constants.LIVE.equalsIgnoreCase((String) cbPlanInfoMap.get(Constants.STATUS))
+                            && cbPlanInfoMap.get(Constants.CB_PUBLISHED_BY) != null) {
+                        // check when the cbPlan is published, need to check only few field need to be
+                        // modified.
+                        List<String> allowedFieldForUpdate = Arrays.asList(allowedFieldsConfig.split(","));
+                        long keyNotAllowedCount = updatedCbPlan.keySet().stream()
+                                .filter(key -> !allowedFieldForUpdate.contains(key)).count();
+                        if (keyNotAllowedCount > 0) {
+                            response.getParams().setStatus(Constants.FAILED);
+                            response.getParams().setErr("Allowed Field for update cbPlan are: " + Constants.NAME
+                                    + ", " + Constants.CONTEXT_DATA_REQUEST + ", " + Constants.END_DATE);
+                            response.setResponseCode(HttpStatus.BAD_REQUEST);
+                            return response;
+                        }
+                    } else {
+                        try {
+                            draftInfo = updateDraftInfo(updatedCbPlan, cbPlanMapInfo.get(0));
+                        } catch (IOException e) {
+                            throw new RuntimeException(e);
+                        }
+                    }
+                    Map<String, Object> updatedCbPlanData = new HashMap<>();
+                    updatedCbPlanData.put(Constants.DRAFT_DATA, draftInfo);
+                    updatedCbPlanData.put(Constants.UPDATED_BY, userId);
+                    updatedCbPlanData.put(Constants.UPDATED_AT, Instant.now());
+                    updatedCbPlanData.putAll(updatedCbPlan);
+                    if (updatedCbPlan.containsKey(Constants.IS_APAR)) {
+                        Object isAparVal = updatedCbPlan.get(Constants.IS_APAR);
+                        if (isAparVal != null) {
+                            updatedCbPlanData.put(Constants.IS_APAR, isAparVal);
+                        }
+                    }
+                    if (updatedCbPlan.containsKey(Constants.CONTEXT_DATA_REQUEST)) {
+                        Object contextData = updatedCbPlan.get(Constants.CONTEXT_DATA_REQUEST);
+                        if (contextData != null) {
+                            try {
+                                updatedCbPlanData.put(Constants.CONTEXT_DATA_REQUEST, mapper.writeValueAsString(contextData));
+                            } catch (JsonProcessingException e) {
+                                throw new RuntimeException(e);
+                            }
+                        }
+                    }
+                    List<String> deletedOrgIds = new ArrayList<>();
+                    List<String> addedOrgIds = new ArrayList<>();
+                    if (updatedCbPlan.containsKey(Constants.CONTEXT_DATA_REQUEST)) {
+                        Object contextDataObj = updatedCbPlan.get(Constants.CONTEXT_DATA_REQUEST);
+                        List<String> newOrgIds = extractRootOrgIds(contextDataObj);
+                        if (!newOrgIds.isEmpty()) {
+                            updatedCbPlanData.put(Constants.ORGIDLIST, newOrgIds);
+                            log.info("Extracted orgIds from contextData: {}", newOrgIds);
+                            List<String> oldOrgIds = (List<String>) cbPlanInfoMap.getOrDefault(Constants.ORGIDLIST, new ArrayList<>());
+
+                            // Compare lists
+                            if (CollectionUtils.isNotEmpty(oldOrgIds)) {
+                                deletedOrgIds = oldOrgIds.stream()
+                                        .filter(id -> !newOrgIds.contains(id))
+                                        .collect(Collectors.toList());
+
+                                addedOrgIds = newOrgIds.stream()
+                                        .filter(id -> !oldOrgIds.contains(id))
+                                        .collect(Collectors.toList());
+                            }
+
+                        }
+                    }
+                    Date endDate = null;
+                    SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd");
+
+                    Object endDateObj = updatedCbPlan.containsKey(Constants.END_DATE_REQUEST)
+                            ? updatedCbPlan.get(Constants.END_DATE_REQUEST)
+                            : cbPlanInfoMap.get(Constants.END_DATE_REQUEST);
+
+                    if (endDateObj instanceof Date) {
+                        endDate = (Date) endDateObj;
+                    } else if (endDateObj instanceof String) {
+                        try {
+                            endDate = formatter.parse((String) endDateObj);
+                        } catch (ParseException e) {
+                            log.error("Failed to parse endDate: {}", endDateObj, e);
+                            // handle error or throw exception if necessary
+                        }
+                    } else {
+                        log.warn("Unexpected type for endDate: {}", endDateObj != null ? endDateObj.getClass() : "null");
+                    }
+                    updatedCbPlan.put(Constants.END_DATE, endDate.toInstant());
+
+                    Map<String, Object> resp = cassandraOperation.updateRecord(Constants.KEYSPACE_SUNBIRD,
+                            Constants.TABLE_CB_PLAN_V2, updatedCbPlanData, cbPlanInfo);
+                    if (resp.get(Constants.RESPONSE).equals(Constants.SUCCESS)) {
+                        response.getResult().put(Constants.STATUS, Constants.UPDATED);
+                        if (!addedOrgIds.isEmpty()) {
+                            ApiResponse lookupResp = insertCustomOrgLookup(String.valueOf(cbPlanId), addedOrgIds, endDate);
+                            if (!Constants.SUCCESS.equals(lookupResp.get(Constants.RESPONSE))) {
+                                response.getParams().setStatus(Constants.FAILED);
+                                response.getParams().setErr("Failed to insert orgId lookup: " + lookupResp.getParams().getErr());
+                                response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
+                                return response;
+                            }
+                            response.getResult().put(Constants.MESSAGE, "updated cbPlan for cbPlanId: " + cbPlanId);
+                        }
+                        if (!deletedOrgIds.isEmpty()) {
+                            for (String orgId : deletedOrgIds) {
+                                Map<String, Object> deleteLookupMap = new HashMap<>();
+                                deleteLookupMap.put("planid", String.valueOf(cbPlanId));
+                                deleteLookupMap.put("orgid", orgId);
+                                cassandraOperation.deleteRecord(Constants.KEYSPACE_SUNBIRD,
+                                        Constants.TABLE_CB_PLAN_V2_LOOKUP_BY_ORG, deleteLookupMap);
+                            }
+                            response.getResult().put(Constants.MESSAGE, "updated cbPlan and deleted orgId lookup for cbPlanId: " + cbPlanId);
+                        }
+
+                    } else {
+                        response.getParams().setStatus(Constants.FAILED);
+                        response.getParams().setErr("cbPlan is not found for id: " + cbPlanId);
+                        response.setResponseCode(HttpStatus.BAD_REQUEST);
+                    }
+                } else {
+                    response.getParams().setStatus(Constants.FAILED);
+                    response.getParams().setErr("Required Param id is missing");
+                    response.setResponseCode(HttpStatus.BAD_REQUEST);
+                }
+                return response;
+            } else {
+                response.getParams().setStatus(Constants.FAILED);
+                response.getParams().setErr("cbPlan is not found for id: " + updatedCbPlan.get(Constants.ID));
+                response.setResponseCode(HttpStatus.BAD_REQUEST);
+            }
+
+        }catch(RuntimeException e){
+            logger.error("Failed to Update CB Plan for OrgId: " + userOrgId, e);
+            response.getParams().setStatus(Constants.FAILED);
+            response.getParams().setErr(e.getMessage());
+            response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+
+        return response;
+    }
+
+    private String updateDraftInfo(Map<String, Object> updatedCbPlan, Map<String, Object> cbPlan) throws IOException {
+        Map<String, Object> draftInfo = new HashMap<>();
+        if (StringUtils.isBlank((String) cbPlan.get(Constants.DRAFT_DATA))) {
+            draftInfo.put(Constants.NAME, updatedCbPlan.getOrDefault(Constants.NAME, cbPlan.get(Constants.NAME)));
+            draftInfo.put(Constants.CONTENT_TYPE,
+                    updatedCbPlan.getOrDefault(Constants.CONTENT_TYPE, cbPlan.get(Constants.CONTENT_TYPE)));
+            draftInfo.put(Constants.CONTENT_LIST,
+                    updatedCbPlan.getOrDefault(Constants.CONTENT_LIST, cbPlan.get(Constants.CONTENT_LIST)));
+            draftInfo.put(Constants.END_DATE,
+                    updatedCbPlan.getOrDefault(Constants.END_DATE, cbPlan.get(Constants.END_DATE)));
+            draftInfo.put(Constants.CONTEXT_DATA_REQUEST,
+                    updatedCbPlan.getOrDefault(Constants.CONTEXT_DATA_REQUEST, cbPlan.get(Constants.CONTEXT_DATA_REQUEST)));
+            draftInfo.put(Constants.ORG_SCOPE,
+                    updatedCbPlan.getOrDefault(Constants.ORG_SCOPE, cbPlan.get(Constants.ORG_SCOPE)));
+            draftInfo.put(Constants.ORGIDLIST,
+                    updatedCbPlan.getOrDefault(Constants.ORGIDLIST, cbPlan.get(Constants.ORGIDLIST)));
+            draftInfo.put(Constants.IS_APAR,
+                    updatedCbPlan.getOrDefault(Constants.IS_APAR,
+                            cbPlan.getOrDefault(Constants.IS_APAR, false)));
+        } else {
+            CbPlanDto cbPlanDto = mapper.readValue((String) cbPlan.get(Constants.DRAFT_DATA), CbPlanDto.class);
+            draftInfo.put(Constants.NAME, updatedCbPlan.getOrDefault(Constants.NAME, cbPlanDto.getName()));
+            draftInfo.put(Constants.CONTENT_TYPE,
+                    updatedCbPlan.getOrDefault(Constants.CONTENT_TYPE, cbPlanDto.getContentType()));
+            draftInfo.put(Constants.CONTENT_LIST,
+                    updatedCbPlan.getOrDefault(Constants.CONTENT_LIST, cbPlanDto.getContentList()));
+            draftInfo.put(Constants.CONTEXT_DATA_REQUEST,
+                    updatedCbPlan.getOrDefault(Constants.CONTEXT_DATA_REQUEST, cbPlanDto.getContextData()));
+            draftInfo.put(Constants.ORG_SCOPE,
+                    updatedCbPlan.getOrDefault(Constants.ORG_SCOPE, cbPlanDto.getOrgScope()));
+            draftInfo.put(Constants.ORGIDLIST,
+                    updatedCbPlan.getOrDefault(Constants.ORGIDLIST, cbPlanDto.getOrgIdList()));
+            draftInfo.put(Constants.END_DATE, updatedCbPlan.getOrDefault(Constants.END_DATE, cbPlanDto.getEndDate()));
+
+            draftInfo.put(Constants.IS_APAR,
+                    updatedCbPlan.getOrDefault(Constants.IS_APAR,
+                            cbPlan.getOrDefault(Constants.IS_APAR, false)));
+        }
+        return mapper.writeValueAsString(draftInfo);
+    }
+
+
+
+    @SuppressWarnings("unchecked")
+    private List<String> extractRootOrgIds(Object contextDataObj) {
+        List<String> orgIdList = new ArrayList<>();
+
+        try {
+            if (!(contextDataObj instanceof Map)) {
+                return orgIdList;
+            }
+
+            Map<String, Object> contextData = (Map<String, Object>) contextDataObj;
+
+            if (!contextData.containsKey(Constants.ACCESS_CONTROL)) {
+                return orgIdList;
+            }
+
+            Map<String, Object> accessControl = (Map<String, Object>) contextData.get(Constants.ACCESS_CONTROL);
+            List<Map<String, Object>> userGroups = (List<Map<String, Object>>) accessControl.get(Constants.USER_GROUPS);
+
+            if (CollectionUtils.isEmpty(userGroups)) {
+                return orgIdList;
+            }
+
+            boolean rootOrgFound = false;
+
+            for (Map<String, Object> userGroup : userGroups) {
+                List<Map<String, Object>> criteriaList =
+                        (List<Map<String, Object>>) userGroup.get(Constants.USER_GROUP_CRTIRIA_LIST);
+
+                if (CollectionUtils.isNotEmpty(criteriaList)) {
+                    for (Map<String, Object> criteria : criteriaList) {
+                        String criteriaKey = (String) criteria.get(Constants.CRITERIA_KEY);
+                        if (Constants.ROOT_ORG_ID.equalsIgnoreCase(criteriaKey)) {
+                            List<String> values = (List<String>) criteria.get(Constants.CRITERIA_VALUE);
+                            if (CollectionUtils.isNotEmpty(values)) {
+                                orgIdList.addAll(values);
+                            }
+                            rootOrgFound = true;
+                            break; // ✅ exit criteria loop once rootOrgId found
+                        }
+                    }
+                }
+                if (rootOrgFound) {
+                    break; // ✅ exit userGroups loop as well
+                }
+            }
+        } catch (Exception e) {
+            log.error("Error extracting rootOrgIds from contextData: {}", e.getMessage(), e);
+        }
+
+        return orgIdList;
     }
 
 

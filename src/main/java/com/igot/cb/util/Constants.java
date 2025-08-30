@@ -108,6 +108,7 @@ public class Constants {
     public static final String CONTENT_TYPE = "contentType";
     public static final String COMMENT = "comment";
     public static final String ALL = "All";
+    public static final String END_DATE_REQUEST = "endDate";
     public static String CommunityId = "communityId";
     public static final String ALREADY_JOINED_COMMUNITY = "This user is already joined this community";
     public static final String API_COMMUNITY_JOIN = "api.community.join";
@@ -345,6 +346,12 @@ public class Constants {
     public static final String TABLE_CB_PLAN_V2_LOOKUP_BY_ORG = "cb_plan_v2_lookup_by_org";
     public static final String TABLE_CB_PLAN_V2_LOOKUP_BY_ALL_ORG = "cb_plan_v2_lookup_by_all_org";
     public static final String ORG_SCOPE = "orgScope";
+    public static final String X_AUTH_USER_ROLES = "x-authenticated-user-roles";
+    public static final String LIVE = "Live";
+    public static final	String CB_PUBLISHED_BY	= "publishedBy";
+    public static final Object UPDATED = "Updated";
+    public static final String MESSAGE = "message";
+    public static final String EXCEPTION_MSG_DELETE = "Exception occurred while deleting record from ";
 
     private Constants() {
     }

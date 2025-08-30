@@ -8,8 +8,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
-
 @RestController
 @RequestMapping("/cbplan/v2")
 public class CbPlanWithAccessSettings {
@@ -24,17 +22,6 @@ public class CbPlanWithAccessSettings {
             @RequestHeader(Constants.X_AUTH_USER_ORG_ID) String userOrgId) throws Exception {
 
         ApiResponse response = cbPlanService.createCbPlan(request, userOrgId, token);
-        return new ResponseEntity<>(response, response.getResponseCode());
-    }
-
-    @PostMapping("/v1/update")
-    public ResponseEntity<ApiResponse> updateCbPlan(
-            @RequestBody ApiRequest request,
-            @RequestHeader(Constants.X_AUTH_TOKEN) String token,
-            @RequestHeader(Constants.X_AUTH_USER_ORG_ID) String userOrgId,
-            @RequestHeader(Constants.X_AUTH_USER_ROLES) List<String> userRoles) throws Exception {
-
-        ApiResponse response = cbPlanService.updateCbPlan(request, userOrgId, token, userRoles);
         return new ResponseEntity<>(response, response.getResponseCode());
     }
 }

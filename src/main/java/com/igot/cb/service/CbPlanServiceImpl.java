@@ -8,6 +8,7 @@ import com.igot.cb.model.ApiRequest;
 import com.igot.cb.model.ApiResponse;
 import com.igot.cb.model.CbPlanDto;
 import com.igot.cb.util.AccessTokenValidator;
+import com.igot.cb.util.CbExtServerProperties;
 import com.igot.cb.util.Constants;
 import com.igot.cb.util.ProjectUtil;
 import jakarta.validation.ConstraintViolation;
@@ -38,6 +39,9 @@ public class CbPlanServiceImpl {
     private Logger logger = LoggerFactory.getLogger(getClass().getName());
 
     private final CassandraOperation cassandraOperation;
+
+    @Autowired
+    CbExtServerProperties serverProperties;
 
     public CbPlanServiceImpl(AccessTokenValidator accessTokenValidator, CassandraOperation cassandraOperation) {
         this.accessTokenValidator = accessTokenValidator;
@@ -286,5 +290,88 @@ public class CbPlanServiceImpl {
     }
 
 
+    public ApiResponse updateCbPlan(ApiRequest request, String userOrgId, String token, List<String> userRoles) {
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_CB_PLAN_UPDATE);
+        try {
+            String userId = accessTokenValidator.fetchUserIdFromAccessToken(token, response);
+            if (StringUtils.isEmpty(userId)) {
+                return response;
+            }
+            Map<String, Object> updatedCbPlan = (Map<String, Object>) request.getRequest();
+            if (updatedCbPlan.get(Constants.ID) != null) {
+                UUID cbPlanId = UUID.fromString((String) updatedCbPlan.get(Constants.ID));
+                Map<String, Object> cbPlanInfo = new HashMap<>();
+                cbPlanInfo.put(Constants.ID, cbPlanId);
+                cbPlanInfo.put(Constants.ORG_ID, userOrgId);
+                List<Map<String, Object>> cbPlanMapInfo = cassandraOperation.getRecordsByProperties(
+                        Constants.KEYSPACE_SUNBIRD, Constants.TABLE_CB_PLAN_V2, cbPlanInfo, null);
+                if (CollectionUtils.isNotEmpty(cbPlanMapInfo)) {
+                    Map<String, Object> cbPlanInfoMap = cbPlanMapInfo.get(0);
+                    if (!(userId.equals(cbPlanInfoMap.get(Constants.CREATED_BY)) ||
+                            serverProperties.getCbPlanUpdatePublishAuthorizedRoles().stream().anyMatch(roles -> CollectionUtils.isNotEmpty(userRoles) && userRoles.contains(roles)))) {
+                        response.getParams().setStatus(Constants.FAILED);
+                        response.getParams().setErr("Not Authorized to update cbp Plan");
+                        response.setResponseCode(HttpStatus.BAD_REQUEST);
+                        return response;
+                    }
+                    String draftInfo = null;
+                    if (Constants.LIVE.equalsIgnoreCase((String) cbPlanInfoMap.get(Constants.STATUS))
+                            && cbPlanInfoMap.get(Constants.CB_PUBLISHED_BY) != null) {
+                        // check when the cbPlan is published, need to check only few field need to be
+                        // modified.
+                        List<String> allowedFieldForUpdate = Arrays.asList(Constants.NAME,
+                                Constants.CB_ASSIGNMENT_TYPE_INFO, Constants.END_DATE, Constants.ID);
+                        long keyNotAllowedCount = updatedCbPlan.keySet().stream()
+                                .filter(key -> !allowedFieldForUpdate.contains(key)).count();
+                        if (keyNotAllowedCount > 0) {
+                            response.getParams().setStatus(Constants.FAILED);
+                            response.getParams().setErrmsg("Allowed Field for update cbPlan are: " + Constants.NAME
+                                    + ", " + Constants.CB_ASSIGNMENT_TYPE_INFO + ", " + Constants.END_DATE);
+                            response.setResponseCode(HttpStatus.BAD_REQUEST);
+                            return response;
+                        }
+                    } else {
+                        draftInfo = updateDraftInfo(updatedCbPlan, cbPlanMapInfo.get(0));
+                    }
+                    Map<String, Object> updatedCbPlanData = new HashMap<>();
+                    draftInfo = mapper.writeValueAsString(updatedCbPlan);
+                    updatedCbPlanData.put(Constants.DRAFT_DATA, draftInfo);
+                    updatedCbPlanData.put(Constants.UPDATED_BY, userId);
+                    updatedCbPlanData.put(Constants.UPDATED_AT, new Date());
+                    if (updatedCbPlan.containsKey(Constants.IS_APAR)) {
+                        Object isAparVal = updatedCbPlan.get(Constants.IS_APAR);
+                        if (isAparVal != null) {
+                            updatedCbPlanData.put(Constants.IS_APAR, isAparVal);
+                        }
+                    }
 
+                    Map<String, Object> resp = cassandraOperation.updateRecord(Constants.KEYSPACE_SUNBIRD,
+                            Constants.TABLE_CB_PLAN, updatedCbPlanData, cbPlanInfo);
+                    if (resp.get(Constants.RESPONSE).equals(Constants.SUCCESS)) {
+                        response.getResult().put(Constants.STATUS, Constants.UPDATED);
+                        response.getResult().put(Constants.MESSAGE, "updated cbPlan for cbPlanId: " + cbPlanId);
+                    } else {
+                        response.getParams().setStatus(Constants.FAILED);
+                        response.getParams()
+                                .setErrmsg((String) resp.get(Constants.ERROR_MESSAGE) + "for cbPlanId: " + cbPlanId);
+                        response.setResponseCode(HttpStatus.BAD_REQUEST);
+                    }
+                } else {
+                    response.getParams().setStatus(Constants.FAILED);
+                    response.getParams().setErrmsg("cbPlan is not found for id: " + cbPlanId);
+                    response.setResponseCode(HttpStatus.BAD_REQUEST);
+                }
+            } else {
+                response.getParams().setStatus(Constants.FAILED);
+                response.getParams().setErrmsg("Required Param id is missing");
+                response.setResponseCode(HttpStatus.BAD_REQUEST);
+            }
+        } catch (Exception e) {
+            logger.error("Failed to Update CB Plan for OrgId: " + userOrgId, e);
+            response.getParams().setStatus(Constants.FAILED);
+            response.getParams().setErrmsg(e.getMessage());
+            response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+        return response;
+    }
 }

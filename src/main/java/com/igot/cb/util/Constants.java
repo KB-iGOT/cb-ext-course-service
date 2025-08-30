@@ -345,6 +345,7 @@ public class Constants {
     public static final String TABLE_CB_PLAN_V2_LOOKUP_BY_ORG = "cb_plan_v2_lookup_by_org";
     public static final String TABLE_CB_PLAN_V2_LOOKUP_BY_ALL_ORG = "cb_plan_v2_lookup_by_all_org";
     public static final String ORG_SCOPE = "orgScope";
+    public static final String X_AUTH_USER_ROLES = "x-authenticated-user-roles";
 
     private Constants() {
     }

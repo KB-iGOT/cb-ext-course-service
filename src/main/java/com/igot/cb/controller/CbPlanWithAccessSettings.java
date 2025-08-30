@@ -27,7 +27,7 @@ public class CbPlanWithAccessSettings {
         return new ResponseEntity<>(response, response.getResponseCode());
     }
 
-    @PostMapping("/v1/update")
+    @PostMapping("/update")
     public ResponseEntity<ApiResponse> updateCbPlan(
             @RequestBody ApiRequest request,
             @RequestHeader(Constants.X_AUTH_TOKEN) String token,

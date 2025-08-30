@@ -1,5 +1,7 @@
 package com.igot.cb.cassandra;
 
+import com.igot.cb.model.ApiResponse;
+
 import java.util.List;
 import java.util.Map;
 
@@ -27,5 +29,7 @@ public interface CassandraOperation {
         Map<String, Object> updateAttributes,
         Map<String, Object> compositeKey
     );
+
+    ApiResponse insertBulkRecord(String keyspaceName, String tableName, List<Map<String, Object>> request);
 
 }

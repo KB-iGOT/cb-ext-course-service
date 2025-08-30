@@ -2,10 +2,7 @@ package com.igot.cb.cassandra;
 
 
 import com.datastax.oss.driver.api.core.CqlSession;
-import com.datastax.oss.driver.api.core.cql.BoundStatement;
-import com.datastax.oss.driver.api.core.cql.PreparedStatement;
-import com.datastax.oss.driver.api.core.cql.ResultSet;
-import com.datastax.oss.driver.api.core.cql.SimpleStatement;
+import com.datastax.oss.driver.api.core.cql.*;
 import com.datastax.oss.driver.api.querybuilder.QueryBuilder;
 import com.datastax.oss.driver.api.querybuilder.relation.Relation;
 import com.datastax.oss.driver.api.querybuilder.select.Select;
@@ -134,4 +131,51 @@ public class CassandraOperationImpl implements CassandraOperation {
         }
         return response;
     }
+
+    @Override
+    public ApiResponse insertBulkRecord(String keyspaceName, String tableName, List<Map<String, Object>> requestList) {
+        ApiResponse response = new ApiResponse();
+
+        try {
+            int batchSize = 10;
+            List<Map<String, Object>> tempBatch = new ArrayList<>();
+            CqlSession session = connectionManager.getSession(keyspaceName);
+
+            for (int i = 0; i < requestList.size(); i++) {
+                tempBatch.add(requestList.get(i));
+
+                // If batch size reached or it's the last element, execute the batch
+                if (tempBatch.size() == batchSize || i == requestList.size() - 1) {
+                    BatchStatementBuilder batchBuilder = BatchStatement.builder(DefaultBatchType.LOGGED);
+
+                    for (Map<String, Object> requestMap : tempBatch) {
+                        // Build INSERT query for this request
+                        String query = CassandraUtil.getPreparedStatement(keyspaceName, tableName, requestMap);
+
+                        // Prepare and bind values in order
+                        PreparedStatement preparedStatement = session.prepare(query);
+                        BoundStatement boundStatement = preparedStatement.bind(requestMap.values().toArray());
+
+                        // Add statement to batch
+                        batchBuilder.addStatement(boundStatement);
+                    }
+
+                    // Execute batch insert
+                    session.execute(batchBuilder.build());
+                    tempBatch.clear(); // reset for next batch
+                }
+            }
+
+            response.put(Constants.RESPONSE, Constants.SUCCESS);
+
+        } catch (Exception e) {
+            String errMsg = String.format("Exception occurred while inserting bulk record to %s: %s", tableName, e.getMessage());
+            log.error(errMsg, e);
+            response.put(Constants.RESPONSE, Constants.FAILED);
+            response.put(Constants.ERROR_MESSAGE, errMsg);
+        }
+
+        return response;
+    }
+
 }

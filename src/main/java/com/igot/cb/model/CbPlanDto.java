@@ -45,4 +45,6 @@ public class CbPlanDto {
     private Date endDate;
 
     private Boolean isApar ;
+
+    private List<String> orgIdList ;
 }

@@ -32,4 +32,6 @@ public interface CassandraOperation {
 
     ApiResponse insertBulkRecord(String keyspaceName, String tableName, List<Map<String, Object>> request);
 
+    public void deleteRecord(String keyspaceName, String tableName, Map<String, Object> keyMap);
+
 }

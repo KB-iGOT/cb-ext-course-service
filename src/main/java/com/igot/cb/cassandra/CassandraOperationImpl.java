@@ -4,6 +4,8 @@ package com.igot.cb.cassandra;
 import com.datastax.oss.driver.api.core.CqlSession;
 import com.datastax.oss.driver.api.core.cql.*;
 import com.datastax.oss.driver.api.querybuilder.QueryBuilder;
+import com.datastax.oss.driver.api.querybuilder.delete.Delete;
+import com.datastax.oss.driver.api.querybuilder.delete.DeleteSelection;
 import com.datastax.oss.driver.api.querybuilder.relation.Relation;
 import com.datastax.oss.driver.api.querybuilder.select.Select;
 import com.datastax.oss.driver.api.querybuilder.term.Term;
@@ -176,6 +178,25 @@ public class CassandraOperationImpl implements CassandraOperation {
         }
 
         return response;
+    }
+
+
+    @Override
+    public void deleteRecord(String keyspaceName, String tableName, Map<String, Object> compositeKeyMap) {
+        Delete delete = null;
+        try {
+            CqlSession session = connectionManager.getSession(keyspaceName);
+            delete = (Delete) QueryBuilder.deleteFrom(keyspaceName, tableName);
+
+            for (Map.Entry<String, Object> entry : compositeKeyMap.entrySet()) {
+                delete = delete.whereColumn(entry.getKey()).isEqualTo(QueryBuilder.literal(entry.getValue()));
+            }
+            session.execute(delete.build());
+        } catch (Exception e) {
+            log.error(String.format("CassandraOperationImpl: deleteRecord by composite key. %s %s %s",
+                    Constants.EXCEPTION_MSG_DELETE, tableName, e.getMessage()));
+            throw e;
+        }
     }
 
 }

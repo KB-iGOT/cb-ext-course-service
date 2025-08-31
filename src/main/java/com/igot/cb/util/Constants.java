@@ -348,10 +348,12 @@ public class Constants {
     public static final String ORG_SCOPE = "orgScope";
     public static final String X_AUTH_USER_ROLES = "x-authenticated-user-roles";
     public static final String LIVE = "Live";
-    public static final	String CB_PUBLISHED_BY	= "publishedBy";
+    public static final	String CB_PUBLISHED_BY	= "publishedby";
     public static final Object UPDATED = "Updated";
     public static final String MESSAGE = "message";
     public static final String EXCEPTION_MSG_DELETE = "Exception occurred while deleting record from ";
+    public static final String CB_RETIRE = "RETIRE";
+    public static final String CB_PUBLISHED_AT = "publishedat";
 
     private Constants() {
     }

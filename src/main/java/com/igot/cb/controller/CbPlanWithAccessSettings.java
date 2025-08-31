@@ -37,4 +37,15 @@ public class CbPlanWithAccessSettings {
         ApiResponse response = cbPlanService.updateCbPlan(request, userOrgId, token, userRoles);
         return new ResponseEntity<>(response, response.getResponseCode());
     }
+
+    @PostMapping("/publish")
+    public ResponseEntity<ApiResponse> publishCbPlan(
+            @RequestBody ApiRequest request,
+            @RequestHeader(Constants.X_AUTH_TOKEN) String token,
+            @RequestHeader(Constants.X_AUTH_USER_ORG_ID) String userOrgId,
+            @RequestHeader(Constants.X_AUTH_USER_ROLES) List<String> userRoles) throws Exception {
+
+        ApiResponse response = cbPlanService.publishCbPlan(request, userOrgId, token, userRoles);
+        return new ResponseEntity<>(response, response.getResponseCode());
+    }
 }

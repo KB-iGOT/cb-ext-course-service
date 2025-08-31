@@ -2,6 +2,7 @@ package com.igot.cb.service;
 
 import com.datastax.oss.driver.api.core.uuid.Uuids;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.model.ApiRequest;
@@ -30,6 +31,10 @@ import java.sql.Timestamp;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -108,9 +113,9 @@ public class CbPlanServiceImpl {
                 if (Constants.SUCCESS.equals(resp.get(Constants.RESPONSE))) {
 
                     response.getResult().put(Constants.ID, String.valueOf(cbPlanId));
-                    if (Constants.CUSTOM.equalsIgnoreCase(cbPlanDto.getOrgScope())) {
+                    if (Constants.SINGLE.equalsIgnoreCase(cbPlanDto.getOrgScope()) || Constants.CUSTOM.equalsIgnoreCase(cbPlanDto.getOrgScope())) {
                         ApiResponse lookupResp = insertCustomOrgLookup(String.valueOf(cbPlanId), orgIdList, cbPlanDto.getEndDate());
-                        if (!Constants.SUCCESS.equals(lookupResp.getParams().getStatus())) {
+                        if (!Constants.SUCCESS.equals(lookupResp.get(Constants.RESPONSE))) {
                             response.getParams().setStatus(Constants.FAILED);
                             response.getParams().setErr(lookupResp.getParams().getErr());
                             response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
@@ -211,6 +216,7 @@ public class CbPlanServiceImpl {
                             }
                             rawRequest.put(Constants.ORGIDLIST, orgIdList);
                             request.setRequest(rawRequest);
+                            cbPlanDto.setOrgIdList(orgIdList);
                             break;
                         }
                     }
@@ -349,7 +355,7 @@ public class CbPlanServiceImpl {
                         }
                     }
                     Map<String, Object> updatedCbPlanData = new HashMap<>();
-                    updatedCbPlanData.put(Constants.DRAFT_DATA, draftInfo);
+
                     updatedCbPlanData.put(Constants.UPDATED_BY, userId);
                     updatedCbPlanData.put(Constants.UPDATED_AT, Instant.now());
                     updatedCbPlanData.putAll(updatedCbPlan);
@@ -399,20 +405,9 @@ public class CbPlanServiceImpl {
                             ? updatedCbPlan.get(Constants.END_DATE_REQUEST)
                             : cbPlanInfoMap.get(Constants.END_DATE_REQUEST);
 
-                    if (endDateObj instanceof Date) {
-                        endDate = (Date) endDateObj;
-                    } else if (endDateObj instanceof String) {
-                        try {
-                            endDate = formatter.parse((String) endDateObj);
-                        } catch (ParseException e) {
-                            log.error("Failed to parse endDate: {}", endDateObj, e);
-                            // handle error or throw exception if necessary
-                        }
-                    } else {
-                        log.warn("Unexpected type for endDate: {}", endDateObj != null ? endDateObj.getClass() : "null");
-                    }
+                    endDate = parseToDate(endDateObj);
                     updatedCbPlan.put(Constants.END_DATE, endDate.toInstant());
-
+                    updatedCbPlan.put(Constants.DRAFT_DATA, draftInfo);
                     Map<String, Object> resp = cassandraOperation.updateRecord(Constants.KEYSPACE_SUNBIRD,
                             Constants.TABLE_CB_PLAN_V2, updatedCbPlanData, cbPlanInfo);
                     if (resp.get(Constants.RESPONSE).equals(Constants.SUCCESS)) {
@@ -497,7 +492,13 @@ public class CbPlanServiceImpl {
                     updatedCbPlan.getOrDefault(Constants.ORG_SCOPE, cbPlanDto.getOrgScope()));
             draftInfo.put(Constants.ORGIDLIST,
                     updatedCbPlan.getOrDefault(Constants.ORGIDLIST, cbPlanDto.getOrgIdList()));
-            draftInfo.put(Constants.END_DATE, updatedCbPlan.getOrDefault(Constants.END_DATE, cbPlanDto.getEndDate()));
+            if (updatedCbPlan.containsKey(Constants.END_DATE)) {
+                draftInfo.put(Constants.END_DATE, updatedCbPlan.get(Constants.END_DATE));
+            } else if (cbPlanDto.getEndDate() != null) {
+                // cbPlanDto.getEndDate() is usually a Timestamp -> convert to Date
+                draftInfo.put(Constants.END_DATE, new Date(cbPlanDto.getEndDate().getTime()));
+            }
+
 
             draftInfo.put(Constants.IS_APAR,
                     updatedCbPlan.getOrDefault(Constants.IS_APAR,
@@ -559,6 +560,195 @@ public class CbPlanServiceImpl {
 
         return orgIdList;
     }
+
+
+
+    public ApiResponse publishCbPlan(ApiRequest request, String userOrgId, String authUserToken, List<String> userRoles) {
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_CB_PLAN_PUBLISH);
+        Map<String, Object> requestData = (Map<String, Object>) request.getRequest();
+        try {
+            String userId = accessTokenValidator.fetchUserIdFromAccessToken(authUserToken, response);
+            if (StringUtils.isEmpty(userId)) {
+                return response;
+            }
+            String cbPlanId = (String) requestData.get(Constants.ID);
+            String comment = (String) requestData.get(Constants.COMMENT);
+            if (cbPlanId == null) {
+                response.getParams().setStatus(Constants.FAILED);
+                response.getParams().setErr("CbPlanId is missing.");
+                response.setResponseCode(HttpStatus.BAD_REQUEST);
+                return response;
+            }
+            Map<String, Object> cbPlanInfo = new HashMap<>();
+            cbPlanInfo.put(Constants.PLAN_ID, cbPlanId);
+            List<Map<String, Object>> cbPlanMap = cassandraOperation.getRecordsByProperties(
+                    Constants.KEYSPACE_SUNBIRD, Constants.TABLE_CB_PLAN_V2, cbPlanInfo, null, null);
+
+            if (CollectionUtils.isNotEmpty(cbPlanMap)) {
+                Map<String, Object> cbPlan = cbPlanMap.get(0);
+                if (!(userId.equals(cbPlan.get(Constants.CREATED_BY)) ||
+                        serverProperties.getCbPlanUpdatePublishAuthorizedRoles().stream().anyMatch(roles -> CollectionUtils.isNotEmpty(userRoles) && userRoles.contains(roles)))) {
+                    response.getParams().setStatus(Constants.FAILED);
+                    response.getParams().setErr("Not Authorized to publish cbp Plan");
+                    response.setResponseCode(HttpStatus.BAD_REQUEST);
+                    return response;
+                }
+                Map<String, Object> publishCbPlan = new HashMap<>();
+                publishCbPlan.putAll(cbPlan);
+                if ((Constants.LIVE.equalsIgnoreCase((String) cbPlan.get(Constants.STATUS))
+                        && cbPlan.get(Constants.DRAFT_DATA) == null)
+                        || Constants.CB_RETIRE.equalsIgnoreCase((String) cbPlan.get(Constants.STATUS))) {
+                    response.getParams().setStatus(Constants.FAILED);
+                    String errMsg = "CbPlan is already published for ID: " + cbPlanId;
+                    if (Constants.CB_RETIRE.equalsIgnoreCase((String) cbPlan.get(Constants.STATUS))) {
+                        errMsg = "CbPlan is already retired for ID: " + cbPlanId;
+                    }
+                    response.getParams().setErr(errMsg);
+                    response.setResponseCode(HttpStatus.BAD_REQUEST);
+                    return response;
+                }
+                if (Constants.DRAFT.equalsIgnoreCase((String) cbPlan.get(Constants.STATUS))) {
+                    CbPlanDto cbPlanDto = mapper.readValue((String) cbPlan.get(Constants.DRAFT_DATA), CbPlanDto.class);
+                    updateCbPlanData(cbPlan, cbPlanDto);
+                } else {
+                    Map<String, Object> cbPlanDtoMap = mapper.readValue((String) cbPlan.get(Constants.DRAFT_DATA),
+                            new TypeReference<Map<String, Object>>() {
+                            });
+                    cbPlan.put(Constants.NAME,
+                            cbPlanDtoMap.getOrDefault(Constants.NAME, publishCbPlan.get(Constants.NAME)));
+                    if (cbPlanDtoMap.containsKey(Constants.IS_APAR)) {
+                        Object isAparVal = cbPlanDtoMap.get(Constants.IS_APAR);
+                        cbPlan.put(Constants.IS_APAR, isAparVal != null ? isAparVal : false);
+                    } else if (publishCbPlan.containsKey(Constants.IS_APAR) && publishCbPlan.get(Constants.IS_APAR) != null) {
+                        cbPlan.put(Constants.IS_APAR, publishCbPlan.get(Constants.IS_APAR));
+                    } else {
+                        cbPlan.put(Constants.IS_APAR, false);
+                    }
+                    cbPlan.put(Constants.DRAFT_DATA, null);
+                }
+                cbPlan.put(Constants.CB_PUBLISHED_BY, userId);
+                if (StringUtils.isNoneBlank(comment)) {
+                    cbPlan.put(Constants.COMMENT, comment);
+                }
+                cbPlan.remove(Constants.ID);
+                cbPlan.remove(Constants.PLAN_ID);
+                cbPlan.put(Constants.CB_PUBLISHED_AT, Instant.now());
+                cbPlan.put(Constants.UPDATED_AT, Instant.now());
+                cbPlan.put(Constants.CONTEXT_DATA_REQUEST, mapper.writeValueAsString(cbPlan.get(Constants.CONTEXT_DATA_REQUEST)));
+                cbPlan.remove(Constants.END_DATE_REQUEST);
+                Map<String, Object> resp = cassandraOperation.updateRecord(Constants.KEYSPACE_SUNBIRD,
+                        Constants.TABLE_CB_PLAN_V2, cbPlan, cbPlanInfo);
+                if (resp.get(Constants.RESPONSE).equals(Constants.SUCCESS)) {
+                    response.getResult().put(Constants.STATUS, Constants.UPDATED);
+                    response.getResult().put(Constants.MESSAGE, "Published cbPlan for cbPlanId: " + cbPlanId);
+                } else {
+                    response.getParams().setStatus(Constants.FAILED);
+                    response.getParams()
+                            .setErr((String) resp.get(Constants.ERROR_MESSAGE) + "for cbPlanId: " + cbPlanId);
+                    response.setResponseCode(HttpStatus.BAD_REQUEST);
+                }
+            } else {
+                response.getParams().setStatus(Constants.FAILED);
+                response.getParams().setErr("CbPlan is not exist for ID: " + cbPlanId);
+                response.setResponseCode(HttpStatus.BAD_REQUEST);
+            }
+        } catch (Exception e) {
+            logger.error("Failed to Publish CB Plan for OrgId: " + userOrgId, e);
+            response.getParams().setStatus(Constants.FAILED);
+            response.getParams().setErr(e.getMessage());
+            response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+        return response;
+    }
+
+    private void updateCbPlanData(Map<String, Object> cbPlan, CbPlanDto planDto) {
+        cbPlan.put(Constants.NAME, planDto.getName());
+        try {
+            cbPlan.put(Constants.CONTEXT_DATA_REQUEST, mapper.writeValueAsString(planDto.getContextData()));
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException(e);
+        }
+
+        cbPlan.put(Constants.ORG_SCOPE, planDto.getOrgScope());
+        cbPlan.put(Constants.ORGIDLIST, planDto.getOrgIdList());
+        cbPlan.put(Constants.DRAFT_DATA, null);
+        cbPlan.put(Constants.CONTENT_TYPE, planDto.getContentType());
+        cbPlan.put(Constants.CONTENT_LIST, planDto.getContentList());
+        cbPlan.put(Constants.END_DATE, planDto.getEndDate() != null ? planDto.getEndDate().toInstant() : null);
+        cbPlan.put(Constants.STATUS, Constants.LIVE);
+        cbPlan.put(Constants.IS_APAR, planDto.getIsApar() != null ? planDto.getIsApar() : false);
+    }
+
+
+
+    /**
+     * Safely converts an object to java.util.Date.
+     * Supports String (ISO 8601), Instant, Timestamp, and Date types.
+     *
+     * @param endDateObj the object to convert
+     * @return Date object or null if conversion fails
+     */
+    public Date parseToDate(Object endDateObj) {
+        if (endDateObj == null) return null;
+
+        try {
+            if (endDateObj instanceof String) {
+                // ISO 8601 string, e.g., "2023-12-14T00:00:00Z"
+                String str = (String) endDateObj;
+                try {
+                    // Try full ISO-8601 datetime first
+                    return Date.from(Instant.parse(str));
+                } catch (DateTimeParseException e) {
+                    // Fallback for date-only strings "yyyy-MM-dd"
+                    LocalDate localDate = LocalDate.parse(str, DateTimeFormatter.ISO_LOCAL_DATE);
+                    return Date.from(localDate.atStartOfDay(ZoneId.systemDefault()).toInstant());
+                }
+            } else if (endDateObj instanceof Instant) {
+                return Date.from((Instant) endDateObj);
+            } else if (endDateObj instanceof java.sql.Timestamp) {
+                return new Date(((java.sql.Timestamp) endDateObj).getTime());
+            } else if (endDateObj instanceof java.util.Date) {
+                return new Date(((java.util.Date) endDateObj).getTime());
+            }
+        } catch (Exception e) {
+            log.error("Error parsing endDate: {}", endDateObj, e);
+        }
+
+        return null;
+    }
+
+
+    // Convert an object to Instant safely
+    private Instant toInstant(Object obj) {
+        if (obj == null) return null;
+
+        try {
+            if (obj instanceof Instant) {
+                return (Instant) obj;
+            } else if (obj instanceof Date) {
+                return ((Date) obj).toInstant();
+            } else if (obj instanceof String) {
+                String str = (String) obj;
+                // Try ISO format first
+                try {
+                    return Instant.parse(str);
+                } catch (DateTimeParseException e1) {
+                    // Try simple date format yyyy-MM-dd
+                    try {
+                        LocalDate ld = LocalDate.parse(str, DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+                        return ld.atStartOfDay(ZoneId.systemDefault()).toInstant();
+                    } catch (DateTimeParseException e2) {
+                        logger.error("Unable to parse date string: {}", str, e2);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            logger.error("Error converting to Instant: {}", obj, e);
+        }
+
+        return null;
+    }
+
 
 
 

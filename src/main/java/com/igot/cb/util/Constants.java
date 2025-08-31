@@ -1,5 +1,8 @@
 package com.igot.cb.util;
 
+import java.util.Arrays;
+import java.util.List;
+
 /**
  * @author Mahesh RV
  */
@@ -354,6 +357,24 @@ public class Constants {
     public static final String EXCEPTION_MSG_DELETE = "Exception occurred while deleting record from ";
     public static final String CB_RETIRE = "RETIRE";
     public static final String CB_PUBLISHED_AT = "publishedat";
+    public static final String API_CB_PLAN_READ_BY_ID = "api.cb.plan.v2.read.byId";
+    public static final List<String> DECRYPTED_FIELDS = Arrays.asList("phone", "email");
+    public static final String FIRSTNAME = "firstName";
+    public static final String CREATED_BY_NAME = "createdByName";
+    public static final String COMPETENCIES_V5 = "competencies_v5";
+    public static final String AVG_RATING = "avgRating";
+    public static final String ADDITIONAL_TAGS = "additionalTags";
+    public static final String CONTENT_TYPE_KEY = "contentType";
+    public static final String DURATION = "duration";
+    public static final String COURSE_APP_ICON = "appIcon";
+    public static final String POSTER_IMAGE = "posterImage";
+    public static final String ORGANISATION = "organisation";
+    public static final String CREATOR_LOGO = "creatorLogo";
+    public static final String LANGUAGE_MAP_V1 = "languageMapV1";
+    public static final String CIPHER_ALGORITHM = "AES";
+    public static final byte[] CIPHER_KEY = new byte[] { 'T', 'h', 'i', 's', 'A', 's', 'I', 'S', 'e', 'r', 'c', 'e',
+            'K', 't', 'e', 'y' };
+
 
     private Constants() {
     }

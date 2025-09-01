@@ -2,9 +2,9 @@ package com.igot.cb.controller;
 
 import com.igot.cb.model.ApiRequest;
 import com.igot.cb.model.ApiResponse;
+import com.igot.cb.service.AccessSettingMigrationServiceImpl;
 import com.igot.cb.service.CbPlanServiceImpl;
 import com.igot.cb.util.Constants;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -14,8 +14,13 @@ import java.util.List;
 @RequestMapping("/cbplan/v2")
 public class CbPlanWithAccessSettings {
 
-    @Autowired
-    private CbPlanServiceImpl cbPlanService;
+    private final CbPlanServiceImpl cbPlanService;
+    private final AccessSettingMigrationServiceImpl accessSettingMigrationService;
+
+    public CbPlanWithAccessSettings(CbPlanServiceImpl cbPlanService, AccessSettingMigrationServiceImpl accessSettingMigrationService) {
+        this.cbPlanService = cbPlanService;
+        this.accessSettingMigrationService = accessSettingMigrationService;
+    }
 
     @PostMapping("/create")
     public ResponseEntity<ApiResponse> createCbPlan(
@@ -56,6 +61,12 @@ public class CbPlanWithAccessSettings {
             @RequestHeader(Constants.X_AUTH_USER_ORG_ID) String userOrgId) throws Exception {
 
         ApiResponse response = cbPlanService.readCbPlan(cbPlanId, userOrgId, token);
+        return new ResponseEntity<>(response, response.getResponseCode());
+    }
+
+    @GetMapping("/v1/cbplan/migrate")
+    public ResponseEntity<ApiResponse> migrateCBPlanAccessSettingRules() {
+        ApiResponse response = accessSettingMigrationService.migrateAccessSettingRules();
         return new ResponseEntity<>(response, response.getResponseCode());
     }
 }

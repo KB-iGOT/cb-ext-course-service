@@ -107,8 +107,8 @@ public class CbPlanServiceImpl {
                 requestMap.put(Constants.STATUS, Constants.DRAFT);
                 Map<String, Object> requestMapFromApiRequest = (Map<String, Object>) request.getRequest();
 
-                List<String> orgIdList = (List<String>) requestMapFromApiRequest.get(Constants.ORGIDLIST);
-                requestMap.put(Constants.ORGIDLIST, orgIdList);
+                List<String> orgIdList = (List<String>) requestMapFromApiRequest.get(Constants.ORG_ID_LIST);
+                requestMap.put(Constants.ORG_ID_LIST, orgIdList);
                 requestMap.put(Constants.ORG_SCOPE, requestMapFromApiRequest.get(Constants.ORG_SCOPE));
                 requestMap.put(Constants.CONTENT_LIST, requestMapFromApiRequest.get(Constants.CONTENT_LIST));
                 requestMap.put(Constants.NAME, requestMapFromApiRequest.get(Constants.NAME));
@@ -210,7 +210,7 @@ public class CbPlanServiceImpl {
             boolean rootOrgFound = false;
             for (Map<String, Object> userGroup : userGroups) {
                 List<Map<String, Object>> criteriaList =
-                        (List<Map<String, Object>>) userGroup.get(Constants.USER_GROUP_CRTIRIA_LIST);
+                        (List<Map<String, Object>>) userGroup.get(Constants.USER_GROUP_CRITERIA_LIST);
                 if (criteriaList != null) {
                     for (Map<String, Object> criteria : criteriaList) {
                         String criteriaKey = (String) criteria.get(Constants.CRITERIA_KEY);
@@ -221,7 +221,7 @@ public class CbPlanServiceImpl {
                                 errors.add("Validation Error: orgId list cannot be empty for rootOrgId");
                                 return errors;
                             }
-                            rawRequest.put(Constants.ORGIDLIST, orgIdList);
+                            rawRequest.put(Constants.ORG_ID_LIST, orgIdList);
                             request.setRequest(rawRequest);
                             cbPlanDto.setOrgIdList(orgIdList);
                             break;
@@ -388,9 +388,9 @@ public class CbPlanServiceImpl {
                         Object contextDataObj = updatedCbPlan.get(Constants.CONTEXT_DATA_REQUEST);
                         List<String> newOrgIds = extractRootOrgIds(contextDataObj);
                         if (!newOrgIds.isEmpty()) {
-                            updatedCbPlanData.put(Constants.ORGIDLIST, newOrgIds);
+                            updatedCbPlanData.put(Constants.ORG_ID_LIST, newOrgIds);
                             log.info("Extracted orgIds from contextData: {}", newOrgIds);
-                            List<String> oldOrgIds = (List<String>) cbPlanInfoMap.getOrDefault(Constants.ORGIDLIST, new ArrayList<>());
+                            List<String> oldOrgIds = (List<String>) cbPlanInfoMap.getOrDefault(Constants.ORG_ID_LIST, new ArrayList<>());
 
                             // Compare lists
                             if (CollectionUtils.isNotEmpty(oldOrgIds)) {
@@ -481,8 +481,8 @@ public class CbPlanServiceImpl {
                     updatedCbPlan.getOrDefault(Constants.CONTEXT_DATA_REQUEST, cbPlan.get(Constants.CONTEXT_DATA_REQUEST)));
             draftInfo.put(Constants.ORG_SCOPE,
                     updatedCbPlan.getOrDefault(Constants.ORG_SCOPE, cbPlan.get(Constants.ORG_SCOPE)));
-            draftInfo.put(Constants.ORGIDLIST,
-                    updatedCbPlan.getOrDefault(Constants.ORGIDLIST, cbPlan.get(Constants.ORGIDLIST)));
+            draftInfo.put(Constants.ORG_ID_LIST,
+                    updatedCbPlan.getOrDefault(Constants.ORG_ID_LIST, cbPlan.get(Constants.ORG_ID_LIST)));
             draftInfo.put(Constants.IS_APAR,
                     updatedCbPlan.getOrDefault(Constants.IS_APAR,
                             cbPlan.getOrDefault(Constants.IS_APAR, false)));
@@ -497,8 +497,8 @@ public class CbPlanServiceImpl {
                     updatedCbPlan.getOrDefault(Constants.CONTEXT_DATA_REQUEST, cbPlanDto.getContextData()));
             draftInfo.put(Constants.ORG_SCOPE,
                     updatedCbPlan.getOrDefault(Constants.ORG_SCOPE, cbPlanDto.getOrgScope()));
-            draftInfo.put(Constants.ORGIDLIST,
-                    updatedCbPlan.getOrDefault(Constants.ORGIDLIST, cbPlanDto.getOrgIdList()));
+            draftInfo.put(Constants.ORG_ID_LIST,
+                    updatedCbPlan.getOrDefault(Constants.ORG_ID_LIST, cbPlanDto.getOrgIdList()));
             if (updatedCbPlan.containsKey(Constants.END_DATE)) {
                 draftInfo.put(Constants.END_DATE, updatedCbPlan.get(Constants.END_DATE));
             } else if (cbPlanDto.getEndDate() != null) {
@@ -542,7 +542,7 @@ public class CbPlanServiceImpl {
 
             for (Map<String, Object> userGroup : userGroups) {
                 List<Map<String, Object>> criteriaList =
-                        (List<Map<String, Object>>) userGroup.get(Constants.USER_GROUP_CRTIRIA_LIST);
+                        (List<Map<String, Object>>) userGroup.get(Constants.USER_GROUP_CRITERIA_LIST);
 
                 if (CollectionUtils.isNotEmpty(criteriaList)) {
                     for (Map<String, Object> criteria : criteriaList) {
@@ -677,7 +677,7 @@ public class CbPlanServiceImpl {
         }
 
         cbPlan.put(Constants.ORG_SCOPE, planDto.getOrgScope());
-        cbPlan.put(Constants.ORGIDLIST, planDto.getOrgIdList());
+        cbPlan.put(Constants.ORG_ID_LIST, planDto.getOrgIdList());
         cbPlan.put(Constants.DRAFT_DATA, null);
         cbPlan.put(Constants.CONTENT_TYPE, planDto.getContentType());
         cbPlan.put(Constants.CONTENT_LIST, planDto.getContentList());

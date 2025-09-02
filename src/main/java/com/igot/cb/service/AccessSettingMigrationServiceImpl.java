@@ -3,9 +3,13 @@ package com.igot.cb.service;
 import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.Collection;
+import java.util.Collections;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.commons.collections4.MapUtils;
 import org.springframework.http.HttpStatus;
@@ -13,6 +17,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.module.SimpleModule;
@@ -67,6 +72,62 @@ public class AccessSettingMigrationServiceImpl {
             log.error("Error occurred while migrating access setting rules: {}", e.getMessage(), e);
             response.updateErrorDetails("Migration failed due to an error", HttpStatus.INTERNAL_SERVER_ERROR);
         }
+        return response;
+    }
+
+    public ApiResponse migrateCBPlanAccessSettingRules() {
+        ApiResponse response = ApiResponse.createDefaultResponse("migrateCBPlanAccessSettingRules");
+        AtomicInteger migrated = new AtomicInteger();
+        AtomicInteger skipped = new AtomicInteger();
+        List<String> errors = new ArrayList<>();
+        try {
+            List<Map<String, Object>> cbPlanListMap = cassandraOperation.getRecordsByProperties(
+                    Constants.KEYSPACE_SUNBIRD, Constants.CB_PLAN_TABLE, null,
+                    null, null);
+            
+            for (Map<String, Object> cbPlanMap : cbPlanListMap) {
+                Map<String, Object> cbPlanV2Map = new HashMap<>();
+                String orgId = (String) cbPlanMap.get(Constants.ORG_ID);
+                String cbPlanId = (String) cbPlanMap.get(Constants.ID);
+                String assignmentType = (String) cbPlanMap.get(Constants.ASSIGNMENT_TYPE);
+                List<String> assignmentTypeInfo = (List<String>) cbPlanMap.get(Constants.ASSIGNMENT_TYPE_INFO);
+
+                cbPlanV2Map.put(Constants.PLAN_ID, cbPlanId);
+                cbPlanV2Map.put(Constants.ORG_SCOPE, Constants.SINGLE);
+                cbPlanV2Map.put(Constants.ORG_ID_LIST, Collections.singletonList(orgId));
+                cbPlanV2Map.put(Constants.CONTENT_LIST, (List<String>) cbPlanMap.get(Constants.CONTENT_LIST));
+                cbPlanV2Map.put(Constants.CONTENT_TYPE, (String) cbPlanMap.get(Constants.CONTENT_TYPE));
+                cbPlanV2Map.put(Constants.CREATED_AT, (Date) cbPlanMap.get(Constants.CREATED_AT));
+                cbPlanV2Map.put(Constants.CREATED_BY, (String) cbPlanMap.get(Constants.CREATED_BY));
+                cbPlanV2Map.put(Constants.DRAFT_DATA, (String) cbPlanMap.get(Constants.DRAFT_DATA));
+                cbPlanV2Map.put(Constants.END_DATE, (Date) cbPlanMap.get(Constants.END_DATE));
+                cbPlanV2Map.put(Constants.IS_APAR, (Boolean) cbPlanMap.get(Constants.IS_APAR)); // can be null
+                cbPlanV2Map.put(Constants.NAME, (String) cbPlanMap.get(Constants.NAME));
+                cbPlanV2Map.put(Constants.PUBLISHED_AT, (Date) cbPlanMap.get(Constants.PUBLISHED_AT));
+                cbPlanV2Map.put(Constants.PUBLISHED_BY, (String) cbPlanMap.get(Constants.PUBLISHED_BY));
+                cbPlanV2Map.put(Constants.STATUS, (String) cbPlanMap.get(Constants.STATUS));
+                cbPlanV2Map.put(Constants.UPDATED_AT, (Date) cbPlanMap.get(Constants.UPDATED_AT));
+                cbPlanV2Map.put(Constants.UPDATED_BY, (String) cbPlanMap.get(Constants.UPDATED_BY));
+
+                String contextData = buildContextData(cbPlanId, orgId, assignmentType, assignmentTypeInfo);
+                cbPlanV2Map.put(Constants.CONTEXT_DATA, contextData);
+                ApiResponse dbResponse = (ApiResponse) cassandraOperation.insertRecord(Constants.KEYSPACE_SUNBIRD,
+                            Constants.TABLE_CB_PLAN_V2, cbPlanV2Map);
+                if (Constants.SUCCESS.equalsIgnoreCase((String) dbResponse.get(Constants.RESPONSE))) {
+                    migrated.incrementAndGet();
+                } else {
+                    skipped.incrementAndGet();
+                    errors.add("planId=" + cbPlanId + ", error = " + dbResponse.get(Constants.ERROR_MESSAGE));
+                    log.error("Error occurred while inserting record into CB Plan V2 table: {}", dbResponse.get(Constants.ERROR_MESSAGE));
+                }
+            }
+        } catch (Exception e) {
+            log.error("Error occurred while migrating access setting rules: {}", e.getMessage(), e);
+            response.updateErrorDetails("Migration failed due to an error", HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+        response.getResult().put("Successful", migrated.get());
+        response.getResult().put("Skipped", skipped.get());
+        response.getResult().put("Errors", errors);
         return response;
     }
 
@@ -137,7 +198,7 @@ public class AccessSettingMigrationServiceImpl {
             userGroupIdMap.put(Constants.USER_GROUP_NAME, userGroup.get(Constants.USER_GROUP_NAME));
             List<Map<String, Object>> criteriaIdMapList = new ArrayList<>();
             List<Map<String, Object>> criteriaList = (List<Map<String, Object>>) userGroup
-                    .get(Constants.USER_GROUP_CRTIRIA_LIST);
+                    .get(Constants.USER_GROUP_CRITERIA_LIST);
 
             for (Map<String, Object> criteria : criteriaList) {
                 String criteriaKey = (String) criteria.get(Constants.CRITERIA_KEY);
@@ -166,7 +227,7 @@ public class AccessSettingMigrationServiceImpl {
 
                 criteriaIdMapList.add(criteriaIdMap);
             }
-            userGroupIdMap.put(Constants.USER_GROUP_CRTIRIA_LIST, criteriaIdMapList);
+            userGroupIdMap.put(Constants.USER_GROUP_CRITERIA_LIST, criteriaIdMapList);
             userGroupIdMapList.add(userGroupIdMap);
         }
         return true;
@@ -190,5 +251,69 @@ public class AccessSettingMigrationServiceImpl {
             }
         }
         return bitSet;
+    }
+
+    private String buildContextData(String cbPlanId, String orgId, String assignmentType, List<String> assignmentTypeInfo)
+            throws JsonProcessingException {
+
+        // accessControl.userGroups[0]
+        Map<String, Object> userGroup = new HashMap<>();
+        UUID userGroupId = UUID.randomUUID();
+        userGroup.put(Constants.USER_GROUP_ID, userGroupId.toString());
+        userGroup.put(Constants.USER_GROUP_NAME, "User Group 1");
+
+        List<Map<String, Object>> criteriaList = new ArrayList<>();
+
+        // Always add rootOrgId
+        criteriaList.add(criteriaEntry(Constants.ROOT_ORG_ID, Collections.singletonList(orgId)));
+
+        if ("Designation".equalsIgnoreCase(assignmentType)) {
+            if (!CollectionUtils.isEmpty(assignmentTypeInfo)) {
+                criteriaList.add(criteriaEntry(Constants.DESIGNATION, assignmentTypeInfo));
+            }
+        } else if ("CustomUser".equalsIgnoreCase(assignmentType)) {
+            if (!CollectionUtils.isEmpty(assignmentTypeInfo)) {
+                criteriaList.add(criteriaEntry(Constants.USER, assignmentTypeInfo));
+            }
+        } else if ("AllUser".equalsIgnoreCase(assignmentType)) {
+            // Nothing extra
+        } else {
+            // Unknown type: keep only org criteria; optionally, you can log/warn
+        }
+
+        userGroup.put(Constants.USER_GROUP_CRITERIA_LIST, criteriaList);
+
+        Map<String, Object> accessControl = new HashMap<>();
+        accessControl.put(Constants.VERSION, 1);
+        accessControl.put(Constants.USER_GROUPS, Collections.singletonList(userGroup));
+
+        // Final contextData
+        Map<String, Object> contextData = new HashMap<>();
+        contextData.put(Constants.ACCESS_CONTROL, accessControl);
+        
+
+        // We do have accessControlMap, let's create accessControlIdMap
+        Map<String, Object> accessControlIdMap = new HashMap<>();
+        boolean isSuccess = updateContextDataWithIdMap(cbPlanId, accessControl, accessControlIdMap);
+
+        if (!isSuccess) {
+            log.error("Failed to update context data with ID map for cbPlanId: {}", cbPlanId);
+            return "";
+        }
+        if (((List<Map<String, Object>>) accessControl
+                .get(Constants.USER_GROUPS))
+                .size() != ((List<Map<String, Object>>) accessControlIdMap.get(Constants.USER_GROUPS)).size()) {
+            log.error("User groups are missing in access control id map for cbPlanId: {}", cbPlanId);
+            return "";
+        }
+        contextData.put(Constants.ACCESS_CONTROL_ID, accessControlIdMap);
+        return objectMapper.writeValueAsString(contextData);
+    }
+
+    private Map<String, Object> criteriaEntry(String key, List<String> values) {
+        Map<String, Object> m = new HashMap<>();
+        m.put(Constants.CRITERIA_KEY, key);
+        m.put(Constants.CRITERIA_VALUE, values);
+        return m;
     }
 }

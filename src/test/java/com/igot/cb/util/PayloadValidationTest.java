@@ -32,7 +32,7 @@ class PayloadValidationTest {
     Map<String, Object> criteria = new HashMap<>();
     criteria.put(Constants.CRITERIA_VALUE, Collections.singletonList("val1"));
     criteriaList.add(criteria);
-    userGroup.put(Constants.USER_GROUP_CRTIRIA_LIST, criteriaList);
+    userGroup.put(Constants.USER_GROUP_CRITERIA_LIST, criteriaList);
     userGroups.add(userGroup);
     accessControl.put(Constants.USER_GROUPS, userGroups);
 
@@ -104,7 +104,7 @@ class PayloadValidationTest {
     Map<String, Object> criteria = new HashMap<>();
     criteria.put(Constants.CRITERIA_VALUE, new ArrayList<>());
     criteriaList.add(criteria);
-    userGroup.put(Constants.USER_GROUP_CRTIRIA_LIST, criteriaList);
+    userGroup.put(Constants.USER_GROUP_CRITERIA_LIST, criteriaList);
     userGroups.add(userGroup);
     accessControl.put(Constants.USER_GROUPS, userGroups);
 

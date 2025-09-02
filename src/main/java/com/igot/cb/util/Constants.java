@@ -345,7 +345,7 @@ public class Constants {
     public static final String CONTEXT_DATA_REQUEST = "contextData";
     public static final String SINGLE = "Single";
     public static final String CUSTOM ="Custom";
-    public static final String ORGIDLIST = "orgIdList";
+    public static final String ORG_ID_LIST = "orgIdList";
     public static final String TABLE_CB_PLAN_V2_LOOKUP_BY_ORG = "cb_plan_v2_lookup_by_org";
     public static final String TABLE_CB_PLAN_V2_LOOKUP_BY_ALL_ORG = "cb_plan_v2_lookup_by_all_org";
     public static final String ORG_SCOPE = "orgScope";

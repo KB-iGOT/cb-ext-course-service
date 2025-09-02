@@ -37,7 +37,7 @@ public class PayloadValidation {
           Object ugObj = userGroups.get(i);
           if (ugObj instanceof Map) {
             Map<String, Object> userGroup = (Map<String, Object>) ugObj;
-            Object criteriaListObj = userGroup.get(Constants.USER_GROUP_CRTIRIA_LIST);
+            Object criteriaListObj = userGroup.get(Constants.USER_GROUP_CRITERIA_LIST);
             if (criteriaListObj instanceof List) {
               List<?> criteriaList = (List<?>) criteriaListObj;
               for (int j = 0; j < criteriaList.size(); j++) {

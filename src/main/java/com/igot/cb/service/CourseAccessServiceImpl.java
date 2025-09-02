@@ -175,7 +175,7 @@ public class CourseAccessServiceImpl {
             String userGroupId = (String) userGroup.get(Constants.USER_GROUP_ID);
             boolean isUserHasAccess = false;
             List<Map<String, Object>> criteriaList = (List<Map<String, Object>>) userGroup
-                    .get(Constants.USER_GROUP_CRTIRIA_LIST);
+                    .get(Constants.USER_GROUP_CRITERIA_LIST);
             if (CollectionUtils.isEmpty(criteriaList)) {
                 break;
             }

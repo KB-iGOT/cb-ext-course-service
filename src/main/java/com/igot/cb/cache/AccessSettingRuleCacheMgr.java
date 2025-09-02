@@ -161,7 +161,7 @@ public class AccessSettingRuleCacheMgr {
             String userGroupName = (String) userGroup.get(Constants.USER_GROUP_NAME);
 
             List<Map<String, Object>> criteriaList =
-                    (List<Map<String, Object>>) userGroup.get(Constants.USER_GROUP_CRTIRIA_LIST);
+                    (List<Map<String, Object>>) userGroup.get(Constants.USER_GROUP_CRITERIA_LIST);
             if (criteriaList == null || criteriaList.isEmpty()) {
                 log.warn("No userGroupCriteriaList for userGroupId {} in rule {}", userGroupId, cacheKey);
                 continue;

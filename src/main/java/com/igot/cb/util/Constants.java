@@ -207,8 +207,7 @@ public class Constants {
     public static final String API_COMMUNITY_PUBLISH = "api.community.publish";
     public static final String COMMUNITY_PUBLISH_PAYLOAD_VALIDATION_FILE = "/payloadValidation/communityPublishPayloadValidation.json";
     public static final String PUBLISHED_BY = "publishedBy";
-    public static final String PUBLISHED_AT = "publishedAt";
-    public static final String MODERATORS = "moderators";
+    public static final String  MODERATORS = "moderators";
     public static final String TABLE_USER = "user";
     public static final String ROOT_ORG_ID = "rootOrgId";
     public static final String FIRST_NAME = "firstname";
@@ -375,9 +374,16 @@ public class Constants {
     public static final String CIPHER_ALGORITHM = "AES";
     public static final byte[] CIPHER_KEY = new byte[] { 'T', 'h', 'i', 's', 'A', 's', 'I', 'S', 'e', 'r', 'c', 'e',
             'K', 't', 'e', 'y' };
+    public static final String CREATED_AT_REQ = "createdat";
+    public static final String PUBLISHED_AT= "publishedAt";
+    public static final String NUMBER = "number";
+    public static final String LONG = "long";
+    public static final String DATE = "date";
+
     public static final String CB_PLAN_TABLE = "cb_plan";
     public static final String ASSIGNMENT_TYPE = "assignmentType";
     public static final String ASSIGNMENT_TYPE_INFO = "assignmentTypeInfo";
+
 
     private Constants() {
     }

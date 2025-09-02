@@ -1,0 +1,110 @@
+{
+  "id": {
+    "type": "text",
+    "fields": {
+      "keyword": {
+        "type": "keyword",
+        "ignore_above": 256
+      }
+    }
+  },
+  "name": {
+    "type": "text",
+    "analyzer": "cs_index_analyzer",
+    "search_analyzer": "cs_search_analyzer",
+    "fields": {
+      "keyword": {
+        "type": "keyword",
+        "normalizer": "case_insensitive"
+      }
+    }
+  },
+  "orgScope": {
+    "type": "text",
+    "fields": {
+      "keyword": {
+        "type": "keyword",
+        "ignore_above": 256
+      }
+    }
+  },
+  "orgIdList": {
+    "type": "text",
+    "fields": {
+      "keyword": {
+        "type": "keyword",
+        "ignore_above": 256
+      }
+    }
+  },
+  "contentList": {
+    "type": "text",
+    "fields": {
+      "keyword": {
+        "type": "keyword"
+      }
+    }
+  },
+  "endDate": {
+    "type": "date",
+    "fields": {
+      "raw": {
+        "type": "date"
+      }
+    }
+  },
+  "contentType": {
+    "type": "text",
+    "fields": {
+      "keyword": {
+        "type": "keyword",
+        "ignore_above": 256
+      }
+    }
+  },
+  "updatedBy": {
+    "type": "text",
+    "fields": {
+      "keyword": {
+        "type": "keyword",
+        "ignore_above": 256
+      }
+    }
+  },
+  "isApar": {
+    "type": "boolean"
+  },
+  "publishedAt": {
+    "type": "date",
+    "fields": {
+      "raw": {
+        "type": "date"
+      }
+    }
+  },
+  "publishedBy": {
+    "type": "keyword"
+  },
+  "status": {
+    "type": "keyword"
+  },
+  "createdAt": {
+    "type": "date",
+    "fields": {
+      "raw": {
+        "type": "date"
+      }
+    }
+  },
+  "createdBy": {
+    "type": "keyword"
+  },
+  "updatedOn": {
+    "type": "date",
+    "fields": {
+      "raw": {
+        "type": "date"
+      }
+    }
+  }
+}

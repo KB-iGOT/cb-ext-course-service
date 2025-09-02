@@ -3,9 +3,17 @@ package com.igot.cb.service;
 import com.datastax.oss.driver.api.core.uuid.Uuids;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.igot.cb.cassandra.CassandraOperation;
+import com.igot.cb.cassandra.exceptions.CustomException;
+import com.igot.cb.elasticsearch.dto.SearchCriteria;
+import com.igot.cb.elasticsearch.dto.SearchResult;
+import com.igot.cb.elasticsearch.service.EsUtilService;
 import com.igot.cb.model.ApiRequest;
+import com.igot.cb.model.ApiRespParam;
 import com.igot.cb.model.ApiResponse;
 import com.igot.cb.model.CbPlanDto;
 import com.igot.cb.user.UserUtilityService;
@@ -36,6 +44,7 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 @Service
@@ -62,6 +71,15 @@ public class CbPlanServiceImpl {
 
     @Autowired
     ContentInfoServiceImpl contentService;
+
+    @Autowired
+    private EsUtilService esUtilService;
+
+    @Value("${cb.plan.v2.index}")
+    private String cpPlanIndex;
+
+    @Value("${elastic.required.field.cb.plan.json.path}")
+    private String elasticCbPlanJsonPath;
 
     public CbPlanServiceImpl(AccessTokenValidator accessTokenValidator, CassandraOperation cassandraOperation) {
         this.accessTokenValidator = accessTokenValidator;
@@ -118,7 +136,10 @@ public class CbPlanServiceImpl {
                 requestMap.put(Constants.CONTEXT_DATA_REQUEST, mapper.writeValueAsString(requestMapFromApiRequest.get(Constants.CONTEXT_DATA_REQUEST)));
                 ApiResponse resp = (ApiResponse) cassandraOperation.insertRecord(Constants.KEYSPACE_SUNBIRD, Constants.TABLE_CB_PLAN_V2, requestMap);
                 if (Constants.SUCCESS.equals(resp.get(Constants.RESPONSE))) {
-
+                    requestMap.put(Constants.ID, String.valueOf(cbPlanId));
+                    Map<String, Object> sanitizedMap = sanitizeForElastic(requestMap);
+                    requestMap.put(Constants.END_DATE_REQUEST, cbPlanDto.getEndDate().toInstant());
+                    esUtilService.addDocument(cpPlanIndex, Constants.INDEX_TYPE, String.valueOf(cbPlanId), sanitizedMap, elasticCbPlanJsonPath);
                     response.getResult().put(Constants.ID, String.valueOf(cbPlanId));
                     if (Constants.SINGLE.equalsIgnoreCase(cbPlanDto.getOrgScope()) || Constants.CUSTOM.equalsIgnoreCase(cbPlanDto.getOrgScope())) {
                         ApiResponse lookupResp = insertCustomOrgLookup(String.valueOf(cbPlanId), orgIdList, cbPlanDto.getEndDate());
@@ -236,6 +257,20 @@ public class CbPlanServiceImpl {
             }
         }
         return errors;
+    }
+
+    public static Map<String, Object> sanitizeForElastic(Map<String, Object> input) {
+        Map<String, Object> sanitized = new HashMap<>();
+        for (Map.Entry<String, Object> entry : input.entrySet()) {
+            Object value = entry.getValue();
+            if (value instanceof Instant) {
+                // Convert Instant → ISO String (e.g., 2025-09-02T09:30:56.446Z)
+                sanitized.put(entry.getKey(), DateTimeFormatter.ISO_INSTANT.format((Instant) value));
+            } else {
+                sanitized.put(entry.getKey(), value);
+            }
+        }
+        return sanitized;
     }
 
     private ApiResponse insertCustomOrgLookup(String cbPlanId,
@@ -418,6 +453,15 @@ public class CbPlanServiceImpl {
                     Map<String, Object> resp = cassandraOperation.updateRecord(Constants.KEYSPACE_SUNBIRD,
                             Constants.TABLE_CB_PLAN_V2, updatedCbPlanData, cbPlanInfo);
                     if (resp.get(Constants.RESPONSE).equals(Constants.SUCCESS)) {
+                        for (Map.Entry<String, Object> entry : cbPlanInfoMap.entrySet()) {
+                            updatedCbPlanData.putIfAbsent(entry.getKey(), entry.getValue());
+                        }
+                        updatedCbPlanData.put(Constants.ID, cbPlanId);
+                        updatedCbPlanData.put(Constants.UPDATED_BY, userId);
+                        updatedCbPlanData.put(Constants.CREATED_AT, cbPlanInfoMap.get(Constants.CREATED_AT_REQ));
+                        updatedCbPlanData.put(Constants.PUBLISHED_ON, cbPlanInfoMap.get(Constants.CREATED_AT_REQ));
+                        Map<String, Object> sanitizedMap = sanitizeForElastic(updatedCbPlanData);
+                        esUtilService.updateDocument(cpPlanIndex, Constants.INDEX_TYPE, cbPlanId, sanitizedMap, elasticCbPlanJsonPath);
                         response.getResult().put(Constants.STATUS, Constants.UPDATED);
                         if (!addedOrgIds.isEmpty()) {
                             ApiResponse lookupResp = insertCustomOrgLookup(String.valueOf(cbPlanId), addedOrgIds, endDate);
@@ -646,6 +690,15 @@ public class CbPlanServiceImpl {
                 Map<String, Object> resp = cassandraOperation.updateRecord(Constants.KEYSPACE_SUNBIRD,
                         Constants.TABLE_CB_PLAN_V2, cbPlan, cbPlanInfo);
                 if (resp.get(Constants.RESPONSE).equals(Constants.SUCCESS)) {
+
+                    cbPlan.put(Constants.ID, cbPlanId);
+                    cbPlan.put(Constants.PUBLISHED_AT,Instant.now());
+                    cbPlan.put(Constants.PUBLISHED_BY,userId);
+                    cbPlan.put(Constants.UPDATED_AT, Instant.now());
+                    cbPlan.put(Constants.CREATED_AT, cbPlan.get(Constants.CREATED_AT_REQ));
+                    cbPlan.put(Constants.END_DATE_REQUEST, toInstant(cbPlan.get(Constants.END_DATE)));
+                    Map<String, Object> sanitizedMap = sanitizeForElastic(cbPlan);
+                    esUtilService.updateDocument(cpPlanIndex, Constants.INDEX_TYPE, cbPlanId, sanitizedMap, elasticCbPlanJsonPath);
                     response.getResult().put(Constants.STATUS, Constants.UPDATED);
                     response.getResult().put(Constants.MESSAGE, "Published cbPlan for cbPlanId: " + cbPlanId);
                 } else {
@@ -774,6 +827,7 @@ public class CbPlanServiceImpl {
             if (CollectionUtils.isNotEmpty(cbPlanMap)) {
                 Map<String, Object> cbPlan = cbPlanMap.get(0);
                 Map<String, Object> enrichData = populateReadData(cbPlan);
+                enrichData.put(Constants.ID,cbPlanId);
                 response.getResult().put(Constants.CONTENT, enrichData);
             } else {
                 response.getParams().setStatus(Constants.FAILED);
@@ -802,7 +856,8 @@ public class CbPlanServiceImpl {
             enrichData.put(Constants.NAME, cbPlan.get(Constants.NAME));
             enrichData.put(Constants.CONTENT_TYPE, cbPlan.get(Constants.CONTENT_TYPE));
             contentTypeInfo = (List<String>) cbPlan.get(Constants.CONTENT_LIST);
-            enrichData.put(Constants.END_DATE, cbPlan.get(Constants.END_DATE));
+            enrichData.put(Constants.END_DATE_REQUEST, cbPlan.get(Constants.END_DATE_REQUEST));
+            enrichData.put(Constants.CREATED_AT, cbPlan.get(Constants.CREATED_AT_REQ));
             enrichData.put(Constants.IS_APAR, cbPlan.getOrDefault(Constants.IS_APAR, false));
             if (StringUtils.isNotBlank((String) cbPlan.get(Constants.DRAFT_DATA))) {
                 Map<String, Object> cbPlanDtoMap = mapper.readValue((String) cbPlan.get(Constants.DRAFT_DATA),
@@ -821,9 +876,7 @@ public class CbPlanServiceImpl {
             enrichData.put(Constants.IS_APAR, cbPlanDto.getIsApar() != null ? cbPlanDto.getIsApar() : false);
         }
         Map<String, Map<String, String>> userInfoMap = new HashMap<>();
-        enrichData.put(Constants.ID, cbPlan.get(Constants.ID));
-
-        enrichData.put(Constants.CREATED_AT, cbPlan.get(Constants.CREATED_AT));
+        enrichData.put(Constants.CREATED_AT, cbPlan.get(Constants.CREATED_AT_REQ));
         enrichData.put(Constants.CB_PUBLISHED_AT, cbPlan.get(Constants.CB_PUBLISHED_AT));
         enrichData.put(Constants.STATUS, cbPlan.get(Constants.STATUS));
 
@@ -905,5 +958,98 @@ public class CbPlanServiceImpl {
             userInfo.remove(Constants.PROFILE_DETAILS_KEY);
         }
     }
+
+    public ApiResponse searchCbPlan(SearchCriteria searchCriteria, String userOrgId, String token) {
+        log.info("CbPlanService:searchCbPlan::inside method");
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_COMMUNITY_SEARCH);
+        try {
+            String userId = accessTokenValidator.fetchUserIdFromAccessToken(token, response);
+            if (StringUtils.isEmpty(userId)) {
+                return response;
+            }
+            SearchResult searchResult = esUtilService.searchDocuments(cpPlanIndex,
+                    searchCriteria, elasticCbPlanJsonPath);
+            List<Map<String, Object>> cbPlans = mapper.convertValue(
+                    searchResult.getData(),
+                    new TypeReference<List<Map<String, Object>>>() {
+                    }
+            );
+            if (!searchResult.getData().isEmpty()) {
+                List<Map<String, Object>> dataNode = searchResult.getData();
+
+                if (dataNode != null) {
+                    List<Map<String, Object>> enrichedData = new ArrayList<>();
+
+                    for (Map<String, Object> item : dataNode) {
+                        // Create a copy of item so we don’t mutate original
+                        Map<String, Object> enrichedItem = new HashMap<>(item);
+
+                        if (item.containsKey(Constants.CONTENT_LIST) && item.get(Constants.CONTENT_LIST) != null) {
+                            Object contentListObj = item.get(Constants.CONTENT_LIST);
+
+                            if (contentListObj instanceof List) {
+                                List<?> contentList = (List<?>) contentListObj;
+                                List<Map<String, Object>> enrichContentInfoMap = new ArrayList<>();
+
+                                for (Object contentIdObj : contentList) {
+                                    String contentId = String.valueOf(contentIdObj);
+                                    Map<String, Object> contentResponse = contentService.readContent(contentId, null);
+
+                                    if (MapUtils.isNotEmpty(contentResponse) &&
+                                            Constants.LIVE.equalsIgnoreCase((String) contentResponse.get(Constants.STATUS))) {
+
+                                        Map<String, Object> enrichContentMap = new HashMap<>();
+                                        enrichContentMap.put(Constants.NAME, contentResponse.getOrDefault(Constants.NAME, ""));
+                                        enrichContentMap.put(Constants.COMPETENCIES_V5, contentResponse.getOrDefault(Constants.COMPETENCIES_V5, Collections.emptyList()));
+                                        enrichContentMap.put(Constants.AVG_RATING, contentResponse.getOrDefault(Constants.AVG_RATING, 0.0));
+                                        enrichContentMap.put(Constants.IDENTIFIER, contentResponse.getOrDefault(Constants.IDENTIFIER, ""));
+                                        enrichContentMap.put(Constants.DESCRIPTION, contentResponse.getOrDefault(Constants.DESCRIPTION, ""));
+                                        enrichContentMap.put(Constants.ADDITIONAL_TAGS, contentResponse.getOrDefault(Constants.ADDITIONAL_TAGS, Collections.emptyList()));
+                                        enrichContentMap.put(Constants.CONTENT_TYPE_KEY, contentResponse.getOrDefault(Constants.CONTENT_TYPE_KEY, ""));
+                                        enrichContentMap.put(Constants.PRIMARY_CATEGORY, contentResponse.getOrDefault(Constants.PRIMARY_CATEGORY, ""));
+                                        enrichContentMap.put(Constants.DURATION, contentResponse.getOrDefault(Constants.DURATION, 0));
+                                        enrichContentMap.put(Constants.COURSE_APP_ICON, contentResponse.getOrDefault(Constants.COURSE_APP_ICON, ""));
+                                        enrichContentMap.put(Constants.POSTER_IMAGE, contentResponse.getOrDefault(Constants.POSTER_IMAGE, ""));
+                                        enrichContentMap.put(Constants.ORGANISATION, contentResponse.getOrDefault(Constants.ORGANISATION, ""));
+                                        enrichContentMap.put(Constants.CREATOR_LOGO, contentResponse.getOrDefault(Constants.CREATOR_LOGO, ""));
+                                        enrichContentMap.put(Constants.LANGUAGE_MAP_V1, contentResponse.getOrDefault(Constants.LANGUAGE_MAP_V1, Collections.emptyMap()));
+
+                                        enrichContentInfoMap.add(enrichContentMap);
+                                    }
+                                }
+
+                                // 🔑 Replace CONTENT_LIST with enriched maps
+                                enrichedItem.put(Constants.CONTENT_LIST, enrichContentInfoMap);
+                            }
+                        }
+
+                        enrichedData.add(enrichedItem);
+                    }
+
+                    // 🔑 Replace original data with enrichedData
+                    searchResult.setData(enrichedData);
+
+                    response.getResult().put(Constants.RESULT, searchResult);
+                    createSuccessResponse(response);
+                    return response;
+                }
+            }
+
+
+
+        } catch (Exception e) {
+            logger.error("Error occured while searching:", e);
+            throw new CustomException(Constants.ERROR, "error while processing",
+                    HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+        return response;
+    }
+
+    private void createSuccessResponse(ApiResponse response) {
+        response.setParams(new ApiRespParam());
+        response.getParams().setStatus(Constants.SUCCESS);
+        response.setResponseCode(HttpStatus.OK);
+    }
+
 
 }

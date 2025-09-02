@@ -1,0 +1,472 @@
+package com.igot.cb.elasticsearch.service;
+
+import co.elastic.clients.elasticsearch.ElasticsearchClient;
+import co.elastic.clients.elasticsearch._types.FieldValue;
+import co.elastic.clients.elasticsearch._types.Refresh;
+import co.elastic.clients.elasticsearch._types.SortOptions;
+import co.elastic.clients.elasticsearch._types.SortOrder;
+import co.elastic.clients.elasticsearch._types.aggregations.Aggregate;
+import co.elastic.clients.elasticsearch._types.aggregations.Aggregation;
+import co.elastic.clients.elasticsearch._types.aggregations.StringTermsBucket;
+import co.elastic.clients.elasticsearch._types.aggregations.TermsAggregation;
+import co.elastic.clients.elasticsearch._types.query_dsl.*;
+import co.elastic.clients.elasticsearch.core.*;
+import co.elastic.clients.elasticsearch.core.search.Hit;
+import co.elastic.clients.elasticsearch.core.search.SourceConfig;
+import co.elastic.clients.json.JsonData;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.igot.cb.cassandra.exceptions.CustomException;
+import com.igot.cb.elasticsearch.config.EsConfig;
+import com.igot.cb.elasticsearch.dto.FacetDTO;
+import com.igot.cb.elasticsearch.dto.SearchCriteria;
+import com.igot.cb.elasticsearch.dto.SearchResult;
+import com.igot.cb.util.Constants;
+import com.networknt.schema.JsonSchemaFactory;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections.MapUtils;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
+
+@Service
+@Slf4j
+public class EsUtilServiceImpl implements EsUtilService{
+
+    private final EsConfig esConfig;
+    private final ElasticsearchClient elasticsearchClient;
+    private final Logger logger = LogManager.getLogger(getClass());
+
+    private static final Map<String, Map<String, Object>> schemaCache = new ConcurrentHashMap<>();
+
+    public EsUtilServiceImpl(EsConfig esConfig, ElasticsearchClient elasticsearchClient) {
+        this.esConfig = esConfig;
+        this.elasticsearchClient = elasticsearchClient;
+    }
+
+    @Autowired
+    private ObjectMapper objectMapper;
+
+    @Override
+    public String addDocument(
+            String esIndexName, String type, String id, Map<String, Object> document, String JsonFilePath) {
+        logger.info("EsUtilServiceImpl :: addDocument");
+        try {
+            JsonSchemaFactory schemaFactory = JsonSchemaFactory.getInstance();
+            InputStream schemaStream = schemaFactory.getClass().getResourceAsStream(JsonFilePath);
+            Map<String, Object> map = objectMapper.readValue(schemaStream,
+                    new TypeReference<Map<String, Object>>() {
+                    });
+            Iterator<Map.Entry<String, Object>> iterator = document.entrySet().iterator();
+            while (iterator.hasNext()) {
+                Map.Entry<String, Object> entry = iterator.next();
+                String key = entry.getKey();
+                if (!map.containsKey(key)) {
+                    iterator.remove();
+                }
+            }
+            IndexRequest<Map<String,Object>> indexRequest = new IndexRequest.Builder<Map<String, Object>>()
+                    .index(esIndexName)
+                    .id(id)
+                    .document(document)
+                    .refresh(Refresh.True)
+                    .build();
+            IndexResponse response = elasticsearchClient.index(indexRequest);
+            return "Successfully indexed document with id: " + response.result();
+        } catch (Exception e) {
+            logger.error("Issue while Indexing to es: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    @Override
+    public String updateDocument(
+            String index, String indexType, String entityId, Map<String, Object> updatedDocument, String JsonFilePath) {
+        try {
+            JsonSchemaFactory schemaFactory = JsonSchemaFactory.getInstance();
+            InputStream schemaStream = schemaFactory.getClass().getResourceAsStream(JsonFilePath);
+            Map<String, Object> map = objectMapper.readValue(schemaStream,
+                    new TypeReference<Map<String, Object>>() {
+                    });
+            Iterator<Map.Entry<String, Object>> iterator = updatedDocument.entrySet().iterator();
+            while (iterator.hasNext()) {
+                Map.Entry<String, Object> entry = iterator.next();
+                String key = entry.getKey();
+                if (!map.containsKey(key)) {
+                    iterator.remove();
+                }
+            }
+            IndexRequest<Map<String, Object>> indexRequest = new IndexRequest.Builder<Map<String, Object>>()
+                    .index(index)
+                    .id(entityId)
+                    .document(updatedDocument)
+                    .refresh(Refresh.True)
+                    .build();
+            IndexResponse response = elasticsearchClient.index(indexRequest);
+            return response.result().jsonValue();
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    @Override
+    public SearchResult searchDocuments(String esIndexName, SearchCriteria searchCriteria, String JsonFilePath) {
+        SearchRequest.Builder searchRequestBuilder = buildSearchRequest(searchCriteria, JsonFilePath);
+        assert searchRequestBuilder != null;
+        searchRequestBuilder.index(esIndexName);
+        try {
+            if (searchCriteria != null) {
+                int pageNumber = searchCriteria.getPageNumber();
+                int pageSize = searchCriteria.getPageSize();
+                int from = pageNumber * pageSize;
+                searchRequestBuilder.from(from);
+                if (pageSize > 0) {
+                    searchRequestBuilder.size(pageSize);
+                }
+            }
+            SearchRequest searchRequest = searchRequestBuilder.build();
+            log.info("Final search query: {}", searchRequest.toString());
+            SearchResponse<Object> paginatedSearchResponse =
+                    elasticsearchClient.search(searchRequest, Object.class);
+            List<Map<String, Object>> paginatedResult = extractPaginatedResult(paginatedSearchResponse);
+            Map<String, List<FacetDTO>> fieldAggregations =
+                    extractFacetData(paginatedSearchResponse, searchCriteria);
+            SearchResult searchResult = new SearchResult();
+            searchResult.setData(paginatedResult);
+            searchResult.setFacets(fieldAggregations);
+            searchResult.setTotalCount(paginatedSearchResponse.hits().total().value());
+            return searchResult;
+        } catch (IOException e) {
+            log.error("Error while fetching details from elastic search");
+            return null;
+        }
+    }
+
+    private Map<String, List<FacetDTO>> extractFacetData(
+            SearchResponse<Object> searchResponse, SearchCriteria searchCriteria) {
+        Map<String, List<FacetDTO>> fieldAggregations = new HashMap<>();
+        if (searchCriteria.getFacets() != null) {
+            for (String field : searchCriteria.getFacets()) {
+                Aggregate aggregate = searchResponse
+                        .aggregations()
+                        .get(field + "_agg");
+                if (aggregate.isSterms()) {
+                    List<FacetDTO> fieldValueList = new ArrayList<>();
+                    for (StringTermsBucket bucket : aggregate.sterms().buckets().array()) {
+                        if (!bucket.key().stringValue().isEmpty()) {
+                            FacetDTO facetDTO = new FacetDTO(bucket.key().stringValue(), bucket.docCount());
+                            fieldValueList.add(facetDTO);
+                        }
+                    }
+                    fieldAggregations.put(field, fieldValueList);
+                }
+            }
+        }
+        return fieldAggregations;
+    }
+
+    private List<Map<String, Object>> extractPaginatedResult(SearchResponse<Object> paginatedSearchResponse) {
+        List<Map<String, Object>> paginatedResult = new ArrayList<>();
+        for (Hit<Object> hit : paginatedSearchResponse.hits().hits()) {
+            paginatedResult.add((Map<String, Object>) hit.source());
+        }
+        return paginatedResult;
+    }
+
+    private SearchRequest.Builder buildSearchRequest(SearchCriteria searchCriteria, String JsonFilePath) {
+        log.info("Building search query");
+        if (searchCriteria == null || searchCriteria.toString().isEmpty()) {
+            log.error("Search criteria body is missing");
+            return null;
+        }
+        BoolQuery.Builder boolQueryBuilder = buildFilterQuery(searchCriteria.getFilter());
+        SearchRequest.Builder searchSourceBuilder = new SearchRequest.Builder();
+        searchSourceBuilder.query(boolQueryBuilder.build()._toQuery());
+        addSortToSearchSourceBuilder(searchCriteria, searchSourceBuilder, JsonFilePath);
+        addRequestedFieldsToSearchSourceBuilder(searchCriteria, searchSourceBuilder);
+        // addQueryStringToFilter(searchCriteria.getSearchString(), boolQueryBuilder);
+        String searchString = searchCriteria.getSearchString();
+        if (isNotBlank(searchString)) {
+            boolQueryBuilder.must(Query.of(q -> q.matchPhrase(mp -> mp.field(Constants.NAME).query(searchString))));
+        }
+        addFacetsToSearchSourceBuilder(searchCriteria.getFacets(), searchSourceBuilder);
+        Query queryPart = buildQueryPart(searchCriteria.getQuery());
+        boolQueryBuilder.must(queryPart);
+        log.info("final search query result {}", searchSourceBuilder);
+        return searchSourceBuilder;
+    }
+
+    private Query buildQueryPart(Map<String, Object> queryMap) {
+        log.info("Search:: buildQueryPart");
+        if (queryMap == null || queryMap.isEmpty()) {
+            return QueryBuilders.matchAll().build()._toQuery();
+        }
+        for (Map.Entry<String, Object> entry : queryMap.entrySet()) {
+            String key = entry.getKey();
+            Object value = entry.getValue();
+            switch (key) {
+                case Constants.BOOL:
+                    return buildBoolQuery((Map<String, Object>) value)._toQuery();
+                case Constants.TERM:
+                    return buildTermQuery((Map<String, Object>) value);
+                case Constants.TERMS:
+                    return buildTermsQuery((Map<String, Object>) value);
+                case Constants.MATCH:
+                    return buildMatchQuery((Map<String, Object>) value);
+                case Constants.RANGE:
+                    return buildRangeQuery((Map<String, Object>) value);
+                case Constants.MUST_NOT:
+                    if (value instanceof List) {
+                        BoolQuery.Builder boolQueryBuilder = QueryBuilders.bool();
+                        for (Object item : (List<?>) value) {
+                            if (item instanceof Map) {
+                                boolQueryBuilder.mustNot(buildQueryPart((Map<String, Object>) item));
+                            }
+                        }
+                        return boolQueryBuilder.build()._toQuery();
+                    } else {
+                        throw new IllegalArgumentException("must_not value should be a list of conditions");
+                    }
+                default:
+                    throw new IllegalArgumentException(Constants.UNSUPPORTED_QUERY + key);
+            }
+        }
+        return null;
+    }
+
+    private Query buildMatchQuery(Map<String, Object> matchMap) {
+        log.info("search:: buildMatchQuery");
+        BoolQuery.Builder boolQueryBuilder = QueryBuilders.bool();
+        for (Map.Entry<String, Object> entry : matchMap.entrySet()) {
+            boolQueryBuilder.must(QueryBuilders.match(m -> m.field(entry.getKey()).query((FieldValue) entry.getValue())));
+        }
+        return boolQueryBuilder.build()._toQuery();
+    }
+
+    private Query buildTermsQuery(Map<String, Object> termsMap) {
+        log.info("search:: buildTermsQuery");
+        BoolQuery.Builder boolQueryBuilder = QueryBuilders.bool();
+        for (Map.Entry<String, Object> entry : termsMap.entrySet()) {
+            boolQueryBuilder.must(QueryBuilders.terms(t -> t.field(entry.getKey()).terms((TermsQueryField) entry.getValue())));
+        }
+        return boolQueryBuilder.build()._toQuery();
+    }
+
+    private Query buildRangeQuery(Map<String, Object> rangeMap) {
+        log.info("search:: buildRangeQuery");
+        BoolQuery.Builder boolQueryBuilder = QueryBuilders.bool();
+        for (Map.Entry<String, Object> entry : rangeMap.entrySet()) {
+            Map<String, Object> rangeConditions = (Map<String, Object>) entry.getValue();
+            RangeQuery.Builder rangeQueryBuilder = new RangeQuery.Builder().field(entry.getKey());
+            rangeConditions.forEach((condition, value) -> {
+                switch (condition) {
+                    case "gt":
+                        rangeQueryBuilder.gt(JsonData.of(value));
+                        break;
+                    case "gte":
+                        rangeQueryBuilder.gte(JsonData.of(value));
+                        break;
+                    case "lt":
+                        rangeQueryBuilder.lt(JsonData.of(value));
+                        break;
+                    case "lte":
+                        rangeQueryBuilder.lte(JsonData.of(value));
+                        break;
+                    default:
+                        throw new IllegalArgumentException(Constants.UNSUPPORTED_RANGE + condition);
+                }
+            });
+            boolQueryBuilder.must(rangeQueryBuilder.build()._toQuery());
+        }
+        return boolQueryBuilder.build()._toQuery();
+    }
+
+    private BoolQuery buildBoolQuery(Map<String, Object> boolMap) {
+        log.info("Search:: builderBoolQuery");
+        BoolQuery.Builder boolQueryBuilder = QueryBuilders.bool();
+        if (boolMap.containsKey(Constants.MUST)) {
+            List<Map<String, Object>> mustList = (List<Map<String, Object>>) boolMap.get("must");
+            mustList.forEach(must -> boolQueryBuilder.must(buildQueryPart(must)));
+        }
+        if (boolMap.containsKey(Constants.FILTER)) {
+            List<Map<String, Object>> filterList = (List<Map<String, Object>>) boolMap.get("filter");
+            filterList.forEach(filter -> boolQueryBuilder.filter(buildQueryPart(filter)));
+        }
+        if (boolMap.containsKey(Constants.MUST_NOT)) {
+            List<Map<String, Object>> mustNotList = (List<Map<String, Object>>) boolMap.get("must_not");
+            mustNotList.forEach(mustNot -> boolQueryBuilder.mustNot(buildQueryPart(mustNot)));
+        }
+        if (boolMap.containsKey(Constants.SHOULD)) {
+            List<Map<String, Object>> shouldList = (List<Map<String, Object>>) boolMap.get("should");
+            shouldList.forEach(should -> boolQueryBuilder.should(buildQueryPart(should)));
+        }
+        return boolQueryBuilder.build();
+    }
+
+    private Query buildTermQuery(Map<String, Object> termMap) {
+        log.info("search::buildTermQuery");
+        BoolQuery.Builder boolQueryBuilder = QueryBuilders.bool();
+        for (Map.Entry<String, Object> entry : termMap.entrySet()) {
+            boolQueryBuilder.must(QueryBuilders.term(t -> t.field(entry.getKey()).value((FieldValue) entry.getValue())));
+        }
+        return boolQueryBuilder.build()._toQuery();
+    }
+
+    private void addFacetsToSearchSourceBuilder(
+            List<String> facets, SearchRequest.Builder searchRequestBuilder) {
+        if (facets != null && !facets.isEmpty()) {
+            Map<String, Aggregation> aggregationMap = facets.stream()
+                    .collect(Collectors.toMap(
+                            field -> field + "_agg",
+                            field -> Aggregation.of(a -> a.terms(
+                                    TermsAggregation.of(t -> t.field(field + ".keyword").size(250))))
+                    ));
+            searchRequestBuilder.aggregations(aggregationMap);
+        }
+    }
+
+    private BoolQuery.Builder buildFilterQuery(Map<String, Object> filterCriteriaMap) {
+        BoolQuery.Builder boolQueryBuilder = QueryBuilders.bool();
+        List<Query> mustNotQueries = new ArrayList<>();
+        List<Query> boolQueries = new ArrayList<>();
+        if (filterCriteriaMap != null) {
+            filterCriteriaMap.forEach(
+                    (field, value) -> {
+                        if (field.equals("must_not") && value instanceof ArrayList) {
+                            mustNotQueries.add(Query.of(q ->q.termsSet(t->t.field(field).terms((ArrayList<String>) value))));
+                        } else if (value instanceof Boolean) {
+                            boolQueries.add(Query.of(q ->q.term(t->t.field(field).value((boolean)value))));
+                        } else if (value instanceof List<?>) {
+                            List<FieldValue> termsList = ((List<?>) value).stream()
+                                    .map(v -> FieldValue.of(v.toString()))
+                                    .collect(Collectors.toList());
+                            boolQueryBuilder.must(Query.of(q -> q.terms(t -> t.field(field ).terms(terms -> terms.value(termsList)))));
+                        } else if (value instanceof String) {
+                            boolQueryBuilder.must(Query.of(q -> q.terms(t ->
+                                    t.field(field )
+                                            .terms(terms -> terms.value(List.of(FieldValue.of((String) value))))
+                            )));
+                        } else if (value instanceof Set) {
+                            Set<String> termsSet = (Set<String>) value;
+                            List<FieldValue> termsList = termsSet.stream()
+                                    .map(FieldValue::of)
+                                    .collect(Collectors.toList());
+                            boolQueryBuilder.must(Query.of(q -> q.terms(t -> t.field(field + Constants.KEYWORD).terms(terms -> terms.value(termsList)))));
+                        } else if (value instanceof Map) {
+                            Map<String, Object> nestedMap = (Map<String, Object>) value;
+                            if (isRangeQuery(nestedMap)) {
+                                // Handle range query
+                                BoolQuery.Builder rangeOrNullQuery = QueryBuilders.bool();
+                                RangeQuery.Builder rangeQuery = QueryBuilders.range().field(field);
+                                nestedMap.forEach((rangeOperator, rangeValue) -> {
+                                    switch (rangeOperator) {
+                                        case Constants.SEARCH_OPERATION_GREATER_THAN_EQUALS:
+                                            rangeQuery.gte((JsonData) rangeValue);
+                                            break;
+                                        case Constants.SEARCH_OPERATION_LESS_THAN_EQUALS:
+                                            rangeQuery.lte((JsonData) rangeValue);
+                                            break;
+                                        case Constants.SEARCH_OPERATION_GREATER_THAN:
+                                            rangeQuery.gt((JsonData) rangeValue);
+                                            break;
+                                        case Constants.SEARCH_OPERATION_LESS_THAN:
+                                            rangeQuery.lt((JsonData) rangeValue);
+                                            break;
+                                    }
+                                });
+                                rangeOrNullQuery.should(rangeQuery.build()._toQuery());
+                                rangeOrNullQuery.should(Query.of(q -> q.bool(b -> b.mustNot(Query.of(qn -> qn.exists(e -> e.field(field)))))));
+                                boolQueryBuilder.must(rangeOrNullQuery.build()._toQuery());
+                            } else {
+                                nestedMap.forEach((nestedField, nestedValue) -> {
+                                    String fullPath = field + "." + nestedField;
+                                    if (nestedValue instanceof Boolean) {
+                                        boolQueryBuilder.must(Query.of(q -> q.term(t -> t.field(fullPath).value((Boolean) nestedValue))));
+                                    } else if (nestedValue instanceof String) {
+                                        List<FieldValue> termList = Collections.singletonList(FieldValue.of((String) nestedValue));
+                                        boolQueryBuilder.must(Query.of(q -> q.terms(t -> t.field(fullPath + Constants.KEYWORD).terms((TermsQueryField) termList))));
+                                    } else if (nestedValue instanceof ArrayList) {
+                                        boolQueryBuilder.must(Query.of(q -> q.terms(t -> t.field(fullPath + Constants.KEYWORD).terms((TermsQueryField) nestedValue))));
+                                    }
+                                });
+                            }
+                        }
+                    });
+            mustNotQueries.forEach(mustNotQuery -> boolQueryBuilder.mustNot(mustNotQuery));
+            boolQueries.forEach(boolQuery -> boolQueryBuilder.must(boolQuery));
+        }
+        return boolQueryBuilder;
+    }
+
+    private boolean isRangeQuery(Map<String, Object> nestedMap) {
+        return nestedMap.keySet().stream().anyMatch(key -> key.equals(Constants.SEARCH_OPERATION_GREATER_THAN_EQUALS) ||
+                key.equals(Constants.SEARCH_OPERATION_LESS_THAN_EQUALS) || key.equals(Constants.SEARCH_OPERATION_GREATER_THAN) ||
+                key.equals(Constants.SEARCH_OPERATION_LESS_THAN));
+    }
+
+    private boolean isNotBlank(String value) {
+        return value != null && !value.trim().isEmpty();
+    }
+
+    private void addSortToSearchSourceBuilder( SearchCriteria searchCriteria,
+                                               SearchRequest.Builder searchRequestBuilder,
+                                               String jsonFilePath) {
+
+        if (isNotBlank(searchCriteria.getOrderBy()) && isNotBlank(searchCriteria.getOrderDirection())) {
+            String sortField = searchCriteria.getOrderBy();
+            Map<String, Object> schemaMap = readJsonSchema(jsonFilePath);
+            Map<String, Object> fieldMap = (Map<String, Object>) schemaMap.get(sortField);
+
+            if (MapUtils.isEmpty(fieldMap) ||
+                    (!Constants.NUMBER.equals(fieldMap.get(Constants.TYPE)) && !Constants.LONG.equals(fieldMap.get(Constants.TYPE)) && !Constants.DATE.equals(fieldMap.get(Constants.TYPE)))) {
+                sortField += Constants.KEYWORD;
+            }
+
+            String finalSortField = sortField;
+            searchRequestBuilder.sort(s -> s.field(f -> f
+                    .field(finalSortField)
+                    .order(Constants.ASC.equalsIgnoreCase(searchCriteria.getOrderDirection()) ? SortOrder.Asc : SortOrder.Desc)
+            ));
+        }
+    }
+
+    private void addRequestedFieldsToSearchSourceBuilder(
+            SearchCriteria searchCriteria, SearchRequest.Builder searchRequestBuilder) {
+        if (searchCriteria.getRequestedFields() == null) {
+            // Get all fields in response
+            searchRequestBuilder.source(SourceConfig.of(sc -> sc.fetch(true)));
+        } else {
+            if (searchCriteria.getRequestedFields().isEmpty()) {
+                log.error("Please specify at least one field to include in the results.");
+            }
+            searchRequestBuilder.source(SourceConfig.of(sc -> sc.filter(filter -> filter.includes(searchCriteria.getRequestedFields()))));
+        }
+    }
+
+
+    public static Map<String, Object> readJsonSchema(String jsonFilePath) {
+        if (schemaCache.containsKey(jsonFilePath)) {
+            return schemaCache.get(jsonFilePath);
+        }
+
+        try (InputStream schemaStream = JsonSchemaFactory.getInstance().getClass().getResourceAsStream(jsonFilePath)) {
+            ObjectMapper objectMapper = new ObjectMapper();
+            Map<String, Object> schemaMap = objectMapper.readValue(schemaStream, new TypeReference<Map<String, Object>>() {});
+            schemaCache.put(jsonFilePath, schemaMap);
+            return schemaMap;
+        } catch (Exception e) {
+            log.error("Error reading json schema", e);
+            throw new CustomException("error reading json schema", e.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+}
+
+

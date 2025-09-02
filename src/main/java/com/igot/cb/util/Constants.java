@@ -287,7 +287,7 @@ public class Constants {
     public static final String COMPLETION_PERCENTAGE_LOWER_CASE = "completion_percentage";
     public static final String ACCESS_CONTROL = "accessControl";
     public static final String USER_GROUPS = "userGroups";
-    public static final String USER_GROUP_CRTIRIA_LIST = "userGroupCriteriaList";
+    public static final String USER_GROUP_CRITERIA_LIST = "userGroupCriteriaList";
     public static final String CRITERIA_VALUE = "criteriaValue";
     public static final String ACCESS_SETTINGS_CREATE_API = "api.accessSettings.create";
     public static final String USER_GROUP_ID = "userGroupId";
@@ -379,6 +379,10 @@ public class Constants {
     public static final String NUMBER = "number";
     public static final String LONG = "long";
     public static final String DATE = "date";
+
+    public static final String CB_PLAN_TABLE = "cb_plan";
+    public static final String ASSIGNMENT_TYPE = "assignmentType";
+    public static final String ASSIGNMENT_TYPE_INFO = "assignmentTypeInfo";
 
 
     private Constants() {

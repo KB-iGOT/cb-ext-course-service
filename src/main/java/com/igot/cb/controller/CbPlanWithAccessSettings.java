@@ -1,5 +1,6 @@
 package com.igot.cb.controller;
 
+import com.igot.cb.elasticsearch.dto.SearchCriteria;
 import com.igot.cb.model.ApiRequest;
 import com.igot.cb.model.ApiResponse;
 import com.igot.cb.service.AccessSettingMigrationServiceImpl;
@@ -70,15 +71,6 @@ public class CbPlanWithAccessSettings {
         return new ResponseEntity<>(response, response.getResponseCode());
     }
 
-    @GetMapping("/read/{cbPlanId}")
-    public ResponseEntity<ApiResponse> readCbPlan(
-            @PathVariable("cbPlanId") String cbPlanId,
-            @RequestHeader(Constants.X_AUTH_TOKEN) String token,
-            @RequestHeader(Constants.X_AUTH_USER_ORG_ID) String userOrgId) throws Exception {
-
-        ApiResponse response = cbPlanService.readCbPlan(cbPlanId, userOrgId, token);
-        return new ResponseEntity<>(response, response.getResponseCode());
-    }
 
     @PostMapping("/search")
     public ResponseEntity<ApiResponse> searchCbPlan(

@@ -37,8 +37,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
-import java.sql.Timestamp;
-import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -46,6 +44,7 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 @Service
@@ -65,6 +64,22 @@ public class CbPlanServiceImpl {
 
     @Autowired
     CbExtServerProperties serverProperties;
+
+
+    @Autowired
+    UserUtilityService userUtilityService;
+
+    @Autowired
+    ContentInfoServiceImpl contentService;
+
+    @Autowired
+    private EsUtilService esUtilService;
+
+    @Value("${cb.plan.v2.index}")
+    private String cpPlanIndex;
+
+    @Value("${elastic.required.field.cb.plan.json.path}")
+    private String elasticCbPlanJsonPath;
 
     public CbPlanServiceImpl(AccessTokenValidator accessTokenValidator, CassandraOperation cassandraOperation) {
         this.accessTokenValidator = accessTokenValidator;
@@ -244,6 +259,20 @@ public class CbPlanServiceImpl {
         return errors;
     }
 
+    public static Map<String, Object> sanitizeForElastic(Map<String, Object> input) {
+        Map<String, Object> sanitized = new HashMap<>();
+        for (Map.Entry<String, Object> entry : input.entrySet()) {
+            Object value = entry.getValue();
+            if (value instanceof Instant) {
+                // Convert Instant → ISO String (e.g., 2025-09-02T09:30:56.446Z)
+                sanitized.put(entry.getKey(), DateTimeFormatter.ISO_INSTANT.format((Instant) value));
+            } else {
+                sanitized.put(entry.getKey(), value);
+            }
+        }
+        return sanitized;
+    }
+
     private ApiResponse insertCustomOrgLookup(String cbPlanId,
                                               List<String> orgIdList, Date endDate) {
         ApiResponse response = new ApiResponse();
@@ -394,9 +423,9 @@ public class CbPlanServiceImpl {
                         Object contextDataObj = updatedCbPlan.get(Constants.CONTEXT_DATA_REQUEST);
                         List<String> newOrgIds = extractRootOrgIds(contextDataObj);
                         if (!newOrgIds.isEmpty()) {
-                            updatedCbPlanData.put(Constants.ORGIDLIST, newOrgIds);
+                            updatedCbPlanData.put(Constants.ORG_ID_LIST, newOrgIds);
                             log.info("Extracted orgIds from contextData: {}", newOrgIds);
-                            List<String> oldOrgIds = (List<String>) cbPlanInfoMap.getOrDefault(Constants.ORGIDLIST, new ArrayList<>());
+                            List<String> oldOrgIds = (List<String>) cbPlanInfoMap.getOrDefault(Constants.ORG_ID_LIST, new ArrayList<>());
 
                             // Compare lists
                             if (CollectionUtils.isNotEmpty(oldOrgIds)) {
@@ -424,6 +453,15 @@ public class CbPlanServiceImpl {
                     Map<String, Object> resp = cassandraOperation.updateRecord(Constants.KEYSPACE_SUNBIRD,
                             Constants.TABLE_CB_PLAN_V2, updatedCbPlanData, cbPlanInfo);
                     if (resp.get(Constants.RESPONSE).equals(Constants.SUCCESS)) {
+                        for (Map.Entry<String, Object> entry : cbPlanInfoMap.entrySet()) {
+                            updatedCbPlanData.putIfAbsent(entry.getKey(), entry.getValue());
+                        }
+                        updatedCbPlanData.put(Constants.ID, cbPlanId);
+                        updatedCbPlanData.put(Constants.UPDATED_BY, userId);
+                        updatedCbPlanData.put(Constants.CREATED_AT, cbPlanInfoMap.get(Constants.CREATED_AT_REQ));
+                        updatedCbPlanData.put(Constants.PUBLISHED_ON, cbPlanInfoMap.get(Constants.CREATED_AT_REQ));
+                        Map<String, Object> sanitizedMap = sanitizeForElastic(updatedCbPlanData);
+                        esUtilService.updateDocument(cpPlanIndex, Constants.INDEX_TYPE, cbPlanId, sanitizedMap, elasticCbPlanJsonPath);
                         response.getResult().put(Constants.STATUS, Constants.UPDATED);
                         if (!addedOrgIds.isEmpty()) {
                             ApiResponse lookupResp = insertCustomOrgLookup(String.valueOf(cbPlanId), addedOrgIds, endDate);
@@ -789,111 +827,6 @@ public class CbPlanServiceImpl {
             if (CollectionUtils.isNotEmpty(cbPlanMap)) {
                 Map<String, Object> cbPlan = cbPlanMap.get(0);
                 Map<String, Object> enrichData = populateReadData(cbPlan);
-                response.getResult().put(Constants.CONTENT, enrichData);
-            } else {
-                response.getParams().setStatus(Constants.FAILED);
-                response.getParams().setErr("CbPlan is not exist for ID: " + cbPlanId);
-                response.setResponseCode(HttpStatus.BAD_REQUEST);
-            }
-        } catch (Exception e) {
-            logger.error("Failed to Read CB Plan for OrgId: " + userOrgId + "for CB PlanId: " + cbPlanId, e);
-            response.getParams().setStatus(Constants.FAILED);
-            response.getParams().setErr(e.getMessage());
-            response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
-        }
-        return response;
-
-    }
-
-
-
-    private Map<String, Object> populateReadData(Map<String, Object> cbPlan) throws Exception {
-        Map<String, Object> enrichData = new HashMap<>();
-        List<String> contentTypeInfo = new ArrayList<>();
-        List<String> userDraftAssignmentTypeInfoForLive = new ArrayList<>();
-        if (StringUtils.isBlank((String) cbPlan.get(Constants.DRAFT_DATA)) ||
-                (StringUtils.isNotBlank((String) cbPlan.get(Constants.DRAFT_DATA))
-                        && Constants.LIVE.equalsIgnoreCase((String) cbPlan.get(Constants.STATUS)))) {
-            enrichData.put(Constants.NAME, cbPlan.get(Constants.NAME));
-            enrichData.put(Constants.CONTENT_TYPE, cbPlan.get(Constants.CONTENT_TYPE));
-            contentTypeInfo = (List<String>) cbPlan.get(Constants.CONTENT_LIST);
-            enrichData.put(Constants.END_DATE, cbPlan.get(Constants.END_DATE));
-            enrichData.put(Constants.IS_APAR, cbPlan.getOrDefault(Constants.IS_APAR, false));
-            if (StringUtils.isNotBlank((String) cbPlan.get(Constants.DRAFT_DATA))) {
-                Map<String, Object> cbPlanDtoMap = mapper.readValue((String) cbPlan.get(Constants.DRAFT_DATA),
-                        new TypeReference<Map<String, Object>>() {
-                        });
-                cbPlanDtoMap.remove(Constants.ID);
-                enrichData.put(Constants.DRAFT_DATA, cbPlanDtoMap);
-            }
-        } else if (StringUtils.isNotBlank((String) cbPlan.get(Constants.DRAFT_DATA))
-                && Constants.DRAFT.equalsIgnoreCase((String) cbPlan.get(Constants.STATUS))) {
-            CbPlanDto cbPlanDto = mapper.readValue((String) cbPlan.get(Constants.DRAFT_DATA), CbPlanDto.class);
-            enrichData.put(Constants.NAME, cbPlanDto.getName());
-            enrichData.put(Constants.CONTENT_TYPE, cbPlanDto.getContentType());
-            contentTypeInfo = cbPlanDto.getContentList();
-            enrichData.put(Constants.END_DATE, cbPlanDto.getEndDate());
-            enrichData.put(Constants.IS_APAR, cbPlanDto.getIsApar() != null ? cbPlanDto.getIsApar() : false);
-        }
-        Map<String, Map<String, String>> userInfoMap = new HashMap<>();
-        enrichData.put(Constants.ID, cbPlan.get(Constants.ID));
-
-        enrichData.put(Constants.CREATED_AT, cbPlan.get(Constants.CREATED_AT));
-        enrichData.put(Constants.CB_PUBLISHED_AT, cbPlan.get(Constants.CB_PUBLISHED_AT));
-        enrichData.put(Constants.STATUS, cbPlan.get(Constants.STATUS));
-
-        Object createdByObj = cbPlan.get(Constants.CREATED_BY);
-        if (createdByObj != null && createdByObj instanceof String && !((String) createdByObj).trim().isEmpty()) {
-            userUtilityService.getUserDetailsFromDB(
-                    Arrays.asList((String) createdByObj),
-                    Arrays.asList(Constants.FIRSTNAME, Constants.USER_ID),
-                    userInfoMap
-            );
-        }
-
-        enrichUserInfo(userInfoMap);
-
-        enrichData.put(Constants.CREATED_BY_NAME,
-                userInfoMap.get((String) cbPlan.get(Constants.CREATED_BY)).get(Constants.FIRSTNAME));
-        enrichData.put(Constants.CREATED_BY, cbPlan.get(Constants.CREATED_BY));
-        List<Map<String, Object>> enrichContentInfoMap = new ArrayList<>();
-        for (String contentId : contentTypeInfo) {
-            Map<String, Object> contentResponse = contentService.readContent(contentId, null);
-            if (MapUtils.isNotEmpty(contentResponse)) {
-                if (Constants.LIVE.equalsIgnoreCase((String) contentResponse.get(Constants.STATUS))) {
-                    Map<String, Object> enrichContentMap = new HashMap<>();
-
-                    enrichContentMap.put(Constants.NAME, contentResponse.getOrDefault(Constants.NAME, ""));
-                    enrichContentMap.put(Constants.COMPETENCIES_V5, contentResponse.getOrDefault(Constants.COMPETENCIES_V5, Collections.emptyList()));
-                    enrichContentMap.put(Constants.AVG_RATING, contentResponse.getOrDefault(Constants.AVG_RATING, 0.0));
-                    enrichContentMap.put(Constants.IDENTIFIER, contentResponse.getOrDefault(Constants.IDENTIFIER, ""));
-                    enrichContentMap.put(Constants.DESCRIPTION, contentResponse.getOrDefault(Constants.DESCRIPTION, ""));
-                    enrichContentMap.put(Constants.ADDITIONAL_TAGS, contentResponse.getOrDefault(Constants.ADDITIONAL_TAGS, Collections.emptyList()));
-                    enrichContentMap.put(Constants.CONTENT_TYPE_KEY, contentResponse.getOrDefault(Constants.CONTENT_TYPE_KEY, ""));
-                    enrichContentMap.put(Constants.PRIMARY_CATEGORY, contentResponse.getOrDefault(Constants.PRIMARY_CATEGORY, ""));
-                    enrichContentMap.put(Constants.DURATION, contentResponse.getOrDefault(Constants.DURATION, 0));
-                    enrichContentMap.put(Constants.COURSE_APP_ICON, contentResponse.getOrDefault(Constants.COURSE_APP_ICON, ""));
-                    enrichContentMap.put(Constants.POSTER_IMAGE, contentResponse.getOrDefault(Constants.POSTER_IMAGE, ""));
-                    enrichContentMap.put(Constants.ORGANISATION, contentResponse.getOrDefault(Constants.ORGANISATION, ""));
-                    enrichContentMap.put(Constants.CREATOR_LOGO, contentResponse.getOrDefault(Constants.CREATOR_LOGO, ""));
-                    enrichContentMap.put(Constants.LANGUAGE_MAP_V1, contentResponse.getOrDefault(Constants.LANGUAGE_MAP_V1, Collections.emptyMap()));
-    public ApiResponse readCbPlan(String cbPlanId, String userOrgId, String authUserToken) {
-        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_CB_PLAN_READ_BY_ID);
-        try {
-            if (cbPlanId == null) {
-                response.getParams().setStatus(Constants.FAILED);
-                response.getParams().setErr("CbPlanId is missing.");
-                response.setResponseCode(HttpStatus.BAD_REQUEST);
-                return response;
-            }
-            Map<String, Object> cbPlanInfo = new HashMap<>();
-            cbPlanInfo.put(Constants.PLAN_ID, cbPlanId);
-            List<Map<String, Object>> cbPlanMap = cassandraOperation.getRecordsByProperties(
-                    Constants.KEYSPACE_SUNBIRD, Constants.TABLE_CB_PLAN_V2, cbPlanInfo, null, null);
-
-            if (CollectionUtils.isNotEmpty(cbPlanMap)) {
-                Map<String, Object> cbPlan = cbPlanMap.get(0);
-                Map<String, Object> enrichData = populateReadData(cbPlan);
                 enrichData.put(Constants.ID,cbPlanId);
                 response.getResult().put(Constants.CONTENT, enrichData);
             } else {
@@ -1118,46 +1051,5 @@ public class CbPlanServiceImpl {
         response.setResponseCode(HttpStatus.OK);
     }
 
-                    enrichContentInfoMap.add(enrichContentMap);
-                }
 
-            }
-
-            enrichData.put(Constants.CONTENT_LIST, enrichContentInfoMap);
-            return enrichData;
-        }
-        return enrichData;
-    }
-
-    private String getDesignationForUser(String profileDetails, String userId) {
-        String userDesignation = "";
-        try {
-            Map<String, Object> profileDetailsMap = null;
-            List<Map<String, Object>> professionalDetails = null;
-            if (StringUtils.isNotEmpty(profileDetails)) {
-                profileDetailsMap = mapper.readValue(profileDetails, new TypeReference<HashMap<String, Object>>() {
-                });
-            }
-            if (MapUtils.isNotEmpty(profileDetailsMap)) {
-                professionalDetails = (List<Map<String, Object>>) profileDetailsMap.get(Constants.PROFESSIONAL_DETAILS);
-            }
-            if (CollectionUtils.isNotEmpty(professionalDetails)) {
-                userDesignation = (String) professionalDetails.get(0).get(Constants.DESIGNATION);
-            }
-        } catch (Exception e) {
-            logger.error("Not able to read the profile Details for userId: " + userId, e);
-        }
-        return userDesignation;
-    }
-
-    private void enrichUserInfo(Map<String, Map<String, String>> userInfoMap) {
-        for (Map.Entry userEntry : userInfoMap.entrySet()) {
-            Map<String, String> userInfo = (Map<String, String>) userEntry.getValue();
-            String profileDetails = userInfo.get(Constants.PROFILE_DETAILS_KEY);
-            String userDesignation = userInfo.get(Constants.DESIGNATION) != null ? userInfo.get(Constants.DESIGNATION) :
-                    getDesignationForUser(profileDetails, (String) userEntry.getKey());
-            userInfo.put(Constants.DESIGNATION, userDesignation);
-            userInfo.remove(Constants.PROFILE_DETAILS_KEY);
-        }
-    }
-
+}

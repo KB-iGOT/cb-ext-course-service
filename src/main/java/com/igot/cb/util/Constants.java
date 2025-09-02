@@ -374,6 +374,11 @@ public class Constants {
     public static final String CIPHER_ALGORITHM = "AES";
     public static final byte[] CIPHER_KEY = new byte[] { 'T', 'h', 'i', 's', 'A', 's', 'I', 'S', 'e', 'r', 'c', 'e',
             'K', 't', 'e', 'y' };
+    public static final String CREATED_AT_REQ = "createdat";
+    public static final String PUBLISHED_AT= "publishedAt";
+    public static final String NUMBER = "number";
+    public static final String LONG = "long";
+    public static final String DATE = "date";
 
 
     private Constants() {

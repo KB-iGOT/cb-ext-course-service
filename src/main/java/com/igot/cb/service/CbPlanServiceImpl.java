@@ -879,6 +879,17 @@ public class CbPlanServiceImpl {
         enrichData.put(Constants.CREATED_AT, cbPlan.get(Constants.CREATED_AT_REQ));
         enrichData.put(Constants.CB_PUBLISHED_AT, cbPlan.get(Constants.CB_PUBLISHED_AT));
         enrichData.put(Constants.STATUS, cbPlan.get(Constants.STATUS));
+        Object contextData = cbPlan.get(Constants.CONTEXT_DATA_REQUEST);
+        if (contextData != null) {
+            try {
+                JsonNode contextDataNode = mapper.readTree(contextData.toString());
+                enrichData.put(Constants.CONTEXT_DATA_REQUEST, contextDataNode);
+            } catch (Exception ex) {
+                log.error("Failed to parse contextDataRequest: {}", contextData, ex);
+            }
+        } else {
+            enrichData.put(Constants.CONTEXT_DATA_REQUEST, null); // or skip putting if you prefer
+        }
 
         Object createdByObj = cbPlan.get(Constants.CREATED_BY);
         if (createdByObj != null && createdByObj instanceof String && !((String) createdByObj).trim().isEmpty()) {
@@ -922,7 +933,6 @@ public class CbPlanServiceImpl {
             }
 
             enrichData.put(Constants.CONTENT_LIST, enrichContentInfoMap);
-            return enrichData;
         }
         return enrichData;
     }
@@ -983,7 +993,28 @@ public class CbPlanServiceImpl {
                     for (Map<String, Object> item : dataNode) {
                         // Create a copy of item so we don’t mutate original
                         Map<String, Object> enrichedItem = new HashMap<>(item);
+                        if (item.containsKey(Constants.CREATED_BY) && item.get(Constants.CREATED_BY) != null) {
+                            Object createdByObj = item.get(Constants.CREATED_BY);
+                            Map<String, Map<String, String>> userInfoMap = new HashMap<>();
+                            if (createdByObj instanceof String && !((String) createdByObj).trim().isEmpty()) {
+                                // fetch user details from DB
+                                userUtilityService.getUserDetailsFromDB(
+                                        Arrays.asList((String) createdByObj),
+                                        Arrays.asList(Constants.FIRSTNAME, Constants.USER_ID),
+                                        userInfoMap
+                                );
+                                // enrich user info map
+                                enrichUserInfo(userInfoMap);
+                                // add createdBy and createdByName to enrichedItem
+                                Map<String, String> userDetails = userInfoMap.get((String) createdByObj);
+                                if (userDetails != null) {
 
+                                    enrichedItem.put(Constants.CREATED_BY_NAME,
+                                            userInfoMap.get((String) item.get(Constants.CREATED_BY)).get(Constants.FIRSTNAME));
+                                    enrichedItem.put(Constants.CREATED_BY, item.get(Constants.CREATED_BY));
+                                }
+                            }
+                        }
                         if (item.containsKey(Constants.CONTENT_LIST) && item.get(Constants.CONTENT_LIST) != null) {
                             Object contentListObj = item.get(Constants.CONTENT_LIST);
 

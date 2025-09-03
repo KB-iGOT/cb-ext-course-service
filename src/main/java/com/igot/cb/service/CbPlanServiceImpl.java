@@ -882,8 +882,8 @@ public class CbPlanServiceImpl {
         Object contextData = cbPlan.get(Constants.CONTEXT_DATA_REQUEST);
         if (contextData != null) {
             try {
-                JsonNode parsed = mapper.readTree(contextData.toString());
-                enrichData.put(Constants.CONTEXT_DATA_REQUEST, parsed);
+                JsonNode contextDataNode = mapper.readTree(contextData.toString());
+                enrichData.put(Constants.CONTEXT_DATA_REQUEST, contextDataNode);
             } catch (Exception ex) {
                 log.error("Failed to parse contextDataRequest: {}", contextData, ex);
             }
@@ -993,7 +993,6 @@ public class CbPlanServiceImpl {
                     for (Map<String, Object> item : dataNode) {
                         // Create a copy of item so we don’t mutate original
                         Map<String, Object> enrichedItem = new HashMap<>(item);
-
                         if (item.containsKey(Constants.CREATED_BY) && item.get(Constants.CREATED_BY) != null) {
                             Object createdByObj = item.get(Constants.CREATED_BY);
                             Map<String, Map<String, String>> userInfoMap = new HashMap<>();
@@ -1004,11 +1003,8 @@ public class CbPlanServiceImpl {
                                         Arrays.asList(Constants.FIRSTNAME, Constants.USER_ID),
                                         userInfoMap
                                 );
-
                                 // enrich user info map
                                 enrichUserInfo(userInfoMap);
-
-
                                 // add createdBy and createdByName to enrichedItem
                                 Map<String, String> userDetails = userInfoMap.get((String) createdByObj);
                                 if (userDetails != null) {
@@ -1016,12 +1012,9 @@ public class CbPlanServiceImpl {
                                     enrichedItem.put(Constants.CREATED_BY_NAME,
                                             userInfoMap.get((String) item.get(Constants.CREATED_BY)).get(Constants.FIRSTNAME));
                                     enrichedItem.put(Constants.CREATED_BY, item.get(Constants.CREATED_BY));
-//                                    enrichedItem.put(Constants.CREATED_BY_NAME, userDetails.get(Constants.FIRSTNAME));
                                 }
                             }
                         }
-
-
                         if (item.containsKey(Constants.CONTENT_LIST) && item.get(Constants.CONTENT_LIST) != null) {
                             Object contentListObj = item.get(Constants.CONTENT_LIST);
 

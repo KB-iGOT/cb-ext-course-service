@@ -1083,4 +1083,148 @@ public class CbPlanServiceImpl {
     }
 
 
+    public ApiResponse retireCbPlan(ApiRequest request, String userOrgId, String token, List<String> userRoles) {
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_CB_PLAN_RETIRE);
+        Map<String, Object> requestData = (Map<String, Object>) request.getRequest();
+        try {
+            String userId = accessTokenValidator.fetchUserIdFromAccessToken(token, response);
+            if (StringUtils.isBlank(userId)) {
+                response.getParams().setStatus(Constants.FAILED);
+                response.getParams().setErr(Constants.USER_ID_DOESNT_EXIST);
+                response.setResponseCode(HttpStatus.BAD_REQUEST);
+                return response;
+            }
+            String cbPlanId = requestData.get(Constants.ID).toString();
+            String comment = (String) requestData.get(Constants.COMMENT);
+            if (StringUtils.isBlank(cbPlanId)) {
+                response.getParams().setStatus(Constants.FAILED);
+                response.getParams().setErr("CbPlanId is missing.");
+                response.setResponseCode(HttpStatus.BAD_REQUEST);
+                return response;
+            }
+            Map<String, Object> cbPlanInfo = new HashMap<>();
+            cbPlanInfo.put(Constants.PLAN_ID, cbPlanId);
+            List<Map<String, Object>> cbPlanMap = cassandraOperation.getRecordsByProperties(
+                    Constants.KEYSPACE_SUNBIRD, Constants.TABLE_CB_PLAN_V2, cbPlanInfo, null, null);
+
+            if (CollectionUtils.isNotEmpty(cbPlanMap)) {
+                Map<String, Object> cbPlan = cbPlanMap.get(0);
+                if (!(userId.equals(cbPlan.get(Constants.CREATED_BY)) ||
+                        serverProperties.getCbPlanUpdatePublishAuthorizedRoles().stream().anyMatch(roles -> CollectionUtils.isNotEmpty(userRoles) && userRoles.contains(roles)))) {
+                    response.getParams().setStatus(Constants.FAILED);
+                    response.getParams().setErr("Not Authorized to delete cbp Plan");
+                    response.setResponseCode(HttpStatus.BAD_REQUEST);
+                    return response;
+                }
+                if (Constants.CB_RETIRE.equalsIgnoreCase((String) cbPlan.get(Constants.STATUS))) {
+                    response.getParams().setStatus(Constants.FAILED);
+                    response.getParams().setErr("CbPlan is already archived for ID: " + cbPlanId);
+                    response.setResponseCode(HttpStatus.BAD_REQUEST);
+                    return response;
+                }
+
+                cbPlan.put(Constants.UPDATED_AT, Instant.now());
+                cbPlan.put(Constants.UPDATED_BY, userId);
+                cbPlan.put(Constants.STATUS, Constants.CB_RETIRE);
+                if (StringUtils.isNoneBlank(comment)) {
+                    cbPlan.put(Constants.COMMENT, comment);
+                }
+                cbPlan.remove(Constants.PLAN_ID);
+                cbPlan.put(Constants.CB_PUBLISHED_AT, Instant.now());
+                Map<String, Object> resp = cassandraOperation.updateRecord(Constants.KEYSPACE_SUNBIRD,
+                        Constants.TABLE_CB_PLAN_V2, cbPlan, cbPlanInfo);
+                if (resp.get(Constants.RESPONSE).equals(Constants.SUCCESS)) {
+                    cbPlan.put(Constants.ID, cbPlanId);
+                    cbPlan.put(Constants.STATUS, Constants.CB_RETIRE);
+                    Map<String, Object> sanitizedMap = sanitizeForElastic(cbPlan);
+                    esUtilService.addDocument(cpPlanIndex, Constants.INDEX_TYPE, cbPlanId, sanitizedMap, elasticCbPlanJsonPath);
+                    CbPlanDto cbPlanDto = mapper.convertValue(sanitizedMap, CbPlanDto.class);
+                    List<String> orgIdList= cbPlanDto.getOrgIdList();
+                    if (Constants.SINGLE.equalsIgnoreCase(cbPlanDto.getOrgScope()) || Constants.CUSTOM.equalsIgnoreCase(cbPlanDto.getOrgScope())) {
+                        ApiResponse lookupResp = archiveCustomOrgLookup(cbPlanId, orgIdList);
+                        if (!Constants.SUCCESS.equals(lookupResp.get(Constants.RESPONSE))) {
+                            response.getParams().setStatus(Constants.FAILED);
+                            response.getParams().setErr(lookupResp.getParams().getErr());
+                            response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
+                            return response;
+                        }
+                    }
+                    if (Constants.ALL.equalsIgnoreCase(cbPlanDto.getOrgScope())) {
+                        ApiResponse singleResp = (ApiResponse) cassandraOperation.updateRecord(Constants.KEYSPACE_SUNBIRD,
+                                Constants.TABLE_CB_PLAN_V2_LOOKUP_BY_ALL_ORG,
+                                Collections.singletonMap("isactive", false),
+                                Collections.singletonMap("planid", cbPlanId));
+                        if (!Constants.SUCCESS.equals(singleResp.get(Constants.RESPONSE))) {
+                            response.getParams().setStatus(Constants.FAILED);
+                            response.getParams().setErr(singleResp.getParams().getErr());
+                            response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
+                            return response;
+                        }
+                    }
+                    response.getResult().put(Constants.STATUS, Constants.UPDATED);
+                    response.getResult().put(Constants.MESSAGE, "Archived cbPlan for cbPlanId: " + cbPlanId);
+                } else {
+                    response.getParams().setStatus(Constants.FAILED);
+                    response.getParams()
+                            .setErr((String) resp.get(Constants.ERROR_MESSAGE) + "for cbPlanId: " + cbPlanId);
+                    response.setResponseCode(HttpStatus.BAD_REQUEST);
+                }
+            } else {
+                response.getParams().setStatus(Constants.FAILED);
+                response.getParams().setErr("CbPlan is not exist for ID: " + cbPlanId);
+                response.setResponseCode(HttpStatus.BAD_REQUEST);
+            }
+        } catch (Exception e) {
+            logger.error("Failed to Retire CB Plan for OrgId: " + userOrgId, e);
+            response.getParams().setStatus(Constants.FAILED);
+            response.getParams().setErr(e.getMessage());
+            response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+        return response;
+    }
+
+    private ApiResponse archiveCustomOrgLookup(String cbPlanId, List<String> orgIdList) {
+        ApiResponse response = new ApiResponse();
+        try {
+            if (CollectionUtils.isEmpty(orgIdList)) {
+                response.getParams().setStatus(Constants.FAILED);
+                response.getParams().setErr("orgIdList is empty. Cannot archive lookup entries.");
+                return response;
+            }
+
+            for (String orgId : orgIdList) {
+                // attributes to update
+                Map<String, Object> updateAttributes = new HashMap<>();
+                updateAttributes.put(Constants.IS_ACTIVE, false);
+                // primary/composite key for lookup
+                Map<String, Object> compositeKey = new HashMap<>();
+                compositeKey.put(Constants.PLAN_ID_RQST, cbPlanId);
+                compositeKey.put(Constants.ORG_ID_RQST, orgId);
+
+                Map<String, Object> updateResp = cassandraOperation.updateRecord(
+                        Constants.KEYSPACE_SUNBIRD,
+                        Constants.TABLE_CB_PLAN_V2_LOOKUP_BY_ORG,
+                        updateAttributes,
+                        compositeKey
+                );
+
+                if (!Constants.SUCCESS.equals(updateResp.get(Constants.RESPONSE))) {
+                    response.getParams().setStatus(Constants.FAILED);
+                    response.getParams().setErr("Failed to archive record for orgId: " + orgId);
+                    return response;
+                }
+            }
+            response.put(Constants.RESPONSE, Constants.SUCCESS);
+            response.getParams().setStatus(Constants.SUCCESS);
+            response.getResult().put("message", "Lookup entries archived successfully for all orgIds");
+
+        } catch (Exception e) {
+            response.getParams().setStatus(Constants.FAILED);
+            response.getParams().setErr("Exception while archiving org lookup entries: " + e.getMessage());
+            log.error("Error archiving org lookup entries for CB Plan: " + cbPlanId, e);
+        }
+
+        return response;
+    }
+
 }

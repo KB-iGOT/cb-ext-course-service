@@ -81,4 +81,15 @@ public class CbPlanWithAccessSettings {
         ApiResponse response = cbPlanService.searchCbPlan(request, userOrgId, token);
         return new ResponseEntity<>(response, response.getResponseCode());
     }
+
+    @DeleteMapping("/archive")
+    public ResponseEntity<ApiResponse> retireCbPlan(
+            @RequestBody ApiRequest request,
+            @RequestHeader(Constants.X_AUTH_TOKEN) String token,
+            @RequestHeader(Constants.X_AUTH_USER_ORG_ID) String userOrgId,
+            @RequestHeader(Constants.X_AUTH_USER_ROLES) List<String> userRoles) throws Exception {
+
+        ApiResponse response = cbPlanService.retireCbPlan(request, userOrgId, token, userRoles);
+        return new ResponseEntity<>(response, response.getResponseCode());
+    }
 }

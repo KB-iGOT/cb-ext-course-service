@@ -383,6 +383,7 @@ public class Constants {
     public static final String CB_PLAN_TABLE = "cb_plan";
     public static final String ASSIGNMENT_TYPE = "assignmentType";
     public static final String ASSIGNMENT_TYPE_INFO = "assignmentTypeInfo";
+    public static final String API_CB_PLAN_RETIRE = "api.cb.plan.v2.retire";
 
 
     private Constants() {

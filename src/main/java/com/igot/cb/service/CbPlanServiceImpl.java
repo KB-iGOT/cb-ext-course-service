@@ -137,8 +137,8 @@ public class CbPlanServiceImpl {
                 ApiResponse resp = (ApiResponse) cassandraOperation.insertRecord(Constants.KEYSPACE_SUNBIRD, Constants.TABLE_CB_PLAN_V2, requestMap);
                 if (Constants.SUCCESS.equals(resp.get(Constants.RESPONSE))) {
                     requestMap.put(Constants.ID, String.valueOf(cbPlanId));
-                    Map<String, Object> sanitizedMap = sanitizeForElastic(requestMap);
                     requestMap.put(Constants.END_DATE_REQUEST, cbPlanDto.getEndDate().toInstant());
+                    Map<String, Object> sanitizedMap = sanitizeForElastic(requestMap);
                     esUtilService.addDocument(cpPlanIndex, Constants.INDEX_TYPE, String.valueOf(cbPlanId), sanitizedMap, elasticCbPlanJsonPath);
                     response.getResult().put(Constants.ID, String.valueOf(cbPlanId));
                     if (Constants.SINGLE.equalsIgnoreCase(cbPlanDto.getOrgScope()) || Constants.CUSTOM.equalsIgnoreCase(cbPlanDto.getOrgScope())) {
@@ -872,7 +872,7 @@ public class CbPlanServiceImpl {
             enrichData.put(Constants.NAME, cbPlanDto.getName());
             enrichData.put(Constants.CONTENT_TYPE, cbPlanDto.getContentType());
             contentTypeInfo = cbPlanDto.getContentList();
-            enrichData.put(Constants.END_DATE, cbPlanDto.getEndDate());
+            enrichData.put(Constants.END_DATE_REQUEST, cbPlanDto.getEndDate());
             enrichData.put(Constants.IS_APAR, cbPlanDto.getIsApar() != null ? cbPlanDto.getIsApar() : false);
         }
         Map<String, Map<String, String>> userInfoMap = new HashMap<>();

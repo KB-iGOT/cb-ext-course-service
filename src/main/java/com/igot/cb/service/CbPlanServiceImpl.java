@@ -1211,7 +1211,7 @@ public class CbPlanServiceImpl {
                     return response;
                 }
             }
-
+            response.put(Constants.RESPONSE, Constants.SUCCESS);
             response.getParams().setStatus(Constants.SUCCESS);
             response.getResult().put("message", "Lookup entries archived successfully for all orgIds");
 

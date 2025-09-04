@@ -82,7 +82,7 @@ public class CbPlanWithAccessSettings {
         return new ResponseEntity<>(response, response.getResponseCode());
     }
 
-    @DeleteMapping("/v1/archive")
+    @DeleteMapping("/archive")
     public ResponseEntity<ApiResponse> retireCbPlan(
             @RequestBody ApiRequest request,
             @RequestHeader(Constants.X_AUTH_TOKEN) String token,

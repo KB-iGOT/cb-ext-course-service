@@ -1088,12 +1088,15 @@ public class CbPlanServiceImpl {
         Map<String, Object> requestData = (Map<String, Object>) request.getRequest();
         try {
             String userId = accessTokenValidator.fetchUserIdFromAccessToken(token, response);
-            if (StringUtils.isEmpty(userId)) {
+            if (StringUtils.isBlank(userId)) {
+                response.getParams().setStatus(Constants.FAILED);
+                response.getParams().setErr(Constants.USER_ID_DOESNT_EXIST);
+                response.setResponseCode(HttpStatus.BAD_REQUEST);
                 return response;
             }
             String cbPlanId = requestData.get(Constants.ID).toString();
             String comment = (String) requestData.get(Constants.COMMENT);
-            if (cbPlanId == null) {
+            if (StringUtils.isBlank(cbPlanId)) {
                 response.getParams().setStatus(Constants.FAILED);
                 response.getParams().setErr("CbPlanId is missing.");
                 response.setResponseCode(HttpStatus.BAD_REQUEST);
@@ -1192,11 +1195,11 @@ public class CbPlanServiceImpl {
             for (String orgId : orgIdList) {
                 // attributes to update
                 Map<String, Object> updateAttributes = new HashMap<>();
-                updateAttributes.put("isactive", false);
+                updateAttributes.put(Constants.IS_ACTIVE, false);
                 // primary/composite key for lookup
                 Map<String, Object> compositeKey = new HashMap<>();
-                compositeKey.put("planid", cbPlanId);
-                compositeKey.put("orgid", orgId);
+                compositeKey.put(Constants.PLAN_ID_RQST, cbPlanId);
+                compositeKey.put(Constants.ORG_ID_RQST, orgId);
 
                 Map<String, Object> updateResp = cassandraOperation.updateRecord(
                         Constants.KEYSPACE_SUNBIRD,

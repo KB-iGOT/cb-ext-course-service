@@ -1116,12 +1116,12 @@ public class CbPlanServiceImpl {
                     response.setResponseCode(HttpStatus.BAD_REQUEST);
                     return response;
                 }
-//                if (Constants.CB_RETIRE.equalsIgnoreCase((String) cbPlan.get(Constants.STATUS))) {
-//                    response.getParams().setStatus(Constants.FAILED);
-//                    response.getParams().setErr("CbPlan is already archived for ID: " + cbPlanId);
-//                    response.setResponseCode(HttpStatus.BAD_REQUEST);
-//                    return response;
-//                }
+                if (Constants.CB_RETIRE.equalsIgnoreCase((String) cbPlan.get(Constants.STATUS))) {
+                    response.getParams().setStatus(Constants.FAILED);
+                    response.getParams().setErr("CbPlan is already archived for ID: " + cbPlanId);
+                    response.setResponseCode(HttpStatus.BAD_REQUEST);
+                    return response;
+                }
 
                 cbPlan.put(Constants.UPDATED_AT, Instant.now());
                 cbPlan.put(Constants.UPDATED_BY, userId);

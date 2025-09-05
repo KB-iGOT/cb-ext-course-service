@@ -387,6 +387,7 @@ public class Constants {
     public static final String IS_ACTIVE = "isactive";
     public static final String PLAN_ID_RQST = "planid";
     public static final String ORG_ID_RQST = "orgid";
+    public static final String PLAN_YEAR = "planyear";
 
 
     private Constants() {

@@ -1116,12 +1116,12 @@ public class CbPlanServiceImpl {
                     response.setResponseCode(HttpStatus.BAD_REQUEST);
                     return response;
                 }
-                if (Constants.CB_RETIRE.equalsIgnoreCase((String) cbPlan.get(Constants.STATUS))) {
-                    response.getParams().setStatus(Constants.FAILED);
-                    response.getParams().setErr("CbPlan is already archived for ID: " + cbPlanId);
-                    response.setResponseCode(HttpStatus.BAD_REQUEST);
-                    return response;
-                }
+//                if (Constants.CB_RETIRE.equalsIgnoreCase((String) cbPlan.get(Constants.STATUS))) {
+//                    response.getParams().setStatus(Constants.FAILED);
+//                    response.getParams().setErr("CbPlan is already archived for ID: " + cbPlanId);
+//                    response.setResponseCode(HttpStatus.BAD_REQUEST);
+//                    return response;
+//                }
 
                 cbPlan.put(Constants.UPDATED_AT, Instant.now());
                 cbPlan.put(Constants.UPDATED_BY, userId);
@@ -1149,14 +1149,20 @@ public class CbPlanServiceImpl {
                             return response;
                         }
                     }
+                    int currentYear = Calendar.getInstance().get(Calendar.YEAR);
                     if (Constants.ALL.equalsIgnoreCase(cbPlanDto.getOrgScope())) {
-                        ApiResponse singleResp = (ApiResponse) cassandraOperation.updateRecord(Constants.KEYSPACE_SUNBIRD,
+                        Map<String, Object> compositeKeyMap = Map.of(
+                                Constants.PLAN_ID_RQST, cbPlanId,
+                                Constants.PLAN_YEAR, "ALL#" + currentYear
+                        );
+
+                        Map<String, Object> singleResp =  cassandraOperation.updateRecord(Constants.KEYSPACE_SUNBIRD,
                                 Constants.TABLE_CB_PLAN_V2_LOOKUP_BY_ALL_ORG,
-                                Collections.singletonMap("isactive", false),
-                                Collections.singletonMap("planid", cbPlanId));
+                                Collections.singletonMap(Constants.IS_ACTIVE, false),
+                                compositeKeyMap);
                         if (!Constants.SUCCESS.equals(singleResp.get(Constants.RESPONSE))) {
                             response.getParams().setStatus(Constants.FAILED);
-                            response.getParams().setErr(singleResp.getParams().getErr());
+                            response.getParams().setErr((String) singleResp.get(Constants.ERROR_MESSAGE));
                             response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
                             return response;
                         }

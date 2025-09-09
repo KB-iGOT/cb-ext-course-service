@@ -65,9 +65,9 @@ public class CbPlanWithAccessSettings {
         return new ResponseEntity<>(response, response.getResponseCode());
     }
 
-    @GetMapping("/v1/cbplan/migrate")
+    @GetMapping("/migrate")
     public ResponseEntity<ApiResponse> migrateCBPlanAccessSettingRules() {
-        ApiResponse response = accessSettingMigrationService.migrateAccessSettingRules();
+        ApiResponse response = accessSettingMigrationService.migrateCBPlanAccessSettingRules();
         return new ResponseEntity<>(response, response.getResponseCode());
     }
 

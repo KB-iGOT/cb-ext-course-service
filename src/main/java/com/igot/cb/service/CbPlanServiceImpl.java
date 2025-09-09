@@ -369,6 +369,9 @@ public class CbPlanServiceImpl {
                         response.setResponseCode(HttpStatus.BAD_REQUEST);
                         return response;
                     }
+                    Map<String, Object> draftData = new HashMap<>(cbPlanInfoMap);
+                    draftData.putAll(updatedCbPlan);
+                    draftData.put(Constants.PLAN_ID, cbPlanInfoMap.get(Constants.PLAN_ID));
                     String draftInfo = null;
                     try {
                         draftInfo = mapper.writeValueAsString(updatedCbPlan);
@@ -449,7 +452,8 @@ public class CbPlanServiceImpl {
 
                     endDate = parseToDate(endDateObj);
                     updatedCbPlan.put(Constants.END_DATE, endDate.toInstant());
-                    updatedCbPlan.put(Constants.DRAFT_DATA, draftInfo);
+                    updatedCbPlanData.put(Constants.DRAFT_DATA, draftInfo);
+                    updatedCbPlanData.put(Constants.STATUS, Constants.DRAFT);
                     Map<String, Object> resp = cassandraOperation.updateRecord(Constants.KEYSPACE_SUNBIRD,
                             Constants.TABLE_CB_PLAN_V2, updatedCbPlanData, cbPlanInfo);
                     if (resp.get(Constants.RESPONSE).equals(Constants.SUCCESS)) {

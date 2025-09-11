@@ -100,7 +100,7 @@ public class AccessSettingMigrationServiceImpl {
             for (Map<String, Object> cbPlanMap : cbPlanListMap) {
                 Map<String, Object> cbPlanV2Map = new HashMap<>();
                 String orgId = (String) cbPlanMap.get(Constants.ORG_ID);
-                String cbPlanId = cbPlanMap.get(Constants.ID).toString();
+                String cbPlanId = String.valueOf(cbPlanMap.get(Constants.ID));
                 String assignmentType = (String) cbPlanMap.get(Constants.ASSIGNMENT_TYPE);
                 List<String> assignmentTypeInfo = (List<String>) cbPlanMap.get(Constants.ASSIGNMENT_TYPE_INFO);
 

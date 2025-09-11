@@ -1553,11 +1553,11 @@ public class CbPlanServiceImpl {
 
             if (isUserHasAccess) {
                 log.info("User matches all criteria in userGroup: {}", userGroupName);
-                return true; // ✅ matched at least one group
+                return true;
             }
         }
 
-        return false; // ❌ no groups matched
+        return false;
     }
 
 

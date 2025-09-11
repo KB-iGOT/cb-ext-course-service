@@ -388,6 +388,10 @@ public class Constants {
     public static final String PLAN_ID_RQST = "planid";
     public static final String ORG_ID_RQST = "orgid";
     public static final String PLAN_YEAR = "planyear";
+    public static final String PUBLISHED_AT_KEY= "publishedat";
+    public static final String END_DATE_KEY = "endDate";
+    public static final String CREATED_AT_KEY = "createdat";
+    public static final String DRAFT_DATA_KEY = "draftdata";
 
 
     private Constants() {

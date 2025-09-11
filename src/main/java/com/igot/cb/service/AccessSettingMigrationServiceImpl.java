@@ -50,8 +50,8 @@ public class AccessSettingMigrationServiceImpl {
     private final EsUtilService esUtilService;
 
     public AccessSettingMigrationServiceImpl(CassandraOperation cassandraOperation,
-            ContentInfoServiceImpl contentService,
-            IdMapCacheMgr idMapCacheMgr,EsUtilService esUtilService) {
+                                             ContentInfoServiceImpl contentService,
+                                             IdMapCacheMgr idMapCacheMgr, EsUtilService esUtilService) {
         this.cassandraOperation = cassandraOperation;
         this.contentService = contentService;
         this.idMapCacheMgr = idMapCacheMgr;

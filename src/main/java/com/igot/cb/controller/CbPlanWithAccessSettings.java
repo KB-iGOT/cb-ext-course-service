@@ -92,4 +92,13 @@ public class CbPlanWithAccessSettings {
         ApiResponse response = cbPlanService.retireCbPlan(request, userOrgId, token, userRoles);
         return new ResponseEntity<>(response, response.getResponseCode());
     }
+
+    @GetMapping("/user/list")
+    public ResponseEntity<ApiResponse> getCBPlanListForUser(
+            @RequestHeader(Constants.X_AUTH_TOKEN) String token,
+            @RequestHeader(Constants.X_AUTH_USER_ORG_ID)String userOrgId) throws Exception {
+
+        ApiResponse response = cbPlanService.getCBPlanListForUser(userOrgId, token, false);
+        return new ResponseEntity<>(response, response.getResponseCode());
+    }
 }

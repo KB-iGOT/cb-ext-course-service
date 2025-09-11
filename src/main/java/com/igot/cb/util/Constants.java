@@ -388,6 +388,10 @@ public class Constants {
     public static final String PLAN_ID_RQST = "planid";
     public static final String ORG_ID_RQST = "orgid";
     public static final String PLAN_YEAR = "planyear";
+    public static final String CBP_PLAN_USER_LIST_API ="api.cbplan.user.list";
+    public static final String COUNT = "count";
+    public static final String VERIFIED = "VERIFIED";
+    public static final String SECURE_SETTINGS = "secureSettings";
 
 
     private Constants() {

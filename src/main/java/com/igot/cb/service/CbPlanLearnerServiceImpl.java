@@ -361,7 +361,7 @@ public class CbPlanLearnerServiceImpl {
                 String criteriaKey = (String) criteria.get(Constants.CRITERIA_KEY);
                 List<String> criteriaValues = (List<String>) criteria.get(Constants.CRITERIA_VALUE);
 
-                String userCriteriaValue = userProfile.get(criteriaKey.toLowerCase());
+                String userCriteriaValue = userProfile.get(criteriaKey);
 
                 if (StringUtils.isEmpty(userCriteriaValue) || !criteriaValues.contains(userCriteriaValue)) {
                     log.debug("User does not match criteria key: {} in group: {}", criteriaKey, userGroupName);

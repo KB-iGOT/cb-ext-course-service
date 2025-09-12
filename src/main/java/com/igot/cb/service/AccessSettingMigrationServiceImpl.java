@@ -108,11 +108,9 @@ public class AccessSettingMigrationServiceImpl {
                             cbPlanV2Map.put(Constants.NAME, draftData.get(Constants.NAME));
                             String endDateString = (String) draftData.get(Constants.END_DATE_KEY);
                             if (endDateString != null) {
-                                LocalDate localDate = LocalDate.parse(endDateString);
-                                LocalDateTime localDateTime = localDate.atStartOfDay();
-                                cbPlanV2Map.put(Constants.END_DATE_KEY, localDateTime.toInstant(ZoneOffset.UTC));
+                                parseToInstant(endDateString, cbPlanV2Map);
                             }
-                            List<String> contentList = (List<String>) draftData.get("contentList");
+                            List<String> contentList = (List<String>) draftData.get(Constants.CONTENT_LIST);
                             cbPlanV2Map.put(Constants.CONTENT_LIST, contentList != null ? contentList : new ArrayList<>());
                             cbPlanV2Map.put(Constants.CONTENT_TYPE, draftData.get(Constants.CONTENT_TYPE));
 
@@ -372,5 +370,25 @@ public class AccessSettingMigrationServiceImpl {
         m.put(Constants.CRITERIA_KEY, key);
         m.put(Constants.CRITERIA_VALUE, values);
         return m;
+    }
+
+    private void parseToInstant(String endDateString, Map<String, Object> cbPlanV2Map) {
+        Instant endDateInstant = null;
+        try {
+            LocalDate localDate = LocalDate.parse(endDateString);
+            LocalDateTime localDateTime = localDate.atStartOfDay();  // Set time to 00:00:00
+            endDateInstant = localDateTime.toInstant(ZoneOffset.UTC);  // Convert to Instant
+        } catch (Exception e) {
+            try {
+                DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSZ");
+                OffsetDateTime odt = OffsetDateTime.parse(endDateString, formatter);
+                endDateInstant = odt.toInstant();
+            } catch (Exception ex) {
+                log.error("Error parsing endDate string: {}", endDateString, ex);
+            }
+        }
+        if (endDateInstant != null) {
+            cbPlanV2Map.put(Constants.END_DATE_KEY, endDateInstant);
+        }
     }
 }

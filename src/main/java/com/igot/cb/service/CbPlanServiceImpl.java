@@ -689,7 +689,16 @@ public class CbPlanServiceImpl {
                 cbPlan.remove(Constants.PLAN_ID);
                 cbPlan.put(Constants.CB_PUBLISHED_AT, Instant.now());
                 cbPlan.put(Constants.UPDATED_AT, Instant.now());
-                cbPlan.put(Constants.CONTEXT_DATA_REQUEST, mapper.writeValueAsString(cbPlan.get(Constants.CONTEXT_DATA_REQUEST)));
+                Object contextData = cbPlan.get(Constants.CONTEXT_DATA_REQUEST);
+                if (contextData != null) {
+                    if (contextData instanceof String) {
+                        // Already a string, just store as-is
+                        cbPlan.put(Constants.CONTEXT_DATA_REQUEST, contextData);
+                    } else {
+                        // Convert object/map to JSON string
+                        cbPlan.put(Constants.CONTEXT_DATA_REQUEST, mapper.writeValueAsString(contextData));
+                    }
+                }
                 cbPlan.remove(Constants.END_DATE_REQUEST);
                 Map<String, Object> resp = cassandraOperation.updateRecord(Constants.KEYSPACE_SUNBIRD,
                         Constants.TABLE_CB_PLAN_V2, cbPlan, cbPlanInfo);
@@ -727,12 +736,20 @@ public class CbPlanServiceImpl {
 
     private void updateCbPlanData(Map<String, Object> cbPlan, CbPlanDto planDto) {
         cbPlan.put(Constants.NAME, planDto.getName());
-        try {
-            cbPlan.put(Constants.CONTEXT_DATA_REQUEST, mapper.writeValueAsString(planDto.getContextData()));
-        } catch (JsonProcessingException e) {
-            throw new RuntimeException(e);
+        Object contextData = cbPlan.get(Constants.CONTEXT_DATA_REQUEST);
+        if (contextData != null) {
+            if (contextData instanceof String) {
+                // Already a string, just store as-is
+                cbPlan.put(Constants.CONTEXT_DATA_REQUEST, contextData);
+            } else {
+                // Convert object/map to JSON string
+                try {
+                    cbPlan.put(Constants.CONTEXT_DATA_REQUEST, mapper.writeValueAsString(contextData));
+                } catch (JsonProcessingException e) {
+                    throw new RuntimeException(e);
+                }
+            }
         }
-
         cbPlan.put(Constants.ORG_SCOPE, planDto.getOrgScope());
         cbPlan.put(Constants.ORG_ID_LIST, planDto.getOrgIdList());
         cbPlan.put(Constants.DRAFT_DATA, null);

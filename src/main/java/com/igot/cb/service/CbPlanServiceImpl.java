@@ -689,7 +689,16 @@ public class CbPlanServiceImpl {
                 cbPlan.remove(Constants.PLAN_ID);
                 cbPlan.put(Constants.CB_PUBLISHED_AT, Instant.now());
                 cbPlan.put(Constants.UPDATED_AT, Instant.now());
-                cbPlan.put(Constants.CONTEXT_DATA_REQUEST, mapper.writeValueAsString(cbPlan.get(Constants.CONTEXT_DATA_REQUEST)));
+                Object contextData = cbPlan.get(Constants.CONTEXT_DATA_REQUEST);
+                if (contextData != null) {
+                    if (contextData instanceof String) {
+                        // Already a string, just store as-is
+                        cbPlan.put(Constants.CONTEXT_DATA_REQUEST, contextData);
+                    } else {
+                        // Convert object/map to JSON string
+                        cbPlan.put(Constants.CONTEXT_DATA_REQUEST, mapper.writeValueAsString(contextData));
+                    }
+                }
                 cbPlan.remove(Constants.END_DATE_REQUEST);
                 Map<String, Object> resp = cassandraOperation.updateRecord(Constants.KEYSPACE_SUNBIRD,
                         Constants.TABLE_CB_PLAN_V2, cbPlan, cbPlanInfo);
@@ -727,12 +736,20 @@ public class CbPlanServiceImpl {
 
     private void updateCbPlanData(Map<String, Object> cbPlan, CbPlanDto planDto) {
         cbPlan.put(Constants.NAME, planDto.getName());
-        try {
-            cbPlan.put(Constants.CONTEXT_DATA_REQUEST, mapper.writeValueAsString(planDto.getContextData()));
-        } catch (JsonProcessingException e) {
-            throw new RuntimeException(e);
+        Object contextData = cbPlan.get(Constants.CONTEXT_DATA_REQUEST);
+        if (contextData != null) {
+            if (contextData instanceof String) {
+                // Already a string, just store as-is
+                cbPlan.put(Constants.CONTEXT_DATA_REQUEST, contextData);
+            } else {
+                // Convert object/map to JSON string
+                try {
+                    cbPlan.put(Constants.CONTEXT_DATA_REQUEST, mapper.writeValueAsString(contextData));
+                } catch (JsonProcessingException e) {
+                    throw new RuntimeException(e);
+                }
+            }
         }
-
         cbPlan.put(Constants.ORG_SCOPE, planDto.getOrgScope());
         cbPlan.put(Constants.ORG_ID_LIST, planDto.getOrgIdList());
         cbPlan.put(Constants.DRAFT_DATA, null);
@@ -1236,329 +1253,5 @@ public class CbPlanServiceImpl {
 
         return response;
     }
-
-
-    public ApiResponse getCBPlanListForUser(String userOrgId, String authTokenOrUserId, boolean isPrivate) {
-        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.CBP_PLAN_USER_LIST_API);
-        try {
-            String userId = "";
-            if (isPrivate)
-                userId = authTokenOrUserId;
-            else
-                userId = accessTokenValidator.fetchUserIdFromAccessToken(authTokenOrUserId, response);
-            if (StringUtils.isBlank(userId)) {
-                return response;
-            }
-            logger.info("UserId of the User : " + userId + ", User org ID : " + userOrgId);
-
-            Map<String, Object> propertiesMap = new HashMap<>();
-
-            Map<String, String> userProfile = new HashMap<>();
-            Map<String, Object> queryParams = Map.of(Constants.ID, userId);
-            List<String> userFields = Arrays.asList(Constants.ID, Constants.ROOT_ORG_ID, Constants.PROFILE_DETAILS);
-            List<Map<String, Object>> userList = cassandraOperation.getRecordsByProperties(
-                    Constants.KEYSPACE_SUNBIRD, Constants.USER, queryParams, userFields, null);
-            if (CollectionUtils.isEmpty(userList)) {
-                response.getParams().setStatus(Constants.FAILED);
-                response.getParams().setErr("User Does not Exist");
-                response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
-                return response;
-            }
-            setUserProfile(userProfile, userList.get(0));
-            propertiesMap.clear();
-            int currentYear = Calendar.getInstance().get(Calendar.YEAR);
-            propertiesMap.put(Constants.PLAN_YEAR, "ALL#" + currentYear);
-            List<Map<String, Object>> cbplanResult = cassandraOperation.getRecordsByProperties(
-                    Constants.KEYSPACE_SUNBIRD, Constants.TABLE_CB_PLAN_V2_LOOKUP_BY_ALL_ORG, propertiesMap, new ArrayList<>(), null);
-            propertiesMap.clear();
-            propertiesMap.put(Constants.ORG_ID, userOrgId);
-            List<Map<String, Object>> cbplanOrgResult = cassandraOperation.getRecordsByProperties(
-                    Constants.KEYSPACE_SUNBIRD,
-                    Constants.TABLE_CB_PLAN_V2_LOOKUP_BY_ORG,
-                    propertiesMap,
-                    new ArrayList<>(),
-                    null
-            );
-
-// 3️⃣ Merge results into one list/map
-            if (CollectionUtils.isNotEmpty(cbplanOrgResult)) {
-                cbplanResult.addAll(cbplanOrgResult);
-            }
-
-            if (CollectionUtils.isEmpty(cbplanResult)) {
-                response.getParams().setStatus(Constants.SUCCESS);
-                response.getParams().setErr("CB Plan does not exist for the user");
-                response.setResponseCode(HttpStatus.OK);
-                return response;
-            }
-
-            List<Map<String, Object>> resultMap = new ArrayList<>();
-            Map<String, Object> courseDetailsMap = new HashMap<>();
-            cbplanResult = cbplanResult.stream()
-                    .filter(plan -> Boolean.TRUE.equals(plan.get(Constants.IS_ACTIVE)))
-                    .sorted(Comparator.comparing(m -> (Instant) ((Map<String, Object>) m).get(Constants.END_DATE_REQUEST), Comparator.reverseOrder()))
-                    .collect(Collectors.toList());
-
-            List<String> planIds = cbplanResult.stream()
-                    .map(plan -> (String) plan.get(Constants.PLAN_ID))
-                    .collect(Collectors.toList());
-            if (CollectionUtils.isEmpty(planIds)) {
-                response.getParams().setStatus(Constants.SUCCESS);
-                response.getParams().setErr("No active CB Plans found for  user");
-                response.setResponseCode(HttpStatus.OK);
-                return response;
-            }
-            propertiesMap.clear();
-            propertiesMap.put(Constants.PLAN_ID, planIds);
-            List<Map<String, Object>> activeCbPlans = cassandraOperation.getRecordsByProperties(
-                    Constants.KEYSPACE_SUNBIRD,
-                    Constants.TABLE_CB_PLAN_V2,
-                    propertiesMap,
-                    new ArrayList<>(),
-                    null
-            );
-            activeCbPlans= activeCbPlans.stream()
-                    .filter(plan -> Constants.LIVE.equalsIgnoreCase((String) plan.get(Constants.STATUS)))
-                    .collect(Collectors.toList());
-            for (Map<String, Object> cbPlan : activeCbPlans) {
-                Object contextDataObj = cbPlan.get(Constants.CONTEXT_DATA_REQUEST);
-                if (contextDataObj != null) {
-                    Map<String, Object> contextDataMap = parseContextData(contextDataObj, mapper);
-
-                    // Evaluate access rules → skip plan if user has no access
-                    if (MapUtils.isNotEmpty(contextDataMap) &&
-                            !evaluateContextAccessRule(contextDataMap, userProfile)) {
-                        logger.info("User does not have access to cbPlan: {}", cbPlan.get(Constants.PLAN_ID));
-                        continue;
-                    }
-                }
-                Map<String, Object> cbPlanDetails = new HashMap<>();
-                cbPlanDetails.put(Constants.ID, cbPlan.get(Constants.PLAN_ID));
-                cbPlanDetails.put(Constants.END_DATE, cbPlan.get(Constants.END_DATE_REQUEST));
-                List<String> courses = (List<String>) cbPlan.get(Constants.CONTENT_LIST);
-                cbPlanDetails.put(Constants.IS_APAR,
-                        cbPlan.containsKey(Constants.IS_APAR) && cbPlan.get(Constants.IS_APAR) != null
-                                ? cbPlan.get(Constants.IS_APAR)
-                                : false);
-
-                // Required Fields to be added later if required
-                List<Map<String, Object>> courseList = new ArrayList<>();
-                for (String courseId : courses) {
-                    Map<String, Object> contentDetails = null;
-                    if (!courseDetailsMap.containsKey(courseId)) {
-                        contentDetails = contentService.readContent(courseId, null);
-                        if (MapUtils.isNotEmpty(contentDetails)) {
-                            //if (Constants.LIVE.equalsIgnoreCase((String) contentDetails.get(Constants.STATUS))) {
-                            if (courseId.contains("_rc")) {
-                                if (Constants.VERIFIED.equalsIgnoreCase(userProfile.get(Constants.PROFILE_STATUS_KEY).toLowerCase())){
-                                    Map<String, Object> secureSettings = (Map<String, Object>) contentDetails.get(Constants.SECURE_SETTINGS);
-
-                                    if (MapUtils.isNotEmpty(secureSettings)) {
-                                        List<String> secureOrganisationList = (List<String>) secureSettings.get(Constants.ORGANISATION);
-
-                                        if (CollectionUtils.isNotEmpty(secureOrganisationList) && secureOrganisationList.contains(userOrgId)) {
-                                            courseDetailsMap.put(courseId, contentDetails);
-                                        }
-                                    }
-                                }
-
-                                if (!courseDetailsMap.containsKey(courseId)) {
-                                    contentDetails.clear();
-                                }
-                            } else {
-                                courseDetailsMap.put(courseId, contentDetails);
-                            }
-                        } else {
-                            logger.error("Failed to read course details for Id: " + courseId);
-                        }
-                    } else {
-                        continue;
-                    }
-                    if (MapUtils.isNotEmpty(contentDetails)) {
-                        courseList.add(contentDetails);
-                    }
-                }
-                boolean containsLanguageMap = courseList.stream().anyMatch(course ->
-                        course.get(Constants.LANGUAGE_MAP_V1) instanceof Map &&
-                                !((Map<?, ?>) course.get(Constants.LANGUAGE_MAP_V1)).isEmpty()
-                );
-                if (containsLanguageMap) {
-                    cbPlanDetails.put(Constants.CONTENT_LIST, removeDuplicateCourses(courseList));
-                } else {
-                    cbPlanDetails.put(Constants.CONTENT_LIST, courseList);
-                }
-                resultMap.add(cbPlanDetails);
-            }
-            logger.info("Number of CB Plan Available for the user is " + resultMap.size());
-            response.getResult().put(Constants.COUNT, resultMap.size());
-            response.getResult().put(Constants.CONTENT, resultMap);
-        } catch (Exception e) {
-            logger.error("Failed to lookup for user cb plan details. Exception: " + e.getMessage(), e);
-            response.getParams().setStatus(Constants.FAILED);
-            response.getParams().setErr(e.getMessage());
-            response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
-        }
-        return response;
-    }
-
-    private Map<String, Object> parseContextData(Object contextDataObj, ObjectMapper mapper) throws IOException {
-        if (contextDataObj == null) {
-            return Collections.emptyMap();
-        }
-
-        String rawJson = contextDataObj.toString().trim();
-
-        // Case 1: If it's already a JSON object (starts with { ... }), parse directly
-        if (rawJson.startsWith("{") && rawJson.endsWith("}")) {
-            return mapper.readValue(rawJson, new TypeReference<Map<String, Object>>() {});
-        }
-
-        // Case 2: If it's an escaped JSON string (starts with "{...}" including quotes)
-        if (rawJson.startsWith("\"") && rawJson.endsWith("\"")) {
-            // First parse into a TextNode, then get its actual value
-            JsonNode textNode = mapper.readTree(rawJson);
-            String unwrappedJson = textNode.asText();
-
-            return mapper.readValue(unwrappedJson, new TypeReference<Map<String, Object>>() {});
-        }
-
-        // Fallback
-        return Collections.emptyMap();
-    }
-
-
-
-
-    public List<Map<String, Object>> removeDuplicateCourses(List<Map<String, Object>> courseList) {
-        Set<String> seenIdentifiers = new HashSet<>();
-        List<Map<String, Object>> finalList = new ArrayList<>();
-        for (Map<String, Object> course : courseList) {
-            String identifier = (String) course.get(Constants.IDENTIFIER);
-            if (seenIdentifiers.contains(identifier)) {
-                continue;
-            }
-            Map<String, Object> languageMap = new HashMap<>();
-            Object langObj = course.get(Constants.LANGUAGE_MAP_V1);
-            if (langObj instanceof Map<?, ?>) {
-                languageMap = (Map<String, Object>) langObj;
-            }
-            Set<String> languageIdentifiers = new HashSet<>();
-            for (Object value : languageMap.values()) {
-                if (value instanceof Map<?, ?>) {
-                    Map<String, Object> langDetails = (Map<String, Object>) value;
-                    String langId = (String) langDetails.get(Constants.ID);
-                    if (langId != null) {
-                        languageIdentifiers.add(langId);
-                    }
-                }
-            }
-            finalList.add(course);
-            seenIdentifiers.addAll(languageIdentifiers);
-        }
-        return finalList;
-    }
-
-
-    private void setUserProfile(Map<String, String> userProfile, Map<String, Object> userBasicProfile) throws JsonProcessingException {
-        if (org.apache.commons.collections4.MapUtils.isEmpty(userBasicProfile)) {
-            log.warn("User basic profile is empty for userId: {}", userProfile.get(Constants.ID));
-            return;
-        }
-        userProfile.put(Constants.USER, (String) userBasicProfile.get(Constants.ID));
-        userProfile.put(Constants.ROOT_ORG_ID, (String) userBasicProfile.get(Constants.ROOT_ORG_ID.toLowerCase()));
-        Object rawValue = userBasicProfile.get(Constants.PROFILE_DETAILS.toLowerCase());
-        Map<String, Object> profileDetails;
-
-        if (rawValue instanceof String) {
-            profileDetails = mapper.readValue((String) rawValue, new TypeReference<Map<String, Object>>() {});
-        } else if (rawValue instanceof Map) {
-            profileDetails = (Map<String, Object>) rawValue;
-        } else {
-            throw new IllegalArgumentException("Unsupported type for profileDetails: " + rawValue);
-        }
-
-        if (!org.apache.commons.collections4.MapUtils.isEmpty(profileDetails)) {
-            List<Map<String, Object>> professionalDetailList = (List<Map<String, Object>>) profileDetails
-                    .get(Constants.PROFESSIONAL_DETAILS);
-            if (CollectionUtils.isNotEmpty(professionalDetailList)) {
-                Map<String, Object> professionalDetails = professionalDetailList.get(0);
-                userProfile.put(Constants.DESIGNATION, (String) professionalDetails.get(Constants.DESIGNATION));
-                userProfile.put(Constants.GROUP, (String) professionalDetails.get(Constants.GROUP));
-            }
-            userProfile.put(Constants.PROFILE_STATUS_KEY.toLowerCase(),
-                    (String) profileDetails.get(Constants.PROFILE_STATUS_KEY));
-            Map<String, Object> cadreDetails = (Map<String, Object>) profileDetails.get(Constants.CADRE_DETAILS);
-
-            if (org.apache.commons.collections4.MapUtils.isNotEmpty(cadreDetails)) {
-                userProfile.put(Constants.CADRE, (String) cadreDetails.get(Constants.CADRE_NAME));
-                userProfile.put(Constants.SERVICE, (String) cadreDetails.get(Constants.CIVIL_SERVICE_NAME));
-                if (cadreDetails.containsKey(Constants.CADRE_BATCH)) {
-                    userProfile.put(Constants.BATCH, String.valueOf(cadreDetails.get(Constants.CADRE_BATCH)));
-                }
-                if (cadreDetails.containsKey(Constants.CENTRAL_DEPUTATION)) {
-                    userProfile.put(Constants.CENTRAL_DEPUTATION, String.valueOf( cadreDetails.get(Constants.CENTRAL_DEPUTATION)));
-                }
-            }
-        }
-    }
-
-    private boolean evaluateContextAccessRule(Map<String, Object> accessSettingIdMap,
-                                              Map<String, String> userProfile) {
-        if (MapUtils.isEmpty(accessSettingIdMap) || MapUtils.isEmpty(userProfile)) {
-            log.error("Access setting map or user profile is empty");
-            return false;
-        }
-
-        // Step 1: fetch accessControl
-        Map<String, Object> accessControl = (Map<String, Object>) accessSettingIdMap.get(Constants.ACCESS_CONTROL);
-        if (MapUtils.isEmpty(accessControl)) {
-            log.warn("No accessControl found in accessSettingIdMap");
-            return false;
-        }
-
-        // Step 2: fetch userGroups
-        List<Map<String, Object>> userGroups = (List<Map<String, Object>>) accessControl.get(Constants.USER_GROUPS);
-        if (CollectionUtils.isEmpty(userGroups)) {
-            log.warn("No userGroups found under accessControl");
-            return false;
-        }
-        if (CollectionUtils.isEmpty(userGroups)) {
-            return false;
-        }
-
-        // Iterate through all groups: user must match at least one fully
-        for (Map<String, Object> userGroup : userGroups) {
-            String userGroupName = (String) userGroup.get(Constants.USER_GROUP_NAME); // adjust constant if you have
-            boolean isUserHasAccess = true;
-
-            List<Map<String, Object>> criteriaList =
-                    (List<Map<String, Object>>) userGroup.get(Constants.USER_GROUP_CRITERIA_LIST);
-
-            if (CollectionUtils.isEmpty(criteriaList)) {
-                continue; // no criteria = skip group
-            }
-
-            for (Map<String, Object> criteria : criteriaList) {
-                String criteriaKey = (String) criteria.get(Constants.CRITERIA_KEY);
-                List<String> criteriaValues = (List<String>) criteria.get(Constants.CRITERIA_VALUE);
-
-                String userCriteriaValue = userProfile.get(criteriaKey.toLowerCase());
-
-                if (StringUtils.isEmpty(userCriteriaValue) || !criteriaValues.contains(userCriteriaValue)) {
-                    log.debug("User does not match criteria key: {} in group: {}", criteriaKey, userGroupName);
-                    isUserHasAccess = false;
-                    break;
-                }
-            }
-
-            if (isUserHasAccess) {
-                log.info("User matches all criteria in userGroup: {}", userGroupName);
-                return true;
-            }
-        }
-
-        return false;
-    }
-
 
 }

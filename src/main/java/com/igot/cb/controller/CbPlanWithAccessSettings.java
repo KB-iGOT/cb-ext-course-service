@@ -4,6 +4,7 @@ import com.igot.cb.elasticsearch.dto.SearchCriteria;
 import com.igot.cb.model.ApiRequest;
 import com.igot.cb.model.ApiResponse;
 import com.igot.cb.service.AccessSettingMigrationServiceImpl;
+import com.igot.cb.service.CbPlanLearnerServiceImpl;
 import com.igot.cb.service.CbPlanServiceImpl;
 import com.igot.cb.util.Constants;
 import org.springframework.http.ResponseEntity;
@@ -17,10 +18,12 @@ public class CbPlanWithAccessSettings {
 
     private final CbPlanServiceImpl cbPlanService;
     private final AccessSettingMigrationServiceImpl accessSettingMigrationService;
+    private final CbPlanLearnerServiceImpl cbPlanLearnerService;
 
-    public CbPlanWithAccessSettings(CbPlanServiceImpl cbPlanService, AccessSettingMigrationServiceImpl accessSettingMigrationService) {
+    public CbPlanWithAccessSettings(CbPlanServiceImpl cbPlanService, AccessSettingMigrationServiceImpl accessSettingMigrationService, CbPlanLearnerServiceImpl cbPlanLearnerService) {
         this.cbPlanService = cbPlanService;
         this.accessSettingMigrationService = accessSettingMigrationService;
+        this.cbPlanLearnerService = cbPlanLearnerService;
     }
 
     @PostMapping("/create")
@@ -98,7 +101,7 @@ public class CbPlanWithAccessSettings {
             @RequestHeader(Constants.X_AUTH_TOKEN) String token,
             @RequestHeader(Constants.X_AUTH_USER_ORG_ID)String userOrgId) throws Exception {
 
-        ApiResponse response = cbPlanService.getCBPlanListForUser(userOrgId, token, false);
+        ApiResponse response = cbPlanLearnerService.getCBPlanListForUser(userOrgId, token, false);
         return new ResponseEntity<>(response, response.getResponseCode());
     }
 }

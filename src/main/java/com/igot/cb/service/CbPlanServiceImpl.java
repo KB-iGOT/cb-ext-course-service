@@ -392,6 +392,13 @@ public class CbPlanServiceImpl {
                             response.setResponseCode(HttpStatus.BAD_REQUEST);
                             return response;
                         }
+                        draftData = mergeCbPlanData(updatedCbPlan, cbPlanInfoMap);
+                        try {
+                            draftInfo = mapper.writeValueAsString(draftData);
+                        } catch (JsonProcessingException e) {
+                            throw new RuntimeException(e);
+                        }
+
                     } else {
                         try {
                             draftInfo = updateDraftInfo(updatedCbPlan, cbPlanMapInfo.get(0));
@@ -515,6 +522,94 @@ public class CbPlanServiceImpl {
         return response;
     }
 
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> mergeCbPlanData(Map<String, Object> requestMap, Map<String, Object> existingMap) {
+        Map<String, Object> sanitized = new HashMap<>();
+
+        // id
+        sanitized.put(Constants.ID, requestMap.getOrDefault(Constants.ID, existingMap.get(Constants.PLAN_ID)));
+
+        // name
+        sanitized.put(Constants.NAME, requestMap.getOrDefault(Constants.NAME, existingMap.get(Constants.NAME)));
+
+        // contentType
+        sanitized.put(Constants.CONTENT_TYPE, requestMap.getOrDefault(Constants.CONTENT_TYPE, existingMap.get(Constants.CONTENT_TYPE)));
+
+        // contentList
+        Object contentList = requestMap.getOrDefault(Constants.CONTENT_LIST, existingMap.get(Constants.CONTENT_LIST));
+        if (contentList instanceof List) {
+            sanitized.put(Constants.CONTENT_LIST, contentList);
+        }
+
+        // orgScope
+        sanitized.put(Constants.ORG_SCOPE, requestMap.getOrDefault(Constants.ORG_SCOPE, existingMap.get(Constants.ORG_SCOPE)));
+
+        Object contextData = requestMap.getOrDefault(
+                Constants.CONTEXT_DATA_REQUEST,
+                existingMap.get(Constants.CONTEXT_DATA_REQUEST)
+        );
+
+        if (contextData instanceof String) {
+            // Parse back to Map
+            Map<String, Object> ctx = null;
+            try {
+                ctx = mapper.readValue((String) contextData, new TypeReference<Map<String,Object>>() {});
+            } catch (JsonProcessingException e) {
+                throw new RuntimeException(e);
+            }
+            sanitized.put(Constants.CONTEXT_DATA_REQUEST, ctx);
+        } else {
+            sanitized.put(Constants.CONTEXT_DATA_REQUEST, contextData);
+        }
+
+
+        // endDate handling
+        Object endDateObj = requestMap.getOrDefault(Constants.END_DATE, existingMap.get(Constants.END_DATE_REQUEST));
+        if (endDateObj != null) {
+            Date endDate = parseEndDate(endDateObj);
+            sanitized.put(Constants.END_DATE, endDate);
+        }
+
+        // isApar
+        sanitized.put("isApar", requestMap.getOrDefault("isApar", existingMap.get("isApar")));
+
+        // orgIdList
+        Object orgIdList = requestMap.getOrDefault("orgIdList", existingMap.get("orgIdList"));
+        if (orgIdList instanceof List) {
+            sanitized.put("orgIdList", orgIdList);
+        }
+
+        return sanitized;
+    }
+
+    private Date parseEndDate(Object endDateObj) {
+        try {
+            if (endDateObj instanceof Date) {
+                return (Date) endDateObj;
+            }
+            if (endDateObj instanceof Long) {
+                return new Date((Long) endDateObj);
+            }
+            if (endDateObj instanceof String) {
+                String endDateStr = (String) endDateObj;
+                try {
+                    // Try ISO_INSTANT first (e.g. 2025-12-31T10:15:30Z)
+                    Instant instant = Instant.parse(endDateStr);
+                    return Date.from(instant);
+                } catch (DateTimeParseException e) {
+                    // Fallback: yyyy-MM-dd
+                    LocalDate localDate = LocalDate.parse(endDateStr, DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+                    return Date.from(localDate.atStartOfDay(ZoneId.systemDefault()).toInstant());
+                }
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("Invalid endDate format: " + endDateObj, e);
+        }
+        return null;
+    }
+
+
     private String updateDraftInfo(Map<String, Object> updatedCbPlan, Map<String, Object> cbPlan) throws IOException {
         Map<String, Object> draftInfo = new HashMap<>();
         if (StringUtils.isBlank((String) cbPlan.get(Constants.DRAFT_DATA))) {
@@ -523,8 +618,8 @@ public class CbPlanServiceImpl {
                     updatedCbPlan.getOrDefault(Constants.CONTENT_TYPE, cbPlan.get(Constants.CONTENT_TYPE)));
             draftInfo.put(Constants.CONTENT_LIST,
                     updatedCbPlan.getOrDefault(Constants.CONTENT_LIST, cbPlan.get(Constants.CONTENT_LIST)));
-            draftInfo.put(Constants.END_DATE,
-                    updatedCbPlan.getOrDefault(Constants.END_DATE, cbPlan.get(Constants.END_DATE)));
+            draftInfo.put(Constants.END_DATE_REQUEST,
+                    updatedCbPlan.getOrDefault(Constants.END_DATE_REQUEST, cbPlan.get(Constants.END_DATE_REQUEST)));
             draftInfo.put(Constants.CONTEXT_DATA_REQUEST,
                     updatedCbPlan.getOrDefault(Constants.CONTEXT_DATA_REQUEST, cbPlan.get(Constants.CONTEXT_DATA_REQUEST)));
             draftInfo.put(Constants.ORG_SCOPE,
@@ -548,10 +643,10 @@ public class CbPlanServiceImpl {
             draftInfo.put(Constants.ORG_ID_LIST,
                     updatedCbPlan.getOrDefault(Constants.ORG_ID_LIST, cbPlanDto.getOrgIdList()));
             if (updatedCbPlan.containsKey(Constants.END_DATE)) {
-                draftInfo.put(Constants.END_DATE, updatedCbPlan.get(Constants.END_DATE));
+                draftInfo.put(Constants.END_DATE_REQUEST, updatedCbPlan.get(Constants.END_DATE_REQUEST));
             } else if (cbPlanDto.getEndDate() != null) {
                 // cbPlanDto.getEndDate() is usually a Timestamp -> convert to Date
-                draftInfo.put(Constants.END_DATE, new Date(cbPlanDto.getEndDate().getTime()));
+                draftInfo.put(Constants.END_DATE_REQUEST, cbPlanDto.getEndDate());
             }
 
 
@@ -755,7 +850,7 @@ public class CbPlanServiceImpl {
         cbPlan.put(Constants.DRAFT_DATA, null);
         cbPlan.put(Constants.CONTENT_TYPE, planDto.getContentType());
         cbPlan.put(Constants.CONTENT_LIST, planDto.getContentList());
-        cbPlan.put(Constants.END_DATE, planDto.getEndDate() != null ? planDto.getEndDate().toInstant() : null);
+        cbPlan.put(Constants.END_DATE, planDto.getEndDate() != null ? planDto.getEndDate().toInstant() : cbPlan.get(Constants.END_DATE_REQUEST));
         cbPlan.put(Constants.STATUS, Constants.LIVE);
         cbPlan.put(Constants.IS_APAR, planDto.getIsApar() != null ? planDto.getIsApar() : false);
     }

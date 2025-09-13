@@ -545,9 +545,24 @@ public class CbPlanServiceImpl {
         // orgScope
         sanitized.put(Constants.ORG_SCOPE, requestMap.getOrDefault(Constants.ORG_SCOPE, existingMap.get(Constants.ORG_SCOPE)));
 
-        // contextData
-        Object contextData = requestMap.getOrDefault(Constants.CONTEXT_DATA_REQUEST, existingMap.get(Constants.CONTEXT_DATA_REQUEST));
-        sanitized.put(Constants.CONTEXT_DATA_REQUEST, contextData);
+        Object contextData = requestMap.getOrDefault(
+                Constants.CONTEXT_DATA_REQUEST,
+                existingMap.get(Constants.CONTEXT_DATA_REQUEST)
+        );
+
+        if (contextData instanceof String) {
+            // Parse back to Map
+            Map<String, Object> ctx = null;
+            try {
+                ctx = mapper.readValue((String) contextData, new TypeReference<Map<String,Object>>() {});
+            } catch (JsonProcessingException e) {
+                throw new RuntimeException(e);
+            }
+            sanitized.put(Constants.CONTEXT_DATA_REQUEST, ctx);
+        } else {
+            sanitized.put(Constants.CONTEXT_DATA_REQUEST, contextData);
+        }
+
 
         // endDate handling
         Object endDateObj = requestMap.getOrDefault(Constants.END_DATE, existingMap.get(Constants.END_DATE_REQUEST));

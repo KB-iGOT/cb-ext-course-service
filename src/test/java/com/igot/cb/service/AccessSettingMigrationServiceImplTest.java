@@ -17,6 +17,7 @@ import static org.mockito.Mockito.when;
 
 import java.util.*;
 
+import com.igot.cb.elasticsearch.service.EsUtilService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -41,6 +42,9 @@ class AccessSettingMigrationServiceImplTest {
 
         @Mock
         private IdMapCacheMgr idMapCacheMgr;
+
+        @Mock
+        private EsUtilService esUtilService;
 
         @InjectMocks
         private AccessSettingMigrationServiceImpl migrationService;
@@ -189,7 +193,7 @@ class AccessSettingMigrationServiceImplTest {
                 accessControl.put("userGroups", userGroups);
 
                 Map<String, Object> accessControlIdMap = new HashMap<>();
-                migrationService = new AccessSettingMigrationServiceImpl(cassandraOperation, contentService, idMapCacheMgr);
+                migrationService = new AccessSettingMigrationServiceImpl(cassandraOperation, contentService, idMapCacheMgr,esUtilService);
                 var method = AccessSettingMigrationServiceImpl.class.getDeclaredMethod(
                         "updateContextDataWithIdMap", String.class, Map.class, Map.class);
                 method.setAccessible(true);
@@ -345,7 +349,7 @@ class AccessSettingMigrationServiceImplTest {
                 when(contentService.readCourseCategoryForContent(contextId)).thenReturn("Course");
 
                 var spyService = new AccessSettingMigrationServiceImpl(cassandraOperation, contentService,
-                                idMapCacheMgr) {
+                                idMapCacheMgr,esUtilService) {
                         @Override
                         public boolean updateContextDataWithIdMap(String ctxId, Map<String, Object> accessControl,
                                         Map<String, Object> accessControlIdMap) {

@@ -72,6 +72,17 @@ public abstract class CharacterDecoder {
 
         PushbackInputStream ps = new PushbackInputStream(aStream);
         decodeBufferPrefix(ps, bStream);
+        
+        // Check if stream is empty by trying to read one byte
+        int firstByte = ps.read();
+        if (firstByte == -1) {
+            // Empty stream, just call suffix and return
+            decodeBufferSuffix(ps, bStream);
+            return;
+        }
+        // Put the byte back since we just peeked
+        ps.unread(firstByte);
+        
         while (true) {
             int length;
 
@@ -90,6 +101,9 @@ public abstract class CharacterDecoder {
                 }
                 decodeLineSuffix(ps, bStream);
             } catch (IOException e) {
+                if (totalBytes == 0) {
+                    throw e;
+                }
                 break;
             }
         }

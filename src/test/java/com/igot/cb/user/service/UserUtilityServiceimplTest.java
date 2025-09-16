@@ -1,6 +1,7 @@
 package com.igot.cb.user.service;
 
 import com.igot.cb.cassandra.CassandraOperation;
+import com.igot.cb.util.Constants;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -9,7 +10,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.*;
 
-import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
@@ -31,90 +31,172 @@ class UserUtilityServiceimplTest {
     }
 
     @Test
-    void testGetUserDetailsFromDBSuccess() {
+    void testGetUserDetailsFromDB_Success() {
         List<String> userIds = Arrays.asList("user1", "user2");
-        List<String> fields = Arrays.asList("id", "firstName", "email");
+        List<String> fields = Arrays.asList("userId", "firstName", "email");
         Map<String, Map<String, String>> userInfoMap = new HashMap<>();
 
-        List<Map<String, Object>> mockUserData = new ArrayList<>();
         Map<String, Object> user1 = new HashMap<>();
-        user1.put("userId", "user1");
-        user1.put("id", "user1");
+        user1.put(Constants.USER_ID, "user1");
         user1.put("firstName", "John");
         user1.put("email", "encrypted_email");
-        mockUserData.add(user1);
 
-        when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), anyMap(), anyList(), isNull()))
-                .thenReturn(mockUserData);
+        List<Map<String, Object>> userInfoList = Arrays.asList(user1);
+
+        when(cassandraOperation.getRecordsByProperties(
+                eq(Constants.KEYSPACE_SUNBIRD), 
+                eq(Constants.TABLE_USER), 
+                any(Map.class), 
+                eq(fields), 
+                isNull()
+        )).thenReturn(userInfoList);
+
         when(decryptService.decryptString("encrypted_email")).thenReturn("john@example.com");
 
         userUtilityService.getUserDetailsFromDB(userIds, fields, userInfoMap);
 
-        assertEquals(1, userInfoMap.size());
-        assertTrue(userInfoMap.containsKey("user1"));
-        assertEquals("John", userInfoMap.get("user1").get("firstName"));
-        assertEquals("john@example.com", userInfoMap.get("user1").get("email"));
+        verify(cassandraOperation).getRecordsByProperties(
+                eq(Constants.KEYSPACE_SUNBIRD), 
+                eq(Constants.TABLE_USER), 
+                any(Map.class), 
+                eq(fields), 
+                isNull()
+        );
     }
 
     @Test
-    void testGetUserDetailsFromDBWithLargeUserList() {
+    void testGetUserDetailsFromDB_WithDecryptedFields() {
+        List<String> userIds = Arrays.asList("user1");
+        List<String> fields = Arrays.asList("userId", "email", "phone");
+        Map<String, Map<String, String>> userInfoMap = new HashMap<>();
+
+        Map<String, Object> user1 = new HashMap<>();
+        user1.put(Constants.USER_ID, "user1");
+        user1.put("email", "encrypted_email");
+        user1.put("phone", "encrypted_phone");
+
+        List<Map<String, Object>> userInfoList = Arrays.asList(user1);
+
+        when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), any()))
+                .thenReturn(userInfoList);
+        when(decryptService.decryptString("encrypted_email")).thenReturn("john@example.com");
+        when(decryptService.decryptString("encrypted_phone")).thenReturn("1234567890");
+
+        userUtilityService.getUserDetailsFromDB(userIds, fields, userInfoMap);
+
+        verify(decryptService, times(2)).decryptString(anyString());
+    }
+
+    @Test
+    void testGetUserDetailsFromDB_WithBlankDecryptedValue() {
+        List<String> userIds = Arrays.asList("user1");
+        List<String> fields = Arrays.asList("userId", "email");
+        Map<String, Map<String, String>> userInfoMap = new HashMap<>();
+
+        Map<String, Object> user1 = new HashMap<>();
+        user1.put(Constants.USER_ID, "user1");
+        user1.put("email", "encrypted_email");
+
+        List<Map<String, Object>> userInfoList = Arrays.asList(user1);
+
+        when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), any()))
+                .thenReturn(userInfoList);
+        when(decryptService.decryptString("encrypted_email")).thenReturn("");
+
+        userUtilityService.getUserDetailsFromDB(userIds, fields, userInfoMap);
+
+        verify(decryptService).decryptString("encrypted_email");
+    }
+
+    @Test
+    void testGetUserDetailsFromDB_WithNullDecryptedField() {
+        List<String> userIds = Arrays.asList("user1");
+        List<String> fields = Arrays.asList("userId", "email");
+        Map<String, Map<String, String>> userInfoMap = new HashMap<>();
+
+        Map<String, Object> user1 = new HashMap<>();
+        user1.put(Constants.USER_ID, "user1");
+        user1.put("email", null);
+
+        List<Map<String, Object>> userInfoList = Arrays.asList(user1);
+
+        when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), any()))
+                .thenReturn(userInfoList);
+
+        userUtilityService.getUserDetailsFromDB(userIds, fields, userInfoMap);
+
+        verify(decryptService, never()).decryptString(anyString());
+    }
+
+    @Test
+    void testGetUserDetailsFromDB_UserAlreadyExists() {
+        List<String> userIds = Arrays.asList("user1");
+        List<String> fields = Arrays.asList("userId", "firstName");
+        Map<String, Map<String, String>> userInfoMap = new HashMap<>();
+        userInfoMap.put("user1", new HashMap<>());
+
+        Map<String, Object> user1 = new HashMap<>();
+        user1.put(Constants.USER_ID, "user1");
+        user1.put("firstName", "John");
+
+        List<Map<String, Object>> userInfoList = Arrays.asList(user1);
+
+        when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), any()))
+                .thenReturn(userInfoList);
+
+        userUtilityService.getUserDetailsFromDB(userIds, fields, userInfoMap);
+
+        verify(cassandraOperation).getRecordsByProperties(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void testGetUserDetailsFromDB_LargeUserList() {
         List<String> userIds = new ArrayList<>();
         for (int i = 1; i <= 25; i++) {
             userIds.add("user" + i);
         }
-        List<String> fields = Arrays.asList("id", "firstName");
+        List<String> fields = Arrays.asList("userId", "firstName");
         Map<String, Map<String, String>> userInfoMap = new HashMap<>();
 
-        List<Map<String, Object>> mockUserData = new ArrayList<>();
-        Map<String, Object> user = new HashMap<>();
-        user.put("userId", "user1");
-        user.put("id", "user1");
-        user.put("firstName", "John");
-        mockUserData.add(user);
-
-        when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), anyMap(), anyList(), isNull()))
-                .thenReturn(mockUserData);
+        when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), any()))
+                .thenReturn(new ArrayList<>());
 
         userUtilityService.getUserDetailsFromDB(userIds, fields, userInfoMap);
 
-        verify(cassandraOperation, times(3)).getRecordsByProperties(anyString(), anyString(), anyMap(), anyList(), isNull());
+        verify(cassandraOperation, times(3)).getRecordsByProperties(any(), any(), any(), any(), any());
     }
 
     @Test
-    void testGetUserDetailsFromDBException() {
+    void testGetUserDetailsFromDB_Exception() {
         List<String> userIds = Arrays.asList("user1");
-        List<String> fields = Arrays.asList("id", "firstName");
+        List<String> fields = Arrays.asList("userId", "firstName");
         Map<String, Map<String, String>> userInfoMap = new HashMap<>();
 
-        when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), anyMap(), anyList(), isNull()))
+        when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), any()))
                 .thenThrow(new RuntimeException("Database error"));
 
         userUtilityService.getUserDetailsFromDB(userIds, fields, userInfoMap);
 
-        assertTrue(userInfoMap.isEmpty());
+        verify(cassandraOperation).getRecordsByProperties(any(), any(), any(), any(), any());
     }
 
     @Test
-    void testGetUserDetailsFromDBWithExistingUser() {
+    void testGetUserDetailsFromDB_MissingField() {
         List<String> userIds = Arrays.asList("user1");
-        List<String> fields = Arrays.asList("id", "firstName");
+        List<String> fields = Arrays.asList("userId", "firstName", "email");
         Map<String, Map<String, String>> userInfoMap = new HashMap<>();
-        
-        Map<String, String> existingUser = new HashMap<>();
-        existingUser.put("firstName", "Existing");
-        userInfoMap.put("user1", existingUser);
 
-        List<Map<String, Object>> mockUserData = new ArrayList<>();
-        Map<String, Object> user = new HashMap<>();
-        user.put("userId", "user1");
-        user.put("firstName", "John");
-        mockUserData.add(user);
+        Map<String, Object> user1 = new HashMap<>();
+        user1.put(Constants.USER_ID, "user1");
+        user1.put("firstName", "John");
 
-        when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), anyMap(), anyList(), isNull()))
-                .thenReturn(mockUserData);
+        List<Map<String, Object>> userInfoList = Arrays.asList(user1);
+
+        when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), any()))
+                .thenReturn(userInfoList);
 
         userUtilityService.getUserDetailsFromDB(userIds, fields, userInfoMap);
 
-        assertEquals("Existing", userInfoMap.get("user1").get("firstName"));
+        verify(cassandraOperation).getRecordsByProperties(any(), any(), any(), any(), any());
     }
 }

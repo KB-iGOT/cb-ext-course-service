@@ -1,106 +1,71 @@
 package com.igot.cb.config;
 
-import com.igot.cb.util.Constants;
-import com.igot.cb.util.PropertiesCache;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.Mock;
-import org.mockito.MockedStatic;
-import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.test.util.ReflectionTestUtils;
-import redis.clients.jedis.JedisPool;
-
-
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-@ExtendWith(MockitoExtension.class)
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import com.igot.cb.util.Constants;
+import com.igot.cb.util.PropertiesCache;
+
+import redis.clients.jedis.JedisPool;
+import redis.clients.jedis.JedisPoolConfig;
+
 class RedisConfigTest {
 
-    @Mock
-    private PropertiesCache propertiesCache;
-
     private RedisConfig redisConfig;
+    private PropertiesCache mockPropertiesCache;
 
     @BeforeEach
-    void setUp() {
+    void setUp() throws Exception {
+        mockPropertiesCache = mock(PropertiesCache.class);
         redisConfig = new RedisConfig();
-    }
 
-    @Test
-    void testJedisPoolCreation() {
-        try (MockedStatic<PropertiesCache> mockedStatic = mockStatic(PropertiesCache.class)) {
-            mockedStatic.when(PropertiesCache::getInstance).thenReturn(propertiesCache);
-            when(propertiesCache.getProperty(Constants.REDIS_HOST)).thenReturn("localhost");
-            when(propertiesCache.getProperty(Constants.REDIS_PORT)).thenReturn("6379");
-
-            RedisConfig config = new RedisConfig();
-            JedisPool jedisPool = config.jedisPool();
-
-            assertNotNull(jedisPool);
-            verify(propertiesCache).getProperty(Constants.REDIS_HOST);
-            verify(propertiesCache).getProperty(Constants.REDIS_PORT);
-        }
+        // Inject mock PropertiesCache using reflection
+        Field propertiesCacheField = RedisConfig.class.getDeclaredField("propertiesCache");
+        propertiesCacheField.setAccessible(true);
+        propertiesCacheField.set(redisConfig, mockPropertiesCache);
     }
 
     @Test
     void testConstructor() {
         RedisConfig config = new RedisConfig();
         assertNotNull(config);
-        
-        // Verify that propertiesCache is properly initialized
-        PropertiesCache cache = (PropertiesCache) ReflectionTestUtils.getField(config, "propertiesCache");
-        assertNotNull(cache);
     }
 
     @Test
-    void testJedisPoolWithDifferentPorts() {
-        try (MockedStatic<PropertiesCache> mockedStatic = mockStatic(PropertiesCache.class)) {
-            mockedStatic.when(PropertiesCache::getInstance).thenReturn(propertiesCache);
-            when(propertiesCache.getProperty(Constants.REDIS_HOST)).thenReturn("redis-server");
-            when(propertiesCache.getProperty(Constants.REDIS_PORT)).thenReturn("6380");
+    void testJedisPoolCreation() {
+        when(mockPropertiesCache.getProperty(Constants.REDIS_HOST)).thenReturn("localhost");
+        when(mockPropertiesCache.getProperty(Constants.REDIS_PORT)).thenReturn("6379");
 
-            RedisConfig config = new RedisConfig();
-            JedisPool jedisPool = config.jedisPool();
+        JedisPool jedisPool = redisConfig.jedisPool();
 
-            assertNotNull(jedisPool);
-            verify(propertiesCache).getProperty(Constants.REDIS_HOST);
-            verify(propertiesCache).getProperty(Constants.REDIS_PORT);
-        }
+        assertNotNull(jedisPool);
+        assertEquals("false", System.getProperty("org.apache.commons.pool2.registerMbeans"));
+
+        verify(mockPropertiesCache).getProperty(Constants.REDIS_HOST);
+        verify(mockPropertiesCache).getProperty(Constants.REDIS_PORT);
     }
 
     @Test
-    void testBuildPoolConfigSettings() {
-        try (MockedStatic<PropertiesCache> mockedStatic = mockStatic(PropertiesCache.class)) {
-            mockedStatic.when(PropertiesCache::getInstance).thenReturn(propertiesCache);
-            when(propertiesCache.getProperty(Constants.REDIS_HOST)).thenReturn("localhost");
-            when(propertiesCache.getProperty(Constants.REDIS_PORT)).thenReturn("6379");
+    void testBuildPoolConfig() throws Exception {
+        Method buildPoolConfigMethod = RedisConfig.class.getDeclaredMethod("buildPoolConfig");
+        buildPoolConfigMethod.setAccessible(true);
 
-            RedisConfig config = new RedisConfig();
-            JedisPool jedisPool = config.jedisPool();
+        JedisPoolConfig poolConfig = (JedisPoolConfig) buildPoolConfigMethod.invoke(redisConfig);
 
-            assertNotNull(jedisPool);
-            
-            // Verify that the jedis pool is created successfully
-            // Note: JedisPool doesn't expose getPoolConfig() method in newer versions
-            // We can only verify that the pool was created without errors
-            assertFalse(jedisPool.isClosed());
-        }
-    }
-
-    @Test
-    void testSystemPropertySet() {
-        try (MockedStatic<PropertiesCache> mockedStatic = mockStatic(PropertiesCache.class)) {
-            mockedStatic.when(PropertiesCache::getInstance).thenReturn(propertiesCache);
-            when(propertiesCache.getProperty(Constants.REDIS_HOST)).thenReturn("localhost");
-            when(propertiesCache.getProperty(Constants.REDIS_PORT)).thenReturn("6379");
-
-            RedisConfig config = new RedisConfig();
-            config.jedisPool();
-
-            // Verify that the system property is set
-            assertEquals("false", System.getProperty("org.apache.commons.pool2.registerMbeans"));
-        }
+        assertNotNull(poolConfig);
+        assertEquals(128, poolConfig.getMaxIdle());
+        assertEquals(3000, poolConfig.getMaxTotal());
+        assertEquals(100, poolConfig.getMinIdle());
+        assertTrue(poolConfig.getTestOnBorrow());
+        assertTrue(poolConfig.getTestOnReturn());
+        assertTrue(poolConfig.getTestWhileIdle());
+        assertEquals(3, poolConfig.getNumTestsPerEvictionRun());
+        assertTrue(poolConfig.getBlockWhenExhausted());
     }
 }

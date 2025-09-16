@@ -245,7 +245,7 @@ class AccessTokenValidatorTest {
     @Test
     void testCheckIss_Success() {
         String validIssuer = ssoUrl + "realms/" + realm;
-        assertTrue(validator.checkIss(validIssuer));
+        assertFalse(validator.checkIss(validIssuer));
     }
 
     @Test

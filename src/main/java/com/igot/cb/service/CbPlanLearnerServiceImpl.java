@@ -312,17 +312,17 @@ public class CbPlanLearnerServiceImpl {
             userProfile.put(Constants.PROFILE_STATUS_KEY.toLowerCase(),
                     (String) profileDetails.get(Constants.PROFILE_STATUS_KEY));
             Map<String, Object> cadreDetails = (Map<String, Object>) profileDetails.get(Constants.CADRE_DETAILS);
-
+            boolean centralDeputation = false;
             if (org.apache.commons.collections4.MapUtils.isNotEmpty(cadreDetails)) {
                 userProfile.put(Constants.CADRE, (String) cadreDetails.get(Constants.CADRE_NAME));
                 userProfile.put(Constants.SERVICE, (String) cadreDetails.get(Constants.CIVIL_SERVICE_NAME));
-                if (cadreDetails.containsKey(Constants.CADRE_BATCH)) {
-                    userProfile.put(Constants.BATCH, String.valueOf(cadreDetails.get(Constants.CADRE_BATCH)));
-                }
+
                 if (cadreDetails.containsKey(Constants.CENTRAL_DEPUTATION)) {
-                    userProfile.put(Constants.CENTRAL_DEPUTATION, String.valueOf( cadreDetails.get(Constants.CENTRAL_DEPUTATION)));
+                    centralDeputation = (Boolean) cadreDetails.get(Constants.CENTRAL_DEPUTATION);
                 }
+
             }
+            userProfile.put(Constants.CENTRAL_DEPUTATION, String.valueOf(centralDeputation));
         }
     }
 
@@ -374,6 +374,38 @@ public class CbPlanLearnerServiceImpl {
                     break;
                 }
             }
+            for (Map<String, Object> criteria : criteriaList) {
+                String criteriaKey = (String) criteria.get(Constants.CRITERIA_KEY);
+                Object rawCriteriaValue = criteria.get(Constants.CRITERIA_VALUE);
+
+                if (Constants.CENTRAL_DEPUTATION.equals(criteriaKey)) {
+                    // ✅ Special boolean check
+                    boolean expectedValue = Boolean.parseBoolean(String.valueOf(rawCriteriaValue));
+                    boolean actualValue = Boolean.parseBoolean(
+                            String.valueOf(userProfile.getOrDefault(criteriaKey, "false"))
+                    );
+
+                    if (expectedValue != actualValue) {
+                        log.debug("User does not match boolean criteria key: {} in group: {}", criteriaKey, userGroupName);
+                        isUserHasAccess = false;
+                        break;
+                    }
+                } else {
+                    // ✅ Generic string/list check
+                    List<String> criteriaValues = (rawCriteriaValue instanceof List<?>)
+                            ? ((List<?>) rawCriteriaValue).stream().map(String::valueOf).toList()
+                            : Collections.singletonList(String.valueOf(rawCriteriaValue));
+
+                    String userCriteriaValue = String.valueOf(userProfile.get(criteriaKey));
+
+                    if (StringUtils.isEmpty(userCriteriaValue) || !criteriaValues.contains(userCriteriaValue)) {
+                        log.debug("User does not match criteria key: {} in group: {}", criteriaKey, userGroupName);
+                        isUserHasAccess = false;
+                        break;
+                    }
+                }
+            }
+
 
             if (isUserHasAccess) {
                 log.info("User matches all criteria in userGroup: {}", userGroupName);

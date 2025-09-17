@@ -361,19 +361,6 @@ public class CbPlanLearnerServiceImpl {
             if (CollectionUtils.isEmpty(criteriaList)) {
                 continue; // no criteria = skip group
             }
-
-            for (Map<String, Object> criteria : criteriaList) {
-                String criteriaKey = (String) criteria.get(Constants.CRITERIA_KEY);
-                List<String> criteriaValues = (List<String>) criteria.get(Constants.CRITERIA_VALUE);
-
-                String userCriteriaValue = userProfile.get(criteriaKey);
-
-                if (StringUtils.isEmpty(userCriteriaValue) || !criteriaValues.contains(userCriteriaValue)) {
-                    log.debug("User does not match criteria key: {} in group: {}", criteriaKey, userGroupName);
-                    isUserHasAccess = false;
-                    break;
-                }
-            }
             for (Map<String, Object> criteria : criteriaList) {
                 String criteriaKey = (String) criteria.get(Constants.CRITERIA_KEY);
                 Object rawCriteriaValue = criteria.get(Constants.CRITERIA_VALUE);

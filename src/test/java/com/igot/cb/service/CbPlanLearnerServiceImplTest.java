@@ -343,4 +343,42 @@ class CbPlanLearnerServiceImplTest {
         
         return accessSettingMap;
     }
+    @Test
+    void testGetExistingContextData_WithCustomFields() throws Exception {
+        Map<String, String> userProfile = new HashMap<>();
+        Map<String, Object> userBasicProfile = createUserData();
+
+        // Prepare custom field TEXT type
+        Map<String, Object> customFieldText = new HashMap<>();
+        customFieldText.put(Constants.TYPE, Constants.TEXT);
+        customFieldText.put(Constants.ATTRIBUTE_NAME, "customText");
+        customFieldText.put(Constants.VALUE, "CustomValue");
+
+        // Prepare custom field MASTER_LIST type
+        Map<String, Object> masterListValue = new HashMap<>();
+        masterListValue.put(Constants.ATTRIBUTE_NAME, "skill");
+        masterListValue.put(Constants.VALUE, "Java");
+
+        Map<String, Object> customFieldMasterList = new HashMap<>();
+        customFieldMasterList.put(Constants.TYPE, Constants.MASTER_LIST);
+        customFieldMasterList.put(Constants.VALUES, List.of(masterListValue));
+
+        Map<String, Object> orgAdditionalProperty = new HashMap<>();
+        orgAdditionalProperty.put(Constants.ORGANISATION_ID, "org123");
+        orgAdditionalProperty.put(Constants.CUSTOM_FIELD_VALUES, List.of(customFieldText, customFieldMasterList));
+
+        String json = new ObjectMapper().writeValueAsString(List.of(orgAdditionalProperty));
+        Map<String, Object> row = Map.of(Constants.CONTEXT_DATA_KEY, json);
+
+        when(cassandraOperation.getRecordsByProperties(eq(Constants.KEYSPACE_SUNBIRD), eq(Constants.TABLE_USER_EXTENDED_PROFILE), any(), any(), any()))
+                .thenReturn(List.of(row));
+
+        // Call private method via reflection
+        Method method = CbPlanLearnerServiceImpl.class.getDeclaredMethod("getExistingContextData", String.class, String.class, Map.class);
+        method.setAccessible(true);
+        method.invoke(service, "user123", "org123", userProfile);
+
+        assertEquals("CustomValue", userProfile.get("customText"));
+        assertEquals("Java", userProfile.get("skill"));
+    }
 }

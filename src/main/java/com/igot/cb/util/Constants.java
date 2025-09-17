@@ -396,6 +396,17 @@ public class Constants {
     public static final String COUNT = "count";
     public static final String VERIFIED = "VERIFIED";
     public static final String SECURE_SETTINGS = "secureSettings";
+    public static final String TABLE_USER_EXTENDED_PROFILE = "user_extended_profile";
+    public static final String CONTEXT_TYPE = "contextType";
+    public static final String ORG_ADDITIONAL_PROPERTIES = "orgAdditionalProperties";
+    public static final String CONTEXT_DATA_KEY = "contextData";
+    public static final String ORGANISATION_ID = "organisationId";
+    public static final String CUSTOM_FIELD_VALUES = "customFieldValues";
+    public static final String TEXT = "text";
+    public static final String MASTER_LIST = "masterList";
+    public static final String ATTRIBUTE_NAME = "attributeName";
+    public static final String VALUES = "values";
+    public static final String VALUE = "value";
 
 
     private Constants() {

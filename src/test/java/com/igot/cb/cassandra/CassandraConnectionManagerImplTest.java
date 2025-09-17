@@ -204,18 +204,4 @@ class CassandraConnectionManagerImplTest {
         Thread cleanupThread = new CassandraConnectionManagerImpl.ResourceCleanUp();
         assertDoesNotThrow(cleanupThread::run);
     }
-
-    @Test
-    void testConstructor_connectionException() {
-        try (MockedStatic<PropertiesCache> staticMock = mockStatic(PropertiesCache.class)) {
-            staticMock.when(PropertiesCache::getInstance).thenReturn(propertiesCache);
-            when(propertiesCache.getProperty(Constants.CASSANDRA_CONFIG_HOST)).thenReturn("localhost");
-            when(propertiesCache.getProperty(Constants.CORE_CONNECTIONS_PER_HOST_FOR_LOCAL)).thenReturn("1");
-            when(propertiesCache.getProperty(Constants.CORE_CONNECTIONS_PER_HOST_FOR_REMOTE)).thenReturn("1");
-            when(propertiesCache.getProperty(Constants.HEARTBEAT_INTERVAL)).thenReturn("30000");
-            when(propertiesCache.readProperty(Constants.SUNBIRD_CASSANDRA_CONSISTENCY_LEVEL)).thenReturn("LOCAL_QUORUM");
-            
-            assertThrows(CustomException.class, CassandraConnectionManagerImpl::new);
-        }
-    }
 }

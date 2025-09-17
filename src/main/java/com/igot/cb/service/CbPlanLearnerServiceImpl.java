@@ -366,7 +366,6 @@ public class CbPlanLearnerServiceImpl {
                 Object rawCriteriaValue = criteria.get(Constants.CRITERIA_VALUE);
 
                 if (Constants.CENTRAL_DEPUTATION.equals(criteriaKey)) {
-                    // ✅ Special boolean check
                     boolean expectedValue = Boolean.parseBoolean(String.valueOf(rawCriteriaValue));
                     boolean actualValue = Boolean.parseBoolean(
                             String.valueOf(userProfile.getOrDefault(criteriaKey, "false"))
@@ -378,7 +377,6 @@ public class CbPlanLearnerServiceImpl {
                         break;
                     }
                 } else {
-                    // ✅ Generic string/list check
                     List<String> criteriaValues = (rawCriteriaValue instanceof List<?>)
                             ? ((List<?>) rawCriteriaValue).stream().map(String::valueOf).toList()
                             : Collections.singletonList(String.valueOf(rawCriteriaValue));

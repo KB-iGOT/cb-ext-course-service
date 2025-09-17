@@ -151,15 +151,20 @@ public class CbPlanLearnerServiceImpl {
                     .collect(Collectors.toList());
             for (Map<String, Object> cbPlan : activeCbPlans) {
                 Object contextDataObj = cbPlan.get(Constants.CONTEXT_DATA_REQUEST);
-                if (contextDataObj != null) {
-                    Map<String, Object> contextDataMap = parseContextData(contextDataObj);
+                try{
+                    if (contextDataObj != null) {
+                        Map<String, Object> contextDataMap = parseContextData(contextDataObj);
 
-                    // Evaluate access rules → skip plan if user has no access
-                    if (MapUtils.isNotEmpty(contextDataMap) &&
-                            !evaluateContextAccessRule(contextDataMap, userProfile)) {
-                        logger.info("User does not have access to cbPlan: {}", cbPlan.get(Constants.PLAN_ID));
-                        continue;
+                        // Evaluate access rules → skip plan if user has no access
+                        if (MapUtils.isNotEmpty(contextDataMap) &&
+                                !evaluateContextAccessRule(contextDataMap, userProfile)) {
+                            logger.info("User does not have access to cbPlan: {}", cbPlan.get(Constants.PLAN_ID));
+                            continue;
+                        }
                     }
+                }catch (Exception e){
+                    logger.error("Exception in parsing context data for cb plan id : {}", cbPlan.get(Constants.PLAN_ID), e);
+                    continue;
                 }
                 Map<String, Object> cbPlanDetails = new HashMap<>();
                 cbPlanDetails.put(Constants.ID, cbPlan.get(Constants.PLAN_ID));

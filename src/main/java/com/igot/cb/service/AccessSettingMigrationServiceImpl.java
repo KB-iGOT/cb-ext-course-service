@@ -96,6 +96,9 @@ public class AccessSettingMigrationServiceImpl {
             List<Map<String, Object>> cbPlanListMap = cassandraOperation.getRecordsByProperties(
                     Constants.KEYSPACE_SUNBIRD, Constants.CB_PLAN_TABLE, null,
                     null, null);
+
+            String assignmentType=null;
+            List<String> assignmentTypeInfo=null;
             
             for (Map<String, Object> cbPlanMap : cbPlanListMap) {
                 String status = String.valueOf(cbPlanMap.get(Constants.STATUS));
@@ -113,6 +116,8 @@ public class AccessSettingMigrationServiceImpl {
                             List<String> contentList = (List<String>) draftData.get(Constants.CONTENT_LIST);
                             cbPlanV2Map.put(Constants.CONTENT_LIST, contentList != null ? contentList : new ArrayList<>());
                             cbPlanV2Map.put(Constants.CONTENT_TYPE, draftData.get(Constants.CONTENT_TYPE));
+                            assignmentType = (String) draftData.get(Constants.ASSIGNMENT_TYPE);
+                            assignmentTypeInfo = (List<String>) draftData.get(Constants.ASSIGNMENT_TYPE_INFO);
 
                         } catch (Exception e) {
                             log.error("Error deserializing draftData JSON: {}", e.getMessage());
@@ -123,12 +128,12 @@ public class AccessSettingMigrationServiceImpl {
                     cbPlanV2Map.put(Constants.END_DATE_KEY, (Instant) cbPlanMap.get(Constants.END_DATE_KEY));
                     cbPlanV2Map.put(Constants.CONTENT_LIST, (List<String>) cbPlanMap.get(Constants.CONTENT_LIST));
                     cbPlanV2Map.put(Constants.CONTENT_TYPE, (String) cbPlanMap.get(Constants.CONTENT_TYPE));
+                    assignmentType = (String) cbPlanMap.get(Constants.ASSIGNMENT_TYPE);
+                    assignmentTypeInfo = (List<String>) cbPlanMap.get(Constants.ASSIGNMENT_TYPE_INFO);
                 }
 
                 String orgId = (String) cbPlanMap.get(Constants.ORG_ID);
                 String cbPlanId = String.valueOf(cbPlanMap.get(Constants.ID));
-                String assignmentType = (String) cbPlanMap.get(Constants.ASSIGNMENT_TYPE);
-                List<String> assignmentTypeInfo = (List<String>) cbPlanMap.get(Constants.ASSIGNMENT_TYPE_INFO);
 
                 cbPlanV2Map.put(Constants.PLAN_ID, cbPlanId);
                 cbPlanV2Map.put(Constants.ORG_SCOPE, Constants.SINGLE);

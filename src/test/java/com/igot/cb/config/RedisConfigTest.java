@@ -24,7 +24,7 @@ class RedisConfigTest {
     void setUp() throws Exception {
         mockPropertiesCache = mock(PropertiesCache.class);
         redisConfig = new RedisConfig();
-        
+
         // Inject mock PropertiesCache using reflection
         Field propertiesCacheField = RedisConfig.class.getDeclaredField("propertiesCache");
         propertiesCacheField.setAccessible(true);
@@ -46,7 +46,7 @@ class RedisConfigTest {
 
         assertNotNull(jedisPool);
         assertEquals("false", System.getProperty("org.apache.commons.pool2.registerMbeans"));
-        
+
         verify(mockPropertiesCache).getProperty(Constants.REDIS_HOST);
         verify(mockPropertiesCache).getProperty(Constants.REDIS_PORT);
     }
@@ -55,9 +55,9 @@ class RedisConfigTest {
     void testBuildPoolConfig() throws Exception {
         Method buildPoolConfigMethod = RedisConfig.class.getDeclaredMethod("buildPoolConfig");
         buildPoolConfigMethod.setAccessible(true);
-        
+
         JedisPoolConfig poolConfig = (JedisPoolConfig) buildPoolConfigMethod.invoke(redisConfig);
-        
+
         assertNotNull(poolConfig);
         assertEquals(128, poolConfig.getMaxIdle());
         assertEquals(3000, poolConfig.getMaxTotal());

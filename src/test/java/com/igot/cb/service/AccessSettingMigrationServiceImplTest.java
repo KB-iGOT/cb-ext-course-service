@@ -501,4 +501,143 @@ class AccessSettingMigrationServiceImplTest {
                 });
         }
 
+        @Test
+        void testMigrateCBPlanAccessSettingRules_success() {
+                List<Map<String, Object>> cbPlanList = new ArrayList<>();
+                Map<String, Object> cbPlan = new HashMap<>();
+                cbPlan.put(Constants.STATUS, Constants.DRAFT);
+                cbPlan.put(Constants.DRAFT_DATA, "{\"name\":\"Test Plan\",\"endDate\":\"2024-12-31\",\"contentList\":[\"content1\"],\"contentType\":\"Course\"}");
+                cbPlan.put(Constants.ORG_ID, "org1");
+                cbPlan.put(Constants.ID, "plan1");
+                cbPlan.put(Constants.ASSIGNMENT_TYPE, "Designation");
+                cbPlan.put(Constants.ASSIGNMENT_TYPE_INFO, Arrays.asList("teacher"));
+                cbPlan.put(Constants.CREATED_AT_KEY, java.time.Instant.now());
+                cbPlan.put(Constants.CREATED_BY, "user1");
+                cbPlan.put(Constants.IS_APAR, true);
+                cbPlan.put(Constants.PUBLISHED_AT_KEY, java.time.Instant.now());
+                cbPlan.put(Constants.CB_PUBLISHED_BY, "user1");
+                cbPlan.put(Constants.COMMENT, "Test comment");
+                cbPlan.put(Constants.UPDATED_AT, java.time.Instant.now());
+                cbPlan.put(Constants.UPDATED_BY, "user1");
+                cbPlanList.add(cbPlan);
+
+                when(cassandraOperation.getRecordsByProperties(
+                        eq(Constants.KEYSPACE_SUNBIRD), eq(Constants.CB_PLAN_TABLE),
+                        isNull(), isNull(), isNull())).thenReturn(cbPlanList);
+
+                when(idMapCacheMgr.getId(anyList())).thenReturn(Map.of("teacher", 1, "org1", 2));
+
+                ApiResponse dbResponse = new ApiResponse();
+                dbResponse.put(Constants.RESPONSE, Constants.SUCCESS);
+                when(cassandraOperation.insertRecord(anyString(), anyString(), anyMap())).thenReturn(dbResponse);
+
+                ApiResponse response = migrationService.migrateCBPlanAccessSettingRules();
+
+                assertEquals(HttpStatus.OK, response.getResponseCode());
+                assertEquals(1, response.getResult().get("Successful"));
+                assertEquals(0, response.getResult().get("Skipped"));
+        }
+
+        @Test
+        void testMigrateCBPlanAccessSettingRules_livePlan() {
+                List<Map<String, Object>> cbPlanList = new ArrayList<>();
+                Map<String, Object> cbPlan = new HashMap<>();
+                cbPlan.put(Constants.STATUS, Constants.LIVE);
+                cbPlan.put(Constants.NAME, "Live Plan");
+                cbPlan.put(Constants.END_DATE_KEY, java.time.Instant.now());
+                cbPlan.put(Constants.CONTENT_LIST, Arrays.asList("content1"));
+                cbPlan.put(Constants.CONTENT_TYPE, "Course");
+                cbPlan.put(Constants.ORG_ID, "org1");
+                cbPlan.put(Constants.ID, "plan1");
+                cbPlan.put(Constants.ASSIGNMENT_TYPE, "AllUser");
+                cbPlan.put(Constants.CREATED_AT_KEY, java.time.Instant.now());
+                cbPlan.put(Constants.CREATED_BY, "user1");
+                cbPlanList.add(cbPlan);
+
+                when(cassandraOperation.getRecordsByProperties(
+                        eq(Constants.KEYSPACE_SUNBIRD), eq(Constants.CB_PLAN_TABLE),
+                        isNull(), isNull(), isNull())).thenReturn(cbPlanList);
+
+                when(idMapCacheMgr.getId(anyList())).thenReturn(Map.of("org1", 1));
+
+                ApiResponse dbResponse = new ApiResponse();
+                dbResponse.put(Constants.RESPONSE, Constants.SUCCESS);
+                when(cassandraOperation.insertRecord(anyString(), anyString(), anyMap())).thenReturn(dbResponse);
+
+                ApiResponse response = migrationService.migrateCBPlanAccessSettingRules();
+
+                assertEquals(HttpStatus.OK, response.getResponseCode());
+        }
+
+        @Test
+        void testMigrateCBPlanAccessSettingRules_customUserType() {
+                List<Map<String, Object>> cbPlanList = new ArrayList<>();
+                Map<String, Object> cbPlan = new HashMap<>();
+                cbPlan.put(Constants.STATUS, Constants.DRAFT);
+                cbPlan.put(Constants.DRAFT_DATA, "{\"name\":\"Test Plan\"}");
+                cbPlan.put(Constants.ORG_ID, "org1");
+                cbPlan.put(Constants.ID, "plan1");
+                cbPlan.put(Constants.ASSIGNMENT_TYPE, "CustomUser");
+                cbPlan.put(Constants.ASSIGNMENT_TYPE_INFO, Arrays.asList("user1", "user2"));
+                cbPlan.put(Constants.CREATED_AT_KEY, java.time.Instant.now());
+                cbPlan.put(Constants.CREATED_BY, "user1");
+                cbPlanList.add(cbPlan);
+
+                when(cassandraOperation.getRecordsByProperties(
+                        eq(Constants.KEYSPACE_SUNBIRD), eq(Constants.CB_PLAN_TABLE),
+                        isNull(), isNull(), isNull())).thenReturn(cbPlanList);
+
+                when(idMapCacheMgr.getId(anyList())).thenReturn(Map.of("user1", 1, "user2", 2, "org1", 3));
+
+                ApiResponse dbResponse = new ApiResponse();
+                dbResponse.put(Constants.RESPONSE, Constants.SUCCESS);
+                when(cassandraOperation.insertRecord(anyString(), anyString(), anyMap())).thenReturn(dbResponse);
+
+                ApiResponse response = migrationService.migrateCBPlanAccessSettingRules();
+
+                assertEquals(HttpStatus.OK, response.getResponseCode());
+        }
+
+        @Test
+        void testMigrateCBPlanAccessSettingRules_dbError() {
+                List<Map<String, Object>> cbPlanList = new ArrayList<>();
+                Map<String, Object> cbPlan = new HashMap<>();
+                cbPlan.put(Constants.STATUS, Constants.DRAFT);
+                cbPlan.put(Constants.DRAFT_DATA, "{\"name\":\"Test Plan\"}");
+                cbPlan.put(Constants.ORG_ID, "org1");
+                cbPlan.put(Constants.ID, "plan1");
+                cbPlan.put(Constants.ASSIGNMENT_TYPE, "AllUser");
+                cbPlan.put(Constants.CREATED_AT_KEY, java.time.Instant.now());
+                cbPlan.put(Constants.CREATED_BY, "user1");
+                cbPlanList.add(cbPlan);
+
+                when(cassandraOperation.getRecordsByProperties(
+                        eq(Constants.KEYSPACE_SUNBIRD), eq(Constants.CB_PLAN_TABLE),
+                        isNull(), isNull(), isNull())).thenReturn(cbPlanList);
+
+                when(idMapCacheMgr.getId(anyList())).thenReturn(Map.of("org1", 1));
+
+                ApiResponse dbResponse = new ApiResponse();
+                dbResponse.put(Constants.RESPONSE, Constants.FAILED);
+                dbResponse.put(Constants.ERROR_MESSAGE, "Database error");
+                when(cassandraOperation.insertRecord(anyString(), anyString(), anyMap())).thenReturn(dbResponse);
+
+                ApiResponse response = migrationService.migrateCBPlanAccessSettingRules();
+
+                assertEquals(0, response.getResult().get("Successful"));
+                assertEquals(1, response.getResult().get("Skipped"));
+        }
+
+        @Test
+        void testMigrateCBPlanAccessSettingRules_exception() {
+                when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), any(), any(), any()))
+                        .thenThrow(new RuntimeException("DB error"));
+
+                ApiResponse response = migrationService.migrateCBPlanAccessSettingRules();
+
+                assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getResponseCode());
+        }
+
+
+
 }

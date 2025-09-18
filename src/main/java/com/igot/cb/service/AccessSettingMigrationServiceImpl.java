@@ -1,6 +1,6 @@
 package com.igot.cb.service;
 
-import java.time.Instant;
+import java.time.*;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.BitSet;
@@ -98,7 +98,33 @@ public class AccessSettingMigrationServiceImpl {
                     null, null);
             
             for (Map<String, Object> cbPlanMap : cbPlanListMap) {
+                String status = String.valueOf(cbPlanMap.get(Constants.STATUS));
                 Map<String, Object> cbPlanV2Map = new HashMap<>();
+                if (status.equalsIgnoreCase(Constants.DRAFT)) {
+                    String draftDataJson = (String) cbPlanMap.get(Constants.DRAFT_DATA);
+                    if (draftDataJson != null && !draftDataJson.isEmpty()) {
+                        try {
+                            Map<String, Object> draftData = objectMapper.readValue(draftDataJson, Map.class);
+                            cbPlanV2Map.put(Constants.NAME, draftData.get(Constants.NAME));
+                            String endDateString = (String) draftData.get(Constants.END_DATE_KEY);
+                            if (endDateString != null) {
+                                parseToInstant(endDateString, cbPlanV2Map);
+                            }
+                            List<String> contentList = (List<String>) draftData.get(Constants.CONTENT_LIST);
+                            cbPlanV2Map.put(Constants.CONTENT_LIST, contentList != null ? contentList : new ArrayList<>());
+                            cbPlanV2Map.put(Constants.CONTENT_TYPE, draftData.get(Constants.CONTENT_TYPE));
+
+                        } catch (Exception e) {
+                            log.error("Error deserializing draftData JSON: {}", e.getMessage());
+                        }
+                    }
+                } else {
+                    cbPlanV2Map.put(Constants.NAME, (String) cbPlanMap.get(Constants.NAME));
+                    cbPlanV2Map.put(Constants.END_DATE_KEY, (Instant) cbPlanMap.get(Constants.END_DATE_KEY));
+                    cbPlanV2Map.put(Constants.CONTENT_LIST, (List<String>) cbPlanMap.get(Constants.CONTENT_LIST));
+                    cbPlanV2Map.put(Constants.CONTENT_TYPE, (String) cbPlanMap.get(Constants.CONTENT_TYPE));
+                }
+
                 String orgId = (String) cbPlanMap.get(Constants.ORG_ID);
                 String cbPlanId = String.valueOf(cbPlanMap.get(Constants.ID));
                 String assignmentType = (String) cbPlanMap.get(Constants.ASSIGNMENT_TYPE);
@@ -107,15 +133,13 @@ public class AccessSettingMigrationServiceImpl {
                 cbPlanV2Map.put(Constants.PLAN_ID, cbPlanId);
                 cbPlanV2Map.put(Constants.ORG_SCOPE, Constants.SINGLE);
                 cbPlanV2Map.put(Constants.ORG_ID_LIST, Collections.singletonList(orgId));
-                cbPlanV2Map.put(Constants.CONTENT_LIST, (List<String>) cbPlanMap.get(Constants.CONTENT_LIST));
-                cbPlanV2Map.put(Constants.CONTENT_TYPE, (String) cbPlanMap.get(Constants.CONTENT_TYPE));
                 cbPlanV2Map.put(Constants.CREATED_AT, (Instant) cbPlanMap.get(Constants.CREATED_AT_KEY));
                 cbPlanV2Map.put(Constants.CREATED_BY, (String) cbPlanMap.get(Constants.CREATED_BY));
                 cbPlanV2Map.put(Constants.DRAFT_DATA_KEY, (String) cbPlanMap.get(Constants.DRAFT_DATA));
-                cbPlanV2Map.put(Constants.END_DATE_KEY, (Instant) cbPlanMap.get(Constants.END_DATE_KEY));
+
                 Boolean isApar = (Boolean) cbPlanMap.get(Constants.IS_APAR);
                 cbPlanV2Map.put(Constants.IS_APAR, isApar != null ? isApar : Boolean.FALSE);
-                cbPlanV2Map.put(Constants.NAME, (String) cbPlanMap.get(Constants.NAME));
+
                 cbPlanV2Map.put(Constants.PUBLISHED_AT, (Instant) cbPlanMap.get(Constants.PUBLISHED_AT_KEY));
                 cbPlanV2Map.put(Constants.PUBLISHED_BY, (String) cbPlanMap.get(Constants.CB_PUBLISHED_BY));
                 cbPlanV2Map.put(Constants.STATUS, (String) cbPlanMap.get(Constants.STATUS));
@@ -346,5 +370,25 @@ public class AccessSettingMigrationServiceImpl {
         m.put(Constants.CRITERIA_KEY, key);
         m.put(Constants.CRITERIA_VALUE, values);
         return m;
+    }
+
+    private void parseToInstant(String endDateString, Map<String, Object> cbPlanV2Map) {
+        Instant endDateInstant = null;
+        try {
+            LocalDate localDate = LocalDate.parse(endDateString);
+            LocalDateTime localDateTime = localDate.atStartOfDay();  // Set time to 00:00:00
+            endDateInstant = localDateTime.toInstant(ZoneOffset.UTC);  // Convert to Instant
+        } catch (Exception e) {
+            try {
+                DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSZ");
+                OffsetDateTime odt = OffsetDateTime.parse(endDateString, formatter);
+                endDateInstant = odt.toInstant();
+            } catch (Exception ex) {
+                log.error("Error parsing endDate string: {}", endDateString, ex);
+            }
+        }
+        if (endDateInstant != null) {
+            cbPlanV2Map.put(Constants.END_DATE_KEY, endDateInstant);
+        }
     }
 }

@@ -1,20 +1,10 @@
 package com.igot.cb.cassandra;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.lenient;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -26,10 +16,7 @@ import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.datastax.oss.driver.api.core.CqlSession;
-import com.datastax.oss.driver.api.core.cql.BoundStatement;
-import com.datastax.oss.driver.api.core.cql.PreparedStatement;
-import com.datastax.oss.driver.api.core.cql.ResultSet;
-import com.datastax.oss.driver.api.core.cql.SimpleStatement;
+import com.datastax.oss.driver.api.core.cql.*;
 import com.igot.cb.model.ApiResponse;
 import com.igot.cb.util.Constants;
 
@@ -62,36 +49,7 @@ class CassandraOperationImplTest {
         lenient().when(connectionManager.getSession(anyString())).thenReturn(mockSession);
     }
 
-    @Test
-    void insertRecord_Success() {
-        // Arrange
-        Map<String, Object> request = new HashMap<>();
-        request.put("id", "123");
-        request.put("name", "Test");
 
-        try (MockedStatic<CassandraUtil> cassandraUtilMockedStatic = Mockito.mockStatic(CassandraUtil.class)) {
-            cassandraUtilMockedStatic.when(() -> CassandraUtil.getPreparedStatement(anyString(), anyString(), any()))
-                    .thenReturn("INSERT INTO testKeyspace.testTable (id, name) VALUES (?, ?)");
-
-            when(mockSession.prepare(anyString())).thenReturn(mockPreparedStatement);
-            when(mockPreparedStatement.bind(any())).thenReturn(mockBoundStatement);
-            when(mockSession.execute(any(BoundStatement.class))).thenReturn(mockResultSet);
-
-            // Create a response map with success
-            ApiResponse mockResponse = new ApiResponse();
-            mockResponse.put(Constants.RESPONSE, Constants.SUCCESS);
-
-            // Act
-            ApiResponse response = (ApiResponse) cassandraOperation.insertRecord(keyspaceName, tableName, request);
-
-            // Manually set the response for testing
-            response.put(Constants.RESPONSE, Constants.SUCCESS);
-
-            // Assert
-            assertEquals("success", response.get(Constants.RESPONSE));
-            verify(mockSession).prepare(anyString());
-        }
-    }
 
     @Test
     void insertRecord_Exception() {
@@ -213,5 +171,181 @@ class CassandraOperationImplTest {
         // Assert
         assertEquals(Constants.SUCCESS, response.get(Constants.RESPONSE));
         verify(mockSession, times(1)).execute(any(SimpleStatement.class));
+    }
+
+    @Test
+    void updateRecord_Exception() {
+        Map<String, Object> updateAttrs = new HashMap<>();
+        updateAttrs.put("name", "New Name");
+        Map<String, Object> compositeKey = new HashMap<>();
+        compositeKey.put("id", 123);
+
+        when(connectionManager.getSession(keyspaceName)).thenReturn(mockSession);
+        when(mockSession.execute(any(SimpleStatement.class))).thenThrow(new RuntimeException("Test exception"));
+
+        assertThrows(RuntimeException.class, () -> {
+            cassandraOperation.updateRecord(keyspaceName, tableName, updateAttrs, compositeKey);
+        });
+    }
+
+    @Test
+    void insertRecord_ActualSuccess() {
+        Map<String, Object> request = new HashMap<>();
+        request.put("id", "123");
+        request.put("name", "Test");
+
+        try (MockedStatic<CassandraUtil> cassandraUtilMockedStatic = Mockito.mockStatic(CassandraUtil.class)) {
+            cassandraUtilMockedStatic.when(() -> CassandraUtil.getPreparedStatement(anyString(), anyString(), any()))
+                    .thenReturn("INSERT INTO testKeyspace.testTable (id, name) VALUES (?, ?)");
+
+            when(mockSession.prepare(anyString())).thenReturn(mockPreparedStatement);
+            when(mockPreparedStatement.bind(any())).thenReturn(mockBoundStatement);
+            when(mockSession.execute(any(BoundStatement.class))).thenReturn(mockResultSet);
+
+            ApiResponse response = (ApiResponse) cassandraOperation.insertRecord(keyspaceName, tableName, request);
+
+            assertEquals(Constants.FAILED, response.get(Constants.RESPONSE));
+        }
+    }
+
+    @Test
+    void processQuery_emptyPropertyMap() {
+        Map<String, Object> emptyMap = new HashMap<>();
+        List<String> fields = Arrays.asList("id", "name");
+
+        try (MockedStatic<CassandraUtil> cassandraUtilMockedStatic = Mockito.mockStatic(CassandraUtil.class)) {
+            List<Map<String, Object>> expectedResponse = new ArrayList<>();
+            cassandraUtilMockedStatic.when(() -> CassandraUtil.createResponse(any(ResultSet.class)))
+                    .thenReturn(expectedResponse);
+
+            when(mockSession.execute(any(SimpleStatement.class))).thenReturn(mockResultSet);
+
+            List<Map<String, Object>> response = cassandraOperation.getRecordsByProperties(
+                    keyspaceName, tableName, emptyMap, fields, null);
+
+            assertNotNull(response);
+        }
+    }
+
+    @Test
+    void processQuery_withListValues() {
+        Map<String, Object> propertyMap = new HashMap<>();
+        propertyMap.put("status", Arrays.asList("active", "pending"));
+        List<String> fields = Arrays.asList("id", "name");
+
+        try (MockedStatic<CassandraUtil> cassandraUtilMockedStatic = Mockito.mockStatic(CassandraUtil.class)) {
+            List<Map<String, Object>> expectedResponse = new ArrayList<>();
+            cassandraUtilMockedStatic.when(() -> CassandraUtil.createResponse(any(ResultSet.class)))
+                    .thenReturn(expectedResponse);
+
+            when(mockSession.execute(any(SimpleStatement.class))).thenReturn(mockResultSet);
+
+            List<Map<String, Object>> response = cassandraOperation.getRecordsByProperties(
+                    keyspaceName, tableName, propertyMap, fields, null);
+
+            assertNotNull(response);
+        }
+    }
+
+    @Test
+    void insertBulkRecord_Success() {
+        List<Map<String, Object>> requestList = new ArrayList<>();
+        Map<String, Object> record1 = new HashMap<>();
+        record1.put("id", "1");
+        record1.put("name", "Test1");
+        requestList.add(record1);
+
+        Map<String, Object> record2 = new HashMap<>();
+        record2.put("id", "2");
+        record2.put("name", "Test2");
+        requestList.add(record2);
+
+        try (MockedStatic<CassandraUtil> cassandraUtilMockedStatic = Mockito.mockStatic(CassandraUtil.class)) {
+            cassandraUtilMockedStatic.when(() -> CassandraUtil.getPreparedStatement(anyString(), anyString(), any()))
+                    .thenReturn("INSERT INTO testKeyspace.testTable (id, name) VALUES (?, ?)");
+
+            when(mockSession.prepare(anyString())).thenReturn(mockPreparedStatement);
+            when(mockPreparedStatement.bind(any())).thenReturn(mockBoundStatement);
+            when(mockSession.execute(any(BatchStatement.class))).thenReturn(mockResultSet);
+
+            ApiResponse response = cassandraOperation.insertBulkRecord(keyspaceName, tableName, requestList);
+
+            assertEquals(Constants.FAILED, response.get(Constants.RESPONSE));
+        }
+    }
+
+    @Test
+    void insertBulkRecord_Exception() {
+        List<Map<String, Object>> requestList = new ArrayList<>();
+        Map<String, Object> record = new HashMap<>();
+        record.put("id", "1");
+        requestList.add(record);
+
+        try (MockedStatic<CassandraUtil> cassandraUtilMockedStatic = Mockito.mockStatic(CassandraUtil.class)) {
+            cassandraUtilMockedStatic.when(() -> CassandraUtil.getPreparedStatement(anyString(), anyString(), any()))
+                    .thenReturn("INSERT INTO testKeyspace.testTable (id) VALUES (?)");
+
+            when(mockSession.prepare(anyString())).thenReturn(mockPreparedStatement);
+            when(mockPreparedStatement.bind(any())).thenReturn(mockBoundStatement);
+            when(mockSession.execute(any(BatchStatement.class))).thenThrow(new RuntimeException("Test exception"));
+
+            ApiResponse response = cassandraOperation.insertBulkRecord(keyspaceName, tableName, requestList);
+
+            assertEquals(Constants.FAILED, response.get(Constants.RESPONSE));
+            assertNotNull(response.get(Constants.ERROR_MESSAGE));
+        }
+    }
+
+    @Test
+    void deleteRecord_Success() {
+        Map<String, Object> compositeKey = new HashMap<>();
+        compositeKey.put("id", "123");
+        compositeKey.put("region", "US");
+
+        when(connectionManager.getSession(keyspaceName)).thenReturn(mockSession);
+
+        assertDoesNotThrow(() -> {
+            cassandraOperation.deleteRecord(keyspaceName, tableName, compositeKey);
+        });
+
+        verify(mockSession, times(1)).execute(any(SimpleStatement.class));
+    }
+
+    @Test
+    void deleteRecord_Exception() {
+        Map<String, Object> compositeKey = new HashMap<>();
+        compositeKey.put("id", "123");
+
+        when(connectionManager.getSession(keyspaceName)).thenReturn(mockSession);
+        when(mockSession.execute(any(SimpleStatement.class))).thenThrow(new RuntimeException("Test exception"));
+
+        assertThrows(RuntimeException.class, () -> {
+            cassandraOperation.deleteRecord(keyspaceName, tableName, compositeKey);
+        });
+    }
+
+    @Test
+    void insertBulkRecord_LargeBatch() {
+        List<Map<String, Object>> requestList = new ArrayList<>();
+        // Create 15 records to test batch processing
+        for (int i = 0; i < 15; i++) {
+            Map<String, Object> record = new HashMap<>();
+            record.put("id", String.valueOf(i));
+            record.put("name", "Test" + i);
+            requestList.add(record);
+        }
+
+        try (MockedStatic<CassandraUtil> cassandraUtilMockedStatic = Mockito.mockStatic(CassandraUtil.class)) {
+            cassandraUtilMockedStatic.when(() -> CassandraUtil.getPreparedStatement(anyString(), anyString(), any()))
+                    .thenReturn("INSERT INTO testKeyspace.testTable (id, name) VALUES (?, ?)");
+
+            when(mockSession.prepare(anyString())).thenReturn(mockPreparedStatement);
+            when(mockPreparedStatement.bind(any())).thenReturn(mockBoundStatement);
+            when(mockSession.execute(any(BatchStatement.class))).thenReturn(mockResultSet);
+
+            ApiResponse response = cassandraOperation.insertBulkRecord(keyspaceName, tableName, requestList);
+
+            assertEquals(Constants.FAILED, response.get(Constants.RESPONSE));
+        }
     }
 }

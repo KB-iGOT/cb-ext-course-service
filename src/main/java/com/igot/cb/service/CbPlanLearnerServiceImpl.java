@@ -168,7 +168,7 @@ public class CbPlanLearnerServiceImpl {
                 }
                 Map<String, Object> cbPlanDetails = new HashMap<>();
                 cbPlanDetails.put(Constants.ID, cbPlan.get(Constants.PLAN_ID));
-                cbPlanDetails.put(Constants.END_DATE, cbPlan.get(Constants.END_DATE_REQUEST));
+                cbPlanDetails.put(Constants.END_DATE_REQUEST, cbPlan.get(Constants.END_DATE_REQUEST));
                 List<String> courses = (List<String>) cbPlan.get(Constants.CONTENT_LIST);
                 cbPlanDetails.put(Constants.IS_APAR,
                         cbPlan.containsKey(Constants.IS_APAR) && cbPlan.get(Constants.IS_APAR) != null

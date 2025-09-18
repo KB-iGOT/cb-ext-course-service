@@ -168,7 +168,7 @@ public class CbPlanLearnerServiceImpl {
                 }
                 Map<String, Object> cbPlanDetails = new HashMap<>();
                 cbPlanDetails.put(Constants.ID, cbPlan.get(Constants.PLAN_ID));
-                cbPlanDetails.put(Constants.END_DATE_REQUEST, cbPlan.get(Constants.END_DATE_REQUEST));
+                cbPlanDetails.put(Constants.END_DATE, cbPlan.get(Constants.END_DATE_REQUEST));
                 List<String> courses = (List<String>) cbPlan.get(Constants.CONTENT_LIST);
                 cbPlanDetails.put(Constants.IS_APAR,
                         cbPlan.containsKey(Constants.IS_APAR) && cbPlan.get(Constants.IS_APAR) != null
@@ -312,17 +312,17 @@ public class CbPlanLearnerServiceImpl {
             userProfile.put(Constants.PROFILE_STATUS_KEY.toLowerCase(),
                     (String) profileDetails.get(Constants.PROFILE_STATUS_KEY));
             Map<String, Object> cadreDetails = (Map<String, Object>) profileDetails.get(Constants.CADRE_DETAILS);
-
+            boolean centralDeputation = false;
             if (org.apache.commons.collections4.MapUtils.isNotEmpty(cadreDetails)) {
                 userProfile.put(Constants.CADRE, (String) cadreDetails.get(Constants.CADRE_NAME));
                 userProfile.put(Constants.SERVICE, (String) cadreDetails.get(Constants.CIVIL_SERVICE_NAME));
-                if (cadreDetails.containsKey(Constants.CADRE_BATCH)) {
-                    userProfile.put(Constants.BATCH, String.valueOf(cadreDetails.get(Constants.CADRE_BATCH)));
-                }
+
                 if (cadreDetails.containsKey(Constants.CENTRAL_DEPUTATION)) {
-                    userProfile.put(Constants.CENTRAL_DEPUTATION, String.valueOf( cadreDetails.get(Constants.CENTRAL_DEPUTATION)));
+                    centralDeputation = (Boolean) cadreDetails.get(Constants.CENTRAL_DEPUTATION);
                 }
+
             }
+            userProfile.put(Constants.CENTRAL_DEPUTATION, String.valueOf(centralDeputation));
         }
         getExistingContextData((String) userBasicProfile.get(Constants.ID),
                 (String) userBasicProfile.get(Constants.ROOT_ORG_ID.toLowerCase()),
@@ -367,15 +367,33 @@ public class CbPlanLearnerServiceImpl {
 
             for (Map<String, Object> criteria : criteriaList) {
                 String criteriaKey = (String) criteria.get(Constants.CRITERIA_KEY);
-                List<String> criteriaValues = (List<String>) criteria.get(Constants.CRITERIA_VALUE);
+                Object rawCriteriaValue = criteria.get(Constants.CRITERIA_VALUE);
 
-                String userCriteriaValue = userProfile.get(criteriaKey);
+                if (Constants.CENTRAL_DEPUTATION.equals(criteriaKey)) {
+                    boolean expectedValue = Boolean.parseBoolean(String.valueOf(rawCriteriaValue));
+                    boolean actualValue = Boolean.parseBoolean(
+                            String.valueOf(userProfile.getOrDefault(criteriaKey, "false"))
+                    );
 
-                if (StringUtils.isEmpty(userCriteriaValue) || !criteriaValues.contains(userCriteriaValue)) {
-                    log.debug("User does not match criteria key: {} in group: {}", criteriaKey, userGroupName);
-                    isUserHasAccess = false;
-                    break;
+                    if (expectedValue != actualValue) {
+                        log.debug("User does not match boolean criteria key: {} in group: {}", criteriaKey, userGroupName);
+                        isUserHasAccess = false;
+                        break;
+                    }
+                } else {
+                    List<String> criteriaValues = (rawCriteriaValue instanceof List<?>)
+                            ? ((List<?>) rawCriteriaValue).stream().map(String::valueOf).toList()
+                            : Collections.singletonList(String.valueOf(rawCriteriaValue));
+
+                    String userCriteriaValue = String.valueOf(userProfile.get(criteriaKey));
+
+                    if (StringUtils.isEmpty(userCriteriaValue) || !criteriaValues.contains(userCriteriaValue)) {
+                        log.debug("User does not match criteria key: {} in group: {}", criteriaKey, userGroupName);
+                        isUserHasAccess = false;
+                        break;
+                    }
                 }
+
             }
 
             if (isUserHasAccess) {

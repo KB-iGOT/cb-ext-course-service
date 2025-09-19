@@ -192,10 +192,11 @@ public class EsUtilServiceImpl implements EsUtilService{
         searchSourceBuilder.query(boolQueryBuilder.build()._toQuery());
         addSortToSearchSourceBuilder(searchCriteria, searchSourceBuilder, JsonFilePath);
         addRequestedFieldsToSearchSourceBuilder(searchCriteria, searchSourceBuilder);
-        // addQueryStringToFilter(searchCriteria.getSearchString(), boolQueryBuilder);
         String searchString = searchCriteria.getSearchString();
         if (isNotBlank(searchString)) {
-            boolQueryBuilder.must(Query.of(q -> q.matchPhrase(mp -> mp.field(Constants.NAME).query(searchString))));
+            boolQueryBuilder.must(
+                    Query.of(q -> q.match(m -> m.field(Constants.NAME).query(searchString)))
+            );
         }
         addFacetsToSearchSourceBuilder(searchCriteria.getFacets(), searchSourceBuilder);
         Query queryPart = buildQueryPart(searchCriteria.getQuery());

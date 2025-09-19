@@ -95,7 +95,7 @@ public class CbPlanLearnerServiceImpl {
             }
             setUserProfile(userProfile, userList.get(0));
             propertiesMap.clear();
-            propertiesMap.put(Constants.PLAN_YEAR, "ALL#");
+            propertiesMap.put(Constants.PLAN_YEAR, "ALL");
             List<Map<String, Object>> cbplanResult = cassandraOperation.getRecordsByProperties(
                     Constants.KEYSPACE_SUNBIRD, Constants.TABLE_CB_PLAN_V2_LOOKUP_BY_ALL_ORG, propertiesMap, new ArrayList<>(), null);
             propertiesMap.clear();

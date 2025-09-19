@@ -95,8 +95,7 @@ public class CbPlanLearnerServiceImpl {
             }
             setUserProfile(userProfile, userList.get(0));
             propertiesMap.clear();
-            int currentYear = Calendar.getInstance().get(Calendar.YEAR);
-            propertiesMap.put(Constants.PLAN_YEAR, "ALL#" + currentYear);
+            propertiesMap.put(Constants.PLAN_YEAR, "ALL#");
             List<Map<String, Object>> cbplanResult = cassandraOperation.getRecordsByProperties(
                     Constants.KEYSPACE_SUNBIRD, Constants.TABLE_CB_PLAN_V2_LOOKUP_BY_ALL_ORG, propertiesMap, new ArrayList<>(), null);
             propertiesMap.clear();
@@ -324,9 +323,9 @@ public class CbPlanLearnerServiceImpl {
             }
             userProfile.put(Constants.CENTRAL_DEPUTATION, String.valueOf(centralDeputation));
         }
-        getExistingContextData((String) userBasicProfile.get(Constants.ID),
-                (String) userBasicProfile.get(Constants.ROOT_ORG_ID.toLowerCase()),
-                userProfile);
+//        getExistingContextData((String) userBasicProfile.get(Constants.ID),
+//                (String) userBasicProfile.get(Constants.ROOT_ORG_ID.toLowerCase()),
+//                userProfile);
     }
 
     private boolean evaluateContextAccessRule(Map<String, Object> accessSettingIdMap,

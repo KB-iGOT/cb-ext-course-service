@@ -322,8 +322,7 @@ public class CbPlanServiceImpl {
         ApiResponse response = new ApiResponse();
         try {
             Map<String, Object> allOrgMap = new HashMap<>();
-            int currentYear = Calendar.getInstance().get(Calendar.YEAR);
-            allOrgMap.put("planyear", "ALL#" + currentYear);
+            allOrgMap.put("planyear", "ALL#");
             allOrgMap.put(Constants.PLAN_ID, cbPlanId);
             allOrgMap.put(Constants.END_DATE, endDate.toInstant()); // java.util.Date or Timestamp
             allOrgMap.put("isactive", true);
@@ -1265,11 +1264,10 @@ public class CbPlanServiceImpl {
                             return response;
                         }
                     }
-                    int currentYear = Calendar.getInstance().get(Calendar.YEAR);
                     if (Constants.ALL.equalsIgnoreCase(cbPlanDto.getOrgScope())) {
                         Map<String, Object> compositeKeyMap = Map.of(
                                 Constants.PLAN_ID_RQST, cbPlanId,
-                                Constants.PLAN_YEAR, "ALL#" + currentYear
+                                Constants.PLAN_YEAR, "ALL#"
                         );
 
                         Map<String, Object> singleResp =  cassandraOperation.updateRecord(Constants.KEYSPACE_SUNBIRD,

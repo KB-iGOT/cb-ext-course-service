@@ -3,12 +3,8 @@ package com.igot.cb.elasticsearch.service;
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
 import co.elastic.clients.elasticsearch._types.FieldValue;
 import co.elastic.clients.elasticsearch._types.Refresh;
-import co.elastic.clients.elasticsearch._types.SortOptions;
 import co.elastic.clients.elasticsearch._types.SortOrder;
-import co.elastic.clients.elasticsearch._types.aggregations.Aggregate;
-import co.elastic.clients.elasticsearch._types.aggregations.Aggregation;
-import co.elastic.clients.elasticsearch._types.aggregations.StringTermsBucket;
-import co.elastic.clients.elasticsearch._types.aggregations.TermsAggregation;
+import co.elastic.clients.elasticsearch._types.aggregations.*;
 import co.elastic.clients.elasticsearch._types.query_dsl.*;
 import co.elastic.clients.elasticsearch.core.*;
 import co.elastic.clients.elasticsearch.core.search.Hit;
@@ -21,6 +17,7 @@ import com.igot.cb.elasticsearch.config.EsConfig;
 import com.igot.cb.elasticsearch.dto.FacetDTO;
 import com.igot.cb.elasticsearch.dto.SearchCriteria;
 import com.igot.cb.elasticsearch.dto.SearchResult;
+import com.igot.cb.util.CbExtServerProperties;
 import com.igot.cb.util.Constants;
 import com.networknt.schema.JsonSchemaFactory;
 import lombok.extern.slf4j.Slf4j;
@@ -40,14 +37,15 @@ import java.util.stream.Collectors;
 @Service
 @Slf4j
 public class EsUtilServiceImpl implements EsUtilService{
-
     private final EsConfig esConfig;
     private final ElasticsearchClient elasticsearchClient;
+    private final CbExtServerProperties cbExtServerProperties;
     private final Logger logger = LogManager.getLogger(getClass());
 
     private static final Map<String, Map<String, Object>> schemaCache = new ConcurrentHashMap<>();
 
-    public EsUtilServiceImpl(EsConfig esConfig, ElasticsearchClient elasticsearchClient) {
+    public EsUtilServiceImpl(EsConfig esConfig, ElasticsearchClient elasticsearchClient, CbExtServerProperties cbExtServerProperties) {
+        this.cbExtServerProperties = cbExtServerProperties;
         this.esConfig = esConfig;
         this.elasticsearchClient = elasticsearchClient;
     }
@@ -165,6 +163,14 @@ public class EsUtilServiceImpl implements EsUtilService{
                             FacetDTO facetDTO = new FacetDTO(bucket.key().stringValue(), bucket.docCount());
                             fieldValueList.add(facetDTO);
                         }
+                    }
+                    fieldAggregations.put(field, fieldValueList);
+                } else {
+                    List<FacetDTO> fieldValueList = new ArrayList<>();
+                    for (LongTermsBucket bucket : aggregate.lterms().buckets().array()) {
+                        FacetDTO facetDTO = new FacetDTO(bucket.keyAsString(), bucket.docCount());
+                        fieldValueList.add(facetDTO);
+
                     }
                     fieldAggregations.put(field, fieldValueList);
                 }
@@ -323,12 +329,19 @@ public class EsUtilServiceImpl implements EsUtilService{
     private void addFacetsToSearchSourceBuilder(
             List<String> facets, SearchRequest.Builder searchRequestBuilder) {
         if (facets != null && !facets.isEmpty()) {
-            Map<String, Aggregation> aggregationMap = facets.stream()
-                    .collect(Collectors.toMap(
-                            field -> field + "_agg",
-                            field -> Aggregation.of(a -> a.terms(
-                                    TermsAggregation.of(t -> t.field(field + ".keyword").size(250))))
-                    ));
+            Map<String, Aggregation> aggregationMap = new HashMap<>();
+
+            for (String field : facets) {
+                Aggregation aggregation;
+                if (cbExtServerProperties.getNonTextFields().contains(field)) {
+                    aggregation = Aggregation.of(a -> a.terms(
+                            t -> t.field(field).size(250)));
+                } else {
+                    aggregation = Aggregation.of(a -> a.terms(
+                            t -> t.field(field + ".keyword").size(250)));
+                }
+                aggregationMap.put(field + "_agg", aggregation);
+            }
             searchRequestBuilder.aggregations(aggregationMap);
         }
     }
@@ -369,16 +382,16 @@ public class EsUtilServiceImpl implements EsUtilService{
                                 nestedMap.forEach((rangeOperator, rangeValue) -> {
                                     switch (rangeOperator) {
                                         case Constants.SEARCH_OPERATION_GREATER_THAN_EQUALS:
-                                            rangeQuery.gte((JsonData) rangeValue);
+                                            rangeQuery.gte(JsonData.of(rangeValue));
                                             break;
                                         case Constants.SEARCH_OPERATION_LESS_THAN_EQUALS:
-                                            rangeQuery.lte((JsonData) rangeValue);
+                                            rangeQuery.lte(JsonData.of(rangeValue));
                                             break;
                                         case Constants.SEARCH_OPERATION_GREATER_THAN:
-                                            rangeQuery.gt((JsonData) rangeValue);
+                                            rangeQuery.gt(JsonData.of(rangeValue));
                                             break;
                                         case Constants.SEARCH_OPERATION_LESS_THAN:
-                                            rangeQuery.lt((JsonData) rangeValue);
+                                            rangeQuery.lt(JsonData.of(rangeValue));
                                             break;
                                     }
                                 });

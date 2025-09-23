@@ -1128,7 +1128,7 @@ public class CbPlanServiceImpl {
                                 }
                             }
                         }
-                        /*if (item.containsKey(Constants.CONTENT_LIST) && item.get(Constants.CONTENT_LIST) != null) {
+                        if (item.containsKey(Constants.CONTENT_LIST) && item.get(Constants.CONTENT_LIST) != null) {
                             Object contentListObj = item.get(Constants.CONTENT_LIST);
 
                             if (contentListObj instanceof List) {
@@ -1166,7 +1166,7 @@ public class CbPlanServiceImpl {
                                 enrichedItem.put(Constants.CONTENT_LIST, enrichContentInfoMap);
                             }
                         }
-*/
+
                         enrichedData.add(enrichedItem);
                     }
 

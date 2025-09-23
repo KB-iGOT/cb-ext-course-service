@@ -98,6 +98,7 @@ public class CbPlanLearnerServiceImpl {
             propertiesMap.put(Constants.PLAN_YEAR, "ALL");
             List<Map<String, Object>> cbplanResult = cassandraOperation.getRecordsByProperties(
                     Constants.KEYSPACE_SUNBIRD, Constants.TABLE_CB_PLAN_V2_LOOKUP_BY_ALL_ORG, propertiesMap, new ArrayList<>(), null);
+            log.info("CB Plans count for All org: {}", cbplanResult != null ? cbplanResult.size() : 0);
             propertiesMap.clear();
             propertiesMap.put(Constants.ORG_ID, userOrgId);
             List<Map<String, Object>> cbplanOrgResult = cassandraOperation.getRecordsByProperties(
@@ -107,10 +108,12 @@ public class CbPlanLearnerServiceImpl {
                     new ArrayList<>(),
                     null
             );
+            log.info("Cb plans count for orgId {}: {}", userOrgId, cbplanOrgResult != null ? cbplanOrgResult.size() : 0);
 
 // 3️⃣ Merge results into one list/map
             if (CollectionUtils.isNotEmpty(cbplanOrgResult)) {
                 cbplanResult.addAll(cbplanOrgResult);
+                log.info("CB Plans count for All org: {}", cbplanResult != null ? cbplanResult.size() : 0);
             }
 
             if (CollectionUtils.isEmpty(cbplanResult)) {
@@ -145,9 +148,13 @@ public class CbPlanLearnerServiceImpl {
                     new ArrayList<>(),
                     null
             );
+            log.info("Cb plans count: {}",
+                    activeCbPlans != null ? activeCbPlans.size() : 0);
             activeCbPlans= activeCbPlans.stream()
                     .filter(plan -> Constants.LIVE.equalsIgnoreCase((String) plan.get(Constants.STATUS)))
                     .collect(Collectors.toList());
+            log.info("Active Cb plans count: {}",
+                    activeCbPlans != null ? activeCbPlans.size() : 0);
             for (Map<String, Object> cbPlan : activeCbPlans) {
                 Object contextDataObj = cbPlan.get(Constants.CONTEXT_DATA_REQUEST);
                 try{

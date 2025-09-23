@@ -155,7 +155,7 @@ class EsUtilServiceImplTest {
         SearchResponse<Object> searchResponse = createMockSearchResponseWithFacets();
         when(elasticsearchClient.search(any(co.elastic.clients.elasticsearch.core.SearchRequest.class), eq(Object.class)))
                 .thenReturn(searchResponse);
-        when(cbExtServerProperties.getNonTextField())
+        when(cbExtServerProperties.getNonTextFields())
                 .thenReturn("category,status");
         SearchResult result = esUtilService.searchDocuments("test-index", criteria, "/test.json");
         

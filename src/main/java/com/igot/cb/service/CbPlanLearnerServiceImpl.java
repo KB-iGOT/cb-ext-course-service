@@ -95,8 +95,7 @@ public class CbPlanLearnerServiceImpl {
             }
             setUserProfile(userProfile, userList.get(0));
             propertiesMap.clear();
-            int currentYear = Calendar.getInstance().get(Calendar.YEAR);
-            propertiesMap.put(Constants.PLAN_YEAR, "ALL#" + currentYear);
+            propertiesMap.put(Constants.PLAN_YEAR, "ALL");
             List<Map<String, Object>> cbplanResult = cassandraOperation.getRecordsByProperties(
                     Constants.KEYSPACE_SUNBIRD, Constants.TABLE_CB_PLAN_V2_LOOKUP_BY_ALL_ORG, propertiesMap, new ArrayList<>(), null);
             propertiesMap.clear();
@@ -324,6 +323,9 @@ public class CbPlanLearnerServiceImpl {
             }
             userProfile.put(Constants.CENTRAL_DEPUTATION, String.valueOf(centralDeputation));
         }
+//        getExistingContextData((String) userBasicProfile.get(Constants.ID),
+//                (String) userBasicProfile.get(Constants.ROOT_ORG_ID.toLowerCase()),
+//                userProfile);
     }
 
     private boolean evaluateContextAccessRule(Map<String, Object> accessSettingIdMap,
@@ -389,6 +391,7 @@ public class CbPlanLearnerServiceImpl {
                         break;
                     }
                 }
+
             }
 
 
@@ -401,6 +404,48 @@ public class CbPlanLearnerServiceImpl {
         return false;
     }
 
+    private void getExistingContextData(String userId, String rootOrgId, Map<String, String> userProfile) {
+        Map<String, Object> query = Map.of(
+                Constants.USER_ID_LOWER_CASE, userId, Constants.CONTEXT_TYPE, Constants.ORG_ADDITIONAL_PROPERTIES);
+
+        List<Map<String, Object>> rows = cassandraOperation.getRecordsByProperties(
+                Constants.KEYSPACE_SUNBIRD, Constants.TABLE_USER_EXTENDED_PROFILE, query, null, null);
+        if (rows != null && !rows.isEmpty()) {
+            String json = (String) rows.get(0).get(Constants.CONTEXT_DATA_KEY);
+            try {
+                TypeReference<List<Map<String, Object>>> typeRef = new TypeReference<>() {
+                };
+                List<Map<String, Object>> orgAdditionalProperties = mapper.readValue(json, typeRef);
+
+                if (CollectionUtils.isNotEmpty(orgAdditionalProperties)) {
+                    for (Map<String, Object> orgAdditionalProperty : orgAdditionalProperties) {
+                        String orgId = (String) orgAdditionalProperty.get(Constants.ORGANISATION_ID);
+                        if (orgId.equals(rootOrgId)) {
+                            Object customFieldValuesObj = orgAdditionalProperty.get(Constants.CUSTOM_FIELD_VALUES);
+                            List<Map<String, Object>> customFieldValuesList = (List<Map<String, Object>>) customFieldValuesObj;
+                            if (CollectionUtils.isNotEmpty(customFieldValuesList)) {
+                                for (Map<String, Object> customFields : customFieldValuesList) {
+                                    String type = (String) customFields.get(Constants.TYPE);
+                                    if (Constants.TEXT.equalsIgnoreCase(type)) {
+                                        userProfile.put((String) customFields.get(Constants.ATTRIBUTE_NAME), (String) customFields.get(Constants.VALUE));
+                                    } else if (Constants.MASTER_LIST.equalsIgnoreCase(type)) {
+                                        List<Map<String, Object>> valuesList = (List<Map<String, Object>>) customFields.get(Constants.VALUES);
+                                        if (CollectionUtils.isNotEmpty(valuesList)) {
+                                            for (Map<String, Object> valueMap : valuesList) {
+                                                userProfile.put((String) valueMap.get(Constants.ATTRIBUTE_NAME), (String) valueMap.get(Constants.VALUE));
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (IOException e) {
+                log.error("Error parsing existing data for userId: {}, contextType: {}", userId, Constants.ORG_ADDITIONAL_PROPERTIES);
+            }
+        }
+    }
 
 }
 

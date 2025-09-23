@@ -1,0 +1,11 @@
+{
+  "name": {
+    "type": "text"
+  },
+  "id": {
+    "type": "keyword"
+  },
+  "status": {
+    "type": "keyword"
+  }
+}

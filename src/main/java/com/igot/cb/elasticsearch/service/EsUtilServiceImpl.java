@@ -165,7 +165,7 @@ public class EsUtilServiceImpl implements EsUtilService{
                         }
                     }
                     fieldAggregations.put(field, fieldValueList);
-                }else{
+                } else {
                     List<FacetDTO> fieldValueList = new ArrayList<>();
                     for (LongTermsBucket bucket : aggregate.lterms().buckets().array()) {
                         FacetDTO facetDTO = new FacetDTO(bucket.keyAsString(), bucket.docCount());
@@ -333,7 +333,7 @@ public class EsUtilServiceImpl implements EsUtilService{
 
             for (String field : facets) {
                 Aggregation aggregation;
-                if (cbExtServerProperties.getNonTextField().contains(field)) {
+                if (cbExtServerProperties.getNonTextFields().contains(field)) {
                     aggregation = Aggregation.of(a -> a.terms(
                             t -> t.field(field).size(250)));
                 } else {

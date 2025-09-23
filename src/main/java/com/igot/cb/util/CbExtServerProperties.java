@@ -16,8 +16,8 @@ public class CbExtServerProperties {
     @Value("${cb-plan.update.publish.authorized.roles}")
     private String cbPlanUpdatePublishAuthorizedRoles;
 
-    @Value("${non.text.field}")
-    private String nonTextField;
+    @Value("${non.text.fields}")
+    private String nonTextFields;
 
     public List<String> getCbPlanUpdatePublishAuthorizedRoles() {
         return Arrays.asList(cbPlanUpdatePublishAuthorizedRoles.split(",", -1));

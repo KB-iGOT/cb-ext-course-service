@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 
 import com.igot.cb.elasticsearch.service.EsUtilService;
 import org.apache.commons.collections4.MapUtils;
@@ -118,12 +119,14 @@ public class AccessSettingMigrationServiceImpl {
                             cbPlanV2Map.put(Constants.CONTENT_TYPE, draftData.get(Constants.CONTENT_TYPE));
                             assignmentType = (String) draftData.get(Constants.ASSIGNMENT_TYPE);
                             assignmentTypeInfo = (List<String>) draftData.get(Constants.ASSIGNMENT_TYPE_INFO);
+                            cbPlanV2Map.put(Constants.STATUS, cbPlanMap.get(Constants.STATUS).toString().toLowerCase());
 
                         } catch (Exception e) {
                             log.error("Error deserializing draftData JSON: {}", e.getMessage());
                         }
                     }
                 } else {
+                    cbPlanV2Map.put(Constants.STATUS, (String) cbPlanMap.get(Constants.STATUS));
                     cbPlanV2Map.put(Constants.NAME, (String) cbPlanMap.get(Constants.NAME));
                     cbPlanV2Map.put(Constants.END_DATE_KEY, (Instant) cbPlanMap.get(Constants.END_DATE_KEY));
                     cbPlanV2Map.put(Constants.CONTENT_LIST, (List<String>) cbPlanMap.get(Constants.CONTENT_LIST));
@@ -262,7 +265,10 @@ public class AccessSettingMigrationServiceImpl {
 
             for (Map<String, Object> criteria : criteriaList) {
                 String criteriaKey = (String) criteria.get(Constants.CRITERIA_KEY);
-                List<String> criteriaValues = (List<String>) criteria.get(Constants.CRITERIA_VALUE);
+                List<String> criteriaValues = ((List<String>) criteria.get(Constants.CRITERIA_VALUE))
+                        .stream()
+                        .distinct()
+                        .collect(Collectors.toList());
 
                 if (CollectionUtils.isEmpty(criteriaValues)) {
                     log.error("Criteria values are missing for criteriaKey: {} in userGroupId: {}", criteriaKey,

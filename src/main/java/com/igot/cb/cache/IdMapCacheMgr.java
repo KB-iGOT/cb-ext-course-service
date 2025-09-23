@@ -1,9 +1,7 @@
 package com.igot.cb.cache;
 
 import java.net.URI;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.apache.commons.collections4.MapUtils;
@@ -67,34 +65,47 @@ public class IdMapCacheMgr {
             return result;
         } else {
             missingKeys.setLength(missingKeys.length() - 1);
-            
-            URI uri = UriComponentsBuilder
-                    .fromHttpUrl(propertiesCache.getProperty(Constants.ID_MAP_SERVICE_URL)
-                            + propertiesCache.getProperty(Constants.ID_MAP_SERVICE_READ_ENDPOINT))
-                    .queryParam(Constants.ID_MAP_SERVICE_PARAM_LIST, missingKeys.toString())
-                    .queryParam(Constants.ID_MAP_SERVICE_PARAM_SEPARATOR, Constants.HASH)
-                    .build().encode().toUri();
 
-            ParameterizedTypeReference<List<Map<String, Integer>>> responseType = new ParameterizedTypeReference<>() {
-            };
-            List<Map<String, Integer>> response = outboundRequestHandlerService
-                    .fetchResultUsingExchange(uri.toString(), responseType);
+            List<String> missingKeysList = Arrays.asList(missingKeys.toString().split(Constants.HASH));
+            int batchSize = 50; // You can adjust the batch size as needed
+            List<List<String>> batches = createBatches(missingKeysList, batchSize);
 
-            if (CollectionUtils.isEmpty(response)) {
-                log.error("IdMapCacheMgr::getId: No response from ID Map service for keys: {}", missingKeys);
-                return result;
-            } else {
-                for (Map<String, Integer> responseObject : response) {
-                    while (responseObject.keySet().iterator().hasNext()) {
-                        String key = responseObject.keySet().iterator().next();
-                        cacheMap.put(key.trim().toLowerCase(), new CachedIdMap(responseObject.get(key), defaultExpiryTime));
-                        result.put(key, responseObject.get(key));
-                        responseObject.remove(key);
+            // Fetch results for each batch and add them to the result
+            for (List<String> batch : batches) {
+                URI uri = UriComponentsBuilder
+                        .fromHttpUrl(propertiesCache.getProperty(Constants.ID_MAP_SERVICE_URL)
+                                + propertiesCache.getProperty(Constants.ID_MAP_SERVICE_READ_ENDPOINT))
+                        .queryParam(Constants.ID_MAP_SERVICE_PARAM_LIST, String.join(Constants.HASH, batch))
+                        .queryParam(Constants.ID_MAP_SERVICE_PARAM_SEPARATOR, Constants.HASH)
+                        .build().encode().toUri();
+
+                ParameterizedTypeReference<List<Map<String, Integer>>> responseType = new ParameterizedTypeReference<>() {};
+                List<Map<String, Integer>> response = outboundRequestHandlerService
+                        .fetchResultUsingExchange(uri.toString(), responseType);
+
+                if (CollectionUtils.isEmpty(response)) {
+                    log.error("IdMapCacheMgr::getId: No response from ID Map service for keys: {}", batch);
+                    continue; // Skip this batch if no response
+                } else {
+                    for (Map<String, Integer> responseObject : response) {
+                        for (Map.Entry<String, Integer> entry : responseObject.entrySet()) {
+                            String key = entry.getKey().trim().toLowerCase();
+                            cacheMap.put(key, new CachedIdMap(entry.getValue(), defaultExpiryTime));
+                            result.put(key, entry.getValue());
+                        }
                     }
                 }
+                log.info("IdMapCacheMgr::getId: request url : {}, response: {}", uri.toString(), result);
             }
-            log.info("IdMapCacheMgr::getId: request url : {}, reponse: ", uri.toString(), result);
         }
         return result;
+    }
+
+    private List<List<String>> createBatches(List<String> missingKeys, int batchSize) {
+        List<List<String>> batches = new ArrayList<>();
+        for (int i = 0; i < missingKeys.size(); i += batchSize) {
+            batches.add(missingKeys.subList(i, Math.min(i + batchSize, missingKeys.size())));
+        }
+        return batches;
     }
 }

@@ -4,6 +4,7 @@ import co.elastic.clients.elasticsearch.ElasticsearchClient;
 import co.elastic.clients.elasticsearch._types.FieldValue;
 import co.elastic.clients.elasticsearch._types.Result;
 import co.elastic.clients.elasticsearch._types.aggregations.*;
+import co.elastic.clients.elasticsearch._types.query_dsl.BoolQuery;
 import co.elastic.clients.elasticsearch.core.IndexResponse;
 import co.elastic.clients.elasticsearch.core.SearchResponse;
 import co.elastic.clients.elasticsearch.core.search.Hit;
@@ -13,8 +14,11 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.igot.cb.cassandra.exceptions.CustomException;
 import com.igot.cb.elasticsearch.config.EsConfig;
+import com.igot.cb.elasticsearch.dto.FacetDTO;
 import com.igot.cb.elasticsearch.dto.SearchCriteria;
 import com.igot.cb.elasticsearch.dto.SearchResult;
+import com.igot.cb.util.CbExtServerProperties;
+import com.igot.cb.util.Constants;
 import com.networknt.schema.JsonSchemaFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -28,6 +32,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.reflect.Method;
 import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -53,9 +58,12 @@ class EsUtilServiceImplTest {
 
     private EsUtilServiceImpl esUtilService;
 
+    @Mock
+    private CbExtServerProperties cbExtServerProperties;
+
     @BeforeEach
     void setUp() {
-        esUtilService = new EsUtilServiceImpl(esConfig, elasticsearchClient);
+        esUtilService = new EsUtilServiceImpl(esConfig, elasticsearchClient, cbExtServerProperties);
         ReflectionTestUtils.setField(esUtilService, "objectMapper", objectMapper);
     }
 
@@ -147,7 +155,8 @@ class EsUtilServiceImplTest {
         SearchResponse<Object> searchResponse = createMockSearchResponseWithFacets();
         when(elasticsearchClient.search(any(co.elastic.clients.elasticsearch.core.SearchRequest.class), eq(Object.class)))
                 .thenReturn(searchResponse);
-        
+        when(cbExtServerProperties.getNonTextField())
+                .thenReturn("category,status");
         SearchResult result = esUtilService.searchDocuments("test-index", criteria, "/test.json");
         
         assertNotNull(result);
@@ -536,4 +545,154 @@ class EsUtilServiceImplTest {
         
         return searchResponse;
     }
+
+    @Test
+    void testExtractFacetDataWithLongTerms() throws Exception {
+        // Prepare SearchCriteria with a facet
+        SearchCriteria criteria = new SearchCriteria();
+        criteria.setFacets(Collections.singletonList("age"));
+
+        // Mock LongTermsBucket
+        LongTermsBucket longBucket = mock(LongTermsBucket.class);
+        when(longBucket.keyAsString()).thenReturn("30");
+        when(longBucket.docCount()).thenReturn(7L);
+
+        // Mock Buckets
+        @SuppressWarnings("unchecked")
+        co.elastic.clients.elasticsearch._types.aggregations.Buckets<LongTermsBucket> longBuckets =
+                mock(co.elastic.clients.elasticsearch._types.aggregations.Buckets.class);
+        when(longBuckets.array()).thenReturn(Collections.singletonList(longBucket));
+
+        // Mock LongTermsAggregate
+        LongTermsAggregate longTerms = mock(LongTermsAggregate.class);
+        when(longTerms.buckets()).thenReturn(longBuckets);
+
+        // Mock Aggregate
+        Aggregate aggregate = mock(Aggregate.class);
+        when(aggregate.isSterms()).thenReturn(false);  // go into else branch
+        when(aggregate.lterms()).thenReturn(longTerms);
+
+        // Mock SearchResponse
+        SearchResponse<Object> searchResponse = mock(SearchResponse.class);
+        when(searchResponse.aggregations()).thenReturn(Map.of("age_agg", aggregate));
+
+        // Use reflection to invoke private method
+        Method method = EsUtilServiceImpl.class.getDeclaredMethod(
+                "extractFacetData",
+                SearchResponse.class,
+                SearchCriteria.class
+        );
+        method.setAccessible(true);
+
+        EsUtilServiceImpl service = new EsUtilServiceImpl(null, null, null);
+        @SuppressWarnings("unchecked")
+        Map<String, List<FacetDTO>> result =
+                (Map<String, List<FacetDTO>>) method.invoke(service, searchResponse, criteria);
+
+        // Assertions
+        assertNotNull(result);
+        assertTrue(result.containsKey("age"));
+        assertEquals(1, result.get("age").size());
+        assertEquals("30", result.get("age").get(0).getValue());
+        assertEquals(7L, result.get("age").get(0).getCount());
+    }
+
+    @Test
+    void testBuildBoolQueryCoversFilterMustNotShould() throws Exception {
+        // Prepare nested queries for must, filter, must_not, should
+        Map<String, Object> mustQuery = Map.of(Constants.TERM, Map.of("status", FieldValue.of("active")));
+        Map<String, Object> filterQuery = Map.of(Constants.TERM, Map.of("category", FieldValue.of("tech")));
+        Map<String, Object> mustNotQuery = Map.of(Constants.TERM, Map.of("archived", FieldValue.of("true")));
+        Map<String, Object> shouldQuery = Map.of(Constants.TERM, Map.of("priority", FieldValue.of("high")));
+
+        Map<String, Object> boolMap = new HashMap<>();
+        boolMap.put(Constants.MUST, List.of(mustQuery));
+        boolMap.put(Constants.FILTER, List.of(filterQuery));
+        boolMap.put(Constants.MUST_NOT, List.of(mustNotQuery));
+        boolMap.put(Constants.SHOULD, List.of(shouldQuery));
+
+        // Use reflection to access the private method
+        Method method = EsUtilServiceImpl.class.getDeclaredMethod(
+                "buildBoolQuery",
+                Map.class
+        );
+        method.setAccessible(true);
+
+        EsUtilServiceImpl service = new EsUtilServiceImpl(null, null, null);
+
+        BoolQuery result = (BoolQuery) method.invoke(service, boolMap);
+
+        // Assertions: ensure that all parts got included
+        assertNotNull(result);
+        assertFalse(result.must().isEmpty(), "Must clause should not be empty");
+        assertFalse(result.filter().isEmpty(), "Filter clause should not be empty");
+        assertFalse(result.mustNot().isEmpty(), "MustNot clause should not be empty");
+        assertFalse(result.should().isEmpty(), "Should clause should not be empty");
+    }
+
+    @Test
+    void testIsRangeQueryTrueAndFalse() throws Exception {
+        // Access private method via reflection
+        Method method = EsUtilServiceImpl.class.getDeclaredMethod(
+                "isRangeQuery", Map.class
+        );
+        method.setAccessible(true);
+
+        EsUtilServiceImpl service = new EsUtilServiceImpl(null, null, null);
+
+        // ---------- Case 1: Should return true ----------
+        Map<String, Object> rangeMap = new HashMap<>();
+        rangeMap.put(Constants.SEARCH_OPERATION_GREATER_THAN_EQUALS, 10);
+
+        boolean resultTrue = (boolean) method.invoke(service, rangeMap);
+        assertTrue(resultTrue, "Expected true when range keys are present");
+
+        // ---------- Case 2: Should return false ----------
+        Map<String, Object> nonRangeMap = new HashMap<>();
+        nonRangeMap.put("status", "active");
+
+        boolean resultFalse = (boolean) method.invoke(service, nonRangeMap);
+        assertFalse(resultFalse, "Expected false when no range keys are present");
+    }
+
+    @Test
+    void testBuildFilterQueryWithRangeAndNestedBoolean() throws Exception {
+        Method method = EsUtilServiceImpl.class.getDeclaredMethod(
+                "buildFilterQuery", Map.class
+        );
+        method.setAccessible(true);
+
+        EsUtilServiceImpl service = new EsUtilServiceImpl(null, null, null);
+
+        // ---------- Case 1: Range query ----------
+        Map<String, Object> rangeMap = new HashMap<>();
+        rangeMap.put(Constants.SEARCH_OPERATION_GREATER_THAN_EQUALS, 10);
+        rangeMap.put(Constants.SEARCH_OPERATION_LESS_THAN, 100);
+        rangeMap.put(Constants.SEARCH_OPERATION_LESS_THAN_EQUALS, 10);
+        rangeMap.put(Constants.SEARCH_OPERATION_GREATER_THAN, 100);
+
+        Map<String, Object> filterCriteriaRange = new HashMap<>();
+        filterCriteriaRange.put("age", rangeMap);
+
+        BoolQuery.Builder rangeQueryResult =
+                (BoolQuery.Builder) method.invoke(service, filterCriteriaRange);
+
+        assertNotNull(rangeQueryResult);
+        assertFalse(rangeQueryResult.build().must().isEmpty(), "Range query must be included");
+
+
+        // ---------- Case 2: Nested field map with Boolean ----------
+        Map<String, Object> nestedMap = new HashMap<>();
+        nestedMap.put("enabled", true);  // Boolean is safe
+
+        Map<String, Object> filterCriteriaNested = new HashMap<>();
+        filterCriteriaNested.put("metadata", nestedMap);
+
+        BoolQuery.Builder nestedQueryResult =
+                (BoolQuery.Builder) method.invoke(service, filterCriteriaNested);
+
+        assertNotNull(nestedQueryResult);
+        assertFalse(nestedQueryResult.build().must().isEmpty(), "Nested field queries must be included");
+    }
+
 }

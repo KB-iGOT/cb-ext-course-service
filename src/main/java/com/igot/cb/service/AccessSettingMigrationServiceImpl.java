@@ -6,12 +6,12 @@ import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 
 import com.igot.cb.elasticsearch.service.EsUtilService;
 import org.apache.commons.collections4.MapUtils;
@@ -48,6 +48,7 @@ public class AccessSettingMigrationServiceImpl {
     private final IdMapCacheMgr idMapCacheMgr;
     private final ObjectMapper objectMapper;
     private final EsUtilService esUtilService;
+    private final AtomicInteger lookupInserted = new AtomicInteger(0);
 
     public AccessSettingMigrationServiceImpl(CassandraOperation cassandraOperation,
                                              ContentInfoServiceImpl contentService,
@@ -118,12 +119,14 @@ public class AccessSettingMigrationServiceImpl {
                             cbPlanV2Map.put(Constants.CONTENT_TYPE, draftData.get(Constants.CONTENT_TYPE));
                             assignmentType = (String) draftData.get(Constants.ASSIGNMENT_TYPE);
                             assignmentTypeInfo = (List<String>) draftData.get(Constants.ASSIGNMENT_TYPE_INFO);
+                            cbPlanV2Map.put(Constants.STATUS, cbPlanMap.get(Constants.STATUS).toString().toLowerCase());
 
                         } catch (Exception e) {
                             log.error("Error deserializing draftData JSON: {}", e.getMessage());
                         }
                     }
                 } else {
+                    cbPlanV2Map.put(Constants.STATUS, (String) cbPlanMap.get(Constants.STATUS));
                     cbPlanV2Map.put(Constants.NAME, (String) cbPlanMap.get(Constants.NAME));
                     cbPlanV2Map.put(Constants.END_DATE_KEY, (Instant) cbPlanMap.get(Constants.END_DATE_KEY));
                     cbPlanV2Map.put(Constants.CONTENT_LIST, (List<String>) cbPlanMap.get(Constants.CONTENT_LIST));
@@ -147,31 +150,41 @@ public class AccessSettingMigrationServiceImpl {
 
                 cbPlanV2Map.put(Constants.PUBLISHED_AT, (Instant) cbPlanMap.get(Constants.PUBLISHED_AT_KEY));
                 cbPlanV2Map.put(Constants.PUBLISHED_BY, (String) cbPlanMap.get(Constants.CB_PUBLISHED_BY));
-                cbPlanV2Map.put(Constants.STATUS, (String) cbPlanMap.get(Constants.STATUS));
                 cbPlanV2Map.put(Constants.COMMENT, (String) cbPlanMap.get(Constants.COMMENT));
                 cbPlanV2Map.put(Constants.UPDATED_AT, (Instant) cbPlanMap.get(Constants.UPDATED_AT));
                 cbPlanV2Map.put(Constants.UPDATED_BY, (String) cbPlanMap.get(Constants.UPDATED_BY));
 
                 String contextData = buildContextData(cbPlanId, orgId, assignmentType, assignmentTypeInfo);
+                if (!StringUtils.hasLength(contextData)) {
+                    skipped.incrementAndGet();
+                    errors.add("planId=" + cbPlanId + ", error = Failed to build context data");
+                    log.error("Failed to build context data for planId: {}", cbPlanId);
+                    continue;
+                }
                 cbPlanV2Map.put(Constants.CONTEXT_DATA, contextData);
                 ApiResponse dbResponse = (ApiResponse) cassandraOperation.insertRecord(Constants.KEYSPACE_SUNBIRD,
-                            Constants.TABLE_CB_PLAN_V2, cbPlanV2Map);
+                        Constants.TABLE_CB_PLAN_V2, cbPlanV2Map);
                 if (Constants.SUCCESS.equalsIgnoreCase((String) dbResponse.get(Constants.RESPONSE))) {
-                    cbPlanV2Map.put(Constants.ID, String.valueOf(cbPlanId));
+                    cbPlanV2Map.put(Constants.ID, cbPlanId);
                     Map<String, Object> sanitizedMap = sanitizeForElastic(cbPlanV2Map);
-                    esUtilService.addDocument(cpPlanIndex, Constants.INDEX_TYPE, String.valueOf(cbPlanId), sanitizedMap, elasticCbPlanJsonPath);
+                    esUtilService.addDocument(cpPlanIndex, Constants.INDEX_TYPE, cbPlanId, sanitizedMap, elasticCbPlanJsonPath);
+                    insertPlanToLookUpTable(String.valueOf(cbPlanMap.get(Constants.ID)),
+                            String.valueOf(cbPlanMap.get(Constants.ORG_ID)),
+                            (Instant) cbPlanMap.get(Constants.END_DATE_KEY), String.valueOf(cbPlanMap.get(Constants.STATUS)));
                     migrated.incrementAndGet();
                 } else {
                     skipped.incrementAndGet();
                     errors.add("planId=" + cbPlanId + ", error = " + dbResponse.get(Constants.ERROR_MESSAGE));
                     log.error("Error occurred while inserting record into CB Plan V2 table: {}", dbResponse.get(Constants.ERROR_MESSAGE));
                 }
+
             }
         } catch (Exception e) {
             log.error("Error occurred while migrating access setting rules: {}", e.getMessage(), e);
             response.updateErrorDetails("Migration failed due to an error", HttpStatus.INTERNAL_SERVER_ERROR);
         }
         response.getResult().put("Successful", migrated.get());
+        response.getResult().put("LookUpSuccessful", lookupInserted.get());
         response.getResult().put("Skipped", skipped.get());
         response.getResult().put("Errors", errors);
         return response;
@@ -262,7 +275,10 @@ public class AccessSettingMigrationServiceImpl {
 
             for (Map<String, Object> criteria : criteriaList) {
                 String criteriaKey = (String) criteria.get(Constants.CRITERIA_KEY);
-                List<String> criteriaValues = (List<String>) criteria.get(Constants.CRITERIA_VALUE);
+                List<String> criteriaValues = ((List<String>) criteria.get(Constants.CRITERIA_VALUE))
+                        .stream()
+                        .distinct()
+                        .collect(Collectors.toList());
 
                 if (CollectionUtils.isEmpty(criteriaValues)) {
                     log.error("Criteria values are missing for criteriaKey: {} in userGroupId: {}", criteriaKey,
@@ -353,7 +369,7 @@ public class AccessSettingMigrationServiceImpl {
         
 
         // We do have accessControlMap, let's create accessControlIdMap
-        Map<String, Object> accessControlIdMap = new HashMap<>();
+        /*Map<String, Object> accessControlIdMap = new HashMap<>();
         boolean isSuccess = updateContextDataWithIdMap(cbPlanId, accessControl, accessControlIdMap);
 
         if (!isSuccess) {
@@ -366,7 +382,7 @@ public class AccessSettingMigrationServiceImpl {
             log.error("User groups are missing in access control id map for cbPlanId: {}", cbPlanId);
             return "";
         }
-        contextData.put(Constants.ACCESS_CONTROL_ID, accessControlIdMap);
+        contextData.put(Constants.ACCESS_CONTROL_ID, accessControlIdMap);*/
         return objectMapper.writeValueAsString(contextData);
     }
 
@@ -396,4 +412,32 @@ public class AccessSettingMigrationServiceImpl {
             cbPlanV2Map.put(Constants.END_DATE_KEY, endDateInstant);
         }
     }
+
+    private void insertPlanToLookUpTable(String cbPlanId, String orgId, Instant endDate, String status) {
+        try {
+            Map<String, Object> lookupMap = new HashMap<>();
+            lookupMap.put(Constants.PLAN_ID_RQST, cbPlanId);
+            lookupMap.put(Constants.ORG_ID_REQT, orgId);
+            lookupMap.put(Constants.END_DATE, endDate);
+            if(Constants.CB_RETIRE.equalsIgnoreCase(status)) {
+                lookupMap.put(Constants.IS_ACTIVE, false);
+            }else{
+                lookupMap.put(Constants.IS_ACTIVE, true);
+            }
+            ApiResponse dbResponse = (ApiResponse)cassandraOperation.insertRecord(Constants.KEYSPACE_SUNBIRD,
+                    Constants.TABLE_CB_PLAN_V2_LOOKUP_BY_ORG, lookupMap);
+            if (Constants.SUCCESS.equalsIgnoreCase((String) dbResponse.get(Constants.RESPONSE))) {
+                lookupInserted.incrementAndGet();
+            }
+        } catch (Exception e) {
+            log.error("Error occurred while inserting record into CB Plan LookUp table for planId: {}, error: {}",
+                    cbPlanId, e.getMessage(), e);
+        }
+    }
 }
+
+
+
+
+
+

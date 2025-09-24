@@ -159,25 +159,24 @@ public class AccessSettingMigrationServiceImpl {
                     skipped.incrementAndGet();
                     errors.add("planId=" + cbPlanId + ", error = Failed to build context data");
                     log.error("Failed to build context data for planId: {}", cbPlanId);
-                    continue;
-                } else {
-                    cbPlanV2Map.put(Constants.CONTEXT_DATA, contextData);
-                    ApiResponse dbResponse = (ApiResponse) cassandraOperation.insertRecord(Constants.KEYSPACE_SUNBIRD,
-                            Constants.TABLE_CB_PLAN_V2, cbPlanV2Map);
-                    if (Constants.SUCCESS.equalsIgnoreCase((String) dbResponse.get(Constants.RESPONSE))) {
-                        cbPlanV2Map.put(Constants.ID, String.valueOf(cbPlanId));
-                        Map<String, Object> sanitizedMap = sanitizeForElastic(cbPlanV2Map);
-                        esUtilService.addDocument(cpPlanIndex, Constants.INDEX_TYPE, String.valueOf(cbPlanId), sanitizedMap, elasticCbPlanJsonPath);
-                        insertPlanToLookUpTable(String.valueOf(cbPlanMap.get(Constants.ID)),
-                                String.valueOf(cbPlanMap.get(Constants.ORG_ID)),
-                                (Instant) cbPlanMap.get(Constants.END_DATE_KEY), String.valueOf(cbPlanMap.get(Constants.STATUS)));
-                        migrated.incrementAndGet();
-                    } else {
-                        skipped.incrementAndGet();
-                        errors.add("planId=" + cbPlanId + ", error = " + dbResponse.get(Constants.ERROR_MESSAGE));
-                        log.error("Error occurred while inserting record into CB Plan V2 table: {}", dbResponse.get(Constants.ERROR_MESSAGE));
-                    }
                 }
+                cbPlanV2Map.put(Constants.CONTEXT_DATA, contextData);
+                ApiResponse dbResponse = (ApiResponse) cassandraOperation.insertRecord(Constants.KEYSPACE_SUNBIRD,
+                        Constants.TABLE_CB_PLAN_V2, cbPlanV2Map);
+                if (Constants.SUCCESS.equalsIgnoreCase((String) dbResponse.get(Constants.RESPONSE))) {
+                    cbPlanV2Map.put(Constants.ID, cbPlanId);
+                    Map<String, Object> sanitizedMap = sanitizeForElastic(cbPlanV2Map);
+                    esUtilService.addDocument(cpPlanIndex, Constants.INDEX_TYPE, cbPlanId, sanitizedMap, elasticCbPlanJsonPath);
+                    insertPlanToLookUpTable(String.valueOf(cbPlanMap.get(Constants.ID)),
+                            String.valueOf(cbPlanMap.get(Constants.ORG_ID)),
+                            (Instant) cbPlanMap.get(Constants.END_DATE_KEY), String.valueOf(cbPlanMap.get(Constants.STATUS)));
+                    migrated.incrementAndGet();
+                } else {
+                    skipped.incrementAndGet();
+                    errors.add("planId=" + cbPlanId + ", error = " + dbResponse.get(Constants.ERROR_MESSAGE));
+                    log.error("Error occurred while inserting record into CB Plan V2 table: {}", dbResponse.get(Constants.ERROR_MESSAGE));
+                }
+
             }
         } catch (Exception e) {
             log.error("Error occurred while migrating access setting rules: {}", e.getMessage(), e);
@@ -419,7 +418,7 @@ public class AccessSettingMigrationServiceImpl {
             lookupMap.put(Constants.PLAN_ID_RQST, cbPlanId);
             lookupMap.put(Constants.ORG_ID_REQT, orgId);
             lookupMap.put(Constants.END_DATE, endDate);
-            if(status.equalsIgnoreCase("RETIRE")) {
+            if(Constants.CB_RETIRE.equalsIgnoreCase(status)) {
                 lookupMap.put(Constants.IS_ACTIVE, false);
             }else{
                 lookupMap.put(Constants.IS_ACTIVE, true);

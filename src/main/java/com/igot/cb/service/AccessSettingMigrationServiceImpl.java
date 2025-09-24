@@ -159,6 +159,7 @@ public class AccessSettingMigrationServiceImpl {
                     skipped.incrementAndGet();
                     errors.add("planId=" + cbPlanId + ", error = Failed to build context data");
                     log.error("Failed to build context data for planId: {}", cbPlanId);
+                    continue;
                 }
                 cbPlanV2Map.put(Constants.CONTEXT_DATA, contextData);
                 ApiResponse dbResponse = (ApiResponse) cassandraOperation.insertRecord(Constants.KEYSPACE_SUNBIRD,

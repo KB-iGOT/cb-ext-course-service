@@ -36,12 +36,6 @@ class AccessSettingRuleCacheMgrTest {
     @BeforeEach
     void setup() throws Exception {
         cacheMgr = new AccessSettingRuleCacheMgr(redisCacheMgr, cassandraOperation);
-        
-        // Inject ObjectMapper using reflection
-        Field mapperField = AccessSettingRuleCacheMgr.class.getDeclaredField("mapper");
-        mapperField.setAccessible(true);
-        mapperField.set(cacheMgr, new ObjectMapper());
-        
         validJsonRule = """
             {
               "contextId": "do_123",

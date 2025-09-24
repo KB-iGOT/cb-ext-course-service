@@ -85,24 +85,15 @@ class CbPlanLearnerServiceImplTest {
         when(cassandraOperation.getRecordsByProperties(eq(Constants.KEYSPACE_SUNBIRD), eq(Constants.USER), any(), any(), any()))
                 .thenReturn(Arrays.asList(userData));
 
-        Map<String, Object> planLookup = new HashMap<>();
-        planLookup.put(Constants.PLAN_ID, "plan1");
-        planLookup.put(Constants.IS_ACTIVE, true);
-        planLookup.put(Constants.END_DATE_REQUEST, Instant.now());
-        
-        when(cassandraOperation.getRecordsByProperties(eq(Constants.KEYSPACE_SUNBIRD), eq(Constants.TABLE_CB_PLAN_V2_LOOKUP_BY_ALL_ORG), any(), any(), any()))
-                .thenReturn(Arrays.asList(planLookup));
-        
-        when(cassandraOperation.getRecordsByProperties(eq(Constants.KEYSPACE_SUNBIRD), eq(Constants.TABLE_CB_PLAN_V2_LOOKUP_BY_ORG), any(), any(), any()))
-                .thenReturn(new ArrayList<>());
-
+        // Prepare a plan that would be returned from cache
         Map<String, Object> activePlan = new HashMap<>();
         activePlan.put(Constants.PLAN_ID, "plan1");
         activePlan.put(Constants.STATUS, Constants.LIVE);
         activePlan.put(Constants.CONTENT_LIST, Arrays.asList("course1"));
         activePlan.put(Constants.END_DATE_REQUEST, Instant.now());
-        
-        when(cassandraOperation.getRecordsByProperties(eq(Constants.KEYSPACE_SUNBIRD), eq(Constants.TABLE_CB_PLAN_V2), any(), any(), any()))
+
+        // Stub cache manager, since service uses it
+        when(cbPlanCacheMgr.getCbPlanForAllAndOrgId("org123"))
                 .thenReturn(Arrays.asList(activePlan));
 
         Map<String, Object> contentDetails = new HashMap<>();
@@ -114,6 +105,7 @@ class CbPlanLearnerServiceImplTest {
         assertEquals(Constants.SUCCESS, response.getParams().getStatus());
         assertEquals(1, response.getResult().get(Constants.COUNT));
     }
+
 
     @Test
     void testGetCBPlanListForUser_PrivateMode() {

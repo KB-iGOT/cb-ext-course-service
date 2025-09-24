@@ -141,26 +141,6 @@ public class CbPlanServiceImpl {
                     Map<String, Object> sanitizedMap = sanitizeForElastic(requestMap);
                     esUtilService.addDocument(cpPlanIndex, Constants.INDEX_TYPE, String.valueOf(cbPlanId), sanitizedMap, elasticCbPlanJsonPath);
                     response.getResult().put(Constants.ID, String.valueOf(cbPlanId));
-                    if (Constants.SINGLE.equalsIgnoreCase(cbPlanDto.getOrgScope()) || Constants.CUSTOM.equalsIgnoreCase(cbPlanDto.getOrgScope())) {
-                        ApiResponse lookupResp = insertCustomOrgLookup(String.valueOf(cbPlanId), orgIdList, cbPlanDto.getEndDate());
-                        if (!Constants.SUCCESS.equals(lookupResp.get(Constants.RESPONSE))) {
-                            response.getParams().setStatus(Constants.FAILED);
-                            response.getParams().setErr(lookupResp.getParams().getErr());
-                            response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
-                            return response;
-                        }
-                    }
-
-                    if (Constants.ALL.equalsIgnoreCase(cbPlanDto.getOrgScope())) {
-                        ApiResponse singleResp = insertAllOrgLookup(String.valueOf(cbPlanId), cbPlanDto.getEndDate());
-                        if (!Constants.SUCCESS.equals(singleResp.get(Constants.RESPONSE))) {
-                            response.getParams().setStatus(Constants.FAILED);
-                            response.getParams().setErr(singleResp.getParams().getErr());
-                            response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
-                            return response;
-                        }
-                    }
-
                     response.getResult().put(Constants.STATUS, Constants.CREATED);
                 } else {
                     response.getParams().setStatus(Constants.FAILED);
@@ -473,26 +453,6 @@ public class CbPlanServiceImpl {
                         Map<String, Object> sanitizedMap = sanitizeForElastic(updatedCbPlanData);
                         esUtilService.updateDocument(cpPlanIndex, Constants.INDEX_TYPE, cbPlanId, sanitizedMap, elasticCbPlanJsonPath);
                         response.getResult().put(Constants.STATUS, Constants.UPDATED);
-                        if (!addedOrgIds.isEmpty()) {
-                            ApiResponse lookupResp = insertCustomOrgLookup(String.valueOf(cbPlanId), addedOrgIds, endDate);
-                            if (!Constants.SUCCESS.equals(lookupResp.get(Constants.RESPONSE))) {
-                                response.getParams().setStatus(Constants.FAILED);
-                                response.getParams().setErr("Failed to insert orgId lookup: " + lookupResp.getParams().getErr());
-                                response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
-                                return response;
-                            }
-                            response.getResult().put(Constants.MESSAGE, "updated cbPlan for cbPlanId: " + cbPlanId);
-                        }
-                        if (!deletedOrgIds.isEmpty()) {
-                            for (String orgId : deletedOrgIds) {
-                                Map<String, Object> deleteLookupMap = new HashMap<>();
-                                deleteLookupMap.put("planid", String.valueOf(cbPlanId));
-                                deleteLookupMap.put("orgid", orgId);
-                                cassandraOperation.deleteRecord(Constants.KEYSPACE_SUNBIRD,
-                                        Constants.TABLE_CB_PLAN_V2_LOOKUP_BY_ORG, deleteLookupMap);
-                            }
-                            response.getResult().put(Constants.MESSAGE, "updated cbPlan and deleted orgId lookup for cbPlanId: " + cbPlanId);
-                        }
 
                     } else {
                         response.getParams().setStatus(Constants.FAILED);
@@ -773,6 +733,13 @@ public class CbPlanServiceImpl {
                     } else {
                         cbPlan.put(Constants.IS_APAR, false);
                     }
+                    if (cbPlanDtoMap.containsKey(Constants.END_DATE)){
+                        Object endDateObj = cbPlanDtoMap.get(Constants.END_DATE_REQUEST);
+                        if (endDateObj != null) {
+                            Date endDate = parseToDate(endDateObj);
+                            cbPlan.put(Constants.END_DATE, endDate.toInstant());
+                        }
+                    }
                     cbPlan.put(Constants.DRAFT_DATA, null);
                 }
                 cbPlan.put(Constants.CB_PUBLISHED_BY, userId);
@@ -806,6 +773,26 @@ public class CbPlanServiceImpl {
                     cbPlan.put(Constants.END_DATE_REQUEST, toInstant(cbPlan.get(Constants.END_DATE)));
                     Map<String, Object> sanitizedMap = sanitizeForElastic(cbPlan);
                     esUtilService.updateDocument(cpPlanIndex, Constants.INDEX_TYPE, cbPlanId, sanitizedMap, elasticCbPlanJsonPath);
+                    CbPlanDto cbPlanDto = mapper.convertValue(sanitizedMap, CbPlanDto.class);
+                    if (Constants.SINGLE.equalsIgnoreCase(cbPlanDto.getOrgScope()) || Constants.CUSTOM.equalsIgnoreCase(cbPlanDto.getOrgScope())) {
+                        List<String> orgIdList = cbPlanDto.getOrgIdList();
+                        ApiResponse lookupResp = insertCustomOrgLookup(String.valueOf(cbPlanId), orgIdList, cbPlanDto.getEndDate());
+                        if (!Constants.SUCCESS.equals(lookupResp.get(Constants.RESPONSE))) {
+                            response.getParams().setStatus(Constants.FAILED);
+                            response.getParams().setErr(lookupResp.getParams().getErr());
+                            response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
+                            return response;
+                        }
+                    }
+                    if (Constants.ALL.equalsIgnoreCase(cbPlanDto.getOrgScope())) {
+                        ApiResponse singleResp = insertAllOrgLookup(String.valueOf(cbPlanId), cbPlanDto.getEndDate());
+                        if (!Constants.SUCCESS.equals(singleResp.get(Constants.RESPONSE))) {
+                            response.getParams().setStatus(Constants.FAILED);
+                            response.getParams().setErr(singleResp.getParams().getErr());
+                            response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
+                            return response;
+                        }
+                    }
                     response.getResult().put(Constants.STATUS, Constants.UPDATED);
                     response.getResult().put(Constants.MESSAGE, "Published cbPlan for cbPlanId: " + cbPlanId);
                 } else {
@@ -1252,6 +1239,7 @@ public class CbPlanServiceImpl {
                     cbPlan.put(Constants.ID, cbPlanId);
                     cbPlan.put(Constants.STATUS, Constants.CB_RETIRE);
                     Map<String, Object> sanitizedMap = sanitizeForElastic(cbPlan);
+                    //TO DO : need to use upsert method instead of addDocument
                     esUtilService.addDocument(cpPlanIndex, Constants.INDEX_TYPE, cbPlanId, sanitizedMap, elasticCbPlanJsonPath);
                     CbPlanDto cbPlanDto = mapper.convertValue(sanitizedMap, CbPlanDto.class);
                     List<String> orgIdList= cbPlanDto.getOrgIdList();

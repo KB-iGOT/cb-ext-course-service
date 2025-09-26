@@ -136,7 +136,7 @@ public class CbPlanServiceImpl {
             List<Map<String, Object>> orgDetails = cassandraOperation.getRecordsByProperties(
                     Constants.KEYSPACE_SUNBIRD,
                     Constants.ORG_TABLE,
-                    Map.of(Constants.ID, userList.get(0).get(Constants.ROOT_ORG_ID).toString()),
+                    Map.of(Constants.ID, userList.get(0).get("rootorgid")),
                     null,
                     1
             );
@@ -153,7 +153,7 @@ public class CbPlanServiceImpl {
 
             String validationErrors = validateAndExtractOrgIds((Map<String, Object>) request.getRequest(), isCCA, userOrgId);
 
-            if (validations != null) {
+            if (validationErrors != null) {
                 // Validation failed → return API error response immediately
                 response.getParams().setStatus(Constants.FAILED);
                 response.getParams().setErr(validationErrors);
@@ -166,8 +166,8 @@ public class CbPlanServiceImpl {
                 requestMap.put(Constants.STATUS, Constants.DRAFT);
                 Map<String, Object> requestMapFromApiRequest = (Map<String, Object>) request.getRequest();
 
-                List<String> orgIdList = (List<String>) requestMapFromApiRequest.get(Constants.ORG_ID_LIST);
-                requestMap.put(Constants.ORG_ID_LIST, orgIdList);
+//                List<String> orgIdList = (List<String>) requestMapFromApiRequest.get(Constants.ORG_ID_LIST);
+                requestMap.put(Constants.ORG_ID_LIST, requestMapFromApiRequest.get(Constants.ORG_SCOPE));
                 requestMap.put(Constants.ORG_SCOPE, requestMapFromApiRequest.get(Constants.ORG_SCOPE));
                 requestMap.put(Constants.CONTENT_LIST, requestMapFromApiRequest.get(Constants.CONTENT_LIST));
                 requestMap.put(Constants.NAME, requestMapFromApiRequest.get(Constants.NAME));
@@ -469,7 +469,7 @@ public class CbPlanServiceImpl {
                     List<Map<String, Object>> orgDetails = cassandraOperation.getRecordsByProperties(
                             Constants.KEYSPACE_SUNBIRD,
                             Constants.ORG_TABLE,
-                            Map.of(Constants.ID, userList.get(0).get(Constants.ROOT_ORG_ID).toString()),
+                            Map.of(Constants.ID, userList.get(0).get("rootorgid")),
                             null,
                             1
                     );
@@ -623,7 +623,20 @@ public class CbPlanServiceImpl {
         // 4️⃣ Update cbPlanDto and request
 
         rawRequest.put(Constants.ORG_SCOPE, orgScope);
-        rawRequest.put(Constants.ORG_ID_LIST, loggedInOrgId);
+        Object orgIdObj = rawRequest.get(Constants.ORG_ID_LIST);
+        List<String> orgIdList = new ArrayList<>();
+
+        if (orgIdObj instanceof String) {
+            // wrap single string into a list
+            orgIdList = List.of((String) orgIdObj);
+        } else if (orgIdObj instanceof List) {
+            // cast safely
+            orgIdList = (List<String>) orgIdObj;
+        } else if (orgIdObj != null) {
+            // fallback: convert to string and wrap
+            orgIdList = List.of(orgIdObj.toString());
+        }
+
         // 5️⃣ Update nested criteria in userGroups for ROOT_ORG_ID
         return null; // validation passed
     }
@@ -884,8 +897,9 @@ public class CbPlanServiceImpl {
                     return response;
                 }
                 if (Constants.DRAFT.equalsIgnoreCase((String) cbPlan.get(Constants.STATUS))) {
-                    CbPlanDto cbPlanDto = mapper.readValue((String) cbPlan.get(Constants.DRAFT_DATA), CbPlanDto.class);
-                    updateCbPlanData(cbPlan, cbPlanDto);
+//                    CbPlanDto cbPlanDto = mapper.readValue((String) cbPlan.get(Constants.DRAFT_DATA), CbPlanDto.class);
+//                    updateCbPlanData(cbPlan, cbPlanDto);
+
                 } else {
                     Map<String, Object> cbPlanDtoMap = mapper.readValue((String) cbPlan.get(Constants.DRAFT_DATA),
                             new TypeReference<Map<String, Object>>() {
@@ -927,7 +941,8 @@ public class CbPlanServiceImpl {
                         cbPlan.put(Constants.CONTEXT_DATA_REQUEST, mapper.writeValueAsString(contextData));
                     }
                 }
-                cbPlan.remove(Constants.END_DATE_REQUEST);
+                cbPlan.put(Constants.STATUS, Constants.LIVE);
+//                cbPlan.remove(Constants.END_DATE_REQUEST);
                 Map<String, Object> resp = cassandraOperation.updateRecord(Constants.KEYSPACE_SUNBIRD,
                         Constants.TABLE_CB_PLAN_V2, cbPlan, cbPlanInfo);
                 if (resp.get(Constants.RESPONSE).equals(Constants.SUCCESS)) {
@@ -937,7 +952,7 @@ public class CbPlanServiceImpl {
                     cbPlan.put(Constants.PUBLISHED_BY,userId);
                     cbPlan.put(Constants.UPDATED_AT, Instant.now());
                     cbPlan.put(Constants.CREATED_AT, cbPlan.get(Constants.CREATED_AT_REQ));
-                    cbPlan.put(Constants.END_DATE_REQUEST, toInstant(cbPlan.get(Constants.END_DATE)));
+                    cbPlan.put(Constants.END_DATE_REQUEST, toInstant(cbPlan.get(Constants.END_DATE_REQUEST)));
                     Map<String, Object> sanitizedMap = sanitizeForElastic(cbPlan);
                     esUtilService.updateDocument(cpPlanIndex, Constants.INDEX_TYPE, cbPlanId, sanitizedMap, elasticCbPlanJsonPath);
                     CbPlanDto cbPlanDto = mapper.convertValue(sanitizedMap, CbPlanDto.class);

@@ -272,10 +272,10 @@ public class CbPlanServiceImpl {
                 }
                 if (rootOrgFound) break;
             }
-
-            if (!rootOrgFound) {
-                errors.add("Validation Error: rootOrgId criteria is required in userGroupCriteriaList");
-            }
+//
+//            if (!rootOrgFound) {
+//                errors.add("Validation Error: rootOrgId criteria is required in userGroupCriteriaList");
+//            }
         }
         return errors;
     }

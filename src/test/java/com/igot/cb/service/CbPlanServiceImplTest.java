@@ -1,6 +1,5 @@
 package com.igot.cb.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.elasticsearch.dto.SearchCriteria;
 import com.igot.cb.elasticsearch.dto.SearchResult;
@@ -1218,58 +1217,49 @@ class CbPlanServiceImplTest {
     }
 
     @Test
-    void testUpdateCbPlan_EndDateParsing() throws Exception {
+    void testUpdateCbPlan_EndDateParsing() {
         ApiRequest request = new ApiRequest();
         Map<String, Object> updateMap = new HashMap<>();
         updateMap.put("id", "planId");
         updateMap.put("endDate", "2024-12-31T00:00:00Z");
 
-        // ----- contextData -----
+        Map<String, Object> contextData = new HashMap<>();
+        Map<String, Object> accessControl = new HashMap<>();
+
+        List<Map<String, Object>> userGroups = new ArrayList<>();
+        Map<String, Object> userGroup = new HashMap<>();
+        List<Map<String, Object>> criteriaList = new ArrayList<>();
         Map<String, Object> criteria = new HashMap<>();
         criteria.put("criteriaKey", "rootOrgId");
-        criteria.put("criteriaValue", Arrays.asList("orgId"));
+        criteria.put("criteriaValue", Arrays.asList("orgId")); // mock org id
+        criteriaList.add(criteria);
+        userGroup.put("userGroupCriteriaList", criteriaList);
+        userGroups.add(userGroup);
 
-        Map<String, Object> userGroup = new HashMap<>();
-        userGroup.put("userGroupCriteriaList", Arrays.asList(criteria));
-
-        Map<String, Object> accessControl = new HashMap<>();
-        accessControl.put("userGroups", Arrays.asList(userGroup));
-
-        Map<String, Object> contextData = new HashMap<>();
+        accessControl.put("userGroups", userGroups);
         contextData.put("accessControl", accessControl);
-
         updateMap.put("contextData", contextData);
+
         request.setRequest(updateMap);
-
-        // --- Mock userId ---
+        
         when(accessTokenValidator.fetchUserIdFromAccessToken(anyString(), any())).thenReturn("userId");
-
-        // --- Mock existing plan ---
+        
         Map<String, Object> existingPlan = new HashMap<>();
         existingPlan.put("createdBy", "userId");
         existingPlan.put("status", "draft");
         existingPlan.put(Constants.ROOT_ORG_ID, "orgId");
-        // IMPORTANT: store contextData as String JSON
-        ObjectMapper mapper = new ObjectMapper();
-        existingPlan.put(Constants.CONTEXT_DATA, mapper.writeValueAsString(contextData));
-
         when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), any(), any(), any()))
-                .thenReturn(Arrays.asList(existingPlan));
-
-        // --- Mock update response ---
+            .thenReturn(Arrays.asList(existingPlan));
+        
         Map<String, Object> updateResp = new HashMap<>();
         updateResp.put(Constants.RESPONSE, Constants.SUCCESS);
         when(cassandraOperation.updateRecord(anyString(), anyString(), any(), any())).thenReturn(updateResp);
-
-        // --- Execute ---
+        
         ApiResponse response = cbPlanService.updateCbPlan(request, "orgId", "token", Arrays.asList("role"));
-
-        // --- Verify ---
+        
         assertNotNull(response);
         assertEquals(Constants.SUCCESS, response.getParams().getStatus());
     }
-
-
 
     @SuppressWarnings("unchecked")
     @Test

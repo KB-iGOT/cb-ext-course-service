@@ -556,16 +556,30 @@ public class CbPlanServiceImpl {
             boolean isCCA,
             String loggedInOrgId
     ) {
-
-
-        // 1️⃣ Check if contextData exists
-        if (!rawRequest.containsKey(Constants.CONTEXT_DATA_REQUEST)) {
+        Object contextDataObj = rawRequest.get(Constants.CONTEXT_DATA_REQUEST);
+        if (contextDataObj == null) {
             return "No contextData found"; // nothing to validate
         }
 
-        Map<String, Object> contextData = (Map<String, Object>) rawRequest.get(Constants.CONTEXT_DATA_REQUEST);
-        Map<String, Object> accessControl = (Map<String, Object>) contextData.getOrDefault(Constants.ACCESS_CONTROL, new HashMap<>());
-        List<Map<String, Object>> userGroups = (List<Map<String, Object>>) accessControl.getOrDefault(Constants.USER_GROUPS, new ArrayList<>());
+        Map<String, Object> contextData = new HashMap<>();
+        try {
+            if (contextDataObj instanceof String) {
+                // Parse JSON string back into Map
+                ObjectMapper mapper = new ObjectMapper();
+                contextData = mapper.readValue((String) contextDataObj, Map.class);
+            } else if (contextDataObj instanceof Map) {
+                contextData = (Map<String, Object>) contextDataObj;
+            } else {
+                return "Invalid contextData type";
+            }
+        } catch (Exception e) {
+            return "Failed to parse contextData: " + e.getMessage();
+        }
+
+        Map<String, Object> accessControl =
+                (Map<String, Object>) contextData.getOrDefault(Constants.ACCESS_CONTROL, new HashMap<>());
+        List<Map<String, Object>> userGroups =
+                (List<Map<String, Object>>) accessControl.getOrDefault(Constants.USER_GROUPS, new ArrayList<>());
 
         Set<String> orgIdSet = new HashSet<>();
 

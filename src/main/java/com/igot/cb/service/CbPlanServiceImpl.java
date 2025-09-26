@@ -167,7 +167,7 @@ public class CbPlanServiceImpl {
                 Map<String, Object> requestMapFromApiRequest = (Map<String, Object>) request.getRequest();
 
 //                List<String> orgIdList = (List<String>) requestMapFromApiRequest.get(Constants.ORG_ID_LIST);
-                requestMap.put(Constants.ORG_ID_LIST, requestMapFromApiRequest.get(Constants.ORG_SCOPE));
+                requestMap.put(Constants.ORG_ID_LIST, requestMapFromApiRequest.get(Constants.ORG_ID_LIST));
                 requestMap.put(Constants.ORG_SCOPE, requestMapFromApiRequest.get(Constants.ORG_SCOPE));
                 requestMap.put(Constants.CONTENT_LIST, requestMapFromApiRequest.get(Constants.CONTENT_LIST));
                 requestMap.put(Constants.NAME, requestMapFromApiRequest.get(Constants.NAME));
@@ -625,17 +625,8 @@ public class CbPlanServiceImpl {
         rawRequest.put(Constants.ORG_SCOPE, orgScope);
         Object orgIdObj = rawRequest.get(Constants.ORG_ID_LIST);
         List<String> orgIdList = new ArrayList<>();
-
-        if (orgIdObj instanceof String) {
-            // wrap single string into a list
-            orgIdList = List.of((String) orgIdObj);
-        } else if (orgIdObj instanceof List) {
-            // cast safely
-            orgIdList = (List<String>) orgIdObj;
-        } else if (orgIdObj != null) {
-            // fallback: convert to string and wrap
-            orgIdList = List.of(orgIdObj.toString());
-        }
+        orgIdList.add(loggedInOrgId); // default to logged-in org
+        rawRequest.put(Constants.ORG_ID_LIST, orgIdList);
 
         // 5️⃣ Update nested criteria in userGroups for ROOT_ORG_ID
         return null; // validation passed
@@ -956,9 +947,31 @@ public class CbPlanServiceImpl {
                     Map<String, Object> sanitizedMap = sanitizeForElastic(cbPlan);
                     esUtilService.updateDocument(cpPlanIndex, Constants.INDEX_TYPE, cbPlanId, sanitizedMap, elasticCbPlanJsonPath);
                     CbPlanDto cbPlanDto = mapper.convertValue(sanitizedMap, CbPlanDto.class);
-                    if (Constants.SINGLE.equalsIgnoreCase(cbPlanDto.getOrgScope()) || Constants.CUSTOM.equalsIgnoreCase(cbPlanDto.getOrgScope())) {
+                    if (Constants.SINGLE.equalsIgnoreCase(cbPlanDto.getOrgScope())) {
+                        // Existing flow for SINGLE
                         List<String> orgIdList = cbPlanDto.getOrgIdList();
-                        ApiResponse lookupResp = insertCustomOrgLookup(String.valueOf(cbPlanId), orgIdList, cbPlanDto.getEndDate());
+                        ApiResponse lookupResp = insertCustomOrgLookup(
+                                String.valueOf(cbPlanId),
+                                orgIdList,
+                                cbPlanDto.getEndDate()
+                        );
+                        if (!Constants.SUCCESS.equals(lookupResp.get(Constants.RESPONSE))) {
+                            response.getParams().setStatus(Constants.FAILED);
+                            response.getParams().setErr(lookupResp.getParams().getErr());
+                            response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
+                            return response;
+                        }
+
+                    } else if (Constants.CUSTOM.equalsIgnoreCase(cbPlanDto.getOrgScope())) {
+                        // New flow for CUSTOM → use unique Root Org IDs
+                        Set<String> uniqueOrgIds = extractUniqueRootOrgIds(cbPlan); // helper method we wrote
+                        List<String> orgIdList = new ArrayList<>(uniqueOrgIds);
+
+                        ApiResponse lookupResp = insertCustomOrgLookup(
+                                String.valueOf(cbPlanId),
+                                orgIdList,
+                                cbPlanDto.getEndDate()
+                        );
                         if (!Constants.SUCCESS.equals(lookupResp.get(Constants.RESPONSE))) {
                             response.getParams().setStatus(Constants.FAILED);
                             response.getParams().setErr(lookupResp.getParams().getErr());
@@ -966,6 +979,7 @@ public class CbPlanServiceImpl {
                             return response;
                         }
                     }
+
                     if (Constants.ALL.equalsIgnoreCase(cbPlanDto.getOrgScope())) {
                         ApiResponse singleResp = insertAllOrgLookup(String.valueOf(cbPlanId), cbPlanDto.getEndDate());
                         if (!Constants.SUCCESS.equals(singleResp.get(Constants.RESPONSE))) {
@@ -996,6 +1010,54 @@ public class CbPlanServiceImpl {
         }
         return response;
     }
+
+    @SuppressWarnings("unchecked")
+    private Set<String> extractUniqueRootOrgIds(Map<String, Object> rawRequest) {
+        Set<String> orgIdSet = new HashSet<>();
+
+        Object contextDataObj = rawRequest.get(Constants.CONTEXT_DATA_REQUEST);
+        if (contextDataObj == null) {
+            return orgIdSet; // nothing to extract
+        }
+
+        Map<String, Object> contextData = new HashMap<>();
+        try {
+            if (contextDataObj instanceof String) {
+                ObjectMapper mapper = new ObjectMapper();
+                contextData = mapper.readValue((String) contextDataObj, Map.class);
+            } else if (contextDataObj instanceof Map) {
+                contextData = (Map<String, Object>) contextDataObj;
+            } else {
+                return orgIdSet; // invalid type
+            }
+        } catch (Exception e) {
+            return orgIdSet; // parsing failed
+        }
+
+        Map<String, Object> accessControl =
+                (Map<String, Object>) contextData.getOrDefault(Constants.ACCESS_CONTROL, new HashMap<>());
+        List<Map<String, Object>> userGroups =
+                (List<Map<String, Object>>) accessControl.getOrDefault(Constants.USER_GROUPS, new ArrayList<>());
+
+        for (Map<String, Object> userGroup : userGroups) {
+            List<Map<String, Object>> criteriaList =
+                    (List<Map<String, Object>>) userGroup.get(Constants.USER_GROUP_CRITERIA_LIST);
+            if (criteriaList != null && !criteriaList.isEmpty()) {
+                for (Map<String, Object> criteria : criteriaList) {
+                    String criteriaKey = (String) criteria.get(Constants.CRITERIA_KEY);
+                    if (Constants.ROOT_ORG_ID.equalsIgnoreCase(criteriaKey)) {
+                        List<String> values = (List<String>) criteria.get(Constants.CRITERIA_VALUE);
+                        if (values != null && !values.isEmpty()) {
+                            orgIdSet.addAll(values);
+                        }
+                    }
+                }
+            }
+        }
+
+        return orgIdSet;
+    }
+
 
     private void updateCbPlanData(Map<String, Object> cbPlan, CbPlanDto planDto) {
         cbPlan.put(Constants.NAME, planDto.getName());

@@ -1238,7 +1238,8 @@ class CbPlanServiceImplTest {
         Map<String, Object> contextData = new HashMap<>();
         contextData.put("accessControl", accessControl);
 
-        updateMap.put("contextData", contextData);
+        updateMap.put(Constants.END_DATE_REQUEST, "2024-12-31T00:00:00Z");
+        updateMap.put(Constants.CONTEXT_DATA_REQUEST, contextData);
         request.setRequest(updateMap);
 
         // --- Mock userId ---
@@ -1249,6 +1250,8 @@ class CbPlanServiceImplTest {
         existingPlan.put("createdBy", "userId");
         existingPlan.put("status", "draft");
         existingPlan.put(Constants.ROOT_ORG_ID, "orgId");
+        existingPlan.put("rootorgid", "orgId");
+        existingPlan.put(Constants.END_DATE_REQUEST, "2024-12-31T00:00:00Z");
         // IMPORTANT: store contextData as String JSON
         ObjectMapper mapper = new ObjectMapper();
         existingPlan.put(Constants.CONTEXT_DATA, mapper.writeValueAsString(contextData));

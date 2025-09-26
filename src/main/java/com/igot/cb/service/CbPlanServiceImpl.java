@@ -572,6 +572,7 @@ public class CbPlanServiceImpl {
             } else {
                 return "Invalid contextData type";
             }
+            rawRequest.put(Constants.CONTEXT_DATA_REQUEST, contextData);
         } catch (Exception e) {
             return "Failed to parse contextData: " + e.getMessage();
         }

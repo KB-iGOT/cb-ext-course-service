@@ -409,6 +409,7 @@ public class Constants {
     public static final String VALUE = "value";
     public static final String ORG_ID_REQT = "orgid";
     public static final String X_AUTH_USER_ID = "x-authenticated-userid";
+    public static final String IS_CCA = "iscca";
 
 
     private Constants() {

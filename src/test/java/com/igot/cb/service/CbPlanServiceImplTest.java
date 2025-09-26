@@ -1222,6 +1222,24 @@ class CbPlanServiceImplTest {
         Map<String, Object> updateMap = new HashMap<>();
         updateMap.put("id", "planId");
         updateMap.put("endDate", "2024-12-31T00:00:00Z");
+
+        Map<String, Object> contextData = new HashMap<>();
+        Map<String, Object> accessControl = new HashMap<>();
+
+        List<Map<String, Object>> userGroups = new ArrayList<>();
+        Map<String, Object> userGroup = new HashMap<>();
+        List<Map<String, Object>> criteriaList = new ArrayList<>();
+        Map<String, Object> criteria = new HashMap<>();
+        criteria.put("criteriaKey", "rootOrgId");
+        criteria.put("criteriaValue", Arrays.asList("orgId")); // mock org id
+        criteriaList.add(criteria);
+        userGroup.put("userGroupCriteriaList", criteriaList);
+        userGroups.add(userGroup);
+
+        accessControl.put("userGroups", userGroups);
+        contextData.put("accessControl", accessControl);
+        updateMap.put("contextData", contextData);
+
         request.setRequest(updateMap);
         
         when(accessTokenValidator.fetchUserIdFromAccessToken(anyString(), any())).thenReturn("userId");
@@ -1229,6 +1247,7 @@ class CbPlanServiceImplTest {
         Map<String, Object> existingPlan = new HashMap<>();
         existingPlan.put("createdBy", "userId");
         existingPlan.put("status", "draft");
+        existingPlan.put(Constants.ROOT_ORG_ID, "orgId");
         when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), any(), any(), any()))
             .thenReturn(Arrays.asList(existingPlan));
         

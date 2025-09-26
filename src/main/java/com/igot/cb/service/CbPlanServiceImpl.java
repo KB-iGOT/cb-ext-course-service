@@ -560,7 +560,6 @@ public class CbPlanServiceImpl {
         if (contextDataObj == null) {
             return "No contextData found"; // nothing to validate
         }
-
         Map<String, Object> contextData = new HashMap<>();
         try {
             if (contextDataObj instanceof String) {
@@ -576,7 +575,6 @@ public class CbPlanServiceImpl {
         } catch (Exception e) {
             return "Failed to parse contextData: " + e.getMessage();
         }
-
         Map<String, Object> accessControl =
                 (Map<String, Object>) contextData.getOrDefault(Constants.ACCESS_CONTROL, new HashMap<>());
         List<Map<String, Object>> userGroups =

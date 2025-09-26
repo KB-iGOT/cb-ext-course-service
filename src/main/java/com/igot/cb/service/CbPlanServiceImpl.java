@@ -556,22 +556,36 @@ public class CbPlanServiceImpl {
             boolean isCCA,
             String loggedInOrgId
     ) {
-
-
-        // 1️⃣ Check if contextData exists
-        if (!rawRequest.containsKey(Constants.CONTEXT_DATA_REQUEST)) {
+        Object contextDataObj = rawRequest.get(Constants.CONTEXT_DATA_REQUEST);
+        if (contextDataObj == null) {
             return "No contextData found"; // nothing to validate
         }
 
-        Map<String, Object> contextData = (Map<String, Object>) rawRequest.get(Constants.CONTEXT_DATA_REQUEST);
-        Map<String, Object> accessControl = (Map<String, Object>) contextData.getOrDefault(Constants.ACCESS_CONTROL, new HashMap<>());
-        List<Map<String, Object>> userGroups = (List<Map<String, Object>>) accessControl.getOrDefault(Constants.USER_GROUPS, new ArrayList<>());
+        Map<String, Object> contextData = new HashMap<>();
+        try {
+            if (contextDataObj instanceof String) {
+                // Parse JSON string back into Map
+                ObjectMapper mapper = new ObjectMapper();
+                contextData = mapper.readValue((String) contextDataObj, Map.class);
+            } else if (contextDataObj instanceof Map) {
+                contextData = (Map<String, Object>) contextDataObj;
+            } else {
+                return "Invalid contextData type";
+            }
+        } catch (Exception e) {
+            return "Failed to parse contextData: " + e.getMessage();
+        }
+
+        Map<String, Object> accessControl =
+                (Map<String, Object>) contextData.getOrDefault(Constants.ACCESS_CONTROL, new HashMap<>());
+        List<Map<String, Object>> userGroups =
+                (List<Map<String, Object>>) accessControl.getOrDefault(Constants.USER_GROUPS, new ArrayList<>());
 
         Set<String> orgIdSet = new HashSet<>();
 
-        // 2️⃣ Collect all ROOT_ORG_ID values
         for (Map<String, Object> userGroup : userGroups) {
-            List<Map<String, Object>> criteriaList = (List<Map<String, Object>>) userGroup.get(Constants.USER_GROUP_CRITERIA_LIST);
+            List<Map<String, Object>> criteriaList =
+                    (List<Map<String, Object>>) userGroup.get(Constants.USER_GROUP_CRITERIA_LIST);
             if (CollectionUtils.isNotEmpty(criteriaList)) {
                 for (Map<String, Object> criteria : criteriaList) {
                     String criteriaKey = (String) criteria.get(Constants.CRITERIA_KEY);
@@ -587,33 +601,27 @@ public class CbPlanServiceImpl {
 
         String orgScope = "ALL";
 
-        // 3️⃣ Decision logic based on isCCA and orgIdSet
         if (!isCCA) {
-            // Validation: orgIdSet must be empty or contain only loggedInOrgId
             if (!orgIdSet.isEmpty() && !(orgIdSet.size() == 1 && orgIdSet.contains(loggedInOrgId))) {
                 return "Validation Error: ROOT_ORG_ID must be empty or equal to logged-in Org ID when CCA = false";
             }
-
             orgScope = "SINGLE";
         } else {
             if (orgIdSet.isEmpty()) {
-                // fallback to logged-in org
                 orgScope = "ALL";
             } else if (orgIdSet.size() == 1) {
-
                 orgScope = "SINGLE";
             } else {
                 orgScope = "CUSTOM";
             }
         }
 
-        // 4️⃣ Update cbPlanDto and request
-
         rawRequest.put(Constants.ORG_SCOPE, orgScope);
         rawRequest.put(Constants.ORG_ID_LIST, loggedInOrgId);
-        // 5️⃣ Update nested criteria in userGroups for ROOT_ORG_ID
-        return null; // validation passed
+
+        return null; // success
     }
+
 
 
 

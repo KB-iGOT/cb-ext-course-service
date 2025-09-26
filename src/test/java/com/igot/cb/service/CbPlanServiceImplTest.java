@@ -1216,7 +1216,7 @@ class CbPlanServiceImplTest {
         assertNotNull(response);
         assertEquals(Constants.SUCCESS, response.getParams().getStatus());
     }
-
+    
     @Test
     void testUpdateCbPlan_EndDateParsing() throws Exception {
         ApiRequest request = new ApiRequest();

@@ -113,13 +113,6 @@ public class CbPlanServiceImpl {
                 response.setResponseCode(HttpStatus.BAD_REQUEST);
                 return response;
             }
-            validations = validateContextData(cbPlanDto, request);
-            if (CollectionUtils.isNotEmpty(validations)) {
-                response.getParams().setStatus(Constants.FAILED);
-                response.getParams().setErr(mapper.writeValueAsString(validations));
-                response.setResponseCode(HttpStatus.BAD_REQUEST);
-                return response;
-            }
             List<Map<String, Object>> userList = cassandraOperation.getRecordsByProperties(
                     Constants.KEYSPACE_SUNBIRD,
                     Constants.USER,

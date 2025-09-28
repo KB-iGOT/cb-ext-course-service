@@ -799,8 +799,8 @@ public class CbPlanServiceImpl {
         return cbPlan;
     }
 
-    private Map<String, Object> prepareCbPlanForUpdate(Map<String, Object> existingCbPlan,
-            Map<String, Object> incomingRequest, String userId) throws JsonProcessingException {
+    private Map<String, Object> prepareCbPlanForUpdate(Map<String, Object> incomingRequest,
+            Map<String, Object> existingCbPlan, String userId) throws JsonProcessingException {
         Map<String, Object> updatedRequest = new HashMap<>();
         updatedRequest.put(Constants.UPDATED_BY, userId);
         updatedRequest.put(Constants.UPDATED_AT, Instant.now());

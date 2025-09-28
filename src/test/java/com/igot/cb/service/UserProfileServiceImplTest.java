@@ -37,7 +37,7 @@ class UserProfileServiceImplTest {
     private IdMapCacheMgr idMapCacheMgr;
 
     @InjectMocks
-    private UserProfileServiceImpl userProfileService;
+    private UserAndOrgServiceImpl userProfileService;
 
     private final String userId = "user123";
 

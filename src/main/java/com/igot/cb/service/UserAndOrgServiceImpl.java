@@ -26,18 +26,81 @@ import lombok.extern.slf4j.Slf4j;
 
 @Service
 @Slf4j
-public class UserProfileServiceImpl {
+public class UserAndOrgServiceImpl {
     private final RedisCacheMgr redisCacheMgr;
     private final CassandraOperation cassandraOperation;
     private final IdMapCacheMgr idMapCacheMgr;
 
     private final ObjectMapper mapper = new ObjectMapper();
 
-    public UserProfileServiceImpl(RedisCacheMgr redisCacheMgr, CassandraOperation cassandraOperation,
+    public UserAndOrgServiceImpl(RedisCacheMgr redisCacheMgr, CassandraOperation cassandraOperation,
             IdMapCacheMgr idMapCacheMgr) {
         this.redisCacheMgr = redisCacheMgr;
         this.cassandraOperation = cassandraOperation;
         this.idMapCacheMgr = idMapCacheMgr;
+    }
+
+    public Map<String, Object> readUserProfileFromDB(String userId, List<String> fields) {
+        Map<String, Object> userProfile = new HashMap<>();
+        try {
+            Map<String, Object> queryParams = Map.of(Constants.ID, userId);
+            if (CollectionUtils.isEmpty(fields)) {
+                fields = Arrays.asList(Constants.ID, Constants.ROOT_ORG_ID, Constants.PROFILE_DETAILS);
+            }
+            List<Map<String, Object>> userList = cassandraOperation.getRecordsByProperties(
+                    Constants.KEYSPACE_SUNBIRD, Constants.USER, queryParams, fields, null);
+
+            if (CollectionUtils.isEmpty(userList)) {
+                log.error("Failed to read the user profile for userId: {}", userId);
+                return Map.of();
+            }
+            userProfile = userList.get(0);
+            log.info("User profile fetched for userId: {}", userId);
+        } catch (Exception e) {
+            log.error("Failed to parse user profile from DB for userId: {}. Exception: {}", userId, e.getMessage(), e);
+        }
+        return userProfile;
+    }
+
+    public Map<String, Object> readOrgFromDB(String orgId, List<String> fields) {
+        Map<String, Object> orgProfile = new HashMap<>();
+        try {
+            Map<String, Object> queryParams = Map.of(Constants.ID, orgId);
+            if (CollectionUtils.isEmpty(fields)) {
+                fields = Arrays.asList(Constants.ID, Constants.ORG_NAME, Constants.IS_CCA);
+            }
+            List<Map<String, Object>> orgList = cassandraOperation.getRecordsByProperties(
+                    Constants.KEYSPACE_SUNBIRD, Constants.ORG_TABLE, queryParams, fields, null);
+
+            if (CollectionUtils.isEmpty(orgList)) {
+                log.error("Failed to read the org profile for orgId: {}", orgId);
+                return Map.of();
+            }
+            orgProfile = orgList.get(0);
+            log.info("Org profile fetched for orgId: {}", orgId);
+        } catch (Exception e) {
+            log.error("Failed to parse org profile from DB for orgId: {}. Exception: {}", orgId, e.getMessage(), e);
+        }
+        return orgProfile;
+    }
+
+    public Map<String, Object> readUserProfile(String userId, List<String> fields) {
+        Map<String, Object> userProfile = new HashMap<>();
+        String cacheKey = Constants.USER + ":basicProfile:" + userId;
+        String cachedProfile = redisCacheMgr.getFromCache(cacheKey);
+
+        if (StringUtils.hasText(cachedProfile)) {
+            try {
+                userProfile = mapper.readValue(cachedProfile, new TypeReference<Map<String, Object>>() {
+                });
+            } catch (Exception e) {
+                log.error("Failed to parse user profile from cache for userId: {}. Exception: {}", userId,
+                        e.getMessage(), e);
+            }
+        } else {
+            userProfile = readUserProfileFromDB(userId, fields);
+        }
+        return userProfile;
     }
 
     public Map<String, Integer> getUserProfile(String userId) {

@@ -35,7 +35,7 @@ class CourseAccessServiceImplTest {
     private AccessTokenValidator mockAccessTokenValidator;
     
     @Mock
-    private UserProfileServiceImpl mockUserProfileService;
+    private UserAndOrgServiceImpl mockUserProfileService;
     
     @Mock
     private AccessSettingRuleCacheMgr mockAccessSettingRuleCacheMgr;

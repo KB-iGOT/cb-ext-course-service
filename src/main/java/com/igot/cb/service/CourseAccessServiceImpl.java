@@ -29,7 +29,7 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class CourseAccessServiceImpl {
     private final AccessTokenValidator accessTokenValidator;
-    private final UserProfileServiceImpl userProfileServiceImpl;
+    private final UserAndOrgServiceImpl userProfileServiceImpl;
     private final AccessSettingRuleCacheMgr accessSettingRuleCacheMgr;
     private final ContentInfoServiceImpl contentService;
 
@@ -50,7 +50,7 @@ public class CourseAccessServiceImpl {
      * @param accessSettingRuleCacheMgr Cache manager for access setting rules.
      */
     public CourseAccessServiceImpl(AccessTokenValidator accessTokenValidator,
-            UserProfileServiceImpl userProfileServiceImpl, AccessSettingRuleCacheMgr accessSettingRuleCacheMgr, ContentInfoServiceImpl contentService) {
+            UserAndOrgServiceImpl userProfileServiceImpl, AccessSettingRuleCacheMgr accessSettingRuleCacheMgr, ContentInfoServiceImpl contentService) {
         this.accessTokenValidator = accessTokenValidator;
         this.userProfileServiceImpl = userProfileServiceImpl;
         this.accessSettingRuleCacheMgr = accessSettingRuleCacheMgr;

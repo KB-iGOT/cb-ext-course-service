@@ -1042,11 +1042,9 @@ public class CbPlanServiceImpl {
             for (String field : allowedFields) {
                 if (incomingCbPlanRequest.containsKey(field)) {
                     if (Constants.IS_APAR.equalsIgnoreCase(field)) {
-                        if (existingCbPlan.get(Constants.IS_APAR) == null
-                                && (!(Boolean) existingCbPlan.get(Constants.IS_APAR))) {
-                            // If existing is not available or false, we can allow update blindly
-                            continue;
-                        } else {
+                        boolean existingIsApar = existingCbPlan.get(Constants.IS_APAR) != null
+                                && (Boolean) existingCbPlan.get(Constants.IS_APAR);
+                        if (existingIsApar) {
                             // If existing is true, we cannot allow update to false
                             if (incomingCbPlanRequest.get(field) != null
                                     && !(Boolean) incomingCbPlanRequest.get(field)) {

@@ -27,6 +27,7 @@ import jakarta.validation.ValidatorFactory;
 public class RequestValidator {
     private final ObjectMapper mapper = new ObjectMapper();
     private final CbExtServerProperties cbExtServerProperties;
+
     public RequestValidator(CbExtServerProperties cbExtServerProperties) {
         this.cbExtServerProperties = cbExtServerProperties;
     }
@@ -67,8 +68,9 @@ public class RequestValidator {
     public List<String> validateContextData(Map<String, Object> request, boolean isCCA, String userOrgId) {
         return validateContextData(request, isCCA, userOrgId, null);
     }
-    
-    public List<String> validateContextData(Map<String, Object> request, boolean isCCA, String userOrgId, Set<String> rootOrgIdsInCriteria) {
+
+    public List<String> validateContextData(Map<String, Object> request, boolean isCCA, String userOrgId,
+            Set<String> rootOrgIdsInCriteria) {
         List<String> errors = new ArrayList<>();
 
         if (!request.containsKey(Constants.CONTEXT_DATA_REQUEST)) {
@@ -81,7 +83,7 @@ public class RequestValidator {
         if (contextDataObj instanceof String) {
             try {
                 contextData = mapper.readValue((String) contextDataObj, new TypeReference<Map<String, Object>>() {
-                        });
+                });
             } catch (Exception e) {
                 errors.add("Validation Error: Failed to parse contextData");
                 return errors;
@@ -91,7 +93,7 @@ public class RequestValidator {
         } else {
             errors.add("Validation Error: contextData is of invalid type");
             return errors;
-        }        
+        }
 
         if (MapUtils.isEmpty(contextData) || !contextData.containsKey(Constants.ACCESS_CONTROL)) {
             errors.add("Validation Error: accessControl is missing in contextData");
@@ -106,9 +108,10 @@ public class RequestValidator {
             return errors;
         }
 
-        if (rootOrgIdsInCriteria == null ) {
+        if (rootOrgIdsInCriteria == null) {
             rootOrgIdsInCriteria = new HashSet<>();
         }
+        boolean rootOrgCriteriaNotFoundInUserGroup = false;
         for (Map<String, Object> userGroup : userGroups) {
             if (!userGroup.containsKey(Constants.USER_GROUP_CRITERIA_LIST)) {
                 errors.add("Validation Error: criteriaList is missing in userGroup");
@@ -146,8 +149,11 @@ public class RequestValidator {
 
             if (!rootOrgCriteriaFound) {
                 if (!isCCA) {
-                    errors.add("Validation Error: ROOT_ORG_ID criteria is missing in userGroup and organization is not CCA");
+                    errors.add(
+                            "Validation Error: ROOT_ORG_ID criteria is missing in userGroup and organization is not CCA");
                     return errors; // rootOrgId criteria is mandatory if not CCA
+                } else {
+                    rootOrgCriteriaNotFoundInUserGroup = true;
                 }
             }
         }
@@ -155,10 +161,16 @@ public class RequestValidator {
         if (isCCA) {
             if (rootOrgIdsInCriteria.size() == 0) {
                 request.put(Constants.ORG_SCOPE, Constants.ALL);
-            } else if (rootOrgIdsInCriteria.size() == 1) {
-                request.put(Constants.ORG_SCOPE, Constants.SINGLE);
+            } else if (rootOrgCriteriaNotFoundInUserGroup) {
+                errors.add(
+                        "Validation Error: ROOT_ORG_ID criteria is added in one or more userGroups but missing in other.");
+                return errors;
             } else {
-                request.put(Constants.ORG_SCOPE, Constants.CUSTOM);
+                if (rootOrgIdsInCriteria.size() == 1) {
+                    request.put(Constants.ORG_SCOPE, Constants.SINGLE);
+                } else {
+                    request.put(Constants.ORG_SCOPE, Constants.CUSTOM);
+                }
             }
         } else {
             if (rootOrgIdsInCriteria.size() > 1) {

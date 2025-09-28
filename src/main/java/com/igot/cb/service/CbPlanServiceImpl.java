@@ -731,11 +731,12 @@ public class CbPlanServiceImpl {
                     // TO DO : need to use upsert method instead of addDocument
                     esUtilService.addDocument(serverProperties.getCpPlanIndex(), Constants.INDEX_TYPE,
                             cbPlanId, sanitizedMap, serverProperties.getElasticCbPlanJsonPath());
-                    CbPlanDto cbPlanDto = mapper.convertValue(sanitizedMap, CbPlanDto.class);
-                    List<String> orgIdList = cbPlanDto.getOrgIdList();
-                    if (Constants.SINGLE.equalsIgnoreCase(cbPlanDto.getOrgScope())
-                            || Constants.CUSTOM.equalsIgnoreCase(cbPlanDto.getOrgScope())) {
-                        ApiResponse lookupResp = archiveCustomOrgLookup(cbPlanId, orgIdList);
+                    Set<String> existingRootOrgIdsInCriteria = extractUniqueRootOrgIds(cbPlan);
+                    String orgScope = (String) cbPlan.get(Constants.ORG_SCOPE);
+                    
+                    if (Constants.SINGLE.equalsIgnoreCase(orgScope)
+                            || Constants.CUSTOM.equalsIgnoreCase(orgScope)) {
+                        ApiResponse lookupResp = upsertCustomOrgLookup(cbPlanId, existingRootOrgIdsInCriteria, null, false);
                         if (!Constants.SUCCESS.equals(lookupResp.get(Constants.RESPONSE))) {
                             response.getParams().setStatus(Constants.FAILED);
                             response.getParams().setErr(lookupResp.getParams().getErr());
@@ -743,18 +744,11 @@ public class CbPlanServiceImpl {
                             return response;
                         }
                     }
-                    if (Constants.ALL.equalsIgnoreCase(cbPlanDto.getOrgScope())) {
-                        Map<String, Object> compositeKeyMap = Map.of(
-                                Constants.PLAN_ID_RQST, cbPlanId,
-                                Constants.PLAN_YEAR, "ALL");
-
-                        Map<String, Object> singleResp = cassandraOperation.updateRecord(Constants.KEYSPACE_SUNBIRD,
-                                Constants.TABLE_CB_PLAN_V2_LOOKUP_BY_ALL_ORG,
-                                Collections.singletonMap(Constants.IS_ACTIVE, false),
-                                compositeKeyMap);
-                        if (!Constants.SUCCESS.equals(singleResp.get(Constants.RESPONSE))) {
+                    if (Constants.ALL.equalsIgnoreCase(orgScope)) {
+                        ApiResponse lookupResp = upsertAllOrgLookup(cbPlanId, null, false);
+                        if (!Constants.SUCCESS.equals(lookupResp.get(Constants.RESPONSE))) {
                             response.getParams().setStatus(Constants.FAILED);
-                            response.getParams().setErr((String) singleResp.get(Constants.ERROR_MESSAGE));
+                            response.getParams().setErr((String) lookupResp.get(Constants.ERROR_MESSAGE));
                             response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
                             return response;
                         }

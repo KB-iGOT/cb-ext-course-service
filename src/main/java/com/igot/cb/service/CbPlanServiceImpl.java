@@ -354,24 +354,27 @@ public class CbPlanServiceImpl {
         return response;
     }
 
-    private Date parseEndDate(Object endDateObj) {
+    private Instant parseEndDate(Object endDateObj) {
         try {
             if (endDateObj instanceof Date) {
-                return (Date) endDateObj;
+                return ((Date) endDateObj).toInstant();
+            }
+            if (endDateObj instanceof Instant) {
+                return (Instant) endDateObj;
             }
             if (endDateObj instanceof Long) {
-                return new Date((Long) endDateObj);
+                return Instant.ofEpochMilli((Long) endDateObj);
             }
             if (endDateObj instanceof String) {
                 String endDateStr = (String) endDateObj;
                 try {
                     // Try ISO_INSTANT first (e.g. 2025-12-31T10:15:30Z)
-                    Instant instant = Instant.parse(endDateStr);
-                    return Date.from(instant);
+                    return Instant.parse(endDateStr);
                 } catch (DateTimeParseException e) {
-                    // Fallback: yyyy-MM-dd
+                    // Fallback: yyyy-MM-dd - parse as end of day in Asia/Kolkata
                     LocalDate localDate = LocalDate.parse(endDateStr, DateTimeFormatter.ofPattern("yyyy-MM-dd"));
-                    return Date.from(localDate.atStartOfDay(ZoneId.systemDefault()).toInstant());
+                    ZoneId kolkata = ZoneId.of("Asia/Kolkata");
+                    return localDate.atTime(23, 59, 59).atZone(kolkata).toInstant();
                 }
             }
         } catch (Exception e) {
@@ -789,7 +792,7 @@ public class CbPlanServiceImpl {
         cbPlan.put(Constants.COMMENT, incomingRequest.get(Constants.COMMENT));
         cbPlan.put(Constants.CONTENT_TYPE, incomingRequest.get(Constants.CONTENT_TYPE));
         cbPlan.put(Constants.END_DATE_REQUEST,
-                parseEndDate(incomingRequest.get(Constants.END_DATE)));
+                parseEndDate(incomingRequest.get(Constants.END_DATE_REQUEST)));
         cbPlan.put(Constants.IS_APAR, incomingRequest.get(Constants.IS_APAR));
         cbPlan.put(Constants.CONTEXT_DATA_REQUEST,
                 mapper.writeValueAsString(incomingRequest.get(Constants.CONTEXT_DATA_REQUEST)));
@@ -809,7 +812,7 @@ public class CbPlanServiceImpl {
         updatedRequest.put(Constants.COMMENT, incomingRequest.get(Constants.COMMENT));
         updatedRequest.put(Constants.CONTENT_TYPE, incomingRequest.get(Constants.CONTENT_TYPE));
         updatedRequest.put(Constants.END_DATE_REQUEST,
-                parseEndDate(incomingRequest.get(Constants.END_DATE)));
+                parseEndDate(incomingRequest.get(Constants.END_DATE_REQUEST)));
         updatedRequest.put(Constants.IS_APAR, incomingRequest.get(Constants.IS_APAR));
         updatedRequest.put(Constants.CONTEXT_DATA_REQUEST,
                 mapper.writeValueAsString(incomingRequest.get(Constants.CONTEXT_DATA_REQUEST)));
@@ -841,18 +844,14 @@ public class CbPlanServiceImpl {
             updatedRequest.put(Constants.CONTEXT_DATA_REQUEST,
                     mapper.writeValueAsString(dataInDraftObject.get(Constants.CONTEXT_DATA_REQUEST)));
         }
-        if (dataInDraftObject.containsKey(Constants.END_DATE)) {
+        if (dataInDraftObject.containsKey(Constants.END_DATE_REQUEST)) {
             updatedRequest.put(Constants.END_DATE_REQUEST,
-                    parseEndDate(dataInDraftObject.get(Constants.END_DATE)));
+                    parseEndDate(dataInDraftObject.get(Constants.END_DATE_REQUEST)));
         }
         if (dataInDraftObject.containsKey(Constants.ROOT_ORG_IDS_IN_CONTEXT_DATA)) {
             updatedRequest.put(Constants.ROOT_ORG_IDS_IN_CONTEXT_DATA,
                     dataInDraftObject.get(Constants.ROOT_ORG_IDS_IN_CONTEXT_DATA));
         }
-        {
-        }
-        updatedRequest.put(Constants.END_DATE_REQUEST,
-                parseEndDate(incomingRequest.get(Constants.END_DATE)));
         updatedRequest.put(Constants.COMMENT, incomingRequest.get(Constants.COMMENT));
 
         return updatedRequest;
@@ -872,7 +871,7 @@ public class CbPlanServiceImpl {
         return sanitized;
     }
 
-    private ApiResponse insertCustomOrgLookup(String cbPlanId, Set<String> orgIdList, Date endDate) {
+    private ApiResponse insertCustomOrgLookup(String cbPlanId, Set<String> orgIdList, Instant endDate) {
         ApiResponse response = new ApiResponse();
         try {
             if (CollectionUtils.isEmpty(orgIdList)) {
@@ -887,7 +886,7 @@ public class CbPlanServiceImpl {
                 Map<String, Object> lookupMap = new HashMap<>();
                 lookupMap.put("planid", cbPlanId);
                 lookupMap.put("orgid", orgId);
-                lookupMap.put("enddate", endDate.toInstant());
+                lookupMap.put("enddate", endDate);
                 lookupMap.put("isactive", true);
                 lookupMaps.add(lookupMap);
             }
@@ -914,13 +913,13 @@ public class CbPlanServiceImpl {
         return response;
     }
 
-    private ApiResponse insertAllOrgLookup(String cbPlanId, Date endDate) {
+    private ApiResponse insertAllOrgLookup(String cbPlanId, Instant endDate) {
         ApiResponse response = new ApiResponse();
         try {
             Map<String, Object> allOrgMap = new HashMap<>();
             allOrgMap.put("planyear", "ALL");
             allOrgMap.put(Constants.PLAN_ID, cbPlanId);
-            allOrgMap.put(Constants.END_DATE, endDate.toInstant()); // java.util.Date or Timestamp
+            allOrgMap.put(Constants.END_DATE, endDate); // Instant directly for Cassandra timestamp
             allOrgMap.put("isactive", true);
 
             response = (ApiResponse) cassandraOperation.insertRecord(

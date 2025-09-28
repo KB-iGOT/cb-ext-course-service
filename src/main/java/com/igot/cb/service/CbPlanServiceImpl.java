@@ -26,6 +26,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.cassandra.exceptions.CustomException;
 import com.igot.cb.elasticsearch.dto.SearchCriteria;
@@ -49,7 +51,10 @@ public class CbPlanServiceImpl {
 
     private final AccessTokenValidator accessTokenValidator;
 
-    private final ObjectMapper mapper = new ObjectMapper();
+    // Configure a dedicated ObjectMapper with JavaTimeModule so Instant and other Java 8 date/time types serialize as ISO-8601
+    private final ObjectMapper mapper = new ObjectMapper()
+        .registerModule(new JavaTimeModule())
+        .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
 
     private final CassandraOperation cassandraOperation;
 
@@ -280,14 +285,20 @@ public class CbPlanServiceImpl {
             updatedRequest.put(Constants.COMMENT, comment);
             updatedRequest.put(Constants.UPDATED_BY, userId);
             String existingPlanStatus = (String) existingCbPlan.get(Constants.STATUS);
+            Set<String> rootOrgIdsInCriteria = new HashSet<>();
+            List<String> errors = new ArrayList<>();
             if (Constants.LIVE.equalsIgnoreCase(existingPlanStatus)) {
                 // Need to update live plan with draft data if any
                 // Need to update lookup table entries
                 updatedRequest.putAll(prepareCbPlanForRePublish(existingCbPlan, incomingRequest, userId));
+                if (updatedRequest.containsKey(Constants.CONTEXT_DATA)) {
+                    errors = requestValidator.validateContextData(updatedRequest, isCCA, userOrgId, rootOrgIdsInCriteria);
+                }
             } else if (Constants.DRAFT.equalsIgnoreCase(existingPlanStatus)) {
                 // Need to update comment and then publish.
                 // Need to update lookup table entries
                 updatedRequest.put(Constants.STATUS, Constants.LIVE);
+                errors = requestValidator.validateContextData(existingCbPlan, isCCA, userOrgId, rootOrgIdsInCriteria);                
             } else {
                 response.getParams().setStatus(Constants.FAILED);
                 response.getParams().setErr(
@@ -296,16 +307,19 @@ public class CbPlanServiceImpl {
                 return response;
             }
 
-            Set<String> rootOrgIdsInCriteria = new HashSet<>();
-            List<String> errors = requestValidator.validateContextData(updatedRequest, isCCA, userOrgId,
-                    rootOrgIdsInCriteria);
             if (CollectionUtils.isNotEmpty(errors)) {
                 response.getParams().setStatus(Constants.FAILED);
                 response.getParams().setErr(mapper.writeValueAsString(errors));
                 response.setResponseCode(HttpStatus.BAD_REQUEST);
                 return response;
             }
-
+            // Set the orgScope again as we validate the contextData above
+            if (Constants.LIVE.equalsIgnoreCase(existingPlanStatus)) {
+                updatedRequest.remove(Constants.ROOT_ORG_IDS_IN_CONTEXT_DATA);
+                updatedRequest.put(Constants.DRAFT_DATA, mapper.writeValueAsString(Collections.emptyMap()));
+            } else if (Constants.DRAFT.equalsIgnoreCase(existingPlanStatus)) {
+                updatedRequest.put(Constants.ORG_SCOPE, existingCbPlan.get(Constants.ORG_SCOPE));
+            }
             Map<String, Object> resp = cassandraOperation.updateRecord(Constants.KEYSPACE_SUNBIRD,
                     Constants.TABLE_CB_PLAN_V2, updatedRequest, Map.of(Constants.PLAN_ID, cbPlanId));
             if (resp.get(Constants.RESPONSE).equals(Constants.SUCCESS)) {
@@ -315,7 +329,6 @@ public class CbPlanServiceImpl {
 
                 if (Constants.SINGLE.equalsIgnoreCase((String) updatedRequest.get(Constants.ORG_SCOPE)) ||
                         Constants.CUSTOM.equalsIgnoreCase((String) updatedRequest.get(Constants.ORG_SCOPE))) {
-
                     ApiResponse lookupResp = insertCustomOrgLookup(
                             String.valueOf(cbPlanId),
                             rootOrgIdsInCriteria,

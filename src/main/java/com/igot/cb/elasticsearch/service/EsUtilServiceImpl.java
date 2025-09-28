@@ -104,15 +104,19 @@ public class EsUtilServiceImpl implements EsUtilService{
                     iterator.remove();
                 }
             }
-            IndexRequest<Map<String, Object>> indexRequest = new IndexRequest.Builder<Map<String, Object>>()
+            // Use UpdateRequest for partial update/upsert instead of IndexRequest (full replacement)
+            UpdateRequest<Map<String, Object>, Map<String, Object>> updateRequest = 
+                new UpdateRequest.Builder<Map<String, Object>, Map<String, Object>>()
                     .index(index)
                     .id(entityId)
-                    .document(updatedDocument)
+                    .doc(updatedDocument)  // Partial document update
+                    .docAsUpsert(true)     // Create document if it doesn't exist
                     .refresh(Refresh.True)
                     .build();
-            IndexResponse response = elasticsearchClient.index(indexRequest);
+            UpdateResponse<Map<String, Object>> response = elasticsearchClient.update(updateRequest, Object.class);
             return response.result().jsonValue();
         } catch (IOException e) {
+            log.error("Error updating document in Elasticsearch: {}", e.getMessage(), e);
             return null;
         }
     }

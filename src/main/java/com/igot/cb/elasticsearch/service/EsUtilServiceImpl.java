@@ -3,7 +3,6 @@ package com.igot.cb.elasticsearch.service;
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
 import co.elastic.clients.elasticsearch._types.FieldValue;
 import co.elastic.clients.elasticsearch._types.Refresh;
-import co.elastic.clients.elasticsearch._types.SortOptions;
 import co.elastic.clients.elasticsearch._types.SortOrder;
 import co.elastic.clients.elasticsearch._types.aggregations.Aggregate;
 import co.elastic.clients.elasticsearch._types.aggregations.Aggregation;
@@ -39,16 +38,16 @@ import java.util.stream.Collectors;
 
 @Service
 @Slf4j
+@SuppressWarnings({"unchecked","deprecation"}) // deprecation: legacy factory usage for ES6 compatibility; unchecked: dynamic query map casting
 public class EsUtilServiceImpl implements EsUtilService{
 
-    private final EsConfig esConfig;
     private final ElasticsearchClient elasticsearchClient;
     private final Logger logger = LogManager.getLogger(getClass());
 
     private static final Map<String, Map<String, Object>> schemaCache = new ConcurrentHashMap<>();
 
     public EsUtilServiceImpl(EsConfig esConfig, ElasticsearchClient elasticsearchClient) {
-        this.esConfig = esConfig;
+        // esConfig retained in ctor signature for backward compatibility / bean wiring even if not directly used now
         this.elasticsearchClient = elasticsearchClient;
     }
 
@@ -90,33 +89,56 @@ public class EsUtilServiceImpl implements EsUtilService{
     @Override
     public String updateDocument(
             String index, String indexType, String entityId, Map<String, Object> updatedDocument, String JsonFilePath) {
+        /*
+         * NOTE (ES 6.8 compatibility):
+         * The official Java client 8.x uses typeless endpoints ( /{index}/_update/{id} ).
+         * When talking to an ES 6.8 cluster this path is interpreted as {index}/{type}/{id}
+         * and the segment "_update" is considered a type, which is invalid (starts with '_').
+         * This causes: invalid_type_name_exception Document mapping type name can't start with '_', found: [_update]
+         *
+         * To remain backward compatible without downgrading the whole client right now, we emulate a partial update:
+         *  1. Fetch existing document (if any)
+         *  2. Merge provided fields (overwrite only keys present in updatedDocument)
+         *  3. Re-index the merged document using the regular index API (which still works with ES 6.8)
+         * This gives near-semantic parity with a partial update (no deletion of unspecified fields) while avoiding the _update endpoint.
+         */
         try {
+            // 1. Filter incoming map using schema (same logic as addDocument)
             JsonSchemaFactory schemaFactory = JsonSchemaFactory.getInstance();
-            InputStream schemaStream = schemaFactory.getClass().getResourceAsStream(JsonFilePath);
-            Map<String, Object> map = objectMapper.readValue(schemaStream,
-                    new TypeReference<Map<String, Object>>() {
-                    });
-            Iterator<Map.Entry<String, Object>> iterator = updatedDocument.entrySet().iterator();
-            while (iterator.hasNext()) {
-                Map.Entry<String, Object> entry = iterator.next();
-                String key = entry.getKey();
-                if (!map.containsKey(key)) {
-                    iterator.remove();
-                }
+            try (InputStream schemaStream = schemaFactory.getClass().getResourceAsStream(JsonFilePath)) {
+                Map<String, Object> schemaMap = objectMapper.readValue(schemaStream, new TypeReference<Map<String, Object>>() {});
+                updatedDocument.entrySet().removeIf(e -> !schemaMap.containsKey(e.getKey()));
             }
-            // Use UpdateRequest for partial update/upsert instead of IndexRequest (full replacement)
-            UpdateRequest<Map<String, Object>, Map<String, Object>> updateRequest = 
-                new UpdateRequest.Builder<Map<String, Object>, Map<String, Object>>()
+
+            Map<String, Object> merged = new HashMap<>();
+            boolean existingFound = false;
+            try {
+                GetResponse<Object> existing = elasticsearchClient.get(builder -> builder.index(index).id(entityId), Object.class);
+                if (existing.found()) {
+                    Object src = existing.source();
+                    if (src instanceof Map) {
+                        merged.putAll((Map<String,Object>) src);
+                        existingFound = true;
+                    }
+                }
+            } catch (Exception getEx) {
+                log.debug("ES get (for merge) failed for index={}, id={}, treating as upsert. Cause: {}", index, entityId, getEx.getMessage());
+            }
+
+            // 2. Merge (overwrite / add updated fields only)
+            merged.putAll(updatedDocument);
+
+            // 3. Index (acts as create or replace). We want refresh so subsequent reads see changes.
+            IndexRequest<Map<String,Object>> indexRequest = new IndexRequest.Builder<Map<String, Object>>()
                     .index(index)
                     .id(entityId)
-                    .doc(updatedDocument)  // Partial document update
-                    .docAsUpsert(true)     // Create document if it doesn't exist
+                    .document(merged)
                     .refresh(Refresh.True)
                     .build();
-            UpdateResponse<Map<String, Object>> response = elasticsearchClient.update(updateRequest, Object.class);
-            return response.result().jsonValue();
-        } catch (IOException e) {
-            log.error("Error updating document in Elasticsearch: {}", e.getMessage(), e);
+            IndexResponse response = elasticsearchClient.index(indexRequest);
+            return (existingFound ? "updated" : "created") + ":" + response.result().jsonValue();
+        } catch (Exception e) {
+            log.error("Error performing merge+index update for index={}, id={}: {}", index, entityId, e.getMessage(), e);
             return null;
         }
     }
@@ -146,7 +168,15 @@ public class EsUtilServiceImpl implements EsUtilService{
             SearchResult searchResult = new SearchResult();
             searchResult.setData(paginatedResult);
             searchResult.setFacets(fieldAggregations);
-            searchResult.setTotalCount(paginatedSearchResponse.hits().total().value());
+            long totalHits = 0L;
+            var hitsMeta = paginatedSearchResponse.hits();
+            if (hitsMeta != null) {
+                var totalObj = hitsMeta.total();
+                if (totalObj != null) {
+                    totalHits = totalObj.value();
+                }
+            }
+            searchResult.setTotalCount(totalHits);
             return searchResult;
         } catch (IOException e) {
             log.error("Error while fetching details from elastic search");

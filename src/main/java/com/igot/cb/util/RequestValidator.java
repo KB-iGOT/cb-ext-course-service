@@ -2,16 +2,17 @@ package com.igot.cb.util;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Component;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.igot.cb.model.ApiRequest;
 import com.igot.cb.model.CbPlanDto;
@@ -75,9 +76,24 @@ public class RequestValidator {
             return errors; // no contextData = no extra validation
         }
 
-        Map<String, Object> contextData = (Map<String, Object>) request.get(Constants.CONTEXT_DATA_REQUEST);
+        Map<String, Object> contextData = null;
+        Object contextDataObj = request.get(Constants.CONTEXT_DATA_REQUEST);
+        if (contextDataObj instanceof String) {
+            try {
+                contextData = mapper.readValue((String) contextDataObj, new TypeReference<Map<String, Object>>() {
+                        });
+            } catch (Exception e) {
+                errors.add("Validation Error: Failed to parse contextData");
+                return errors;
+            }
+        } else if (contextDataObj instanceof Map) {
+            contextData = (Map<String, Object>) contextDataObj;
+        } else {
+            errors.add("Validation Error: contextData is of invalid type");
+            return errors;
+        }        
 
-        if (!contextData.containsKey(Constants.ACCESS_CONTROL)) {
+        if (MapUtils.isEmpty(contextData) || !contextData.containsKey(Constants.ACCESS_CONTROL)) {
             errors.add("Validation Error: accessControl is missing in contextData");
             return errors; // no accessControl = no extra validation
         }

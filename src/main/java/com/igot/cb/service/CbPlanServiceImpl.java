@@ -286,18 +286,23 @@ public class CbPlanServiceImpl {
             updatedRequest.put(Constants.UPDATED_BY, userId);
             String existingPlanStatus = (String) existingCbPlan.get(Constants.STATUS);
             Set<String> rootOrgIdsInCriteria = new HashSet<>();
+            Set<String> existingRootOrgIdsInCriteria = new HashSet<>();
+            String existingOrgScope = (String) existingCbPlan.get(Constants.ORG_SCOPE);
             List<String> errors = new ArrayList<>();
             if (Constants.LIVE.equalsIgnoreCase(existingPlanStatus)) {
+                // This will initialize the existing rootOrgIds in the Criteria from contextData
+                requestValidator.validateContextData(existingCbPlan, isCCA, userOrgId, existingRootOrgIdsInCriteria);
                 // Need to update live plan with draft data if any
                 // Need to update lookup table entries
                 updatedRequest.putAll(prepareCbPlanForRePublish(existingCbPlan, incomingRequest, userId));
-                if (updatedRequest.containsKey(Constants.CONTEXT_DATA)) {
+                if (updatedRequest.containsKey(Constants.CONTEXT_DATA_REQUEST)) {
                     errors = requestValidator.validateContextData(updatedRequest, isCCA, userOrgId, rootOrgIdsInCriteria);
                 }
             } else if (Constants.DRAFT.equalsIgnoreCase(existingPlanStatus)) {
                 // Need to update comment and then publish.
                 // Need to update lookup table entries
                 updatedRequest.put(Constants.STATUS, Constants.LIVE);
+                updatedRequest.put(Constants.END_DATE_REQUEST, parseEndDate(existingCbPlan.get(Constants.END_DATE_REQUEST)));
                 errors = requestValidator.validateContextData(existingCbPlan, isCCA, userOrgId, rootOrgIdsInCriteria);                
             } else {
                 response.getParams().setStatus(Constants.FAILED);
@@ -329,10 +334,11 @@ public class CbPlanServiceImpl {
 
                 if (Constants.SINGLE.equalsIgnoreCase((String) updatedRequest.get(Constants.ORG_SCOPE)) ||
                         Constants.CUSTOM.equalsIgnoreCase((String) updatedRequest.get(Constants.ORG_SCOPE))) {
-                    ApiResponse lookupResp = insertCustomOrgLookup(
+                    ApiResponse lookupResp = upsertCustomOrgLookup(
                             String.valueOf(cbPlanId),
                             rootOrgIdsInCriteria,
-                            parseEndDate(updatedRequest.get(Constants.END_DATE)));
+                            parseEndDate(updatedRequest.get(Constants.END_DATE_REQUEST)),
+                            true);
                     if (!Constants.SUCCESS.equals(lookupResp.get(Constants.RESPONSE))) {
                         response.getParams().setStatus(Constants.FAILED);
                         response.getParams().setErr(lookupResp.getParams().getErr());
@@ -340,8 +346,9 @@ public class CbPlanServiceImpl {
                         return response;
                     }
                 } else if (Constants.ALL.equalsIgnoreCase((String) updatedRequest.get(Constants.ORG_SCOPE))) {
-                    ApiResponse singleResp = insertAllOrgLookup(String.valueOf(cbPlanId),
-                            parseEndDate(updatedRequest.get(Constants.END_DATE)));
+                    ApiResponse singleResp = upsertAllOrgLookup(String.valueOf(cbPlanId),
+                            parseEndDate(updatedRequest.get(Constants.END_DATE_REQUEST)),
+                            true);
                     if (!Constants.SUCCESS.equals(singleResp.get(Constants.RESPONSE))) {
                         response.getParams().setStatus(Constants.FAILED);
                         response.getParams().setErr(singleResp.getParams().getErr());
@@ -349,8 +356,36 @@ public class CbPlanServiceImpl {
                         return response;
                     }
                 }
-                response.getResult().put(Constants.STATUS, Constants.UPDATED);
-                response.getResult().put(Constants.MESSAGE, "Published cbPlan for cbPlanId: " + cbPlanId);
+
+                Set<String> removed = new HashSet<>(existingRootOrgIdsInCriteria);
+                removed.removeAll(rootOrgIdsInCriteria);
+                if (CollectionUtils.isNotEmpty(removed)) {
+                    if (Constants.CUSTOM.equalsIgnoreCase(existingOrgScope) || 
+                            Constants.SINGLE.equalsIgnoreCase(existingOrgScope)) {
+                        ApiResponse removeResp = upsertCustomOrgLookup(String.valueOf(cbPlanId), removed, null, false);
+                        if (!Constants.SUCCESS.equals(removeResp.get(Constants.RESPONSE))) {
+                            response.getParams().setStatus(Constants.FAILED);
+                            response.getParams().setErr(removeResp.getParams().getErr());
+                            response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
+                            return response;
+                        }
+                    }
+                }
+                if (Constants.ALL.equalsIgnoreCase(existingOrgScope)) {
+                        // We had 'ALL' scope previously. So, let's check if anything is added.
+                        Set<String> newlyAdded = new HashSet<>(rootOrgIdsInCriteria);
+                        newlyAdded.removeAll(existingRootOrgIdsInCriteria);
+                        if (CollectionUtils.isNotEmpty(newlyAdded)) {
+                            //Yes, something is added. So, we need to remove the 'ALL' entry
+                            ApiResponse removeResp = upsertAllOrgLookup(String.valueOf(cbPlanId), null, false);
+                            if (!Constants.SUCCESS.equals(removeResp.get(Constants.RESPONSE))) {
+                                response.getParams().setStatus(Constants.FAILED);
+                                response.getParams().setErr(removeResp.getParams().getErr());
+                                response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
+                                return response;
+                            }
+                        }
+                    }
             } else {
                 response.getParams().setStatus(Constants.FAILED);
                 response.getParams()
@@ -884,7 +919,7 @@ public class CbPlanServiceImpl {
         return sanitized;
     }
 
-    private ApiResponse insertCustomOrgLookup(String cbPlanId, Set<String> orgIdList, Instant endDate) {
+    private ApiResponse upsertCustomOrgLookup(String cbPlanId, Set<String> orgIdList, Instant endDate, boolean isActive) {
         ApiResponse response = new ApiResponse();
         try {
             if (CollectionUtils.isEmpty(orgIdList)) {
@@ -899,8 +934,10 @@ public class CbPlanServiceImpl {
                 Map<String, Object> lookupMap = new HashMap<>();
                 lookupMap.put("planid", cbPlanId);
                 lookupMap.put("orgid", orgId);
-                lookupMap.put("enddate", endDate);
-                lookupMap.put("isactive", true);
+                if (endDate != null) {
+                    lookupMap.put("enddate", endDate);
+                }
+                lookupMap.put("isactive", isActive);
                 lookupMaps.add(lookupMap);
             }
 
@@ -926,14 +963,16 @@ public class CbPlanServiceImpl {
         return response;
     }
 
-    private ApiResponse insertAllOrgLookup(String cbPlanId, Instant endDate) {
+    private ApiResponse upsertAllOrgLookup(String cbPlanId, Instant endDate, boolean isActive) {
         ApiResponse response = new ApiResponse();
         try {
             Map<String, Object> allOrgMap = new HashMap<>();
             allOrgMap.put("planyear", "ALL");
             allOrgMap.put(Constants.PLAN_ID, cbPlanId);
-            allOrgMap.put(Constants.END_DATE, endDate); // Instant directly for Cassandra timestamp
-            allOrgMap.put("isactive", true);
+            if (endDate != null) {
+                allOrgMap.put(Constants.END_DATE, endDate); // Instant directly for Cassandra timestamp
+            }
+            allOrgMap.put("isactive", isActive);
 
             response = (ApiResponse) cassandraOperation.insertRecord(
                     Constants.KEYSPACE_SUNBIRD,

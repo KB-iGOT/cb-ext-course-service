@@ -3,14 +3,9 @@ package com.igot.cb.cache;
 import java.util.*;
 import java.util.stream.Collectors;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
-
 import com.igot.cb.cassandra.CassandraOperation;
 import org.apache.commons.collections.MapUtils;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
-
 
 import com.igot.cb.model.CachedAccessSettingRule;
 import com.igot.cb.util.Constants;
@@ -32,21 +27,15 @@ public class AccessSettingRuleCacheMgr {
 
     private final String ACCESS_SETTINGS_CACHE_KEY = "accessSettingRules";
 
-    @Autowired
-    private  ObjectMapper mapper = new ObjectMapper();
-
-    private final IdMapCacheMgr idMapCacheMgr;
-
     /**
      * Constructor for AccessSettingRuleCacheMgr.
      *
      * @param redisCacheMgr      Cache manager for Redis operations.
      * @param cassandraOperation Cassandra operations for database interactions.
      */
-    public AccessSettingRuleCacheMgr(RedisCacheMgr redisCacheMgr, CassandraOperation cassandraOperation, IdMapCacheMgr idMapCacheMgr) {
+    public AccessSettingRuleCacheMgr(RedisCacheMgr redisCacheMgr, CassandraOperation cassandraOperation) {
         this.redisCacheMgr = redisCacheMgr;
         this.cassandraOperation = cassandraOperation;
-        this.idMapCacheMgr = idMapCacheMgr;
     }
 
     /**

@@ -31,8 +31,6 @@ public class CbPlanDto {
     @NotNull
     private List<String> contentList;
 
-    @Required
-    @NotBlank
     private String orgScope;
 
     @Required

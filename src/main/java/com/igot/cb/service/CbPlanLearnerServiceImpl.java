@@ -2,8 +2,8 @@ package com.igot.cb.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.igot.cb.cache.CbPlanCacheMgr;
 import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.elasticsearch.service.EsUtilService;
 import com.igot.cb.model.ApiResponse;
@@ -24,9 +24,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
-import java.time.Instant;
 import java.util.*;
-import java.util.stream.Collectors;
 
 @Service
 @Slf4j
@@ -56,15 +54,18 @@ public class CbPlanLearnerServiceImpl {
     @Autowired
     private EsUtilService esUtilService;
 
+    private final CbPlanCacheMgr cbPlanCacheMgr;
+
     @Value("${cb.plan.v2.index}")
     private String cpPlanIndex;
 
     @Value("${elastic.required.field.cb.plan.json.path}")
     private String elasticCbPlanJsonPath;
 
-    public CbPlanLearnerServiceImpl(AccessTokenValidator accessTokenValidator, CassandraOperation cassandraOperation) {
+    public CbPlanLearnerServiceImpl(AccessTokenValidator accessTokenValidator, CassandraOperation cassandraOperation, CbPlanCacheMgr cbPlanCacheMgr) {
         this.accessTokenValidator = accessTokenValidator;
         this.cassandraOperation = cassandraOperation;
+        this.cbPlanCacheMgr = cbPlanCacheMgr;
     }
 
     public ApiResponse getCBPlanListForUser(String userOrgId, String authTokenOrUserId, boolean isPrivate) {
@@ -80,13 +81,11 @@ public class CbPlanLearnerServiceImpl {
             }
             logger.info("UserId of the User : " + userId + ", User org ID : " + userOrgId);
 
-            Map<String, Object> propertiesMap = new HashMap<>();
-
             Map<String, String> userProfile = new HashMap<>();
-            Map<String, Object> queryParams = Map.of(Constants.ID, userId);
+            Map<String, Object> propertiesMap = Map.of(Constants.ID, userId);
             List<String> userFields = Arrays.asList(Constants.ID, Constants.ROOT_ORG_ID, Constants.PROFILE_DETAILS);
             List<Map<String, Object>> userList = cassandraOperation.getRecordsByProperties(
-                    Constants.KEYSPACE_SUNBIRD, Constants.USER, queryParams, userFields, null);
+                    Constants.KEYSPACE_SUNBIRD, Constants.USER, propertiesMap, userFields, null);
             if (CollectionUtils.isEmpty(userList)) {
                 response.getParams().setStatus(Constants.FAILED);
                 response.getParams().setErr("User Does not Exist");
@@ -94,67 +93,17 @@ public class CbPlanLearnerServiceImpl {
                 return response;
             }
             setUserProfile(userProfile, userList.get(0));
-            propertiesMap.clear();
-            propertiesMap.put(Constants.PLAN_YEAR, "ALL");
-            List<Map<String, Object>> cbplanResult = cassandraOperation.getRecordsByProperties(
-                    Constants.KEYSPACE_SUNBIRD, Constants.TABLE_CB_PLAN_V2_LOOKUP_BY_ALL_ORG, propertiesMap, new ArrayList<>(), null);
-            log.info("CB Plans count for All org: {}", cbplanResult != null ? cbplanResult.size() : 0);
-            propertiesMap.clear();
-            propertiesMap.put(Constants.ORG_ID, userOrgId);
-            List<Map<String, Object>> cbplanOrgResult = cassandraOperation.getRecordsByProperties(
-                    Constants.KEYSPACE_SUNBIRD,
-                    Constants.TABLE_CB_PLAN_V2_LOOKUP_BY_ORG,
-                    propertiesMap,
-                    new ArrayList<>(),
-                    null
-            );
-            log.info("Cb plans count for orgId {}: {}", userOrgId, cbplanOrgResult != null ? cbplanOrgResult.size() : 0);
-
-// 3️⃣ Merge results into one list/map
-            if (CollectionUtils.isNotEmpty(cbplanOrgResult)) {
-                cbplanResult.addAll(cbplanOrgResult);
-                log.info("CB Plans count for All org: {}", cbplanResult != null ? cbplanResult.size() : 0);
-            }
-
-            if (CollectionUtils.isEmpty(cbplanResult)) {
-                response.getParams().setStatus(Constants.SUCCESS);
-                response.getParams().setErr("CB Plan does not exist for the user");
-                response.setResponseCode(HttpStatus.OK);
+            
+            List<Map<String, Object>> activeCbPlans = cbPlanCacheMgr.getCbPlanForAllAndOrgId(userOrgId);
+            if (CollectionUtils.isEmpty(activeCbPlans)) {
+                response.getResult().put(Constants.COUNT, 0);
+                response.getResult().put(Constants.CONTENT, Collections.emptyList());
                 return response;
             }
 
             List<Map<String, Object>> resultMap = new ArrayList<>();
             Map<String, Object> courseDetailsMap = new HashMap<>();
-            cbplanResult = cbplanResult.stream()
-                    .filter(plan -> Boolean.TRUE.equals(plan.get(Constants.IS_ACTIVE)))
-                    .sorted(Comparator.comparing(m -> (Instant) ((Map<String, Object>) m).get(Constants.END_DATE_REQUEST), Comparator.reverseOrder()))
-                    .collect(Collectors.toList());
 
-            List<String> planIds = cbplanResult.stream()
-                    .map(plan -> (String) plan.get(Constants.PLAN_ID))
-                    .collect(Collectors.toList());
-            if (CollectionUtils.isEmpty(planIds)) {
-                response.getParams().setStatus(Constants.SUCCESS);
-                response.getParams().setErr("No active CB Plans found for  user");
-                response.setResponseCode(HttpStatus.OK);
-                return response;
-            }
-            propertiesMap.clear();
-            propertiesMap.put(Constants.PLAN_ID, planIds);
-            List<Map<String, Object>> activeCbPlans = cassandraOperation.getRecordsByProperties(
-                    Constants.KEYSPACE_SUNBIRD,
-                    Constants.TABLE_CB_PLAN_V2,
-                    propertiesMap,
-                    new ArrayList<>(),
-                    null
-            );
-            log.info("Cb plans count: {}",
-                    activeCbPlans != null ? activeCbPlans.size() : 0);
-            activeCbPlans= activeCbPlans.stream()
-                    .filter(plan -> Constants.LIVE.equalsIgnoreCase((String) plan.get(Constants.STATUS)))
-                    .collect(Collectors.toList());
-            log.info("Active Cb plans count: {}",
-                    activeCbPlans != null ? activeCbPlans.size() : 0);
             for (Map<String, Object> cbPlan : activeCbPlans) {
                 Object contextDataObj = cbPlan.get(Constants.CONTEXT_DATA_REQUEST);
                 try{
@@ -179,7 +128,7 @@ public class CbPlanLearnerServiceImpl {
                 cbPlanDetails.put(Constants.IS_APAR,
                         cbPlan.containsKey(Constants.IS_APAR) && cbPlan.get(Constants.IS_APAR) != null
                                 ? cbPlan.get(Constants.IS_APAR)
-                                : false);
+                                : Boolean.FALSE);
 
                 // Required Fields to be added later if required
                 List<Map<String, Object>> courseList = new ArrayList<>();
@@ -190,7 +139,7 @@ public class CbPlanLearnerServiceImpl {
                         if (MapUtils.isNotEmpty(contentDetails)) {
                             //if (Constants.LIVE.equalsIgnoreCase((String) contentDetails.get(Constants.STATUS))) {
                             if (courseId.contains("_rc")) {
-                                if (Constants.VERIFIED.equalsIgnoreCase(userProfile.get(Constants.PROFILE_STATUS_KEY).toLowerCase())){
+                                if (Constants.VERIFIED.equalsIgnoreCase(userProfile.get(Constants.PROFILE_STATUS_KEY))) {
                                     Map<String, Object> secureSettings = (Map<String, Object>) contentDetails.get(Constants.SECURE_SETTINGS);
 
                                     if (MapUtils.isNotEmpty(secureSettings)) {
@@ -229,7 +178,7 @@ public class CbPlanLearnerServiceImpl {
                 }
                 resultMap.add(cbPlanDetails);
             }
-            logger.info("Number of CB Plan Available for the user is " + resultMap.size());
+            logger.info("Number of CB Plan Available for the user is {}", resultMap.size());
             response.getResult().put(Constants.COUNT, resultMap.size());
             response.getResult().put(Constants.CONTENT, resultMap);
         } catch (Exception e) {
@@ -290,12 +239,13 @@ public class CbPlanLearnerServiceImpl {
 
 
     private void setUserProfile(Map<String, String> userProfile, Map<String, Object> userBasicProfile) throws JsonProcessingException {
+        //Make sure that userProfile contains keys with small case only.
         if (org.apache.commons.collections4.MapUtils.isEmpty(userBasicProfile)) {
             log.warn("User basic profile is empty for userId: {}", userProfile.get(Constants.ID));
             return;
         }
         userProfile.put(Constants.USER, (String) userBasicProfile.get(Constants.ID));
-        userProfile.put(Constants.ROOT_ORG_ID, (String) userBasicProfile.get(Constants.ROOT_ORG_ID.toLowerCase()));
+        userProfile.put(Constants.USER_ROOT_ORG_ID, (String) userBasicProfile.get(Constants.ROOT_ORG_ID));
         Object rawValue = userBasicProfile.get(Constants.PROFILE_DETAILS.toLowerCase());
         Map<String, Object> profileDetails;
 
@@ -315,20 +265,21 @@ public class CbPlanLearnerServiceImpl {
                 userProfile.put(Constants.DESIGNATION, (String) professionalDetails.get(Constants.DESIGNATION));
                 userProfile.put(Constants.GROUP, (String) professionalDetails.get(Constants.GROUP));
             }
-            userProfile.put(Constants.PROFILE_STATUS_KEY.toLowerCase(),
+            userProfile.put(Constants.PROFILE_STATUS_LOWER_KEY,
                     (String) profileDetails.get(Constants.PROFILE_STATUS_KEY));
             Map<String, Object> cadreDetails = (Map<String, Object>) profileDetails.get(Constants.CADRE_DETAILS);
             boolean centralDeputation = false;
             if (org.apache.commons.collections4.MapUtils.isNotEmpty(cadreDetails)) {
                 userProfile.put(Constants.CADRE, (String) cadreDetails.get(Constants.CADRE_NAME));
                 userProfile.put(Constants.SERVICE, (String) cadreDetails.get(Constants.CIVIL_SERVICE_NAME));
-
+                if (cadreDetails.containsKey(Constants.CADRE_BATCH)) {  
+                    userProfile.put(Constants.BATCH, String.valueOf(cadreDetails.get(Constants.CADRE_BATCH)));
+                }
                 if (cadreDetails.containsKey(Constants.CENTRAL_DEPUTATION)) {
                     centralDeputation = (Boolean) cadreDetails.get(Constants.CENTRAL_DEPUTATION);
                 }
-
             }
-            userProfile.put(Constants.CENTRAL_DEPUTATION, String.valueOf(centralDeputation));
+            userProfile.put(Constants.CENTRAL_DEPUTATION_LOWER_KEY, String.valueOf(centralDeputation));
         }
 //        getExistingContextData((String) userBasicProfile.get(Constants.ID),
 //                (String) userBasicProfile.get(Constants.ROOT_ORG_ID.toLowerCase()),
@@ -355,10 +306,6 @@ public class CbPlanLearnerServiceImpl {
             log.warn("No userGroups found under accessControl");
             return false;
         }
-        if (CollectionUtils.isEmpty(userGroups)) {
-            return false;
-        }
-
         // Iterate through all groups: user must match at least one fully
         for (Map<String, Object> userGroup : userGroups) {
             String userGroupName = (String) userGroup.get(Constants.USER_GROUP_NAME); // adjust constant if you have
@@ -372,6 +319,7 @@ public class CbPlanLearnerServiceImpl {
             }
             for (Map<String, Object> criteria : criteriaList) {
                 String criteriaKey = (String) criteria.get(Constants.CRITERIA_KEY);
+                criteriaKey = criteriaKey.toLowerCase().trim(); // normalize key to lower case
                 Object rawCriteriaValue = criteria.get(Constants.CRITERIA_VALUE);
 
                 if (Constants.CENTRAL_DEPUTATION.equals(criteriaKey)) {
@@ -387,10 +335,11 @@ public class CbPlanLearnerServiceImpl {
                     }
                 } else {
                     List<String> criteriaValues = (rawCriteriaValue instanceof List<?>)
-                            ? ((List<?>) rawCriteriaValue).stream().map(String::valueOf).toList()
-                            : Collections.singletonList(String.valueOf(rawCriteriaValue));
-
-                    String userCriteriaValue = String.valueOf(userProfile.get(criteriaKey));
+                            ? ((List<?>) rawCriteriaValue).stream()
+                                    .map(value -> String.valueOf(value).toLowerCase().trim()).toList()
+                            : Collections.singletonList(String.valueOf(rawCriteriaValue).toLowerCase().trim());
+                    
+                    String userCriteriaValue = String.valueOf(userProfile.get(criteriaKey)).toLowerCase().trim();
 
                     if (StringUtils.isEmpty(userCriteriaValue) || !criteriaValues.contains(userCriteriaValue)) {
                         log.debug("User does not match criteria key: {} in group: {}", criteriaKey, userGroupName);

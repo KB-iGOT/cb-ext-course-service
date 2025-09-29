@@ -1,5 +1,6 @@
 package com.igot.cb.service;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -140,5 +141,44 @@ public class ContentInfoServiceImpl {
     public String readCourseCategoryForContent(String contentId) {
         List<String> fields = List.of(Constants.CONTENT_ID, Constants.COURSE_CATEGORY);
         return readContent(contentId, fields).getOrDefault(Constants.COURSE_CATEGORY, "").toString();
+    }
+
+    public List<Map<String, Object>> enrichContentInfoForCBPlan(List<String> contentIdList) {
+        List<Map<String, Object>> enrichContentInfoMap = new ArrayList<>();
+        for (Object contentIdObj : contentIdList) {
+            String contentId = String.valueOf(contentIdObj);
+            Map<String, Object> contentResponse = readContent(contentId, null);
+
+            if (MapUtils.isNotEmpty(contentResponse) &&
+                    Constants.LIVE.equalsIgnoreCase((String) contentResponse.get(Constants.STATUS))) {
+
+                Map<String, Object> enrichContentMap = new HashMap<>();
+                enrichContentMap.put(Constants.NAME, contentResponse.getOrDefault(Constants.NAME, ""));
+                enrichContentMap.put(Constants.COMPETENCIES_V5,
+                        contentResponse.getOrDefault(Constants.COMPETENCIES_V5, Collections.emptyList()));
+                enrichContentMap.put(Constants.AVG_RATING, contentResponse.getOrDefault(Constants.AVG_RATING, 0.0));
+                enrichContentMap.put(Constants.IDENTIFIER, contentResponse.getOrDefault(Constants.IDENTIFIER, ""));
+                enrichContentMap.put(Constants.DESCRIPTION, contentResponse.getOrDefault(Constants.DESCRIPTION, ""));
+                enrichContentMap.put(Constants.ADDITIONAL_TAGS,
+                        contentResponse.getOrDefault(Constants.ADDITIONAL_TAGS, Collections.emptyList()));
+                enrichContentMap.put(Constants.CONTENT_TYPE_KEY,
+                        contentResponse.getOrDefault(Constants.CONTENT_TYPE_KEY, ""));
+                enrichContentMap.put(Constants.PRIMARY_CATEGORY,
+                        contentResponse.getOrDefault(Constants.PRIMARY_CATEGORY, ""));
+                enrichContentMap.put(Constants.DURATION, contentResponse.getOrDefault(Constants.DURATION, 0));
+                enrichContentMap.put(Constants.COURSE_APP_ICON,
+                        contentResponse.getOrDefault(Constants.COURSE_APP_ICON, ""));
+                enrichContentMap.put(Constants.POSTER_IMAGE, contentResponse.getOrDefault(Constants.POSTER_IMAGE, ""));
+                enrichContentMap.put(Constants.ORGANISATION, contentResponse.getOrDefault(Constants.ORGANISATION, ""));
+                enrichContentMap.put(Constants.CREATOR_LOGO, contentResponse.getOrDefault(Constants.CREATOR_LOGO, ""));
+                enrichContentMap.put(Constants.LANGUAGE_MAP_V1,
+                        contentResponse.getOrDefault(Constants.LANGUAGE_MAP_V1, Collections.emptyMap()));
+
+                enrichContentInfoMap.add(enrichContentMap);
+            } else {
+                log.error("Content not found or not live for contentId: {}", contentId);
+            }
+        }
+        return enrichContentInfoMap;
     }
 }

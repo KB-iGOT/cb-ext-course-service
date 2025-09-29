@@ -119,7 +119,7 @@ public class AccessTokenValidator {
             log.warn("Issuer does not match the expected realm URL. Issuer: {}, Expected: {}", iss, expectedRealmUrl);
             return false;
         }
-        log.info("Issuer validation successful. Issuer: {}", iss);
+        log.debug("Issuer validation successful. Issuer: {}", iss);
         return true;
     }
 

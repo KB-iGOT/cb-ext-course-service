@@ -104,4 +104,13 @@ public class CbPlanWithAccessSettings {
         ApiResponse response = cbPlanLearnerService.getCBPlanListForUser(userOrgId, token, false);
         return new ResponseEntity<>(response, response.getResponseCode());
     }
+
+    @GetMapping("/private/user/list")
+    public ResponseEntity<ApiResponse> getPrivateCBPlanListForUser(
+            @RequestHeader(Constants.X_AUTH_USER_ID) String token,
+            @RequestHeader(Constants.X_AUTH_USER_ORG_ID)String userOrgId) throws Exception {
+
+        ApiResponse response = cbPlanLearnerService.getCBPlanListForUser(userOrgId, token, true);
+        return new ResponseEntity<>(response, response.getResponseCode());
+    }
 }

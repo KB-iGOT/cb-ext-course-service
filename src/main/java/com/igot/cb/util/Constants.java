@@ -230,6 +230,7 @@ public class Constants {
     public static final String PROFILE_IMG = "profileImageUrl";
     public static final String PROFILE_STATUS = "userProfileStatus";
     public static final String PROFILE_STATUS_KEY = "profileStatus";
+    public static final String PROFILE_STATUS_LOWER_KEY = "profilestatus";
     public static final String CHANNEL = "channel";
     public static final String PROFESSIONAL_DETAILS = "professionalDetails";
     public static final String API_LIST_ALL_COMMUNITIES_JOINED = "api.list.all.communities.joined.by.user";
@@ -332,6 +333,7 @@ public class Constants {
     public static final String IDENTIFIER = "identifier";
     public static final String PROFILE_DETAILS_KEY = "profileDetails";
     public static final String CENTRAL_DEPUTATION = "isOnCentralDeputation";
+    public static final String CENTRAL_DEPUTATION_LOWER_KEY = "isoncentraldeputation";
     public static final String ACCESS_KEY = "access_";
     public static final String NO_RECORDS_FOUND = "No records found for this user";
     public static final String CBP_MANUAL_COURSES_END_DATE = "cbPlanEndDate";
@@ -407,7 +409,10 @@ public class Constants {
     public static final String ATTRIBUTE_NAME = "attributeName";
     public static final String VALUES = "values";
     public static final String VALUE = "value";
-
+    public static final String ORG_ID_REQT = "orgid";
+    public static final String X_AUTH_USER_ID = "x-authenticated-userid";
+    public static final String IS_CCA = "iscca";
+    public static final String ROOT_ORG_IDS_IN_CONTEXT_DATA = "rootOrgIdsInContextData";
 
     private Constants() {
     }

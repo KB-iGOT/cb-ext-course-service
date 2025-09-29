@@ -365,7 +365,7 @@ public class EsUtilServiceImpl implements EsUtilService{
                             boolQueryBuilder.must(Query.of(q -> q.terms(t -> t.field(field ).terms(terms -> terms.value(termsList)))));
                         } else if (value instanceof String) {
                             boolQueryBuilder.must(Query.of(q -> q.terms(t ->
-                                    t.field(field )
+                                    t.field(field + Constants.KEYWORD)
                                             .terms(terms -> terms.value(List.of(FieldValue.of((String) value))))
                             )));
                         } else if (value instanceof Set) {

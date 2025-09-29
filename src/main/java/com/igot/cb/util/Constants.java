@@ -413,7 +413,13 @@ public class Constants {
     public static final String X_AUTH_USER_ID = "x-authenticated-userid";
     public static final String IS_CCA = "iscca";
     public static final String ROOT_ORG_IDS_IN_CONTEXT_DATA = "rootOrgIdsInContextData";
-
+    public static final String TABLE_DECLARATION_ACKNOWLEDGMENT = "consent_acknowledgement" ;
+    public static final String TABLE_CONSENT_DETAILS = "consent_details" ;
+    public static final String CONSENT_ID= "consentId";
+    public static final String SUBMITTED_BY = "submittedBy";
+    public static final String SUBMITTED_AT = "submittedAt";
+    public static final String ADDITIONAL_ATTRIBUTES = "additionalAttributes";
+    public static final String ADDITIONAL_DATA = "additionaldata";
     private Constants() {
     }
 }

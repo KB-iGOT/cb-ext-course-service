@@ -34,4 +34,22 @@ public interface CassandraOperation {
 
     public void deleteRecord(String keyspaceName, String tableName, Map<String, Object> keyMap);
 
+    /**
+     * Inserts a record into Cassandra with a composite primary key.
+     *
+     * @param keyspaceName      The name of the keyspace containing the table.
+     * @param tableName         The name of the table into which to insert the record.
+     * @param primaryKeyColumn  The name of the primary key column.
+     * @param primaryKeyValue   The value of the primary key.
+     * @param compositeKey      A map representing the composite key fields and their values.
+     * @param otherFields       A map representing other fields and their values to be inserted.
+     * @return An object representing the result of the insertion operation.
+     */
+    Object insertRecord(
+            String keyspaceName,
+            String tableName,
+            String primaryKeyColumn,
+            String primaryKeyValue,
+            Map<String, Object> compositeKey,
+            Map<String, Object> otherFields);
 }

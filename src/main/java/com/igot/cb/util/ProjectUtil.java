@@ -22,6 +22,13 @@ public class ProjectUtil {
         return response;
     }
 
+    public static void errorResponse(ApiResponse response, String errorMessage, HttpStatus httpStatus) {
+        response.setResponseCode(httpStatus);
+        response.getParams().setErrMsg(errorMessage);
+        response.getParams().setStatus(Constants.FAILED);
+    }
+
+
     public static Date getTimeStamp() {
         return new Timestamp(System.currentTimeMillis());
     }

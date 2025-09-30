@@ -88,10 +88,12 @@ public class ConsentAcknowledgeServiceImpl implements IConsentAcknowledgeService
         response.getParams().setStatus(Constants.OK);
         response.setResponseCode(HttpStatus.OK);
         Map<String, Object> result = new HashMap<>();
-        result.put(Constants.RESPONSE, "Declaration acknowledged successfully");
-        result.put(Constants.CONSENT_ID, consentId);
-        result.put(Constants.USER_ID, userId);
-        result.put(Constants.CONTENT_ID, contentId);
+        Map<String, Object> consentAckDetailsMap = new HashMap<>();
+        consentAckDetailsMap.put(Constants.CONTENT_ID, contentId);
+        consentAckDetailsMap.put(Constants.CONSENT_ID, consentId);
+        consentAckDetailsMap.put(Constants.USER_ID, userId);
+        consentAckDetailsMap.put(Constants.MESSAGE,  "Declaration acknowledged successfully");
+        result.put(Constants.RESPONSE,consentAckDetailsMap);
         response.getResult().putAll(result);
         return response;
     }

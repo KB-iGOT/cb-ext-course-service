@@ -354,16 +354,17 @@ class CassandraOperationImplTest {
         Map<String, Object> compositeKey = Map.of("userId", "u1");
         Map<String, Object> otherFields = Map.of("field1", "value1");
         try (MockedStatic<CassandraUtil> mockedCassandraUtil = mockStatic(CassandraUtil.class)) {
-            mockedCassandraUtil.when(() -> CassandraUtil.getPreparedStatement(anyString(), anyString(), any()))
+            mockedCassandraUtil.when(() ->
+                            CassandraUtil.getPreparedStatement(anyString(), anyString(), any()))
                     .thenReturn("INSERT INTO table ...");
             when(connectionManager.getSession("ks")).thenReturn(mockSession);
-            when(mockSession.prepare(anyString())).thenReturn(mockPreparedStatement);
-            when(mockPreparedStatement.bind(any(Object[].class))).thenReturn(mockBoundStatement);
+            when(mockSession.execute(any(SimpleStatement.class))).thenReturn(mock(ResultSet.class));
             Object result = cassandraOperation.insertRecord(
                     "ks", "tbl", "contentId", "c1", compositeKey, otherFields);
             assertInstanceOf(ApiResponse.class, result);
             ApiResponse response = (ApiResponse) result;
             assertEquals(Constants.SUCCESS, response.get(Constants.RESPONSE));
+            verify(mockSession).execute(any(SimpleStatement.class));
         }
     }
 

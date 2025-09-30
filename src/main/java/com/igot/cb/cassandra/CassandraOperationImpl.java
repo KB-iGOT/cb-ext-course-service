@@ -225,9 +225,10 @@ public class CassandraOperationImpl implements CassandraOperation {
             }
             String query = CassandraUtil.getPreparedStatement(keyspaceName, tableName, request);
             CqlSession session = connectionManager.getSession(keyspaceName);
-            PreparedStatement statement = session.prepare(query);
-            BoundStatement boundStatement = statement.bind(request.values().toArray());
-            session.execute(boundStatement);
+            SimpleStatement simpleStatement = SimpleStatement.builder(query)
+                    .addPositionalValues(request.values())
+                    .build();
+            session.execute(simpleStatement);
             response.put(Constants.RESPONSE, Constants.SUCCESS);
         } catch (Exception e) {
             String errMsg = String.format(

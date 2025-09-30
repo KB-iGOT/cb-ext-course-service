@@ -79,7 +79,17 @@ public class ConsentAcknowledgeServiceImpl implements IConsentAcknowledgeService
         declarationDataMap.put(Constants.ADDITIONAL_ATTRIBUTES, additionalDataStr);
         declarationDataMap.put(Constants.SUBMITTED_AT, submittedAt.format(formatter));
         try {
-            cassandraOperation.insertRecord(Constants.KEYSPACE_SUNBIRD, Constants.TABLE_DECLARATION_ACKNOWLEDGMENT, Constants.CONTENT_ID, contentId, compositeKeyMap, declarationDataMap);
+            response = (ApiResponse) cassandraOperation.insertRecord(Constants.KEYSPACE_SUNBIRD, Constants.TABLE_DECLARATION_ACKNOWLEDGMENT, Constants.CONTENT_ID, contentId, compositeKeyMap, declarationDataMap);
+            if (Constants.FAILED.equals(response.get(Constants.RESPONSE))) {
+                logger.error("Error while inserting declaration acknowledgment record in DB: {}",
+                        response.get(Constants.ERROR_MESSAGE));
+                ProjectUtil.errorResponse(
+                        response,
+                        "Failed to acknowledge declaration. Please try again later.",
+                        HttpStatus.INTERNAL_SERVER_ERROR
+                );
+                return response;
+            }
         } catch (Exception e) {
             logger.error("Error while inserting declaration acknowledgment record in DB", e);
             ProjectUtil.errorResponse(response, "Failed to acknowledge declaration. Please try again later.", HttpStatus.INTERNAL_SERVER_ERROR);

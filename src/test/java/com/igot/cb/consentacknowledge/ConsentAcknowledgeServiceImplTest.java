@@ -47,6 +47,11 @@ class ConsentAcknowledgeServiceImplTest {
                 .thenReturn("user1");
         when(objectMapper.writeValueAsString(any()))
                 .thenReturn("{\"k\":\"v\"}");
+        ApiResponse insertResponse = new ApiResponse();
+        insertResponse.put(Constants.RESPONSE, Constants.SUCCESS);
+        when(cassandraOperation.insertRecord(
+                any(), any(), any(), any(), any(), any()))
+                .thenReturn(insertResponse);
         ApiResponse response = service.acknowledgeDeclaration(body, "token");
         assertEquals(HttpStatus.OK, response.getResponseCode());
         assertEquals(Constants.OK, response.getParams().getStatus());

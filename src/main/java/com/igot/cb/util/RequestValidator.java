@@ -1,11 +1,6 @@
 package com.igot.cb.util;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections4.MapUtils;
@@ -136,16 +131,34 @@ public class RequestValidator {
                     errors.add("Validation Error: criteriaValue is missing for criteriaKey: " + criteriaKey);
                     return errors; // no criteriaValue = no extra validation
                 }
-                List<String> criteriaValues = (List<String>) criteria.get(Constants.CRITERIA_VALUE);
-                if (CollectionUtils.isEmpty(criteriaValues)) {
-                    errors.add("Validation Error: criteriaValue is empty for criteriaKey: " + criteriaKey);
-                    return errors; // empty criteriaValue = no extra validation
+                if (!criteria.containsKey(Constants.CRITERIA_VALUE)) {
+                    errors.add("Validation Error: criteriaValue is missing for criteriaKey: " + criteriaKey);
+                    return errors;
                 }
+
+                Object criteriaValueObj = criteria.get(Constants.CRITERIA_VALUE);
+                List<String> criteriaValues = new ArrayList<>();
+
+                if (criteriaValueObj instanceof List) {
+                    criteriaValues = (List<String>) criteriaValueObj;
+                } else if (criteriaValueObj instanceof Boolean) {
+                    // Convert boolean (or isOnCentralDeputation key) to string list
+                    criteriaValues = Collections.singletonList(String.valueOf(criteriaValueObj));
+                } else if (criteriaValueObj instanceof String) {
+                    // Wrap single string into a list
+                    criteriaValues = Collections.singletonList((String) criteriaValueObj);
+                } else {
+                    errors.add("Validation Error: Unsupported criteriaValue type for criteriaKey: "
+                            + criteriaKey + ", type=" + criteriaValueObj.getClass().getSimpleName());
+                    return errors;
+                }
+                criteria.put(Constants.CRITERIA_VALUE, criteriaValues);
                 if (Constants.ROOT_ORG_ID.equalsIgnoreCase(criteriaKey)) {
                     rootOrgCriteriaFound = true;
                     rootOrgIdsInCriteria.addAll(criteriaValues);
                 }
             }
+
 
             if (!rootOrgCriteriaFound) {
                 if (!isCCA) {

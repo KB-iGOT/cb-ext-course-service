@@ -43,13 +43,25 @@ class ConsentAcknowledgeServiceImplTest {
         requestData.put(Constants.CONSENT_ID, "consent1");
         requestData.put(Constants.ADDITIONAL_ATTRIBUTES, Map.of("k", "v"));
         Map<String, Object> body = Map.of(Constants.REQUEST, requestData);
-        when(accessTokenValidator.fetchUserIdFromAccessToken(anyString(), any())).thenReturn("user1");
-        when(objectMapper.writeValueAsString(any())).thenReturn("{\"k\":\"v\"}");
+        when(accessTokenValidator.fetchUserIdFromAccessToken(anyString(), any()))
+                .thenReturn("user1");
+        when(objectMapper.writeValueAsString(any()))
+                .thenReturn("{\"k\":\"v\"}");
         ApiResponse response = service.acknowledgeDeclaration(body, "token");
         assertEquals(HttpStatus.OK, response.getResponseCode());
         assertEquals(Constants.OK, response.getParams().getStatus());
-        assertEquals("Declaration acknowledged successfully", response.getResult().get(Constants.RESPONSE));
-        verify(cassandraOperation, times(1)).insertRecord(any(), any(), any(), any(), any(), any());
+        Map<String, Object> result = response.getResult();
+        assertNotNull(result);
+
+        Map<String, Object> consentAckDetails =
+                (Map<String, Object>) result.get(Constants.RESPONSE);
+        assertNotNull(consentAckDetails);
+        assertEquals("content1", consentAckDetails.get(Constants.CONTENT_ID));
+        assertEquals("consent1", consentAckDetails.get(Constants.CONSENT_ID));
+        assertEquals("user1", consentAckDetails.get(Constants.USER_ID));
+        assertEquals("Declaration acknowledged successfully", consentAckDetails.get(Constants.MESSAGE));
+        verify(cassandraOperation, times(1))
+                .insertRecord(any(), any(), any(), any(), any(), any());
     }
 
     @Test

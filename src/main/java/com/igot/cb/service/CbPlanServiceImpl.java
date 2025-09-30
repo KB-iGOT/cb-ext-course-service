@@ -70,8 +70,6 @@ public class CbPlanServiceImpl {
 
     private final RequestValidator requestValidator;
 
-    @Autowired
-    private UserUtilityService userUtilityService;
 
     public CbPlanServiceImpl(AccessTokenValidator accessTokenValidator, CassandraOperation cassandraOperation,
             CbExtServerProperties serverProperties, UserAndOrgServiceImpl userAndOrgService,
@@ -636,29 +634,20 @@ public class CbPlanServiceImpl {
                         // Create a copy of item so we don’t mutate original
                         Map<String, Object> enrichedItem = new HashMap<>(item);
                         String createdBy = (String) enrichedItem.get(Constants.CREATED_BY);
-//                        if (StringUtils.isNotBlank(createdBy)) {
-//                            String createdByUserName = "";
-//
-//                            enrichedItem.put(Constants.CREATED_BY_NAME, createdByUserName);
-//                        }
+
                         if (item.containsKey(Constants.CREATED_BY) && item.get(Constants.CREATED_BY) != null) {
                             Object createdByObj = item.get(Constants.CREATED_BY);
-                            Map<String, Map<String, String>> userInfoMap = new HashMap<>();
+                            Map<String, Object> userInfoMap = new HashMap<>();
                             if (createdByObj instanceof String && !((String) createdByObj).trim().isEmpty()) {
                                 // fetch user details from DB
-                                userUtilityService.getUserDetailsFromDB(
-                                        Arrays.asList((String) createdByObj),
-                                        Arrays.asList(Constants.FIRSTNAME, Constants.USER_ID),
-                                        userInfoMap
+                                userInfoMap = userAndOrgService.readUserProfile(
+                                        (String) item.get(Constants.CREATED_BY),
+                                        Arrays.asList(Constants.FIRSTNAME, Constants.USER_ID)
                                 );
-                                // enrich user info map
-//                                enrichUserInfo(userInfoMap);
-                                // add createdBy and createdByName to enrichedItem
-                                Map<String, String> userDetails = userInfoMap.get((String) createdByObj);
-                                if (userDetails != null) {
+                                if (userInfoMap != null) {
 
                                     enrichedItem.put(Constants.CREATED_BY_NAME,
-                                            userInfoMap.get((String) item.get(Constants.CREATED_BY)).get(Constants.FIRSTNAME));
+                                            userInfoMap.get(Constants.FIRSTNAME));
                                     enrichedItem.put(Constants.CREATED_BY, item.get(Constants.CREATED_BY));
                                 }
                             }

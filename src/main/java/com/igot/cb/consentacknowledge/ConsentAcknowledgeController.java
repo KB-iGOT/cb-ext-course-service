@@ -33,4 +33,13 @@ public class ConsentAcknowledgeController {
         return new ResponseEntity<>(response, response.getResponseCode());
     }
 
+
+    @GetMapping("/acknowledge/read/{contentId}/{consentId}")
+    public ResponseEntity<ApiResponse> getConsentAcknowledgementDetails(@PathVariable(Constants.CONSENT_ID) String consentId,
+                                                                        @PathVariable(Constants.CONTENT_ID) String contentId,
+                                                                        @RequestHeader(value = Constants.X_AUTH_TOKEN) String authToken) {
+        ApiResponse response = acknowledgeService.getConsentAcknowledgementDetails(contentId, consentId, authToken);
+        return new ResponseEntity<>(response, response.getResponseCode());
+    }
+
 }

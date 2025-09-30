@@ -1,6 +1,7 @@
 package com.igot.cb.consentacknowledge;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.model.ApiResponse;
@@ -159,6 +160,50 @@ public class ConsentAcknowledgeServiceImpl implements IConsentAcknowledgeService
         response.setResponseCode(HttpStatus.OK);
         Map<String, Object> result = new HashMap<>();
         result.put(Constants.RESPONSE, consentDetailsMap);
+        response.getResult().putAll(result);
+        return response;
+    }
+
+
+    /**
+     * Method to get consent acknowledgement details by contentId and consentId
+     */
+    @Override
+    public ApiResponse getConsentAcknowledgementDetails(String contentId, String consentId, String authToken) {
+        ApiResponse response = ProjectUtil.createDefaultResponse("api.consent.acknowledgement.read");
+        String userId = accessTokenValidator.fetchUserIdFromAccessToken(authToken, response);
+        if (StringUtils.isEmpty(userId)) {
+            return response;
+        }
+        Map<String, Object> propertyMap = new HashMap<>();
+        propertyMap.put(Constants.CONSENT_ID, consentId);
+        propertyMap.put(Constants.CONTENT_ID, contentId);
+        propertyMap.put(Constants.USER_ID, userId);
+        List<Map<String, Object>> consentAcknowledgementDetailsList;
+        try {
+            consentAcknowledgementDetailsList = cassandraOperation
+                    .getRecordsByProperties(Constants.KEYSPACE_SUNBIRD, Constants.TABLE_DECLARATION_ACKNOWLEDGMENT, propertyMap, Arrays.asList(Constants.CONTENT_ID, Constants.CONSENT_ID, Constants.USER_ID, Constants.ADDITIONAL_ATTRIBUTES), null);
+        } catch (Exception e) {
+            logger.error("Error while fetching consent details from DB", e);
+            ProjectUtil.errorResponse(response, "Failed to fetch consent Acknowledgement details. Please try again later.", HttpStatus.INTERNAL_SERVER_ERROR);
+            return response;
+        }
+        Map<String, Object> consentAcknowledgementDetailsMap = consentAcknowledgementDetailsList.get(0);
+        String additionAttributesStr = (String) consentAcknowledgementDetailsMap.get(Constants.ADDITIONAL_ATTRIBUTES);
+        Map<String, Object> additionalAttributesMap = null;
+        try {
+            additionalAttributesMap = objectMapper.readValue(additionAttributesStr, new TypeReference<>() {
+            });
+        } catch (JsonProcessingException e) {
+            logger.error("Error while parsing additionalAttributes from string to map", e);
+            ProjectUtil.errorResponse(response, "Failed to Parse the additional attributes", HttpStatus.INTERNAL_SERVER_ERROR);
+            return response;
+        }
+        consentAcknowledgementDetailsMap.put(Constants.ADDITIONAL_ATTRIBUTES, additionalAttributesMap);
+        response.getParams().setStatus(Constants.OK);
+        response.setResponseCode(HttpStatus.OK);
+        Map<String, Object> result = new HashMap<>();
+        result.put(Constants.RESPONSE, consentAcknowledgementDetailsMap);
         response.getResult().putAll(result);
         return response;
     }

@@ -1,6 +1,7 @@
 package com.igot.cb.consentacknowledge;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.model.ApiResponse;
@@ -345,5 +346,80 @@ class ConsentAcknowledgeServiceImplTest {
             assertEquals("Failed to Parse the additional attributes",
                     response.getParams().getErr());
         }
+    }
+
+    @Test
+    void testGetConsentAcknowledgementDetails_Success() throws Exception {
+        String contentId = "content1";
+        String consentId = "consent1";
+        String authToken = "token";
+        String userId = "user1";
+        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(authToken), any()))
+                .thenReturn(userId);
+        Map<String, Object> dbRecord = new HashMap<>();
+        dbRecord.put(Constants.CONTENT_ID, contentId);
+        dbRecord.put(Constants.CONSENT_ID, consentId);
+        dbRecord.put(Constants.USER_ID, userId);
+        dbRecord.put(Constants.ADDITIONAL_ATTRIBUTES, "{\"k\":\"v\"}");
+        when(cassandraOperation.getRecordsByProperties(
+                any(), any(), any(), any(), isNull()))
+                .thenReturn(List.of(dbRecord));
+        when(objectMapper.readValue(anyString(), any(TypeReference.class)))
+                .thenReturn(Map.of("k", "v"));
+        ApiResponse response = service.getConsentAcknowledgementDetails(contentId, consentId, authToken);
+        assertEquals(HttpStatus.OK, response.getResponseCode());
+        assertEquals(Constants.OK, response.getParams().getStatus());
+        Map<String, Object> result = response.getResult();
+        assertNotNull(result);
+        Map<String, Object> consentDetails =
+                (Map<String, Object>) result.get(Constants.RESPONSE);
+        assertNotNull(consentDetails);
+        assertEquals(contentId, consentDetails.get(Constants.CONTENT_ID));
+        assertEquals(consentId, consentDetails.get(Constants.CONSENT_ID));
+        assertEquals(userId, consentDetails.get(Constants.USER_ID));
+        assertEquals(Map.of("k", "v"), consentDetails.get(Constants.ADDITIONAL_ATTRIBUTES));
+        verify(cassandraOperation, times(1))
+                .getRecordsByProperties(any(), any(), any(), any(), isNull());
+        verify(objectMapper, times(1))
+                .readValue(anyString(), any(TypeReference.class));
+    }
+
+    @Test
+    void testGetConsentAcknowledgementDetails_EmptyUserId() {
+        when(accessTokenValidator.fetchUserIdFromAccessToken(anyString(), any()))
+                .thenReturn("");
+        ApiResponse response = service.getConsentAcknowledgementDetails("c1", "consent1", "token");
+        assertEquals(Constants.SUCCESS, response.getParams().getStatus());
+        verifyNoInteractions(cassandraOperation);
+    }
+
+    @Test
+    void testGetConsentAcknowledgementDetails_DbException() {
+        when(accessTokenValidator.fetchUserIdFromAccessToken(anyString(), any()))
+                .thenReturn("user1");
+        when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), any()))
+                .thenThrow(new RuntimeException("DB error"));
+        ApiResponse response = service.getConsentAcknowledgementDetails("c1", "consent1", "token");
+        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getResponseCode());
+        assertEquals(Constants.FAILED, response.getParams().getStatus()); 
+    }
+
+    @Test
+    void testGetConsentAcknowledgementDetails_JsonProcessingException() throws Exception {
+        when(accessTokenValidator.fetchUserIdFromAccessToken(anyString(), any()))
+                .thenReturn("user1");
+        Map<String, Object> dbRecord = new HashMap<>();
+        dbRecord.put(Constants.CONTENT_ID, "c1");
+        dbRecord.put(Constants.CONSENT_ID, "consent1");
+        dbRecord.put(Constants.USER_ID, "user1");
+        dbRecord.put(Constants.ADDITIONAL_ATTRIBUTES, "{\"bad\":json}");
+        when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), isNull()))
+                .thenReturn(List.of(dbRecord));
+        when(objectMapper.readValue(anyString(), any(TypeReference.class)))
+                .thenThrow(new JsonProcessingException("bad json") {
+                });
+        ApiResponse response = service.getConsentAcknowledgementDetails("c1", "consent1", "token");
+        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getResponseCode());
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
     }
 }

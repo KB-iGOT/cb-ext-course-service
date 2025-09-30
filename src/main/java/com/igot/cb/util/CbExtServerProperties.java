@@ -26,6 +26,9 @@ public class CbExtServerProperties {
     @Value("${elastic.required.field.cb.plan.json.path}")
     private String elasticCbPlanJsonPath;
 
+    @Value("${msg.on.user.group.restriction.for.all.org}")
+    private String msgOnUserGroupRestrictionForAllOrg;
+
     public List<String> getCbPlanUpdatePublishAuthorizedRoles() {
         return Arrays.asList(cbPlanUpdatePublishAuthorizedRoles.split(",", -1));
     }

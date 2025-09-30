@@ -162,8 +162,7 @@ public class RequestValidator {
             if (rootOrgIdsInCriteria.size() == 0) {
                 request.put(Constants.ORG_SCOPE, Constants.ALL);
             } else if (rootOrgCriteriaNotFoundInUserGroup) {
-                errors.add(
-                        "Validation Error: ROOT_ORG_ID criteria is added in one or more userGroups but missing in other.");
+                errors.add(cbExtServerProperties.getMsgOnUserGroupRestrictionForAllOrg());
                 return errors;
             } else {
                 if (rootOrgIdsInCriteria.size() == 1) {

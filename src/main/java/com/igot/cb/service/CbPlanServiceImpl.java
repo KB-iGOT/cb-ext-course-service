@@ -15,9 +15,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import com.igot.cb.user.UserUtilityService;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
@@ -67,6 +69,9 @@ public class CbPlanServiceImpl {
     private final EsUtilService esUtilService;
 
     private final RequestValidator requestValidator;
+
+    @Autowired
+    private UserUtilityService userUtilityService;
 
     public CbPlanServiceImpl(AccessTokenValidator accessTokenValidator, CassandraOperation cassandraOperation,
             CbExtServerProperties serverProperties, UserAndOrgServiceImpl userAndOrgService,
@@ -631,12 +636,33 @@ public class CbPlanServiceImpl {
                         // Create a copy of item so we don’t mutate original
                         Map<String, Object> enrichedItem = new HashMap<>(item);
                         String createdBy = (String) enrichedItem.get(Constants.CREATED_BY);
-                        if (StringUtils.isNotBlank(createdBy)) {
-                            String createdByUserName = "";
+//                        if (StringUtils.isNotBlank(createdBy)) {
+//                            String createdByUserName = "";
+//
+//                            enrichedItem.put(Constants.CREATED_BY_NAME, createdByUserName);
+//                        }
+                        if (item.containsKey(Constants.CREATED_BY) && item.get(Constants.CREATED_BY) != null) {
+                            Object createdByObj = item.get(Constants.CREATED_BY);
+                            Map<String, Map<String, String>> userInfoMap = new HashMap<>();
+                            if (createdByObj instanceof String && !((String) createdByObj).trim().isEmpty()) {
+                                // fetch user details from DB
+                                userUtilityService.getUserDetailsFromDB(
+                                        Arrays.asList((String) createdByObj),
+                                        Arrays.asList(Constants.FIRSTNAME, Constants.USER_ID),
+                                        userInfoMap
+                                );
+                                // enrich user info map
+//                                enrichUserInfo(userInfoMap);
+                                // add createdBy and createdByName to enrichedItem
+                                Map<String, String> userDetails = userInfoMap.get((String) createdByObj);
+                                if (userDetails != null) {
 
-                            enrichedItem.put(Constants.CREATED_BY_NAME, createdByUserName);
+                                    enrichedItem.put(Constants.CREATED_BY_NAME,
+                                            userInfoMap.get((String) item.get(Constants.CREATED_BY)).get(Constants.FIRSTNAME));
+                                    enrichedItem.put(Constants.CREATED_BY, item.get(Constants.CREATED_BY));
+                                }
+                            }
                         }
-                        enrichedItem.put(Constants.CREATED_BY, createdBy);
 
                         if (item.containsKey(Constants.CONTENT_LIST) && item.get(Constants.CONTENT_LIST) != null) {
                             Object contentListObj = item.get(Constants.CONTENT_LIST);
@@ -666,6 +692,7 @@ public class CbPlanServiceImpl {
         }
         return response;
     }
+
 
     private void createSuccessResponse(ApiResponse response) {
         response.setParams(new ApiRespParam());

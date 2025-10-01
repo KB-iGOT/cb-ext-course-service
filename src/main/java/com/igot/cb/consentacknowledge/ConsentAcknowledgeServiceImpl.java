@@ -135,36 +135,6 @@ public class ConsentAcknowledgeServiceImpl implements IConsentAcknowledgeService
     }
 
 
-    /**
-     * Method to get consent details by consentId
-     */
-    @Override
-    public ApiResponse getConsentDetails(String consentId, String authToken) {
-        ApiResponse response = ProjectUtil.createDefaultResponse("api.consent.read");
-        String userId = accessTokenValidator.fetchUserIdFromAccessToken(authToken, response);
-        if (StringUtils.isEmpty(userId)) {
-            return response;
-        }
-        Map<String, Object> propertyMap = new HashMap<>();
-        propertyMap.put(Constants.CONSENT_ID, consentId);
-        List<Map<String, Object>> consentDetails;
-        try {
-            consentDetails = cassandraOperation
-                    .getRecordsByProperties(Constants.KEYSPACE_SUNBIRD, Constants.TABLE_CONSENT_DETAILS, propertyMap, Arrays.asList(Constants.CONSENT_ID, Constants.ADDITIONAL_DATA, Constants.DESCRIPTION), null);
-        } catch (Exception e) {
-            logger.error("Error while fetching consent details from DB", e);
-            ProjectUtil.errorResponse(response, "Failed to fetch consent details. Please try again later.", HttpStatus.INTERNAL_SERVER_ERROR);
-            return response;
-        }
-        Map<String, Object> consentDetailsMap = consentDetails.get(0);
-        response.getParams().setStatus(Constants.OK);
-        response.setResponseCode(HttpStatus.OK);
-        Map<String, Object> result = new HashMap<>();
-        result.put(Constants.RESPONSE, consentDetailsMap);
-        response.getResult().putAll(result);
-        return response;
-    }
-
 
     /**
      * Method to get consent acknowledgement details by contentId and consentId

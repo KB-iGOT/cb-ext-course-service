@@ -153,47 +153,6 @@ class ConsentAcknowledgeServiceImplTest {
 
 
     @Test
-    void testGetConsentDetails_Success() {
-        when(accessTokenValidator.fetchUserIdFromAccessToken(anyString(), any())).thenReturn("user1");
-        List<Map<String, Object>> fakeResult = List.of(Map.of(Constants.CONSENT_ID, "consent1", Constants.DESCRIPTION, "desc"));
-        when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), any())).thenReturn(fakeResult);
-        ApiResponse response = service.getConsentDetails("consent1", "token");
-        assertEquals(HttpStatus.OK, response.getResponseCode());
-        assertTrue(response.getResult().containsKey(Constants.RESPONSE));
-    }
-
-    @Test
-    void testGetConsentDetails_Failure_DBError() {
-        when(accessTokenValidator.fetchUserIdFromAccessToken(anyString(), any())).thenReturn("user1");
-        when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), any()))
-                .thenThrow(new RuntimeException("DB error"));
-        try (MockedStatic<ProjectUtil> mocked = mockStatic(ProjectUtil.class)) {
-            mocked.when(() -> ProjectUtil.createDefaultResponse(anyString()))
-                    .thenCallRealMethod();
-            mocked.when(() -> ProjectUtil.errorResponse(any(ApiResponse.class), anyString(), any()))
-                    .thenAnswer(invocation -> {
-                        ApiResponse resp = invocation.getArgument(0);
-                        resp.getParams().setErr(invocation.getArgument(1)); // force populate err
-                        resp.setResponseCode(invocation.getArgument(2));
-                        return null;
-                    });
-            ApiResponse response = service.getConsentDetails("consent1", "token");
-            assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getResponseCode());
-            assertEquals("Failed to fetch consent details. Please try again later.",
-                    response.getParams().getErr());
-        }
-    }
-
-
-    @Test
-    void testGetConsentDetails_InvalidUser() {
-        when(accessTokenValidator.fetchUserIdFromAccessToken(anyString(), any())).thenReturn("");
-        ApiResponse response = service.getConsentDetails("consent1", "token");
-        assertNotEquals(Constants.OK, response.getParams().getStatus());
-    }
-
-
-    @Test
     void testAcknowledgeDeclaration_EmptyAdditionalData() {
         Map<String, Object> requestData = new HashMap<>();
         requestData.put(Constants.CONTENT_ID, "content1");
@@ -292,33 +251,6 @@ class ConsentAcknowledgeServiceImplTest {
         ApiResponse response = service.acknowledgeDeclaration(body, "token");
         assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
         assertNull(((Map<?, ?>) response.getResult()).get(Constants.ADDITIONAL_ATTRIBUTES));
-    }
-
-    @Test
-    void testGetConsentDetails_UserIdEmpty() {
-        when(accessTokenValidator.fetchUserIdFromAccessToken(anyString(), any())).thenReturn("");
-        try (MockedStatic<ProjectUtil> mocked = mockStatic(ProjectUtil.class)) {
-            mocked.when(() -> ProjectUtil.createDefaultResponse(anyString()))
-                    .thenAnswer(inv -> {
-                        ApiResponse resp = new ApiResponse();
-                        resp.getParams().setStatus(Constants.FAILED);
-                        resp.setResponseCode(HttpStatus.BAD_REQUEST);
-                        return resp;
-                    });
-            ApiResponse response = service.getConsentDetails("c1", "token");
-            assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
-            assertEquals(Constants.FAILED, response.getParams().getStatus());
-        }
-    }
-
-
-    @Test
-    void testGetConsentDetails_EmptyListThrows() {
-        when(accessTokenValidator.fetchUserIdFromAccessToken(anyString(), any())).thenReturn("user1");
-        when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), any()))
-                .thenReturn(List.of());
-        assertThrows(IndexOutOfBoundsException.class,
-                () -> service.getConsentDetails("c1", "token"));
     }
 
     @Test

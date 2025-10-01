@@ -16,16 +16,6 @@ public interface IConsentAcknowledgeService {
     ApiResponse acknowledgeDeclaration(Map<String, Object> request, String authToken);
 
     /**
-     * Retrieve consent details based on the provided consent ID and authentication token.
-     *
-     * @param consentId The ID of the consent to retrieve details for.
-     * @param authToken The authentication token for validating the request.
-     * @return An ApiResponse object containing the consent details.
-     */
-    ApiResponse getConsentDetails(String consentId, String authToken);
-
-
-    /**
      * Retrieve consent acknowledgement details based on the provided content ID, consent ID, and authentication token.
      *
      * @param contentId The ID of the content to retrieve details for.

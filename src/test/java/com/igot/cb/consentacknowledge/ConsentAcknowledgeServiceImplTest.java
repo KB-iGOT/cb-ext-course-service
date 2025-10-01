@@ -422,4 +422,56 @@ class ConsentAcknowledgeServiceImplTest {
         assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getResponseCode());
         assertEquals(Constants.FAILED, response.getParams().getStatus());
     }
+
+    @Test
+    void testGetConsentAcknowledgementDetails_NoRecordsFound() {
+        String contentId = "content1";
+        String consentId = "consent1";
+        String authToken = "token";
+        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(authToken), any()))
+                .thenReturn("user1");
+        when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), isNull()))
+                .thenReturn(Collections.emptyList());
+        ApiResponse response = service.getConsentAcknowledgementDetails(contentId, consentId, authToken);
+        assertEquals(HttpStatus.OK, response.getResponseCode());
+        assertEquals(Constants.OK, response.getParams().getStatus());
+        assertTrue(response.getResult().containsKey(Constants.RESPONSE));
+        Map<String, Object> responseMap = (Map<String, Object>) response.getResult().get(Constants.RESPONSE);
+        assertEquals(" No consent acknowledgement record found for the given contentId and consentId",
+                responseMap.get(Constants.MESSAGE));
+    }
+
+    @Test
+    void testAcknowledgeDeclaration_InsertReturnsFailed() throws Exception {
+        Map<String, Object> requestData = new HashMap<>();
+        requestData.put(Constants.CONTENT_ID, "content1");
+        requestData.put(Constants.CONSENT_ID, "consent1");
+        requestData.put(Constants.ADDITIONAL_ATTRIBUTES, Map.of("k", "v"));
+        Map<String, Object> body = Map.of(Constants.REQUEST, requestData);
+        when(accessTokenValidator.fetchUserIdFromAccessToken(anyString(), any())).thenReturn("user1");
+        when(objectMapper.writeValueAsString(any())).thenReturn("{\"k\":\"v\"}");
+        ApiResponse failedResponse = new ApiResponse();
+        failedResponse.put(Constants.RESPONSE, Constants.FAILED);
+        failedResponse.put(Constants.ERROR_MESSAGE, "Simulated DB failure");
+        when(cassandraOperation.insertRecord(any(), any(), any(), any(), any(), any()))
+                .thenReturn(failedResponse);
+        try (MockedStatic<ProjectUtil> mocked = mockStatic(ProjectUtil.class)) {
+            mocked.when(() -> ProjectUtil.createDefaultResponse(anyString()))
+                    .thenCallRealMethod();
+            mocked.when(() -> ProjectUtil.errorResponse(any(ApiResponse.class), anyString(), any()))
+                    .thenAnswer(invocation -> {
+                        ApiResponse resp = invocation.getArgument(0);
+                        resp.getParams().setErr(invocation.getArgument(1));
+                        resp.setResponseCode(invocation.getArgument(2));
+                        return null;
+                    });
+            ApiResponse response = service.acknowledgeDeclaration(body, "token");
+            assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getResponseCode());
+            assertEquals("Failed to acknowledge declaration. Please try again later.",
+                    response.getParams().getErr());
+            assertEquals(Constants.FAILED, response.get(Constants.RESPONSE));
+            verify(cassandraOperation, times(1))
+                    .insertRecord(any(), any(), any(), any(), any(), any());
+        }
+    }
 }

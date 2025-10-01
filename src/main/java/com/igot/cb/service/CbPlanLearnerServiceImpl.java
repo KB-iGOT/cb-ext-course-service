@@ -254,13 +254,15 @@ public class CbPlanLearnerServiceImpl {
             return;
         } else if (rawValue instanceof String) {
             if (StringUtils.isNotBlank((String) rawValue)) {
-                profileDetails = mapper.readValue((String) rawValue, new TypeReference<Map<String, Object>>() {});
+                profileDetails = mapper.readValue((String) rawValue, new TypeReference<Map<String, Object>>() {
+                });
             }
         } else if (rawValue instanceof Map) {
             profileDetails = (Map<String, Object>) rawValue;
         } else {
             try {
-                profileDetails = mapper.convertValue(rawValue, new TypeReference<Map<String, Object>>() {});
+                profileDetails = mapper.convertValue(rawValue, new TypeReference<Map<String, Object>>() {
+                });
             } catch (Exception e) {
                 log.error("Failed to convert profileDetails for userId: {}", userBasicProfile.get(Constants.ID), e);
                 return;

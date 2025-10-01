@@ -413,6 +413,7 @@ public class Constants {
     public static final String X_AUTH_USER_ID = "x-authenticated-userid";
     public static final String IS_CCA = "iscca";
     public static final String ROOT_ORG_IDS_IN_CONTEXT_DATA = "rootOrgIdsInContextData";
+    public static final String MODERATED_CONTENT_READ_END_POINT = "moderated_content-read-endpoint";
 
     private Constants() {
     }

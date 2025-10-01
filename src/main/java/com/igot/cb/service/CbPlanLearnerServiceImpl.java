@@ -247,14 +247,24 @@ public class CbPlanLearnerServiceImpl {
         userProfile.put(Constants.USER, (String) userBasicProfile.get(Constants.ID));
         userProfile.put(Constants.USER_ROOT_ORG_ID, (String) userBasicProfile.get(Constants.ROOT_ORG_ID));
         Object rawValue = userBasicProfile.get(Constants.PROFILE_DETAILS.toLowerCase());
-        Map<String, Object> profileDetails;
+        Map<String, Object> profileDetails = new HashMap<>();
 
-        if (rawValue instanceof String) {
-            profileDetails = mapper.readValue((String) rawValue, new TypeReference<Map<String, Object>>() {});
+        if (rawValue == null) {
+            log.warn("profileDetails is null for userId: {}", userBasicProfile.get(Constants.ID));
+            return;
+        } else if (rawValue instanceof String) {
+            if (StringUtils.isNotBlank((String) rawValue)) {
+                profileDetails = mapper.readValue((String) rawValue, new TypeReference<Map<String, Object>>() {});
+            }
         } else if (rawValue instanceof Map) {
             profileDetails = (Map<String, Object>) rawValue;
         } else {
-            throw new IllegalArgumentException("Unsupported type for profileDetails: " + rawValue);
+            try {
+                profileDetails = mapper.convertValue(rawValue, new TypeReference<Map<String, Object>>() {});
+            } catch (Exception e) {
+                log.error("Failed to convert profileDetails for userId: {}", userBasicProfile.get(Constants.ID), e);
+                return;
+            }
         }
 
         if (!org.apache.commons.collections4.MapUtils.isEmpty(profileDetails)) {

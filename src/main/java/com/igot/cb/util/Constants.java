@@ -414,6 +414,7 @@ public class Constants {
     public static final String IS_CCA = "iscca";
     public static final String ROOT_ORG_IDS_IN_CONTEXT_DATA = "rootOrgIdsInContextData";
     public static final String MODERATED_CONTENT_READ_END_POINT = "moderated-content-read-endpoint";
+    public static final String CB_PLAN_USER_LOOKUP_API = "api.cbplan.user.lookup";
 
     private Constants() {
     }

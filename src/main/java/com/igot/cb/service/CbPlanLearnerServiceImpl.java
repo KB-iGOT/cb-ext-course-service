@@ -4,7 +4,9 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.igot.cb.cache.CbPlanCacheMgr;
+import com.igot.cb.cache.RedisCacheMgr;
 import com.igot.cb.cassandra.CassandraOperation;
+import com.igot.cb.cassandra.exceptions.CustomException;
 import com.igot.cb.elasticsearch.service.EsUtilService;
 import com.igot.cb.model.ApiResponse;
 import com.igot.cb.user.UserUtilityService;
@@ -61,6 +63,9 @@ public class CbPlanLearnerServiceImpl {
 
     @Value("${elastic.required.field.cb.plan.json.path}")
     private String elasticCbPlanJsonPath;
+
+    @Autowired
+    private RedisCacheMgr redisCacheMgr;
 
     public CbPlanLearnerServiceImpl(AccessTokenValidator accessTokenValidator, CassandraOperation cassandraOperation, CbPlanCacheMgr cbPlanCacheMgr) {
         this.accessTokenValidator = accessTokenValidator;
@@ -413,6 +418,42 @@ public class CbPlanLearnerServiceImpl {
                 log.error("Error parsing existing data for userId: {}, contextType: {}", userId, Constants.ORG_ADDITIONAL_PROPERTIES);
             }
         }
+    }
+
+    public ApiResponse getCBPlanCourseListForUser(String userId) {
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.CB_PLAN_USER_LOOKUP_API);
+        try {
+            if (StringUtils.isBlank(userId)) {
+                response.getParams().setStatus(Constants.FAILED);
+                response.getParams().setErr("UserId is blank");
+                response.setResponseCode(HttpStatus.BAD_REQUEST);
+                return response;
+            }
+
+            logger.info("getCBPlanCourseListForUser :: UserId of the User : {}", userId);
+
+            String redisKey = "cbplan:userlookup:" + userId + ":course";
+            String cachedData = redisCacheMgr.getFromCache(redisKey);
+
+            if (StringUtils.isNotBlank(cachedData)) {
+                Map<String, String> courseMap = new ObjectMapper()
+                        .readValue(cachedData, new TypeReference<Map<String, String>>() {});
+
+                logger.info("Cache hit for userId={} :: {} courses found", userId, courseMap.size());
+                response.getResult().put("contents", courseMap);
+                response.getParams().setStatus(Constants.SUCCESS);
+                response.setResponseCode(HttpStatus.OK);
+            } else {
+                logger.info("Cache miss for key :: {}", redisKey);
+                throw new CustomException("No data present in cache", "No data present in cache", HttpStatus.NOT_FOUND);
+            }
+        } catch (Exception e) {
+            logger.error("Failed to lookup for user cb plan details. Exception: " + e.getMessage(), e);
+            response.getParams().setStatus(Constants.FAILED);
+            response.getParams().setErr(e.getMessage());
+            response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+        return response;
     }
 
 }

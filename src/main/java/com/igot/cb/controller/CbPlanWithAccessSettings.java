@@ -107,9 +107,10 @@ public class CbPlanWithAccessSettings {
 
     @GetMapping("/user/lookup")
     public ResponseEntity<ApiResponse> getPrivateCBPlanListForUser(
+            @RequestHeader(Constants.X_AUTH_USER_ORG_ID)String userOrgId,
             @RequestHeader(Constants.X_AUTH_USER_ID) String userId)  {
 
-        ApiResponse response = cbPlanLearnerService.getCBPlanCourseListForUser(userId);
+        ApiResponse response = cbPlanLearnerService.getCBPlanCourseListForUser(userId,userOrgId);
         return new ResponseEntity<>(response, response.getResponseCode());
     }
 }

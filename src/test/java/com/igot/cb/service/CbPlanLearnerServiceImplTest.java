@@ -18,6 +18,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import java.lang.reflect.Method;
 import java.time.Instant;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -92,9 +93,9 @@ class CbPlanLearnerServiceImplTest {
         activePlan.put(Constants.STATUS, Constants.LIVE);
         activePlan.put(Constants.CONTENT_LIST, Arrays.asList("course1"));
         activePlan.put(Constants.END_DATE_REQUEST, Instant.now());
-
+        AtomicBoolean isCacheEnabled = new AtomicBoolean(false);
         // Stub cache manager, since service uses it
-        when(cbPlanCacheMgr.getCbPlanForAllAndOrgId("org123"))
+        when(cbPlanCacheMgr.getCbPlanForAllAndOrgId("org123", "user123", isCacheEnabled))
                 .thenReturn(Arrays.asList(activePlan));
 
         Map<String, Object> contentDetails = new HashMap<>();

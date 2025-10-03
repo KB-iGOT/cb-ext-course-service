@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.igot.cb.cache.CbPlanCacheMgr;
+import com.igot.cb.cache.RedisCacheMgr;
 import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.elasticsearch.service.EsUtilService;
 import com.igot.cb.model.ApiResponse;
@@ -24,7 +25,10 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
+import java.time.Instant;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
 
 @Service
 @Slf4j
@@ -62,6 +66,9 @@ public class CbPlanLearnerServiceImpl {
     @Value("${elastic.required.field.cb.plan.json.path}")
     private String elasticCbPlanJsonPath;
 
+    @Autowired
+    private RedisCacheMgr redisCacheMgr;
+
     public CbPlanLearnerServiceImpl(AccessTokenValidator accessTokenValidator, CassandraOperation cassandraOperation, CbPlanCacheMgr cbPlanCacheMgr) {
         this.accessTokenValidator = accessTokenValidator;
         this.cassandraOperation = cassandraOperation;
@@ -93,8 +100,8 @@ public class CbPlanLearnerServiceImpl {
                 return response;
             }
             setUserProfile(userProfile, userList.get(0));
-            
-            List<Map<String, Object>> activeCbPlans = cbPlanCacheMgr.getCbPlanForAllAndOrgId(userOrgId);
+            AtomicBoolean isCacheEnabled = new AtomicBoolean(false);
+            List<Map<String, Object>> activeCbPlans = cbPlanCacheMgr.getCbPlanForAllAndOrgId(userOrgId, userId, isCacheEnabled);
             if (CollectionUtils.isEmpty(activeCbPlans)) {
                 response.getResult().put(Constants.COUNT, 0);
                 response.getResult().put(Constants.CONTENT, Collections.emptyList());
@@ -103,6 +110,12 @@ public class CbPlanLearnerServiceImpl {
 
             List<Map<String, Object>> resultMap = new ArrayList<>();
             Map<String, Object> courseDetailsMap = new HashMap<>();
+
+            // for Redis and response mappings
+            List<String> plansToCache = new ArrayList<>();
+            // ✅ Use HashMap (or LinkedHashMap if order matters)
+            Map<String, String> coursePlanMappings = new HashMap<>();
+
 
             for (Map<String, Object> cbPlan : activeCbPlans) {
                 Object contextDataObj = cbPlan.get(Constants.CONTEXT_DATA_REQUEST);
@@ -121,6 +134,18 @@ public class CbPlanLearnerServiceImpl {
                     logger.error("Exception in parsing context data for cb plan id : {}", cbPlan.get(Constants.PLAN_ID), e);
                     continue;
                 }
+                String planId = (String) cbPlan.get(Constants.PLAN_ID);
+                Object planEndDateObj = cbPlan.get(Constants.END_DATE_REQUEST);
+                String planEndDateStr = null;
+
+                if (planEndDateObj instanceof Instant) {
+                    planEndDateStr = ((Instant) planEndDateObj).toString(); // ISO-8601 format
+                } else if (planEndDateObj != null) {
+                    planEndDateStr = planEndDateObj.toString(); // fallback
+                }
+
+                plansToCache.add(planId);
+
                 Map<String, Object> cbPlanDetails = new HashMap<>();
                 cbPlanDetails.put(Constants.ID, cbPlan.get(Constants.PLAN_ID));
                 cbPlanDetails.put(Constants.END_DATE_REQUEST, cbPlan.get(Constants.END_DATE_REQUEST));
@@ -165,6 +190,8 @@ public class CbPlanLearnerServiceImpl {
                     }
                     if (MapUtils.isNotEmpty(contentDetails)) {
                         courseList.add(contentDetails);
+                        coursePlanMappings.put(courseId, (String) planEndDateStr);
+
                     }
                 }
                 boolean containsLanguageMap = courseList.stream().anyMatch(course ->
@@ -177,6 +204,15 @@ public class CbPlanLearnerServiceImpl {
                     cbPlanDetails.put(Constants.CONTENT_LIST, courseList);
                 }
                 resultMap.add(cbPlanDetails);
+            }
+            if (isCacheEnabled.get()) {
+                // Convert coursePlanMappings to JSON string and cache
+                String coursePlanMappingsJson = mapper.writeValueAsString(coursePlanMappings);
+                redisCacheMgr.putInCache(Constants.CB_PLAN_REDIS_KEY_PREFIX + userId + Constants.BY_COURSE_SUFFIX, coursePlanMappingsJson);
+
+                // Convert plansToCache list to JSON string and cache
+                String plansToCacheJson = mapper.writeValueAsString(plansToCache);
+                redisCacheMgr.putInCache(Constants.CB_PLAN_REDIS_KEY_PREFIX + userId + Constants.BY_PLANS_SUFFIX, plansToCacheJson);
             }
             logger.info("Number of CB Plan Available for the user is {}", resultMap.size());
             response.getResult().put(Constants.COUNT, resultMap.size());

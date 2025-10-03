@@ -8,9 +8,14 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.expression.spel.ast.BooleanLiteral;
 import org.springframework.stereotype.Component;
 
 import com.github.benmanes.caffeine.cache.Cache;
@@ -29,6 +34,11 @@ public class CbPlanCacheMgr {
 
     private final CassandraOperation cassandraOperation;
     private Cache<String, List<Map<String, Object>>> cbPlanCache;
+
+    ObjectMapper mapper = new ObjectMapper();
+
+    @Autowired
+    private RedisCacheMgr redisCacheMgr;
 
     public CbPlanCacheMgr(CassandraOperation cassandraOperation) {
         this.cassandraOperation = cassandraOperation;
@@ -89,44 +99,84 @@ public class CbPlanCacheMgr {
         return cbPlanList;
     }
 
-    public List<Map<String, Object>> getCbPlanForAllAndOrgId(String orgId) {
-        List<Map<String, Object>> activeCbPlans = cbPlanCache.getIfPresent(orgId);
-        if (activeCbPlans != null) {
-            log.info("Cache hit for orgId: {}, Found {} active CB Plans", orgId, activeCbPlans.size());
-            activeCbPlans = new ArrayList<>();
-            return activeCbPlans;
+    public List<Map<String, Object>> getCbPlanForAllAndOrgId(String orgId, String userId, AtomicBoolean isCacheEnabled) {
+        // Initialize activeCbPlans at the top
+        List<Map<String, Object>> activeCbPlans = new ArrayList<>();
+
+        // Initialize planIds as null
+        List<String> planIds = null;
+
+        // Try fetching plan IDs from Redis first
+        String redisPlanIdsKey = Constants.CB_PLAN_REDIS_KEY_PREFIX + userId + Constants.BY_PLANS_SUFFIX;
+        String redisValue = redisCacheMgr.getFromCache(redisPlanIdsKey);
+        if (redisValue != null) {
+            try {
+                ObjectMapper objectMapper = new ObjectMapper();
+                planIds = objectMapper.readValue(redisValue, new TypeReference<List<String>>() {});
+                log.info("Found plan IDs in Redis for orgId {}: {}", orgId, planIds);
+            } catch (Exception e) {
+                log.error("Error reading plan IDs from Redis for orgId {}: {}", orgId, e.getMessage(), e);
+                planIds = null;
+            }
         }
-        List<Map<String, Object>> cbPlanList = getCbPlanForOrgId(orgId);
-        if (cbPlanList.isEmpty()) {
-            log.info("No CB Plans found for orgId: {}", orgId);
-            cbPlanList = new ArrayList<>();
-            cbPlanCache.put(orgId, cbPlanList);
-            return cbPlanList;
+
+        // If planIds are null, follow the existing flow to fetch from cache or CB Plan source
+        if (planIds == null) {
+            activeCbPlans = cbPlanCache.getIfPresent(orgId);
+            if (activeCbPlans != null) {
+                log.info("Cache hit for orgId: {}, Found {} active CB Plans", orgId, activeCbPlans.size());
+                return activeCbPlans;
+            }
+
+            List<Map<String, Object>> cbPlanList = getCbPlanForOrgId(orgId);
+            if (cbPlanList.isEmpty()) {
+                log.info("No CB Plans found for orgId: {}", orgId);
+                cbPlanCache.put(orgId, cbPlanList);
+                return cbPlanList;
+            }
+
+            cbPlanList = cbPlanList.stream()
+                    .sorted(Comparator.comparing(m -> (Instant) m.get(Constants.END_DATE_REQUEST),
+                            Comparator.reverseOrder()))
+                    .collect(Collectors.toList());
+
+            planIds = cbPlanList.stream()
+                    .map(plan -> String.valueOf(plan.get(Constants.PLAN_ID))) // safe conversion to String
+                    .collect(Collectors.toList());
+            isCacheEnabled.set(true);
+
         }
-        cbPlanList = cbPlanList.stream()
-                .sorted(Comparator.comparing(m -> (Instant) m.get(Constants.END_DATE_REQUEST),
-                        Comparator.reverseOrder()))
-                .collect(Collectors.toList());
-        List<String> planIds = cbPlanList.stream()
-                    .map(plan -> (String) plan.get(Constants.PLAN_ID)).collect(Collectors.toList());
+
+        // Fetch CB Plans from Cassandra
         Map<String, Object> propertiesMap = new HashMap<>();
         propertiesMap.put(Constants.PLAN_ID, planIds);
+
         List<Map<String, Object>> existingCbPlans = cassandraOperation.getRecordsByProperties(
                 Constants.KEYSPACE_SUNBIRD,
                 Constants.TABLE_CB_PLAN_V2,
                 propertiesMap,
                 new ArrayList<>(),
                 null);
+
         if (existingCbPlans == null) {
-            log.error("Failed to read cassandra for cb plan, for PlanIds: {}", planIds);
+            log.error("Failed to read Cassandra for CB Plan, for PlanIds: {}", planIds);
             return new ArrayList<>();
         }
 
+        // Filter active plans
         activeCbPlans = existingCbPlans.stream()
-                .filter(plan -> Constants.LIVE.equalsIgnoreCase((String) plan.get(Constants.STATUS))).collect(Collectors.toList());
-        //TODO - Need to remove draftData (if available) and also contextData.accessControl
+                .filter(plan -> {
+                    Object statusObj = plan.get(Constants.STATUS);
+                    return statusObj != null && Constants.LIVE.equalsIgnoreCase(String.valueOf(statusObj));
+                })
+                .collect(Collectors.toList());
+
         log.info("Found {} CB Plans for orgId: {}, active count: {}", existingCbPlans.size(), orgId, activeCbPlans.size());
+
+        // Cache in local cache
         cbPlanCache.put(orgId, activeCbPlans);
+
         return activeCbPlans;
     }
+
 }

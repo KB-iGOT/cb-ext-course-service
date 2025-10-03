@@ -4,7 +4,9 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.igot.cb.cache.CbPlanCacheMgr;
+import com.igot.cb.cache.RedisCacheMgr;
 import com.igot.cb.cassandra.CassandraOperation;
+import com.igot.cb.cassandra.exceptions.CustomException;
 import com.igot.cb.elasticsearch.service.EsUtilService;
 import com.igot.cb.model.ApiResponse;
 import com.igot.cb.user.UserUtilityService;
@@ -53,6 +55,9 @@ public class CbPlanLearnerServiceImpl {
 
     @Autowired
     private EsUtilService esUtilService;
+
+    @Autowired
+    private RedisCacheMgr redisCacheMgr;
 
     private final CbPlanCacheMgr cbPlanCacheMgr;
 
@@ -247,14 +252,26 @@ public class CbPlanLearnerServiceImpl {
         userProfile.put(Constants.USER, (String) userBasicProfile.get(Constants.ID));
         userProfile.put(Constants.USER_ROOT_ORG_ID, (String) userBasicProfile.get(Constants.ROOT_ORG_ID));
         Object rawValue = userBasicProfile.get(Constants.PROFILE_DETAILS.toLowerCase());
-        Map<String, Object> profileDetails;
+        Map<String, Object> profileDetails = new HashMap<>();
 
-        if (rawValue instanceof String) {
-            profileDetails = mapper.readValue((String) rawValue, new TypeReference<Map<String, Object>>() {});
+        if (rawValue == null) {
+            log.warn("profileDetails is null for userId: {}", userBasicProfile.get(Constants.ID));
+            return;
+        } else if (rawValue instanceof String) {
+            if (StringUtils.isNotBlank((String) rawValue)) {
+                profileDetails = mapper.readValue((String) rawValue, new TypeReference<Map<String, Object>>() {
+                });
+            }
         } else if (rawValue instanceof Map) {
             profileDetails = (Map<String, Object>) rawValue;
         } else {
-            throw new IllegalArgumentException("Unsupported type for profileDetails: " + rawValue);
+            try {
+                profileDetails = mapper.convertValue(rawValue, new TypeReference<Map<String, Object>>() {
+                });
+            } catch (Exception e) {
+                log.error("Failed to convert profileDetails for userId: {}", userBasicProfile.get(Constants.ID), e);
+                return;
+            }
         }
 
         if (!org.apache.commons.collections4.MapUtils.isEmpty(profileDetails)) {
@@ -401,6 +418,52 @@ public class CbPlanLearnerServiceImpl {
                 log.error("Error parsing existing data for userId: {}, contextType: {}", userId, Constants.ORG_ADDITIONAL_PROPERTIES);
             }
         }
+    }
+
+    public ApiResponse getCBPlanCourseListForUser(String userId, String userOrgId) {
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.CB_PLAN_USER_LOOKUP_API);
+        try {
+            if (StringUtils.isBlank(userId)) {
+                response.getParams().setStatus(Constants.FAILED);
+                response.getParams().setErr("UserId is blank");
+                response.setResponseCode(HttpStatus.BAD_REQUEST);
+                return response;
+            }
+
+            logger.info("getCBPlanCourseListForUser :: UserId of the User : {}", userId);
+            Map<String, String> courseMap = new HashMap<>();
+            String redisKey = "cbplan:userlookup:" + userId + ":course";
+            String cachedData = redisCacheMgr.getFromCache(redisKey);
+
+            if (StringUtils.isNotBlank(cachedData)) {
+                try {
+                    courseMap = mapper.readValue(cachedData, new TypeReference<Map<String, String>>() {
+                    });
+                } catch (Exception e) {
+                    logger.error("Failed to parse cached course map for userId: {}. Exception: {}", userId, e.getMessage(), e);
+                }
+            } else {
+                getCBPlanListForUser(userOrgId, userId, true);
+                cachedData = redisCacheMgr.getFromCache(redisKey);
+                if (StringUtils.isNotBlank(cachedData)) {
+                    try {
+                        courseMap = mapper.readValue(cachedData, new TypeReference<Map<String, String>>() {
+                        });
+                    } catch (Exception e) {
+                        logger.error("Failed to parse cached course map for userId: {}. Exception: {}", userId, e.getMessage(), e);
+                    }
+                }
+            }
+            response.getResult().put("contents", courseMap);
+            response.getParams().setStatus(Constants.SUCCESS);
+            response.setResponseCode(HttpStatus.OK);
+        } catch (Exception e) {
+            logger.error("Failed to lookup for user cb plan details. Exception: " + e.getMessage(), e);
+            response.getParams().setStatus(Constants.FAILED);
+            response.getParams().setErr(e.getMessage());
+            response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+        return response;
     }
 
 }

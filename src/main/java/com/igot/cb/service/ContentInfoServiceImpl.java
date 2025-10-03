@@ -116,8 +116,10 @@ public class ContentInfoServiceImpl {
     @SuppressWarnings("unchecked")
     public Map<String, Object> readContentFromService(String contentId, List<String> fields) {
         StringBuilder url = new StringBuilder();
+
         url.append(propertiesCache.getProperty(Constants.CONTENT_SERVICE_HOST))
                 .append(propertiesCache.getProperty(Constants.CONTENT_READ_END_POINT)).append("/" + contentId);
+
         if (CollectionUtils.isNotEmpty(fields)) {
             StringBuffer stringBuffer = new StringBuffer(String.join(",", fields));
             url.append(Constants.QUE_MARK).append(Constants.FIELDS).append(Constants.EQUAL_TO).append(stringBuffer);

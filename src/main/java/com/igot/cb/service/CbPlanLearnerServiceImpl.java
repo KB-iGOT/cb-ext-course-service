@@ -514,6 +514,52 @@ public class CbPlanLearnerServiceImpl {
         }
     }
 
+    public ApiResponse getCBPlanCourseListForUser(String userId, String userOrgId) {
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.CB_PLAN_USER_LOOKUP_API);
+        try {
+            if (StringUtils.isBlank(userId)) {
+                response.getParams().setStatus(Constants.FAILED);
+                response.getParams().setErr("UserId is blank");
+                response.setResponseCode(HttpStatus.BAD_REQUEST);
+                return response;
+            }
+
+            logger.info("getCBPlanCourseListForUser :: UserId of the User : {}", userId);
+            Map<String, String> courseMap = new HashMap<>();
+            String redisKey = "cbplan:userlookup:" + userId + ":course";
+            String cachedData = redisCacheMgr.getFromCache(redisKey);
+
+            if (StringUtils.isNotBlank(cachedData)) {
+                try {
+                    courseMap = mapper.readValue(cachedData, new TypeReference<Map<String, String>>() {
+                    });
+                } catch (Exception e) {
+                    logger.error("Failed to parse cached course map for userId: {}. Exception: {}", userId, e.getMessage(), e);
+                }
+            } else {
+                getCBPlanListForUser(userOrgId, userId, true);
+                cachedData = redisCacheMgr.getFromCache(redisKey);
+                if (StringUtils.isNotBlank(cachedData)) {
+                    try {
+                        courseMap = mapper.readValue(cachedData, new TypeReference<Map<String, String>>() {
+                        });
+                    } catch (Exception e) {
+                        logger.error("Failed to parse cached course map for userId: {}. Exception: {}", userId, e.getMessage(), e);
+                    }
+                }
+            }
+            response.getResult().put("contents", courseMap);
+            response.getParams().setStatus(Constants.SUCCESS);
+            response.setResponseCode(HttpStatus.OK);
+        } catch (Exception e) {
+            logger.error("Failed to lookup for user cb plan details. Exception: " + e.getMessage(), e);
+            response.getParams().setStatus(Constants.FAILED);
+            response.getParams().setErr(e.getMessage());
+            response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+        return response;
+    }
+
 }
 
 

@@ -36,11 +36,6 @@ public class CbPlanCacheMgr {
     private final CassandraOperation cassandraOperation;
     private Cache<String, List<Map<String, Object>>> cbPlanCache;
 
-    ObjectMapper mapper = new ObjectMapper();
-
-    @Autowired
-    private RedisCacheMgr redisCacheMgr;
-
     public CbPlanCacheMgr(CassandraOperation cassandraOperation) {
         this.cassandraOperation = cassandraOperation;
         this.cbPlanCache = Caffeine.newBuilder()

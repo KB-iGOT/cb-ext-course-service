@@ -416,6 +416,7 @@ public class Constants {
     public static final String CB_PLAN_REDIS_KEY_PREFIX = "cbplan:userlookup:";
     public static final String BY_PLANS_SUFFIX = ":byPlan";
     public static final String BY_COURSE_SUFFIX = ":course";
+    public static final String CB_PLAN_USER_LOOKUP_API = "api.cbplan.user.lookup";
 
     private Constants() {
     }

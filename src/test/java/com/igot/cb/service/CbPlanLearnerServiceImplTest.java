@@ -2,6 +2,7 @@ package com.igot.cb.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.igot.cb.cache.CbPlanCacheMgr;
+import com.igot.cb.cache.RedisCacheMgr;
 import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.model.ApiResponse;
 import com.igot.cb.util.AccessTokenValidator;
@@ -39,6 +40,9 @@ class CbPlanLearnerServiceImplTest {
     @Mock(lenient = true)
     private CbPlanCacheMgr cbPlanCacheMgr;
 
+    @Mock(lenient = true)
+    private RedisCacheMgr redisCacheMgr;
+
 
     private CbPlanLearnerServiceImpl service;
 
@@ -46,7 +50,9 @@ class CbPlanLearnerServiceImplTest {
     void setUp() {
         service = new CbPlanLearnerServiceImpl(accessTokenValidator, cassandraOperation, cbPlanCacheMgr);
         ReflectionTestUtils.setField(service, "contentService", contentService);
+        ReflectionTestUtils.setField(service, "redisCacheMgr", redisCacheMgr); // 👈 Add this line
     }
+
 
     @Test
     void testGetCBPlanListForUser_Success() {
@@ -87,26 +93,33 @@ class CbPlanLearnerServiceImplTest {
         when(cassandraOperation.getRecordsByProperties(eq(Constants.KEYSPACE_SUNBIRD), eq(Constants.USER), any(), any(), any()))
                 .thenReturn(Arrays.asList(userData));
 
-        // Prepare a plan that would be returned from cache
+        // Mock Redis cache to return nothing (so CBPlan fetches from cacheMgr)
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn("");
+
+        // Prepare an active plan
         Map<String, Object> activePlan = new HashMap<>();
         activePlan.put(Constants.PLAN_ID, "plan1");
         activePlan.put(Constants.STATUS, Constants.LIVE);
         activePlan.put(Constants.CONTENT_LIST, Arrays.asList("course1"));
         activePlan.put(Constants.END_DATE_REQUEST, Instant.now());
-        AtomicBoolean isCacheEnabled = new AtomicBoolean(false);
-        // Stub cache manager, since service uses it
-        when(cbPlanCacheMgr.getCbPlanForAllAndOrgId("org123", isCacheEnabled))
+
+        // ✅ Use argument matchers for AtomicBoolean
+        when(cbPlanCacheMgr.getCbPlanForAllAndOrgId(eq("org123"), any(AtomicBoolean.class)))
                 .thenReturn(Arrays.asList(activePlan));
 
+        // Mock content details
         Map<String, Object> contentDetails = new HashMap<>();
         contentDetails.put(Constants.IDENTIFIER, "course1");
         when(contentService.readContent("course1", null)).thenReturn(contentDetails);
 
+        // Execute
         ApiResponse response = service.getCBPlanListForUser("org123", "token123", false);
 
+        // Verify
         assertEquals(Constants.SUCCESS, response.getParams().getStatus());
         assertEquals(1, response.getResult().get(Constants.COUNT));
     }
+
 
 
     @Test

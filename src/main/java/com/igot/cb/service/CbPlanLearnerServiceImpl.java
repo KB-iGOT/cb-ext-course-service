@@ -6,7 +6,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.igot.cb.cache.CbPlanCacheMgr;
 import com.igot.cb.cache.RedisCacheMgr;
 import com.igot.cb.cassandra.CassandraOperation;
-import com.igot.cb.cassandra.exceptions.CustomException;
 import com.igot.cb.elasticsearch.service.EsUtilService;
 import com.igot.cb.model.ApiResponse;
 import com.igot.cb.user.UserUtilityService;
@@ -59,9 +58,6 @@ public class CbPlanLearnerServiceImpl {
     @Autowired
     private EsUtilService esUtilService;
 
-    @Autowired
-    private RedisCacheMgr redisCacheMgr;
-
     private final CbPlanCacheMgr cbPlanCacheMgr;
 
     @Value("${cb.plan.v2.index}")
@@ -69,7 +65,9 @@ public class CbPlanLearnerServiceImpl {
 
     @Value("${elastic.required.field.cb.plan.json.path}")
     private String elasticCbPlanJsonPath;
-    
+
+    @Autowired
+    private RedisCacheMgr redisCacheMgr;
 
     public CbPlanLearnerServiceImpl(AccessTokenValidator accessTokenValidator, CassandraOperation cassandraOperation, CbPlanCacheMgr cbPlanCacheMgr) {
         this.accessTokenValidator = accessTokenValidator;
@@ -81,15 +79,18 @@ public class CbPlanLearnerServiceImpl {
         ApiResponse response = ProjectUtil.createDefaultResponse(Constants.CBP_PLAN_USER_LIST_API);
         try {
             String userId = "";
-            if (isPrivate)
+            if (isPrivate) {
                 userId = authTokenOrUserId;
-            else
+            } else {
                 userId = accessTokenValidator.fetchUserIdFromAccessToken(authTokenOrUserId, response);
+            }
+
             if (StringUtils.isBlank(userId)) {
                 return response;
             }
-            logger.info("UserId of the User : " + userId + ", User org ID : " + userOrgId);
+            logger.info("UserId of the User : {}, User org ID : {}", userId, userOrgId);
 
+            // Fetch User Profile
             Map<String, String> userProfile = new HashMap<>();
             Map<String, Object> propertiesMap = Map.of(Constants.ID, userId);
             List<String> userFields = Arrays.asList(Constants.ID, Constants.ROOT_ORG_ID, Constants.PROFILE_DETAILS);
@@ -102,131 +103,190 @@ public class CbPlanLearnerServiceImpl {
                 return response;
             }
             setUserProfile(userProfile, userList.get(0));
+
+            ObjectMapper mapper = new ObjectMapper();
             AtomicBoolean isCacheEnabled = new AtomicBoolean(false);
-            List<Map<String, Object>> activeCbPlans = cbPlanCacheMgr.getCbPlanForAllAndOrgId(userOrgId, userId, isCacheEnabled);
+            List<Map<String, Object>> activeCbPlans = new ArrayList<>();
+
+            //Step 1: Check Redis for cached plan IDs
+            String cachedPlansJson = redisCacheMgr.getFromCache(Constants.CB_PLAN_REDIS_KEY_PREFIX + userId + Constants.BY_PLANS_SUFFIX);
+            if (StringUtils.isNotBlank(cachedPlansJson)) {
+                if (cachedPlansJson.equals("\"\"") || cachedPlansJson.equals("")) {
+                    // Means we previously stored an explicit empty string
+                    logger.info("Redis indicates no active CB plans for userId: {}", userId);
+                    response.getResult().put(Constants.COUNT, 0);
+                    response.getResult().put(Constants.CONTENT, Collections.emptyList());
+                    return response;
+                }
+                List<String> cachedPlanIds = mapper.readValue(cachedPlansJson, new TypeReference<List<String>>() {});
+                if (CollectionUtils.isNotEmpty(cachedPlanIds)) {
+                    logger.info("Cache hit for userId: {}, Found {} plan IDs in Redis", userId, cachedPlanIds.size());
+                    // Fetch plan details in batches of 5
+                    activeCbPlans = cbPlanCacheMgr.getCbPlansByPlanIdsInBatch(cachedPlanIds);
+                }
+            }
+
+            //Step 2: If Redis was empty or fetch returned nothing, get from cache manager
+            if (CollectionUtils.isEmpty(activeCbPlans)) {
+                logger.info("Cache miss or no plans found in Redis, fetching fresh plans for orgId: {}", userOrgId);
+                activeCbPlans = cbPlanCacheMgr.getCbPlanForAllAndOrgId(userOrgId, isCacheEnabled);
+            }
+
+            //Step 3: Handle no plans found
             if (CollectionUtils.isEmpty(activeCbPlans)) {
                 response.getResult().put(Constants.COUNT, 0);
                 response.getResult().put(Constants.CONTENT, Collections.emptyList());
                 return response;
             }
 
+            //Step 4: Process all CB Plans
             List<Map<String, Object>> resultMap = new ArrayList<>();
-            Map<String, Object> courseDetailsMap = new HashMap<>();
+            processActiveCbPlans(activeCbPlans, userOrgId, userId, userProfile, isCacheEnabled, resultMap);
 
-            // for Redis and response mappings
-            List<String> plansToCache = new ArrayList<>();
-            // ✅ Use HashMap (or LinkedHashMap if order matters)
-            Map<String, String> coursePlanMappings = new HashMap<>();
-
-
-            for (Map<String, Object> cbPlan : activeCbPlans) {
-                Object contextDataObj = cbPlan.get(Constants.CONTEXT_DATA_REQUEST);
-                try{
-                    if (contextDataObj != null) {
-                        Map<String, Object> contextDataMap = parseContextData(contextDataObj);
-
-                        // Evaluate access rules → skip plan if user has no access
-                        if (MapUtils.isNotEmpty(contextDataMap) &&
-                                !evaluateContextAccessRule(contextDataMap, userProfile)) {
-                            logger.info("User does not have access to cbPlan: {}", cbPlan.get(Constants.PLAN_ID));
-                            continue;
-                        }
-                    }
-                }catch (Exception e){
-                    logger.error("Exception in parsing context data for cb plan id : {}", cbPlan.get(Constants.PLAN_ID), e);
-                    continue;
-                }
-                String planId = (String) cbPlan.get(Constants.PLAN_ID);
-                Object planEndDateObj = cbPlan.get(Constants.END_DATE_REQUEST);
-                String planEndDateStr = null;
-
-                if (planEndDateObj instanceof Instant) {
-                    planEndDateStr = ((Instant) planEndDateObj).toString(); // ISO-8601 format
-                } else if (planEndDateObj != null) {
-                    planEndDateStr = planEndDateObj.toString(); // fallback
-                }
-
-                plansToCache.add(planId);
-
-                Map<String, Object> cbPlanDetails = new HashMap<>();
-                cbPlanDetails.put(Constants.ID, cbPlan.get(Constants.PLAN_ID));
-                cbPlanDetails.put(Constants.END_DATE_REQUEST, cbPlan.get(Constants.END_DATE_REQUEST));
-                List<String> courses = (List<String>) cbPlan.get(Constants.CONTENT_LIST);
-                cbPlanDetails.put(Constants.IS_APAR,
-                        cbPlan.containsKey(Constants.IS_APAR) && cbPlan.get(Constants.IS_APAR) != null
-                                ? cbPlan.get(Constants.IS_APAR)
-                                : Boolean.FALSE);
-
-                // Required Fields to be added later if required
-                List<Map<String, Object>> courseList = new ArrayList<>();
-                for (String courseId : courses) {
-                    Map<String, Object> contentDetails = null;
-                    if (!courseDetailsMap.containsKey(courseId)) {
-                        contentDetails = contentService.readContent(courseId, null);
-                        if (MapUtils.isNotEmpty(contentDetails)) {
-                            //if (Constants.LIVE.equalsIgnoreCase((String) contentDetails.get(Constants.STATUS))) {
-                            if (courseId.contains("_rc")) {
-                                if (Constants.VERIFIED.equalsIgnoreCase(userProfile.get(Constants.PROFILE_STATUS_KEY))) {
-                                    Map<String, Object> secureSettings = (Map<String, Object>) contentDetails.get(Constants.SECURE_SETTINGS);
-
-                                    if (MapUtils.isNotEmpty(secureSettings)) {
-                                        List<String> secureOrganisationList = (List<String>) secureSettings.get(Constants.ORGANISATION);
-
-                                        if (CollectionUtils.isNotEmpty(secureOrganisationList) && secureOrganisationList.contains(userOrgId)) {
-                                            courseDetailsMap.put(courseId, contentDetails);
-                                        }
-                                    }
-                                }
-
-                                if (!courseDetailsMap.containsKey(courseId)) {
-                                    contentDetails.clear();
-                                }
-                            } else {
-                                courseDetailsMap.put(courseId, contentDetails);
-                            }
-                        } else {
-                            logger.error("Failed to read course details for Id: " + courseId);
-                        }
-                    } else {
-                        continue;
-                    }
-                    if (MapUtils.isNotEmpty(contentDetails)) {
-                        courseList.add(contentDetails);
-                        coursePlanMappings.put(courseId, (String) planEndDateStr);
-
-                    }
-                }
-                boolean containsLanguageMap = courseList.stream().anyMatch(course ->
-                        course.get(Constants.LANGUAGE_MAP_V1) instanceof Map &&
-                                !((Map<?, ?>) course.get(Constants.LANGUAGE_MAP_V1)).isEmpty()
-                );
-                if (containsLanguageMap) {
-                    cbPlanDetails.put(Constants.CONTENT_LIST, removeDuplicateCourses(courseList));
-                } else {
-                    cbPlanDetails.put(Constants.CONTENT_LIST, courseList);
-                }
-                resultMap.add(cbPlanDetails);
-            }
-            if (isCacheEnabled.get()) {
-                // Convert coursePlanMappings to JSON string and cache
-                String coursePlanMappingsJson = mapper.writeValueAsString(coursePlanMappings);
-                redisCacheMgr.putInCache(Constants.CB_PLAN_REDIS_KEY_PREFIX + userId + Constants.BY_COURSE_SUFFIX, coursePlanMappingsJson);
-
-                // Convert plansToCache list to JSON string and cache
-                String plansToCacheJson = mapper.writeValueAsString(plansToCache);
-                redisCacheMgr.putInCache(Constants.CB_PLAN_REDIS_KEY_PREFIX + userId + Constants.BY_PLANS_SUFFIX, plansToCacheJson);
-            }
-            logger.info("Number of CB Plan Available for the user is {}", resultMap.size());
+            //Step 5: Prepare response
+            logger.info("Number of CB Plans available for user {} is {}", userId, resultMap.size());
             response.getResult().put(Constants.COUNT, resultMap.size());
             response.getResult().put(Constants.CONTENT, resultMap);
+
         } catch (Exception e) {
-            logger.error("Failed to lookup for user cb plan details. Exception: " + e.getMessage(), e);
+            logger.error("Failed to lookup for user cb plan details. Exception: {}", e.getMessage(), e);
             response.getParams().setStatus(Constants.FAILED);
             response.getParams().setErr(e.getMessage());
             response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
         }
         return response;
     }
+
+
+    private void processActiveCbPlans(
+            List<Map<String, Object>> activeCbPlans,
+            String userOrgId,
+            String userId,
+            Map<String, String> userProfile,
+            AtomicBoolean isCacheEnabled,
+            List<Map<String, Object>> resultMap) throws JsonProcessingException {
+
+        Map<String, Object> courseDetailsMap = new HashMap<>();
+        List<String> plansToCache = new ArrayList<>();
+        Map<String, String> coursePlanMappings = new HashMap<>();
+
+        for (Map<String, Object> cbPlan : activeCbPlans) {
+            Object contextDataObj = cbPlan.get(Constants.CONTEXT_DATA_REQUEST);
+            try {
+                if (contextDataObj != null) {
+                    Map<String, Object> contextDataMap = parseContextData(contextDataObj);
+                    if (MapUtils.isNotEmpty(contextDataMap)
+                            && !evaluateContextAccessRule(contextDataMap, userProfile)) {
+                        log.info("User does not have access to cbPlan: {}", cbPlan.get(Constants.PLAN_ID));
+                        continue;
+                    }
+                }
+            } catch (Exception e) {
+                log.error("Exception in parsing context data for cb plan id : {}", cbPlan.get(Constants.PLAN_ID), e);
+                continue;
+            }
+            Object planEndDateObj = cbPlan.get(Constants.END_DATE_REQUEST);
+            String planEndDateStr = (planEndDateObj instanceof Instant)
+                    ? ((Instant) planEndDateObj).toString()
+                    : planEndDateObj != null ? planEndDateObj.toString() : null;
+            plansToCache.add((String) cbPlan.get(Constants.PLAN_ID));
+            Map<String, Object> cbPlanDetails = new HashMap<>();
+            cbPlanDetails.put(Constants.ID, cbPlan.get(Constants.PLAN_ID));
+            cbPlanDetails.put(Constants.END_DATE_REQUEST, cbPlan.get(Constants.END_DATE_REQUEST));
+            cbPlanDetails.put(Constants.IS_APAR,
+                    cbPlan.containsKey(Constants.IS_APAR) && cbPlan.get(Constants.IS_APAR) != null
+                            ? cbPlan.get(Constants.IS_APAR)
+                            : Boolean.FALSE);
+            List<String> courses = (List<String>) cbPlan.get(Constants.CONTENT_LIST);
+            // process per-course
+            List<Map<String, Object>> courseList = processCoursesForCbPlan(
+                    courses, userOrgId, userProfile, courseDetailsMap, planEndDateStr, coursePlanMappings);
+
+            boolean containsLanguageMap = courseList.stream().anyMatch(course ->
+                    course.get(Constants.LANGUAGE_MAP_V1) instanceof Map &&
+                            !((Map<?, ?>) course.get(Constants.LANGUAGE_MAP_V1)).isEmpty()
+            );
+            cbPlanDetails.put(Constants.CONTENT_LIST, containsLanguageMap
+                    ? removeDuplicateCourses(courseList)
+                    : courseList);
+
+            resultMap.add(cbPlanDetails);
+        }
+        //Cache if enabled
+        if (isCacheEnabled.get()) {
+            ObjectMapper mapper = new ObjectMapper();
+            String coursePlanMappingsJson = "";
+            String plansToCacheJson = "";
+            if (MapUtils.isNotEmpty(coursePlanMappings)) {
+                coursePlanMappingsJson = mapper.writeValueAsString(coursePlanMappings);
+            }
+            if (CollectionUtils.isNotEmpty(plansToCache)) {
+                plansToCacheJson = mapper.writeValueAsString(plansToCache);
+            }
+            redisCacheMgr.putInCache(
+                    Constants.CB_PLAN_REDIS_KEY_PREFIX + userId + Constants.BY_COURSE_SUFFIX,
+                    coursePlanMappingsJson
+            );
+            redisCacheMgr.putInCache(
+                    Constants.CB_PLAN_REDIS_KEY_PREFIX + userId + Constants.BY_PLANS_SUFFIX,
+                    plansToCacheJson
+            );
+            log.info("Cached CB Plan details for userId: {}, courses: {}, plans: {}",
+                    userId, coursePlanMappings.size(), plansToCache.size());
+        }
+    }
+
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> processCoursesForCbPlan(
+            List<String> courses,
+            String userOrgId,
+            Map<String, String> userProfile,
+            Map<String, Object> courseDetailsMap,
+            String planEndDateStr,
+            Map<String, String> coursePlanMappings) {
+
+        List<Map<String, Object>> courseList = new ArrayList<>();
+
+        for (String courseId : courses) {
+            Map<String, Object> contentDetails = null;
+
+            if (!courseDetailsMap.containsKey(courseId)) {
+                contentDetails = contentService.readContent(courseId, null);
+
+                if (MapUtils.isNotEmpty(contentDetails)) {
+                    if (courseId.contains("_rc")) {
+                        if (Constants.VERIFIED.equalsIgnoreCase(userProfile.get(Constants.PROFILE_STATUS_KEY))) {
+                            Map<String, Object> secureSettings = (Map<String, Object>) contentDetails.get(Constants.SECURE_SETTINGS);
+                            if (MapUtils.isNotEmpty(secureSettings)) {
+                                List<String> secureOrgList = (List<String>) secureSettings.get(Constants.ORGANISATION);
+                                if (CollectionUtils.isNotEmpty(secureOrgList) && secureOrgList.contains(userOrgId)) {
+                                    courseDetailsMap.put(courseId, contentDetails);
+                                }
+                            }
+                        }
+
+                        if (!courseDetailsMap.containsKey(courseId)) {
+                            contentDetails.clear();
+                        }
+                    } else {
+                        courseDetailsMap.put(courseId, contentDetails);
+                    }
+                } else {
+                    logger.error("Failed to read course details for Id: {}", courseId);
+                }
+            } else {
+                continue;
+            }
+
+            if (MapUtils.isNotEmpty(contentDetails)) {
+                courseList.add(contentDetails);
+                coursePlanMappings.put(courseId, planEndDateStr);
+            }
+        }
+        return courseList;
+    }
+
 
     private Map<String, Object> parseContextData(Object contextDataObj) {
         if (!(contextDataObj instanceof String)) {
@@ -285,26 +345,14 @@ public class CbPlanLearnerServiceImpl {
         userProfile.put(Constants.USER, (String) userBasicProfile.get(Constants.ID));
         userProfile.put(Constants.USER_ROOT_ORG_ID, (String) userBasicProfile.get(Constants.ROOT_ORG_ID));
         Object rawValue = userBasicProfile.get(Constants.PROFILE_DETAILS.toLowerCase());
-        Map<String, Object> profileDetails = new HashMap<>();
+        Map<String, Object> profileDetails;
 
-        if (rawValue == null) {
-            log.warn("profileDetails is null for userId: {}", userBasicProfile.get(Constants.ID));
-            return;
-        } else if (rawValue instanceof String) {
-            if (StringUtils.isNotBlank((String) rawValue)) {
-                profileDetails = mapper.readValue((String) rawValue, new TypeReference<Map<String, Object>>() {
-                });
-            }
+        if (rawValue instanceof String) {
+            profileDetails = mapper.readValue((String) rawValue, new TypeReference<Map<String, Object>>() {});
         } else if (rawValue instanceof Map) {
             profileDetails = (Map<String, Object>) rawValue;
         } else {
-            try {
-                profileDetails = mapper.convertValue(rawValue, new TypeReference<Map<String, Object>>() {
-                });
-            } catch (Exception e) {
-                log.error("Failed to convert profileDetails for userId: {}", userBasicProfile.get(Constants.ID), e);
-                return;
-            }
+            throw new IllegalArgumentException("Unsupported type for profileDetails: " + rawValue);
         }
 
         if (!org.apache.commons.collections4.MapUtils.isEmpty(profileDetails)) {
@@ -451,52 +499,6 @@ public class CbPlanLearnerServiceImpl {
                 log.error("Error parsing existing data for userId: {}, contextType: {}", userId, Constants.ORG_ADDITIONAL_PROPERTIES);
             }
         }
-    }
-
-    public ApiResponse getCBPlanCourseListForUser(String userId, String userOrgId) {
-        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.CB_PLAN_USER_LOOKUP_API);
-        try {
-            if (StringUtils.isBlank(userId)) {
-                response.getParams().setStatus(Constants.FAILED);
-                response.getParams().setErr("UserId is blank");
-                response.setResponseCode(HttpStatus.BAD_REQUEST);
-                return response;
-            }
-
-            logger.info("getCBPlanCourseListForUser :: UserId of the User : {}", userId);
-            Map<String, String> courseMap = new HashMap<>();
-            String redisKey = "cbplan:userlookup:" + userId + ":course";
-            String cachedData = redisCacheMgr.getFromCache(redisKey);
-
-            if (StringUtils.isNotBlank(cachedData)) {
-                try {
-                    courseMap = mapper.readValue(cachedData, new TypeReference<Map<String, String>>() {
-                    });
-                } catch (Exception e) {
-                    logger.error("Failed to parse cached course map for userId: {}. Exception: {}", userId, e.getMessage(), e);
-                }
-            } else {
-                getCBPlanListForUser(userOrgId, userId, true);
-                cachedData = redisCacheMgr.getFromCache(redisKey);
-                if (StringUtils.isNotBlank(cachedData)) {
-                    try {
-                        courseMap = mapper.readValue(cachedData, new TypeReference<Map<String, String>>() {
-                        });
-                    } catch (Exception e) {
-                        logger.error("Failed to parse cached course map for userId: {}. Exception: {}", userId, e.getMessage(), e);
-                    }
-                }
-            }
-            response.getResult().put("contents", courseMap);
-            response.getParams().setStatus(Constants.SUCCESS);
-            response.setResponseCode(HttpStatus.OK);
-        } catch (Exception e) {
-            logger.error("Failed to lookup for user cb plan details. Exception: " + e.getMessage(), e);
-            response.getParams().setStatus(Constants.FAILED);
-            response.getParams().setErr(e.getMessage());
-            response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
-        }
-        return response;
     }
 
 }

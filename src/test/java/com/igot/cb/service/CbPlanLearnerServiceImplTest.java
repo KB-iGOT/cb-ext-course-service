@@ -95,7 +95,7 @@ class CbPlanLearnerServiceImplTest {
         activePlan.put(Constants.END_DATE_REQUEST, Instant.now());
         AtomicBoolean isCacheEnabled = new AtomicBoolean(false);
         // Stub cache manager, since service uses it
-        when(cbPlanCacheMgr.getCbPlanForAllAndOrgId("org123", "user123", isCacheEnabled))
+        when(cbPlanCacheMgr.getCbPlanForAllAndOrgId("org123", isCacheEnabled))
                 .thenReturn(Arrays.asList(activePlan));
 
         Map<String, Object> contentDetails = new HashMap<>();

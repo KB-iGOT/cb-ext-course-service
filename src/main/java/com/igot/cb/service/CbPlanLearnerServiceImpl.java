@@ -69,9 +69,7 @@ public class CbPlanLearnerServiceImpl {
 
     @Value("${elastic.required.field.cb.plan.json.path}")
     private String elasticCbPlanJsonPath;
-
-    @Autowired
-    private RedisCacheMgr redisCacheMgr;
+    
 
     public CbPlanLearnerServiceImpl(AccessTokenValidator accessTokenValidator, CassandraOperation cassandraOperation, CbPlanCacheMgr cbPlanCacheMgr) {
         this.accessTokenValidator = accessTokenValidator;

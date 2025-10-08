@@ -213,6 +213,7 @@ public class CbPlanLearnerServiceImpl {
         }
         //Cache if enabled
         if (isCacheEnabled.get()) {
+            // Cache coursePlanMappings and plan IDs
             String coursePlanMappingsJson = "";
             String plansToCacheJson = "";
             if (MapUtils.isNotEmpty(coursePlanMappings)) {

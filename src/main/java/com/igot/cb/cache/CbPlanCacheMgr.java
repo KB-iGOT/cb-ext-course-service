@@ -33,6 +33,9 @@ public class CbPlanCacheMgr {
     @Value("${cb.plan.cache.ttl.minutes:60}")
     private int ttlMinutes;
 
+    @Value("${cb.plan.batch-size:5}") //default fallback to 5 if missing
+    private int planBatchSize;
+
     private final CassandraOperation cassandraOperation;
     private Cache<String, List<Map<String, Object>>> cbPlanCache;
 
@@ -148,10 +151,9 @@ public class CbPlanCacheMgr {
         log.info("Fetching CB Plan details for {} plan IDs in batches of 5", planIds.size());
 
         // Process in batches of 5
-        int batchSize = Constants.PLAN_BATCH_SIZE;
 
-        for (int i = 0; i < planIds.size(); i += batchSize) {
-            List<String> batch = planIds.subList(i, Math.min(i + batchSize, planIds.size()));
+        for (int i = 0; i < planIds.size(); i += planBatchSize) {
+            List<String> batch = planIds.subList(i, Math.min(i + planBatchSize, planIds.size()));
 
             Map<String, Object> propertiesMap = new HashMap<>();
             propertiesMap.put(Constants.PLAN_ID, batch);

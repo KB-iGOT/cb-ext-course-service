@@ -104,7 +104,6 @@ public class CbPlanLearnerServiceImpl {
             }
             setUserProfile(userProfile, userList.get(0));
 
-            ObjectMapper mapper = new ObjectMapper();
             AtomicBoolean isCacheEnabled = new AtomicBoolean(false);
             List<Map<String, Object>> activeCbPlans = new ArrayList<>();
 
@@ -214,7 +213,6 @@ public class CbPlanLearnerServiceImpl {
         }
         //Cache if enabled
         if (isCacheEnabled.get()) {
-            ObjectMapper mapper = new ObjectMapper();
             String coursePlanMappingsJson = "";
             String plansToCacheJson = "";
             if (MapUtils.isNotEmpty(coursePlanMappings)) {

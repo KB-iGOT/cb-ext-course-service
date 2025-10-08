@@ -413,7 +413,12 @@ public class Constants {
     public static final String X_AUTH_USER_ID = "x-authenticated-userid";
     public static final String IS_CCA = "iscca";
     public static final String ROOT_ORG_IDS_IN_CONTEXT_DATA = "rootOrgIdsInContextData";
+    public static final String CB_PLAN_REDIS_KEY_PREFIX = "cbplan:userlookup:";
+    public static final String BY_PLANS_SUFFIX = ":byPlan";
+    public static final String BY_COURSE_SUFFIX = ":course";
     public static final String CB_PLAN_USER_LOOKUP_API = "api.cbplan.user.lookup";
+
+
 
     private Constants() {
     }

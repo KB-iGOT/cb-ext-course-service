@@ -8,9 +8,15 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.commons.collections.CollectionUtils;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.expression.spel.ast.BooleanLiteral;
 import org.springframework.stereotype.Component;
 
 import com.github.benmanes.caffeine.cache.Cache;
@@ -26,6 +32,9 @@ public class CbPlanCacheMgr {
 
     @Value("${cb.plan.cache.ttl.minutes:60}")
     private int ttlMinutes;
+
+    @Value("${cb.plan.batch.size:5}") //default fallback to 5 if missing
+    private int planBatchSize;
 
     private final CassandraOperation cassandraOperation;
     private Cache<String, List<Map<String, Object>>> cbPlanCache;
@@ -89,7 +98,7 @@ public class CbPlanCacheMgr {
         return cbPlanList;
     }
 
-    public List<Map<String, Object>> getCbPlanForAllAndOrgId(String orgId) {
+    public List<Map<String, Object>> getCbPlanForAllAndOrgId(String orgId, AtomicBoolean isCacheEnabled) {
         List<Map<String, Object>> activeCbPlans = cbPlanCache.getIfPresent(orgId);
         if (activeCbPlans != null) {
             log.info("Cache hit for orgId: {}, Found {} active CB Plans", orgId, activeCbPlans.size());
@@ -127,6 +136,52 @@ public class CbPlanCacheMgr {
         //TODO - Need to remove draftData (if available) and also contextData.accessControl
         log.info("Found {} CB Plans for orgId: {}, active count: {}", existingCbPlans.size(), orgId, activeCbPlans.size());
         cbPlanCache.put(orgId, activeCbPlans);
+        isCacheEnabled.set(true);
         return activeCbPlans;
     }
+
+    public List<Map<String, Object>> getCbPlansByPlanIdsInBatch(List<String> planIds) {
+        List<Map<String, Object>> allCbPlans = new ArrayList<>();
+
+        if (CollectionUtils.isEmpty(planIds)) {
+            log.warn("No plan IDs provided for batch fetch.");
+            return allCbPlans;
+        }
+
+        log.info("Fetching CB Plan details for {} plan IDs in batches of 5", planIds.size());
+
+        // Process in batches of 5
+
+        for (int i = 0; i < planIds.size(); i += planBatchSize) {
+            List<String> batch = planIds.subList(i, Math.min(i + planBatchSize, planIds.size()));
+
+            Map<String, Object> propertiesMap = new HashMap<>();
+            propertiesMap.put(Constants.PLAN_ID, batch);
+
+            try {
+                List<Map<String, Object>> batchResult = cassandraOperation.getRecordsByProperties(
+                        Constants.KEYSPACE_SUNBIRD,
+                        Constants.TABLE_CB_PLAN_V2,
+                        propertiesMap,
+                        new ArrayList<>(),
+                        null
+                );
+
+                if (CollectionUtils.isNotEmpty(batchResult)) {
+                    allCbPlans.addAll(batchResult);
+                    log.info("Fetched {} records for plan IDs batch: {}", batchResult.size(), batch);
+                } else {
+                    log.warn("No records found for plan IDs batch: {}", batch);
+                }
+
+            } catch (Exception e) {
+                log.error("Error fetching CB Plans for plan IDs batch {}: {}", batch, e.getMessage(), e);
+            }
+        }
+
+
+        log.info("Total CB Plans fetched from Cassandra: {}", allCbPlans.size());
+        return allCbPlans;
+    }
+
 }

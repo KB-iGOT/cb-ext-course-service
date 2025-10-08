@@ -148,8 +148,10 @@ public class CbPlanCacheMgr {
         log.info("Fetching CB Plan details for {} plan IDs in batches of 5", planIds.size());
 
         // Process in batches of 5
-        for (int i = 0; i < planIds.size(); i += 5) {
-            List<String> batch = planIds.subList(i, Math.min(i + 5, planIds.size()));
+        int batchSize = Constants.PLAN_BATCH_SIZE;
+
+        for (int i = 0; i < planIds.size(); i += batchSize) {
+            List<String> batch = planIds.subList(i, Math.min(i + batchSize, planIds.size()));
 
             Map<String, Object> propertiesMap = new HashMap<>();
             propertiesMap.put(Constants.PLAN_ID, batch);
@@ -174,6 +176,7 @@ public class CbPlanCacheMgr {
                 log.error("Error fetching CB Plans for plan IDs batch {}: {}", batch, e.getMessage(), e);
             }
         }
+
 
         log.info("Total CB Plans fetched from Cassandra: {}", allCbPlans.size());
         return allCbPlans;

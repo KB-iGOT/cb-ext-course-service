@@ -103,7 +103,7 @@ class CbPlanLearnerServiceImplTest {
         activePlan.put(Constants.CONTENT_LIST, Arrays.asList("course1"));
         activePlan.put(Constants.END_DATE_REQUEST, Instant.now());
 
-        // ✅ Use argument matchers for AtomicBoolean
+        // Use argument matchers for AtomicBoolean
         when(cbPlanCacheMgr.getCbPlanForAllAndOrgId(eq("org123"), any(AtomicBoolean.class)))
                 .thenReturn(Arrays.asList(activePlan));
 

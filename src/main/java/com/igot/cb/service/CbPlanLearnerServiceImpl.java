@@ -156,7 +156,6 @@ public class CbPlanLearnerServiceImpl {
         return response;
     }
 
-
     private void processActiveCbPlans(
             List<Map<String, Object>> activeCbPlans,
             String userOrgId,
@@ -236,7 +235,6 @@ public class CbPlanLearnerServiceImpl {
     }
 
 
-    @SuppressWarnings("unchecked")
     private List<Map<String, Object>> processCoursesForCbPlan(
             List<String> courses,
             String userOrgId,
@@ -256,11 +254,18 @@ public class CbPlanLearnerServiceImpl {
                 if (MapUtils.isNotEmpty(contentDetails)) {
                     if (courseId.contains("_rc")) {
                         if (Constants.VERIFIED.equalsIgnoreCase(userProfile.get(Constants.PROFILE_STATUS_KEY))) {
-                            Map<String, Object> secureSettings = (Map<String, Object>) contentDetails.get(Constants.SECURE_SETTINGS);
-                            if (MapUtils.isNotEmpty(secureSettings)) {
-                                List<String> secureOrgList = (List<String>) secureSettings.get(Constants.ORGANISATION);
-                                if (CollectionUtils.isNotEmpty(secureOrgList) && secureOrgList.contains(userOrgId)) {
-                                    courseDetailsMap.put(courseId, contentDetails);
+                            Object secureSettingsObj = contentDetails.get(Constants.SECURE_SETTINGS);
+                            if (secureSettingsObj instanceof Map<?, ?> secureSettings && !secureSettings.isEmpty()) {
+                                Object orgListObj = secureSettings.get(Constants.ORGANISATION);
+                                if (orgListObj instanceof List<?> orgList && !orgList.isEmpty()) {
+                                    List<String> secureOrgList = orgList.stream()
+                                            .filter(String.class::isInstance)
+                                            .map(String.class::cast)
+                                            .toList();
+
+                                    if (secureOrgList.contains(userOrgId)) {
+                                        courseDetailsMap.put(courseId, contentDetails);
+                                    }
                                 }
                             }
                         }

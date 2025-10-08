@@ -33,7 +33,7 @@ public class CbPlanCacheMgr {
     @Value("${cb.plan.cache.ttl.minutes:60}")
     private int ttlMinutes;
 
-    @Value("${cb.plan.batch-size:5}") //default fallback to 5 if missing
+    @Value("${cb.plan.batch.size:5}") //default fallback to 5 if missing
     private int planBatchSize;
 
     private final CassandraOperation cassandraOperation;

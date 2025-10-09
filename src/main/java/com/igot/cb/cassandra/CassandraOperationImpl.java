@@ -5,7 +5,6 @@ import com.datastax.oss.driver.api.core.CqlSession;
 import com.datastax.oss.driver.api.core.cql.*;
 import com.datastax.oss.driver.api.querybuilder.QueryBuilder;
 import com.datastax.oss.driver.api.querybuilder.delete.Delete;
-import com.datastax.oss.driver.api.querybuilder.delete.DeleteSelection;
 import com.datastax.oss.driver.api.querybuilder.relation.Relation;
 import com.datastax.oss.driver.api.querybuilder.select.Select;
 import com.datastax.oss.driver.api.querybuilder.term.Term;
@@ -19,14 +18,10 @@ import lombok.extern.slf4j.Slf4j;
 
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections.MapUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
-import java.text.MessageFormat;
 import java.util.*;
-import java.util.Map.Entry;
 import java.util.stream.Collectors;
 
 
@@ -197,6 +192,53 @@ public class CassandraOperationImpl implements CassandraOperation {
                     Constants.EXCEPTION_MSG_DELETE, tableName, e.getMessage()));
             throw e;
         }
+    }
+
+    /**
+     * Inserts a record into Cassandra with a composite primary key.
+     *
+     * @param keyspaceName     The name of the keyspace containing the table.
+     * @param tableName        The name of the table into which to insert the record.
+     * @param primaryKeyColumn The name of the primary key column.
+     * @param primaryKeyValue  The value of the primary key.
+     * @param compositeKey     A map representing the composite key fields and their values.
+     * @param otherFields      A map representing other fields and their values to be inserted.
+     * @return An object representing the result of the insertion operation.
+     */
+    @Override
+    public Object insertRecord(
+            String keyspaceName,
+            String tableName,
+            String primaryKeyColumn,
+            String primaryKeyValue,
+            Map<String, Object> compositeKey,
+            Map<String, Object> otherFields) {
+        ApiResponse response = new ApiResponse();
+        try {
+            Map<String, Object> request = new LinkedHashMap<>();
+            request.put(primaryKeyColumn, primaryKeyValue);
+            if (MapUtils.isNotEmpty(compositeKey)) {
+                request.putAll(compositeKey);
+            }
+            if (MapUtils.isNotEmpty(otherFields)) {
+                request.putAll(otherFields);
+            }
+            String query = CassandraUtil.getPreparedStatement(keyspaceName, tableName, request);
+            CqlSession session = connectionManager.getSession(keyspaceName);
+            SimpleStatement simpleStatement = SimpleStatement.builder(query)
+                    .addPositionalValues(request.values())
+                    .build();
+            session.execute(simpleStatement);
+            response.put(Constants.RESPONSE, Constants.SUCCESS);
+        } catch (Exception e) {
+            String errMsg = String.format(
+                    "Exception occurred while inserting record into %s. Error: %s",
+                    tableName, e.getMessage());
+            log.error("Error inserting record into {}: {}", tableName, e.getMessage(), e);
+            response.put(Constants.RESPONSE, Constants.FAILED);
+            response.put(Constants.ERROR_MESSAGE, errMsg);
+        }
+        return response;
     }
 
 }

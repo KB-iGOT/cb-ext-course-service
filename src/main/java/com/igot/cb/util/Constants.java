@@ -417,9 +417,13 @@ public class Constants {
     public static final String BY_PLANS_SUFFIX = ":byPlan";
     public static final String BY_COURSE_SUFFIX = ":course";
     public static final String CB_PLAN_USER_LOOKUP_API = "api.cbplan.user.lookup";
-
-
-
+    public static final String TABLE_DECLARATION_ACKNOWLEDGMENT = "consent_acknowledgement" ;
+    public static final String TABLE_CONSENT_DETAILS = "consent_details" ;
+    public static final String CONSENT_ID= "consentId";
+    public static final String SUBMITTED_BY = "submittedBy";
+    public static final String SUBMITTED_AT = "submittedAt";
+    public static final String ADDITIONAL_ATTRIBUTES = "additionalAttributes";
+    public static final String ADDITIONAL_DATA = "additionaldata";
     private Constants() {
     }
 }

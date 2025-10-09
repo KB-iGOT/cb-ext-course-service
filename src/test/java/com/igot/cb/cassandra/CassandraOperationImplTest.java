@@ -348,4 +348,41 @@ class CassandraOperationImplTest {
             assertEquals(Constants.FAILED, response.get(Constants.RESPONSE));
         }
     }
+
+    @Test
+    void testInsertRecord_Success() {
+        Map<String, Object> compositeKey = Map.of("userId", "u1");
+        Map<String, Object> otherFields = Map.of("field1", "value1");
+        try (MockedStatic<CassandraUtil> mockedCassandraUtil = mockStatic(CassandraUtil.class)) {
+            mockedCassandraUtil.when(() ->
+                            CassandraUtil.getPreparedStatement(anyString(), anyString(), any()))
+                    .thenReturn("INSERT INTO table ...");
+            when(connectionManager.getSession("ks")).thenReturn(mockSession);
+            when(mockSession.execute(any(SimpleStatement.class))).thenReturn(mock(ResultSet.class));
+            Object result = cassandraOperation.insertRecord(
+                    "ks", "tbl", "contentId", "c1", compositeKey, otherFields);
+            assertInstanceOf(ApiResponse.class, result);
+            ApiResponse response = (ApiResponse) result;
+            assertEquals(Constants.SUCCESS, response.get(Constants.RESPONSE));
+            verify(mockSession).execute(any(SimpleStatement.class));
+        }
+    }
+
+    @Test
+    void testInsertRecord_Failure() {
+        Map<String, Object> compositeKey = new HashMap<>();
+        Map<String, Object> otherFields = new LinkedHashMap<>();
+
+        try (MockedStatic<CassandraUtil> mockedCassandraUtil = mockStatic(CassandraUtil.class)) {
+            mockedCassandraUtil.when(() -> CassandraUtil.getPreparedStatement(anyString(), anyString(), any()))
+                    .thenThrow(new RuntimeException("DB error"));
+            Object result = cassandraOperation.insertRecord(
+                    "ks", "tbl", "contentId", "c1", compositeKey, otherFields);
+            assertInstanceOf(ApiResponse.class, result);
+            ApiResponse response = (ApiResponse) result;
+            assertEquals(Constants.FAILED, response.get(Constants.RESPONSE));
+            assertTrue(response.get(Constants.ERROR_MESSAGE).toString().contains("tbl"));
+            assertTrue(response.get(Constants.ERROR_MESSAGE).toString().contains("DB error"));
+        }
+    }
 }

@@ -396,9 +396,9 @@ public class CbPlanLearnerServiceImpl {
             }
             userProfile.put(Constants.CENTRAL_DEPUTATION_LOWER_KEY, String.valueOf(centralDeputation));
         }
-//        getExistingContextData((String) userBasicProfile.get(Constants.ID),
-//                (String) userBasicProfile.get(Constants.ROOT_ORG_ID.toLowerCase()),
-//                userProfile);
+        getExistingContextData((String) userBasicProfile.get(Constants.ID),
+                (String) userBasicProfile.get(Constants.ROOT_ORG_ID),
+                userProfile);
     }
 
     private boolean evaluateContextAccessRule(Map<String, Object> accessSettingIdMap,

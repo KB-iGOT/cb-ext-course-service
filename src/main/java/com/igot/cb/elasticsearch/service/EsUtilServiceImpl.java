@@ -401,7 +401,11 @@ public class EsUtilServiceImpl implements EsUtilService{
                             List<FieldValue> termsList = ((List<?>) value).stream()
                                     .map(v -> FieldValue.of(v.toString()))
                                     .collect(Collectors.toList());
-                            boolQueryBuilder.must(Query.of(q -> q.terms(t -> t.field(field + Constants.KEYWORD).terms(terms -> terms.value(termsList)))));
+                            if (cbExtServerProperties.getNonTextFields().contains(field)) {
+                                boolQueryBuilder.must(Query.of(q -> q.terms(t -> t.field(field).terms(terms -> terms.value(termsList)))));
+                            } else {
+                                boolQueryBuilder.must(Query.of(q -> q.terms(t -> t.field(field + Constants.KEYWORD).terms(terms -> terms.value(termsList)))));
+                            }
                         } else if (value instanceof String) {
                             boolQueryBuilder.must(Query.of(q -> q.terms(t ->
                                     t.field(field + Constants.KEYWORD)

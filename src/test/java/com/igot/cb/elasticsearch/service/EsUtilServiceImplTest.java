@@ -316,6 +316,7 @@ class EsUtilServiceImplTest {
         SearchResponse<Object> searchResponse = createMockSearchResponse();
         when(elasticsearchClient.search(any(co.elastic.clients.elasticsearch.core.SearchRequest.class), eq(Object.class)))
                 .thenReturn(searchResponse);
+        when(cbExtServerProperties.getNonTextFields()).thenReturn("isApar,createdAt,endDate");
         
         SearchResult result = esUtilService.searchDocuments("test-index", criteria, "/test.json");
         
@@ -696,5 +697,23 @@ class EsUtilServiceImplTest {
         assertNotNull(nestedQueryResult);
         assertFalse(nestedQueryResult.build().must().isEmpty(), "Nested field queries must be included");
     }
+
+    @Test
+    void testSearchDocumentsWithNonTextFilterList() throws Exception {
+        SearchCriteria criteria = createBasicSearchCriteria();
+        Map<String, Object> filter = new HashMap<>();
+        filter.put("categories", Arrays.asList("tech", "science"));
+        filter.put("active", true);
+        filter.put("tags", Set.of("java", "spring"));
+        filter.put("isApar", Arrays.asList("true"));
+        criteria.setFilter((HashMap<String, Object>) filter);
+        SearchResponse<Object> searchResponse = createMockSearchResponse();
+        when(elasticsearchClient.search(any(co.elastic.clients.elasticsearch.core.SearchRequest.class), eq(Object.class)))
+                .thenReturn(searchResponse);
+        when(cbExtServerProperties.getNonTextFields()).thenReturn("isApar,createdAt,endDate");
+        SearchResult result = esUtilService.searchDocuments("test-index", criteria, "/test.json");
+        assertNotNull(result);
+    }
+
 
 }

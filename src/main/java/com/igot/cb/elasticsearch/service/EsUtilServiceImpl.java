@@ -89,19 +89,6 @@ public class EsUtilServiceImpl implements EsUtilService{
     @Override
     public String updateDocument(
             String index, String indexType, String entityId, Map<String, Object> updatedDocument, String JsonFilePath) {
-        /*
-         * NOTE (ES 6.8 compatibility):
-         * The official Java client 8.x uses typeless endpoints ( /{index}/_update/{id} ).
-         * When talking to an ES 6.8 cluster this path is interpreted as {index}/{type}/{id}
-         * and the segment "_update" is considered a type, which is invalid (starts with '_').
-         * This causes: invalid_type_name_exception Document mapping type name can't start with '_', found: [_update]
-         *
-         * To remain backward compatible without downgrading the whole client right now, we emulate a partial update:
-         *  1. Fetch existing document (if any)
-         *  2. Merge provided fields (overwrite only keys present in updatedDocument)
-         *  3. Re-index the merged document using the regular index API (which still works with ES 6.8)
-         * This gives near-semantic parity with a partial update (no deletion of unspecified fields) while avoiding the _update endpoint.
-         */
         try {
             // 1. Filter incoming map using schema (same logic as addDocument)
             JsonSchemaFactory schemaFactory = JsonSchemaFactory.getInstance();
@@ -186,34 +173,50 @@ public class EsUtilServiceImpl implements EsUtilService{
 
     private Map<String, List<FacetDTO>> extractFacetData(
             SearchResponse<Object> searchResponse, SearchCriteria searchCriteria) {
-        Map<String, List<FacetDTO>> fieldAggregations = new HashMap<>();
-        if (searchCriteria.getFacets() != null) {
-            for (String field : searchCriteria.getFacets()) {
-                Aggregate aggregate = searchResponse
-                        .aggregations()
-                        .get(field + "_agg");
-                if (aggregate.isSterms()) {
-                    List<FacetDTO> fieldValueList = new ArrayList<>();
-                    for (StringTermsBucket bucket : aggregate.sterms().buckets().array()) {
-                        if (!bucket.key().stringValue().isEmpty()) {
-                            FacetDTO facetDTO = new FacetDTO(bucket.key().stringValue(), bucket.docCount());
-                            fieldValueList.add(facetDTO);
-                        }
-                    }
-                    fieldAggregations.put(field, fieldValueList);
-                } else {
-                    List<FacetDTO> fieldValueList = new ArrayList<>();
-                    for (LongTermsBucket bucket : aggregate.lterms().buckets().array()) {
-                        FacetDTO facetDTO = new FacetDTO(bucket.keyAsString(), bucket.docCount());
-                        fieldValueList.add(facetDTO);
 
-                    }
-                    fieldAggregations.put(field, fieldValueList);
-                }
+        Map<String, List<FacetDTO>> fieldAggregations = new HashMap<>();
+
+        if (searchCriteria.getFacets() == null) {
+            return fieldAggregations;
+        }
+
+        for (String field : searchCriteria.getFacets()) {
+            Aggregate aggregate = searchResponse.aggregations().get(field + "_agg");
+            if (aggregate == null) continue;
+
+            List<FacetDTO> facetList = extractFacetList(aggregate);
+            if (!facetList.isEmpty()) {
+                fieldAggregations.put(field, facetList);
             }
         }
         return fieldAggregations;
     }
+
+    private List<FacetDTO> extractFacetList(Aggregate aggregate) {
+        return aggregate.isSterms()
+                ? extractStringFacets(aggregate.sterms().buckets().array())
+                : extractLongFacets(aggregate.lterms().buckets().array());
+    }
+
+    private List<FacetDTO> extractStringFacets(List<StringTermsBucket> buckets) {
+        List<FacetDTO> list = new ArrayList<>();
+        for (StringTermsBucket bucket : buckets) {
+            String key = bucket.key().stringValue();
+            if (!key.isEmpty()) {
+                list.add(new FacetDTO(key, bucket.docCount()));
+            }
+        }
+        return list;
+    }
+
+    private List<FacetDTO> extractLongFacets(List<LongTermsBucket> buckets) {
+        List<FacetDTO> list = new ArrayList<>();
+        for (LongTermsBucket bucket : buckets) {
+            list.add(new FacetDTO(bucket.keyAsString(), bucket.docCount()));
+        }
+        return list;
+    }
+
 
     private List<Map<String, Object>> extractPaginatedResult(SearchResponse<Object> paginatedSearchResponse) {
         List<Map<String, Object>> paginatedResult = new ArrayList<>();
@@ -398,7 +401,7 @@ public class EsUtilServiceImpl implements EsUtilService{
                             List<FieldValue> termsList = ((List<?>) value).stream()
                                     .map(v -> FieldValue.of(v.toString()))
                                     .collect(Collectors.toList());
-                            boolQueryBuilder.must(Query.of(q -> q.terms(t -> t.field(field ).terms(terms -> terms.value(termsList)))));
+                            boolQueryBuilder.must(Query.of(q -> q.terms(t -> t.field(field + Constants.KEYWORD).terms(terms -> terms.value(termsList)))));
                         } else if (value instanceof String) {
                             boolQueryBuilder.must(Query.of(q -> q.terms(t ->
                                     t.field(field + Constants.KEYWORD)
@@ -408,7 +411,7 @@ public class EsUtilServiceImpl implements EsUtilService{
                             Set<String> termsSet = (Set<String>) value;
                             List<FieldValue> termsList = termsSet.stream()
                                     .map(FieldValue::of)
-                                    .collect(Collectors.toList());
+                                    .toList();
                             boolQueryBuilder.must(Query.of(q -> q.terms(t -> t.field(field + Constants.KEYWORD).terms(terms -> terms.value(termsList)))));
                         } else if (value instanceof Map) {
                             Map<String, Object> nestedMap = (Map<String, Object>) value;

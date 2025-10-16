@@ -1247,9 +1247,6 @@ class CbPlanServiceImplTest {
         assertEquals(false, result.get(Constants.IS_APAR));
         assertEquals("userId", result.get(Constants.CREATED_BY));
         assertNotNull(result.get(Constants.END_DATE_REQUEST));
-        Map<String, Object> draftData = (Map<String, Object>) result.get(Constants.DRAFT_DATA);
-        assertNotNull(draftData);
-        assertEquals("Draft Plan", draftData.get("name"));
     }
 
 

@@ -143,7 +143,6 @@ public class AccessSettingMigrationServiceImpl {
                 cbPlanV2Map.put(Constants.ORG_ID_LIST, Collections.singletonList(orgId));
                 cbPlanV2Map.put(Constants.CREATED_AT, (Instant) cbPlanMap.get(Constants.CREATED_AT_KEY));
                 cbPlanV2Map.put(Constants.CREATED_BY, (String) cbPlanMap.get(Constants.CREATED_BY));
-                cbPlanV2Map.put(Constants.DRAFT_DATA_KEY, (String) cbPlanMap.get(Constants.DRAFT_DATA));
 
                 Boolean isApar = (Boolean) cbPlanMap.get(Constants.IS_APAR);
                 cbPlanV2Map.put(Constants.IS_APAR, isApar != null ? isApar : Boolean.FALSE);

@@ -1215,16 +1215,21 @@ class CbPlanServiceImplTest {
 
     @SuppressWarnings("unchecked")
     @Test
-    void testPopulateReadData_WithDraftData() throws Exception {
+    void testPopulateReadData_WithDraftStatus() throws Exception {
+        // Arrange
         Map<String, Object> cbPlan = new HashMap<>();
-        cbPlan.put("draftData", "{\"name\":\"Draft Plan\",\"contentType\":\"Course\",\"contentList\":[\"content1\"],\"endDate\":\"2024-12-31\"}");
-        cbPlan.put("status", "draft");
-        cbPlan.put("createdBy", "userId");
-        cbPlan.put("createdAtReq", Instant.now());
-
-        Map<String, Object> mockContent = createMockContent();
-        when(contentService.readContent(anyString(), any())).thenReturn(mockContent);
-
+        cbPlan.put(Constants.DRAFT_DATA,
+                "{\"name\":\"Draft Plan\",\"contentType\":\"Course\",\"contentList\":[\"content1\"],\"endDate\":\"2024-12-31\"}");
+        cbPlan.put(Constants.STATUS, "draft"); // Set status to draft to hit the ELSE block
+        cbPlan.put(Constants.CREATED_BY, "userId");
+        cbPlan.put(Constants.CREATED_AT_REQ, Instant.now());
+        cbPlan.put(Constants.CONTENT_LIST, List.of("content1"));
+        cbPlan.put(Constants.END_DATE_REQUEST, new Date());
+        cbPlan.put(Constants.IS_APAR, false);
+        // Mock enriched content
+        List<Map<String, Object>> enrichedContent = List.of(Map.of("content", "enrichedContent1"));
+        when(contentService.enrichContentInfoForCBPlan(anyList())).thenReturn(enrichedContent);
+        // Mock user profile enrichment
         doAnswer(invocation -> {
             Map<String, Map<String, String>> userInfoMap = invocation.getArgument(2);
             Map<String, String> userDetails = new HashMap<>();
@@ -1233,13 +1238,17 @@ class CbPlanServiceImplTest {
             userInfoMap.put("userId", userDetails);
             return null;
         }).when(userUtilityService).readUserProfileFromDB(any(), anyList());
-
-        Map<String, Object> result = (Map<String, Object>) ReflectionTestUtils.invokeMethod(cbPlanService, "populateReadData", cbPlan);
-
+        Map<String, Object> result =
+                (Map<String, Object>) ReflectionTestUtils.invokeMethod(cbPlanService, "populateReadData", cbPlan);
         assertNotNull(result);
-        assertEquals("Draft Plan", result.get("name"));
-        assertNotNull(result.get("contentList"));
+        assertEquals(cbPlan.get(Constants.NAME), result.get(Constants.NAME)); // else block uses original map
+        assertEquals(cbPlan.get(Constants.CONTENT_TYPE), result.get(Constants.CONTENT_TYPE));
+        assertEquals(enrichedContent, result.get(Constants.CONTENT_LIST)); // enriched content still applied
+        assertEquals(false, result.get(Constants.IS_APAR));
+        assertEquals("userId", result.get(Constants.CREATED_BY));
+        assertNotNull(result.get(Constants.END_DATE_REQUEST));
     }
+
 
     @Test
     @Disabled("This test is ignored due to optimization code changes")

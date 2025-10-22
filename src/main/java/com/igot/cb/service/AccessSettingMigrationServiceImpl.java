@@ -415,12 +415,18 @@ public class AccessSettingMigrationServiceImpl {
 
     private void insertPlanToLookUpTable(String cbPlanId, String orgId, Instant endDate, String status) {
         try {
+            log.info("Inserting record into CB Plan LookUp table for planId: {} and endDate {}", cbPlanId,endDate);
             Map<String, Object> lookupMap = new HashMap<>();
             lookupMap.put(Constants.PLAN_ID_RQST, cbPlanId);
             lookupMap.put(Constants.ORG_ID_REQT, orgId);
             lookupMap.put(Constants.END_DATE, endDate);
             if(Constants.CB_RETIRE.equalsIgnoreCase(status)) {
                 lookupMap.put(Constants.IS_ACTIVE, false);
+            }else if(Constants.DRAFT.equalsIgnoreCase(status)){
+                lookupMap.remove(Constants.END_DATE);
+               cassandraOperation.deleteRecord(Constants.KEYSPACE_SUNBIRD,
+                        Constants.TABLE_CB_PLAN_V2_LOOKUP_BY_ORG, lookupMap);
+               return;
             }else{
                 lookupMap.put(Constants.IS_ACTIVE, true);
             }

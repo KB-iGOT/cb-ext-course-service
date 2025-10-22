@@ -112,9 +112,12 @@ public class CbPlanCacheMgr {
             cbPlanCache.put(orgId, cbPlanList);
             return cbPlanList;
         }
-        cbPlanList = cbPlanList.stream()
-                .sorted(Comparator.comparing(m -> (Instant) m.get(Constants.END_DATE_REQUEST),
-                        Comparator.reverseOrder()))
+        cbPlanList  = cbPlanList.stream()
+                .filter(m -> m.get(Constants.END_DATE_REQUEST) != null)
+                .sorted(Comparator.comparing(
+                        m -> (Instant) m.get(Constants.END_DATE_REQUEST),
+                        Comparator.reverseOrder()
+                ))
                 .collect(Collectors.toList());
         List<String> planIds = cbPlanList.stream()
                     .map(plan -> (String) plan.get(Constants.PLAN_ID)).collect(Collectors.toList());

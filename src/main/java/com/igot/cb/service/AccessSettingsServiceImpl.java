@@ -94,9 +94,9 @@ public class AccessSettingsServiceImpl {
           fields, null);
       if (!accessSettingRule.isEmpty()) {
         Map<String, Object> record = accessSettingRule.get(0);
-        Boolean status = (Boolean) record.get(Constants.IS_ARCHIVED);
+        Boolean status = (Boolean) record.get(Constants.IS_ARCHIVED_KEY);
         if (Boolean.FALSE.equals(status)) {
-          Object contextDataObj = record.get(Constants.CONTEXT_DATA);
+          Object contextDataObj = record.get(Constants.CONTEXT_DATA_KEY);
           String contextDataJson = (contextDataObj instanceof String) ? (String) contextDataObj : null;
           if (StringUtils.isNotEmpty(contextDataJson)) {
             try {

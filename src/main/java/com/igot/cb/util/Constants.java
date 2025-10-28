@@ -427,6 +427,7 @@ public class Constants {
     public static final String STREAMING_URL = "streamingUrl";
     public static final String APPLICATION_JSON = "application/json";
     public static final String STREAMING_URI = "streamUri";
+    public static final String IS_ARCHIVED_KEY = "isArchived";
 
     private Constants() {
     }

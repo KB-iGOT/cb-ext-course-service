@@ -206,9 +206,9 @@ class AccessSettingsServiceImplTest {
   @Test
   void testRead_HappyPath() {
     Map<String, Object> recordMap = new HashMap<>();
-    recordMap.put(Constants.IS_ARCHIVED, false);
+    recordMap.put(Constants.IS_ARCHIVED_KEY, false);
     recordMap.put(Constants.CONTEXT_ID, "cid");
-    recordMap.put(Constants.CONTEXT_DATA, "{\"foo\":\"bar\"}");
+    recordMap.put(Constants.CONTEXT_DATA_KEY, "{\"foo\":\"bar\"}");
 
     when(cassandraOperation.getRecordsByProperties(
             anyString(), anyString(), anyMap(), anyList(), isNull()))
@@ -224,11 +224,11 @@ class AccessSettingsServiceImplTest {
     String contentId = "cid-123";
     Map<String, Object> dbRecord = new HashMap<>();
     dbRecord.put(Constants.CONTEXT_ID, contentId);
-    dbRecord.put(Constants.IS_ARCHIVED, false);
+    dbRecord.put(Constants.IS_ARCHIVED_KEY, false);
     Map<String, Object> contextData = new HashMap<>();
     contextData.put("foo", "bar");
     String contextDataJson = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(contextData);
-    dbRecord.put(Constants.CONTEXT_DATA, contextDataJson);
+    dbRecord.put(Constants.CONTEXT_DATA_KEY, contextDataJson);
     List<Map<String, Object>> dbRecords = Collections.singletonList(dbRecord);
     when(cassandraOperation.getRecordsByProperties(
             anyString(), anyString(), anyMap(), anyList(), isNull()
@@ -243,15 +243,15 @@ class AccessSettingsServiceImplTest {
     String contentId = "cid-123";
     Map<String, Object> nonArchived = new HashMap<>();
     nonArchived.put(Constants.CONTEXT_ID, contentId);
-    nonArchived.put(Constants.IS_ARCHIVED, false);
+    nonArchived.put(Constants.IS_ARCHIVED_KEY, false);
     Map<String, Object> contextData = new HashMap<>();
     contextData.put("foo", "bar");
     String contextDataJson = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(contextData);
-    nonArchived.put(Constants.CONTEXT_DATA, contextDataJson);
+    nonArchived.put(Constants.CONTEXT_DATA_KEY, contextDataJson);
     Map<String, Object> archived = new HashMap<>();
     archived.put(Constants.CONTEXT_ID, contentId);
-    archived.put(Constants.IS_ARCHIVED, true);
-    archived.put(Constants.CONTEXT_DATA, contextDataJson);
+    archived.put(Constants.IS_ARCHIVED_KEY, true);
+    archived.put(Constants.CONTEXT_DATA_KEY, contextDataJson);
     List<Map<String, Object>> dbRecords = Arrays.asList(nonArchived, archived);
     when(cassandraOperation.getRecordsByProperties(
             anyString(), anyString(), anyMap(), anyList(), isNull()
@@ -279,8 +279,8 @@ class AccessSettingsServiceImplTest {
     String contentId = "cid-err";
     Map<String, Object> dbRecord = new HashMap<>();
     dbRecord.put(Constants.CONTEXT_ID, contentId);
-    dbRecord.put(Constants.IS_ARCHIVED, false);
-    dbRecord.put(Constants.CONTEXT_DATA, "not-a-json");
+    dbRecord.put(Constants.IS_ARCHIVED_KEY, false);
+    dbRecord.put(Constants.CONTEXT_DATA_KEY, "not-a-json");
     List<Map<String, Object>> dbRecords = Collections.singletonList(dbRecord);
     when(cassandraOperation.getRecordsByProperties(
             anyString(), anyString(), anyMap(), anyList(), isNull()

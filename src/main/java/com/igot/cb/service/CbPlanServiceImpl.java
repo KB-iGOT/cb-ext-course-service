@@ -548,6 +548,7 @@ public class CbPlanServiceImpl {
                 response.setResponseCode(HttpStatus.BAD_REQUEST);
             }
         } catch (Exception e) {
+            e.printStackTrace();
             log.error("Failed to Read CB Plan for OrgId: " + userOrgId + "for CB PlanId: " + cbPlanId, e);
             response.getParams().setStatus(Constants.FAILED);
             response.getParams().setErr(e.getMessage());
@@ -559,8 +560,8 @@ public class CbPlanServiceImpl {
     private Map<String, Object> populateReadData(Map<String, Object> cbPlan) throws Exception {
         Map<String, Object> enrichData = new HashMap<>();
         List<String> contentTypeInfo = new ArrayList<>();
-        if ((StringUtils.isNotBlank((String) cbPlan.get(Constants.DRAFT_DATA))
-                        && Constants.LIVE.equalsIgnoreCase((String) cbPlan.get(Constants.STATUS)))) {
+        if ((StringUtils.isNotBlank((String) cbPlan.get(Constants.DRAFT_DATA)) && !((String)cbPlan.get(Constants.DRAFT_DATA)).equals("{}")) 
+                        && Constants.LIVE.equalsIgnoreCase((String) cbPlan.get(Constants.STATUS))) {
             CbPlanDto cbPlanDto = mapper.readValue((String) cbPlan.get(Constants.DRAFT_DATA), CbPlanDto.class);
             enrichData.put(Constants.NAME, cbPlanDto.getName());
             contentTypeInfo = cbPlanDto.getContentList();

@@ -167,7 +167,8 @@ public class CbPlanLearnerServiceImpl {
         Map<String, Object> courseDetailsMap = new HashMap<>();
         List<String> plansToCache = new ArrayList<>();
         Map<String, String> coursePlanMappings = new HashMap<>();
-
+        Set<String> globalSeen = new HashSet<>();
+        Set<String> aparCourseIds = new HashSet<>();
         for (Map<String, Object> cbPlan : activeCbPlans) {
             Object contextDataObj = cbPlan.get(Constants.CONTEXT_DATA_REQUEST);
             try {
@@ -187,7 +188,9 @@ public class CbPlanLearnerServiceImpl {
             String planEndDateStr = (planEndDateObj instanceof Instant)
                     ? ((Instant) planEndDateObj).toString()
                     : planEndDateObj != null ? planEndDateObj.toString() : null;
+
             plansToCache.add((String) cbPlan.get(Constants.PLAN_ID));
+
             Map<String, Object> cbPlanDetails = new HashMap<>();
             cbPlanDetails.put(Constants.ID, cbPlan.get(Constants.PLAN_ID));
             cbPlanDetails.put(Constants.END_DATE_REQUEST, cbPlan.get(Constants.END_DATE_REQUEST));
@@ -195,21 +198,33 @@ public class CbPlanLearnerServiceImpl {
                     cbPlan.containsKey(Constants.IS_APAR) && cbPlan.get(Constants.IS_APAR) != null
                             ? cbPlan.get(Constants.IS_APAR)
                             : Boolean.FALSE);
+
             List<String> courses = (List<String>) cbPlan.get(Constants.CONTENT_LIST);
-            // process per-course
             List<Map<String, Object>> courseList = processCoursesForCbPlan(
                     courses, userOrgId, userProfile, courseDetailsMap, planEndDateStr, coursePlanMappings);
+            boolean isApar = Boolean.TRUE.equals(cbPlanDetails.get(Constants.IS_APAR));
+            if (isApar) {
+                for (Map<String, Object> c : courseList) {
+                    String id = (String) c.get(Constants.IDENTIFIER);
+                    if (id != null) {
+                        aparCourseIds.add(id);
+                    }
+                }
+            }
+            List<Map<String, Object>> filteredList = new ArrayList<>();
+            for (Map<String, Object> c : courseList) {
+                String id = (String) c.get(Constants.IDENTIFIER);
+                if (id == null) continue;
+                if (globalSeen.contains(id)) continue;
+                if (!isApar && aparCourseIds.contains(id)) continue;
 
-            boolean containsLanguageMap = courseList.stream().anyMatch(course ->
-                    course.get(Constants.LANGUAGE_MAP_V1) instanceof Map &&
-                            !((Map<?, ?>) course.get(Constants.LANGUAGE_MAP_V1)).isEmpty()
-            );
-            cbPlanDetails.put(Constants.CONTENT_LIST, containsLanguageMap
-                    ? removeDuplicateCourses(courseList)
-                    : courseList);
-
+                filteredList.add(c);
+                globalSeen.add(id);
+            }
+            cbPlanDetails.put(Constants.CONTENT_LIST, filteredList);
             resultMap.add(cbPlanDetails);
         }
+
         //Cache if enabled
         if (isCacheEnabled.get()) {
             // Cache coursePlanMappings and plan IDs

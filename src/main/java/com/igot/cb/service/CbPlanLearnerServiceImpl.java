@@ -214,7 +214,10 @@ public class CbPlanLearnerServiceImpl {
             List<Map<String, Object>> filteredList = new ArrayList<>();
             for (Map<String, Object> c : courseList) {
                 String id = (String) c.get(Constants.IDENTIFIER);
-                if (id == null) continue;
+                if (StringUtils.isBlank(id)) {
+                    log.warn("Skipping course with invalid or blank identifier in plan {}", cbPlan.get(Constants.PLAN_ID));
+                    continue;
+                }
                 if (globalSeen.contains(id)) continue;
                 if (!isApar && aparCourseIds.contains(id)) continue;
 

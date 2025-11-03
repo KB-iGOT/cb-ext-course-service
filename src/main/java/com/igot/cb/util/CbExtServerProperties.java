@@ -1,13 +1,12 @@
 package com.igot.cb.util;
 
-import java.util.Arrays;
-import java.util.List;
-
+import lombok.Getter;
+import lombok.Setter;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-import lombok.Getter;
-import lombok.Setter;
+import java.util.Arrays;
+import java.util.List;
 
 @Component
 @Getter
@@ -43,4 +42,25 @@ public class CbExtServerProperties {
     public List<String> getCbPlanUpdateAllowedFields() {
         return Arrays.asList(cbPlanUpdateAllowedFields.split(",", -1));
     }
+
+    @Value("${notification.support.mail}")
+    private String notificationSupportMail;
+
+    @Value("${sb.service.url}")
+    private String sbUrl;
+
+    @Value("${sunbird.user.search.endpoint}")
+    private String userSearchEndPoint;
+
+    @Value("${notification.service.host}")
+    private String notificationServiceHost;
+
+    @Value("${notification.async.path}")
+    private String notificationAsyncPath;
+
+    @Value("${cb.wrapper.notification.host}")
+    private String cbWrapperNotificationHost;
+
+    @Value("${cb.wrapper.notification.path}")
+    private String cbWrapperNotificationPath;
 }

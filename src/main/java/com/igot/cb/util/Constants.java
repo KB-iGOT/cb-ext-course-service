@@ -428,6 +428,42 @@ public class Constants {
     public static final String APPLICATION_JSON = "application/json";
     public static final String STREAMING_URI = "streamUri";
     public static final String IS_ARCHIVED_KEY = "isArchived";
+    public static final String ENROLLMENT_BATCH_LOOKUP = "enrollment_batch_lookup";
+    public static final String API_NOTIFICATION_ASSIGNMENT_UPLOADED = "api.notification.assignment.uploaded";
+    public static final String PROFILE_DETAILS_PERSONAL_DETAILS = "profileDetails.personalDetails";
+    public static final String FILTERS = "filters";
+    public static final String ASSIGNMENT_UPLOADED_SUBJECT = "Assignment has been uploaded by the Instructor.";
+    public static final String ASSIGNMENT_UPLOADED_TEMPLATE = "assignmentUpload";
+    public static final String SENDER = "sender";
+    public static final String IDS = "ids";
+    public static final String PRIORITY = "priority";
+    public static final String ACTION = "action";
+    public static final String COURSE_ID = "courseId";
+    public static final String BATCH_ID = "batchId";
+    public static final String ASSIGNMENT_TITLE = "assignmentTitle";
+    public static final String SUB_TYPE = "subType";
+    public static final String USER_ID_KEYS = "userIds";
+    public static final String ALERT = "ALERT";
+    public static final String PLACE_HOLDERS = "placeholders";
+    public static final String BCC_IDS = "bccIds";
+    public static final String LEARNER_ID = "learnerId";
+    public static final String LEARNER_ID_ERR = "learnerId is required";
+    public static final String ASSIGNMENT_EVALUATE_SUBJECT = "Your assignment has been evaluated";
+    public static final String EMAILS = "emails";
+    public static final int ONE = 1;
+    public static final String ASSIGNMENT_EVALUATE_TEMPLATE = "assignmentEvaluate";
+    public static final String INSTRUCTOR_ID = "instructorId";
+    public static final String INSTRUCTOR_ID_ERR = "instructorId is required";
+    public static final String ASSIGNMENT_SUBMIT_SUBJECT = "#learnerName has submitted the assignment.";
+    public static final String ASSIGNMENT_SUBMIT_TEMPLATE = "assignmentSubmit";
+    public static final String LEARNER_NAME_TAG = "#learnerName";
+    public static final String LEARNER_NAME = "learnerName";
+    public static final String ASSIGNMENT = "assignment";
+    public static final String BATCH_ID_KEY = "batchid";
+    public static final String BP_ASSIGNMENT_UPLOAD = "BP_ASSIGNMENT_UPLOAD";
+    public static final String BP_ASSIGNMENT_EVALUATE = "BP_ASSIGNMENT_EVALUATE";
+    public static final String BP_ASSIGNMENT_SUBMIT = "BP_ASSIGNMENT_SUBMIT";
+    public static final String HTMLTemplate = "HTMLTemplate";
 
     private Constants() {
     }

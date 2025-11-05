@@ -433,7 +433,7 @@ public class NotificationServiceImpl implements NotificationService {
             placeHolders.put(Constants.LEARNER_NAME, learnerName);
             message.put(Constants.DATA, data);
             message.put(Constants.PLACE_HOLDERS, placeHolders);
-            sendInAppNotification(Constants.BP_ASSIGNMENT_SUBMIT, Constants.ALERT, Collections.singletonList(userId), message);
+            sendInAppNotification(Constants.BP_ASSIGNMENT_SUBMIT, Constants.ALERT, Collections.singletonList((String)requestData.get(Constants.INSTRUCTOR_ID)), message);
 
             notifyUsersByEmail(mailRequestMap, Constants.ASSIGNMENT_SUBMIT_TEMPLATE);
             response.setResponseCode(HttpStatus.OK);

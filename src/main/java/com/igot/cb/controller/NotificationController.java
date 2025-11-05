@@ -18,8 +18,11 @@ public class NotificationController {
     private NotificationService notificationService;
 
     /**
-     * Notify learners in a batch that instructor uploaded an assignment.
-     * Example: POST /notifyAssignment/upload with JSON body {"courseId":"...","batchId":"...","assignmentTitle":"..."}
+     * Notifies learners in a batch that an instructor uploaded an assignment.
+     *
+     * @param requestData the request body containing courseId, batchId and assignmentTitle
+     * @param authToken   the authentication token for the user
+     * @return a ResponseEntity containing the ApiResponse with notification result
      */
     @PostMapping("/upload")
     public ResponseEntity<Object> notifyAssignmentUploaded(@RequestBody Map<String, Object> requestData, @RequestHeader(Constants.X_AUTH_TOKEN) String authToken) {
@@ -28,8 +31,11 @@ public class NotificationController {
     }
 
     /**
-     * Notify learners in a batch that instructor evaluated an assignment.
-     * Example: POST /notifyAssignment/evaluate with JSON body {"courseId":"...","batchId":"...","assignmentTitle":"...","learnerId":"..."}
+     * Notifies learners in a batch that an instructor evaluated an assignment.
+     *
+     * @param requestData the request body containing courseId, batchId, assignmentTitle and learnerId
+     * @param authToken   the authentication token for the user
+     * @return a ResponseEntity containing the ApiResponse with notification result
      */
     @PostMapping("/evaluate")
     public ResponseEntity<Object> notifyAssignmentEvaluation(@RequestBody Map<String, Object> requestData, @RequestHeader(Constants.X_AUTH_TOKEN) String authToken) {
@@ -38,8 +44,11 @@ public class NotificationController {
     }
 
     /**
-     * Notify learners in a batch that instructor evaluated an assignment.
-     * Example: POST /notifyAssignment/submit with JSON body {"courseId":"...","batchId":"...","assignmentTitle":"...","instructorId":"..."}
+     * Notifies learners in a batch that a learner submitted an assignment.
+     *
+     * @param requestData the request body containing courseId, batchId and assignmentTitle and instructorId
+     * @param authToken   the authentication token for the user
+     * @return a ResponseEntity containing the ApiResponse with notification result
      */
     @PostMapping("/submit")
     public ResponseEntity<Object> notifyAssignmentSubmit(@RequestBody Map<String, Object> requestData, @RequestHeader(Constants.X_AUTH_TOKEN) String authToken) {

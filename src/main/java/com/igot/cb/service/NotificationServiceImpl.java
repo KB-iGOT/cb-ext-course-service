@@ -55,7 +55,7 @@ public class NotificationServiceImpl implements NotificationService {
         }
 
         try {
-            String validationErr = validateRequest(requestData);
+            String validationErr = validateRequest(requestData, null);
             if (StringUtils.isNotBlank(validationErr)) {
                 response.getParams().setStatus(Constants.FAILED);
                 response.getParams().setErrMsg(validationErr);
@@ -246,7 +246,7 @@ public class NotificationServiceImpl implements NotificationService {
         }
     }
 
-    private String validateRequest(Map<String, Object> request) {
+    private String validateRequest(Map<String, Object> request, String extraRequiredField) {
         StringBuilder str = new StringBuilder();
         if (MapUtils.isEmpty(request)) {
             str.append("Request object is empty.");
@@ -259,6 +259,12 @@ public class NotificationServiceImpl implements NotificationService {
         if (StringUtils.isBlank((String) request.get(Constants.ASSIGNMENT_TITLE)))
             errList.add(Constants.ASSIGNMENT_TITLE);
 
+        if (extraRequiredField != null) {
+            if (StringUtils.isBlank((String) request.get(extraRequiredField))) {
+                errList.add(extraRequiredField);
+            }
+        }
+
         if (!errList.isEmpty()) {
             str.append("Failed Due To Missing Params - ").append(errList).append(".");
         }
@@ -268,56 +274,64 @@ public class NotificationServiceImpl implements NotificationService {
     private Map<String, Object> fetchUserEmails(List<String> userIds) {
         List<String> emails = new ArrayList<>();
         String firstName = "";
-        // Build request object for user-search
-        Map<String, Object> requestObject = new HashMap<>();
-        Map<String, Object> req = new HashMap<>();
-        Map<String, Object> filters = new HashMap<>();
-        // search by userIds
-        filters.put(Constants.USER_ID, userIds);
-        List<String> userFields = Arrays.asList(Constants.USER_ID, Constants.PROFILE_DETAILS_PERSONAL_DETAILS);
-        req.put(Constants.FILTERS, filters);
-        req.put(Constants.FIELDS, userFields);
-        requestObject.put(Constants.REQUEST, req);
 
-        HashMap<String, String> headersValue = new HashMap<>();
-        headersValue.put(Constants.CONTENT_TYPE, Constants.APPLICATION_JSON);
+        Map<String, Object> filters = Map.of(Constants.USER_ID, userIds);
+        List<String> userFields = List.of(Constants.USER_ID, Constants.PROFILE_DETAILS_PERSONAL_DETAILS);
 
+        Map<String, Object> requestObject = Map.of(
+                Constants.REQUEST, Map.of(
+                        Constants.FILTERS, filters,
+                        Constants.FIELDS, userFields
+                )
+        );
+
+        Map<String, String> headers = Map.of(Constants.CONTENT_TYPE, Constants.APPLICATION_JSON);
         String url = props.getSbUrl() + props.getUserSearchEndPoint();
-        Map<String, Object> searchProfileApiResp = outboundRequestHandlerService.fetchResultUsingPost(url, requestObject, headersValue);
 
-        if (MapUtils.isNotEmpty(searchProfileApiResp) && Constants.OK.equalsIgnoreCase(String.valueOf(searchProfileApiResp.get(Constants.RESPONSE_CODE)))) {
-            Map<String, Object> searchResponseMap = (Map<String, Object>) searchProfileApiResp.get(Constants.RESULT);
-            if (MapUtils.isNotEmpty(searchResponseMap)) {
-                Map<String, Object> resp = (Map<String, Object>) searchResponseMap.get(Constants.RESPONSE);
-                if (MapUtils.isNotEmpty(resp)) {
-                    List<Map<String, Object>> contents = (List<Map<String, Object>>) resp.get(Constants.CONTENT);
-                    if (CollectionUtils.isNotEmpty(contents)) {
-                        for (Map<String, Object> content : contents) {
-                            Map<String, Object> profileDetails = (Map<String, Object>) content.get(Constants.PROFILE_DETAILS);
-                            if (MapUtils.isNotEmpty(profileDetails)) {
-                                Map<String, Object> personalDetails = (Map<String, Object>) profileDetails.get(Constants.PERSONAL_DETAILS);
-                                if (MapUtils.isNotEmpty(personalDetails)) {
-                                    String email = (String) personalDetails.get(Constants.PRIMARY_EMAIL);
-                                    if (StringUtils.isNotBlank(email)) {
-                                        emails.add(email);
-                                    }
-                                    if (userIds.size() == Constants.ONE) {
-                                        Object firstNameObj = personalDetails.get(Constants.FIRST_NAME);
-                                        if (StringUtils.isNotBlank((String) firstNameObj)) {
-                                            firstName = (String) firstNameObj;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+        Map<String, Object> resp = outboundRequestHandlerService.fetchResultUsingPost(url, requestObject, headers);
+        if (MapUtils.isEmpty(resp) || !"OK".equalsIgnoreCase(String.valueOf(resp.get(Constants.RESPONSE_CODE)))) {
+            return Map.of(Constants.EMAILS, emails, Constants.FIRST_NAME, firstName);
+        }
+
+        Object contentsObj = Optional.ofNullable(resp.get(Constants.RESULT))
+                .filter(Map.class::isInstance)
+                .map(Map.class::cast)
+                .map(result -> result.get(Constants.RESPONSE))
+                .filter(Map.class::isInstance)
+                .map(Map.class::cast)
+                .map(response -> response.get(Constants.CONTENT))
+                .orElse(null);
+
+        if (!(contentsObj instanceof List<?> contents)) {
+            return Map.of(Constants.EMAILS, emails, Constants.FIRST_NAME, firstName);
+        }
+
+        for (Object item : contents) {
+            if (!(item instanceof Map<?, ?> content)) continue;
+            Object personalObj = Optional.ofNullable(content.get(Constants.PROFILE_DETAILS))
+                    .filter(Map.class::isInstance)
+                    .map(Map.class::cast)
+                    .map(p -> p.get(Constants.PERSONAL_DETAILS))
+                    .orElse(null);
+
+            if (!(personalObj instanceof Map<?, ?> personal)) continue;
+
+            // Extract email
+            Object emailObj = personal.get(Constants.PRIMARY_EMAIL);
+            if (emailObj instanceof String email && StringUtils.isNotBlank(email)) {
+                emails.add(email);
+            }
+
+            // Extract first name (only if single user)
+            if (userIds.size() == Constants.ONE) {
+                Object nameObj = personal.get(Constants.FIRST_NAME);
+                if (nameObj instanceof String name && StringUtils.isNotBlank(name)) {
+                    firstName = name;
                 }
             }
         }
-        Map<String, Object> response = new HashMap<>();
-        response.put(Constants.EMAILS, emails);
-        response.put(Constants.FIRST_NAME, firstName);
-        return response;
+
+        return Map.of(Constants.EMAILS, emails, Constants.FIRST_NAME, firstName);
     }
 
     public ApiResponse notifyAssignmentEvaluate(Map<String, Object> requestData, String authToken) {
@@ -328,13 +342,7 @@ public class NotificationServiceImpl implements NotificationService {
                 return response;
             }
 
-            if (StringUtils.isBlank((String) requestData.get(Constants.LEARNER_ID))) {
-                response.setResponseCode(HttpStatus.BAD_REQUEST);
-                response.getParams().setStatus(Constants.FAILED);
-                response.getParams().setErrMsg(Constants.LEARNER_ID_ERR);
-                return response;
-            }
-            String validateRequest = validateRequest(requestData);
+            String validateRequest = validateRequest(requestData, Constants.LEARNER_ID);
 
             if (StringUtils.isNotBlank(validateRequest)) {
                 response.setResponseCode(HttpStatus.BAD_REQUEST);
@@ -368,7 +376,7 @@ public class NotificationServiceImpl implements NotificationService {
             placeHolders.put(Constants.ASSIGNMENT_TITLE, requestData.get(Constants.ASSIGNMENT_TITLE));
             message.put(Constants.DATA, data);
             message.put(Constants.PLACE_HOLDERS, placeHolders);
-            sendInAppNotification(Constants.BP_ASSIGNMENT_EVALUATE, Constants.ALERT, Collections.singletonList(userId), message);
+            sendInAppNotification(Constants.BP_ASSIGNMENT_EVALUATE, Constants.ALERT, Collections.singletonList((String)requestData.get(Constants.LEARNER_ID)), message);
 
             notifyUsersByEmail(mailRequestMap, Constants.ASSIGNMENT_EVALUATE_TEMPLATE);
             response.setResponseCode(HttpStatus.OK);
@@ -388,13 +396,7 @@ public class NotificationServiceImpl implements NotificationService {
                 return response;
             }
 
-            if (StringUtils.isBlank((String) requestData.get(Constants.INSTRUCTOR_ID))) {
-                response.setResponseCode(HttpStatus.BAD_REQUEST);
-                response.getParams().setStatus(Constants.FAILED);
-                response.getParams().setErrMsg(Constants.INSTRUCTOR_ID_ERR);
-                return response;
-            }
-            String validateRequestError = validateRequest(requestData);
+            String validateRequestError = validateRequest(requestData, Constants.INSTRUCTOR_ID);
 
             if (StringUtils.isNotBlank(validateRequestError)) {
                 response.setResponseCode(HttpStatus.BAD_REQUEST);

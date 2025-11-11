@@ -1,18 +1,20 @@
 package com.igot.cb.service;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
+import java.lang.reflect.Field;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -220,5 +222,112 @@ class UserProfileServiceImplTest {
         assertEquals(capturedIdMap.get("ACTIVE"), result.get("profilestatus"));
         assertEquals(capturedIdMap.get("teacher"), result.get("designation"));
         assertEquals(capturedIdMap.get("A"), result.get("group"));
+    }
+    @Test
+    void testReadUserProfileFromDB_Success() {
+        Map<String, Object> dbUser = Map.of(Constants.ID, "user1", Constants.ROOT_ORG_ID, "org1");
+        when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), any(), any(), any()))
+                .thenReturn(List.of(dbUser));
+
+        Map<String, Object> result = userProfileService.readUserProfileFromDB("user1", null);
+
+        assertEquals("user1", result.get(Constants.ID));
+        assertEquals("org1", result.get(Constants.ROOT_ORG_ID));
+    }
+
+    @Test
+    void testReadUserProfileFromDB_EmptyList() {
+        when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), any(), any(), any()))
+                .thenReturn(List.of());
+        Map<String, Object> result = userProfileService.readUserProfileFromDB("noUser", null);
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    void testReadUserProfileFromDB_ExceptionHandled() {
+        when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), any(), any(), any()))
+                .thenThrow(new RuntimeException("DB error"));
+        Map<String, Object> result = userProfileService.readUserProfileFromDB("badUser", null);
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    void testReadOrgFromDB_Success() {
+        Map<String, Object> org = Map.of(Constants.ID, "org1", Constants.ORG_NAME, "OrgName");
+        when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), any(), any(), any()))
+                .thenReturn(List.of(org));
+
+        Map<String, Object> result = userProfileService.readOrgFromDB("org1", null);
+        assertEquals("OrgName", result.get(Constants.ORG_NAME));
+    }
+
+    @Test
+    void testReadOrgFromDB_EmptyList() {
+        when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), any(), any(), any()))
+                .thenReturn(List.of());
+        Map<String, Object> result = userProfileService.readOrgFromDB("orgX", null);
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    void testReadOrgFromDB_ExceptionHandled() {
+        when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), any(), any(), any()))
+                .thenThrow(new RuntimeException("fail"));
+        Map<String, Object> result = userProfileService.readOrgFromDB("orgErr", null);
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    void testReadUserProfile_FromCache_ValidJson() {
+        String json = "{\"id\":\"user1\",\"rootOrgId\":\"org1\"}";
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn(json);
+
+        Map<String, Object> result = userProfileService.readUserProfile("user1", null);
+        assertEquals("user1", result.get("id"));
+        assertEquals("org1", result.get("rootOrgId"));
+    }
+
+    @Test
+    void testSetUserProfile_EmptyProfile() throws Exception {
+        Map<String, String> userProfile = new HashMap<>();
+        Map<String, Object> userBasicProfile = new HashMap<>();
+        var method = UserAndOrgServiceImpl.class.getDeclaredMethod(
+                "setUserProfile", Map.class, Map.class);
+        method.setAccessible(true);
+        method.invoke(userProfileService, userProfile, userBasicProfile);
+        assertTrue(userProfile.isEmpty());
+    }
+
+    @Test
+    void testSetUserProfile_InvalidType_ThrowsException() throws Exception {
+        Map<String, String> userProfile = new HashMap<>();
+        Map<String, Object> userBasicProfile = Map.of(Constants.PROFILE_DETAILS, 12345);
+        var method = UserAndOrgServiceImpl.class.getDeclaredMethod(
+                "setUserProfile", Map.class, Map.class);
+        method.setAccessible(true);
+        assertThrows(Exception.class, () -> method.invoke(userProfileService, userProfile, userBasicProfile));
+    }
+
+    @Test
+    void testGetUserBitMap_EmptyProfile() throws Exception {
+        Map<String, String> profile = new HashMap<>();
+        Map<String, Integer> bitmap = new HashMap<>();
+        var method = UserAndOrgServiceImpl.class.getDeclaredMethod(
+                "getUserBitMap", Map.class, Map.class);
+        method.setAccessible(true);
+        method.invoke(userProfileService, profile, bitmap);
+        assertTrue(bitmap.isEmpty());
+    }
+
+    @Test
+    void testGetUserBitMap_IdMapEmpty() throws Exception {
+        Map<String, String> profile = Map.of(Constants.USER, "u1");
+        Map<String, Integer> bitmap = new HashMap<>();
+        when(idMapCacheMgr.getId(anyList())).thenReturn(Map.of());
+        var method = UserAndOrgServiceImpl.class.getDeclaredMethod(
+                "getUserBitMap", Map.class, Map.class);
+        method.setAccessible(true);
+        method.invoke(userProfileService, profile, bitmap);
+        assertTrue(bitmap.isEmpty());
     }
 }

@@ -48,8 +48,7 @@ public class PayloadValidation {
                     boolean isError = false;
                     if (criteriaValueObj == null) {
                         isError = true;
-                    } else if (criteriaValueObj instanceof List) {
-                        List<?> valueList = (List<?>) criteriaValueObj;
+                    } else if (criteriaValueObj instanceof List<?> valueList) {
                         if (valueList.isEmpty()) {
                             isError = true;
                         }

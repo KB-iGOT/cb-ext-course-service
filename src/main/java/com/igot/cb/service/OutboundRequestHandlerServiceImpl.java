@@ -167,6 +167,7 @@ public class OutboundRequestHandlerServiceImpl {
                         new TypeReference<HashMap<String, Object>>() {
                         });
             } catch (Exception e1) {
+                log.debug("Failed to parse error response: {}", hce.getResponseBodyAsString(), e1);
             }
             log.error("Error received: " + hce.getResponseBodyAsString(), hce);
         } catch (JsonProcessingException e) {
@@ -174,6 +175,14 @@ public class OutboundRequestHandlerServiceImpl {
             try {
                 log.warn("Error Response: " + mapper.writeValueAsString(response));
             } catch (Exception e1) {
+                log.debug("Failed to parse error response: ", e1);
+            }
+        } catch (Exception e) {
+            log.error("Failed to call rest URL: {}", uri, e);
+            try {
+                log.warn("Error Response: " + mapper.writeValueAsString(response));
+            } catch (Exception e1) {
+                log.debug("Failed to parse error response: ", e1);
             }
         }
         return response;

@@ -1,15 +1,13 @@
 package com.igot.cb.controller;
 
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.junit.jupiter.MockitoExtension;
-
+import com.igot.cb.model.ApiRespParam;
 import com.igot.cb.model.ApiResponse;
 import com.igot.cb.service.NotificationService;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
+import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
@@ -19,51 +17,65 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
-public class NotificationControllerTest {
-
+class NotificationControllerTest {
     @Mock
     private NotificationService notificationService;
 
     @InjectMocks
     private NotificationController notificationController;
 
-    private Map<String, Object> mockRequest;
-    private static final String TOKEN = "test-token";
-    private ApiResponse successResponse;
-
-    @BeforeEach
-    void setUp() {
-        MockitoAnnotations.openMocks(this);
-        mockRequest = Map.of("courseId", "C101", "batchId", "B202", "assignmentTitle", "Test Assignment");
-        successResponse = new ApiResponse();
-        successResponse.setResponseCode(HttpStatus.OK);
+    private ApiResponse createApiResponse(String id, HttpStatus code, Map<String, Object> result) {
+        ApiResponse response = new ApiResponse(id);
+        ApiRespParam params = new ApiRespParam("mock-res-id");
+        params.setStatus("successful");
+        response.setParams(params);
+        response.setResponseCode(code);
+        response.setResult(result);
+        return response;
     }
 
     @Test
-    void testNotifyAssignmentUploaded_Success() {
-        when(notificationService.notifyAssignmentUploaded(mockRequest, TOKEN)).thenReturn(successResponse);
-        ResponseEntity<Object> response = notificationController.notifyAssignmentUploaded(mockRequest, TOKEN);
+    void testNotifyAssignmentUploaded() {
+        Map<String, Object> request = Map.of("courseId", "c1", "batchId", "b1", "assignmentTitle", "A1");
+        ApiResponse mockResponse = createApiResponse("notify.upload", HttpStatus.OK, Map.of("notified", true));
+
+        when(notificationService.notifyAssignmentUploaded(request, "mock-token")).thenReturn(mockResponse);
+
+        ResponseEntity<Object> response = notificationController.notifyAssignmentUploaded(request, "mock-token");
+        ApiResponse body = (ApiResponse) response.getBody();
 
         assertEquals(HttpStatus.OK, response.getStatusCode());
-        assertEquals(successResponse, response.getBody());
+        assertEquals("notify.upload", body.getId());
+        assertEquals(true, body.getResult().get("notified"));
     }
 
     @Test
-    void testNotifyAssignmentEvaluation_Success() {
-        when(notificationService.notifyAssignmentEvaluate(mockRequest, TOKEN)).thenReturn(successResponse);
-        ResponseEntity<Object> response = notificationController.notifyAssignmentEvaluation(mockRequest, TOKEN);
+    void testNotifyAssignmentEvaluation() {
+        Map<String, Object> request = Map.of("courseId", "c1", "batchId", "b1", "assignmentTitle", "A1", "learnerId", "l1");
+        ApiResponse mockResponse = createApiResponse("notify.evaluate", HttpStatus.OK, Map.of("evaluated", true));
+
+        when(notificationService.notifyAssignmentEvaluate(request, "mock-token")).thenReturn(mockResponse);
+
+        ResponseEntity<Object> response = notificationController.notifyAssignmentEvaluation(request, "mock-token");
+        ApiResponse body = (ApiResponse) response.getBody();
 
         assertEquals(HttpStatus.OK, response.getStatusCode());
-        assertEquals(successResponse, response.getBody());
+        assertEquals("notify.evaluate", body.getId());
+        assertEquals(true, body.getResult().get("evaluated"));
     }
 
     @Test
-    void testNotifyAssignmentSubmit_Success() {
-        when(notificationService.notifyAssignmentSubmit(mockRequest, TOKEN)).thenReturn(successResponse);
-        ResponseEntity<Object> response = notificationController.notifyAssignmentSubmit(mockRequest, TOKEN);
+    void testNotifyAssignmentSubmit() {
+        Map<String, Object> request = Map.of("courseId", "c1", "batchId", "b1", "assignmentTitle", "A1", "instructorId", "i1");
+        ApiResponse mockResponse = createApiResponse("notify.submit", HttpStatus.CREATED, Map.of("submitted", true));
 
-        assertEquals(HttpStatus.OK, response.getStatusCode());
-        assertEquals(successResponse, response.getBody());
+        when(notificationService.notifyAssignmentSubmit(request, "mock-token")).thenReturn(mockResponse);
+
+        ResponseEntity<Object> response = notificationController.notifyAssignmentSubmit(request, "mock-token");
+        ApiResponse body = (ApiResponse) response.getBody();
+
+        assertEquals(HttpStatus.CREATED, response.getStatusCode());
+        assertEquals("notify.submit", body.getId());
+        assertEquals(true, body.getResult().get("submitted"));
     }
-
 }

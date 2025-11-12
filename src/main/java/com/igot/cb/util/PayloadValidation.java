@@ -45,9 +45,16 @@ public class PayloadValidation {
                 if (criteriaObj instanceof Map) {
                   Map<String, Object> criteria = (Map<String, Object>) criteriaObj;
                   Object criteriaValueObj = criteria.get(Constants.CRITERIA_VALUE);
-                  if (!(criteriaValueObj instanceof List) || ((List<?>) criteriaValueObj).isEmpty()) {
-                    errList.add("userGroups[" + i + "].userGroupCriteriaList[" + j + "].criteriaValue");
-                  }
+                    if (criteriaValueObj == null) {
+                        errList.add("userGroups[" + i + "].userGroupCriteriaList[" + j + "].criteriaValue");
+                    } else if (criteriaValueObj instanceof List) {
+                        if (((List<?>) criteriaValueObj).isEmpty()) {
+                            errList.add("userGroups[" + i + "].userGroupCriteriaList[" + j + "].criteriaValue");
+                        }
+                    } else if (!(criteriaValueObj instanceof Boolean) && !(criteriaValueObj instanceof String)) {
+
+                        errList.add("userGroups[" + i + "].userGroupCriteriaList[" + j + "].criteriaValue");
+                    }
                 }
               }
             }

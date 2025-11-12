@@ -493,4 +493,88 @@ class CbPlanLearnerServiceImplTest {
         List<Map<String, Object>> result = service.removeDuplicateCourses(List.of(c1, c2));
         assertEquals(1, result.size());
     }
+
+    @Test
+    void testProcessActiveCbPlans_WithInvalidContextData() throws Exception {
+        Map<String, Object> invalidPlan = new HashMap<>();
+        invalidPlan.put(Constants.PLAN_ID, "plan123");
+        invalidPlan.put(Constants.CONTENT_LIST, List.of("course1"));
+        invalidPlan.put(Constants.CONTEXT_DATA_REQUEST, "{invalid-json}");
+        invalidPlan.put(Constants.END_DATE_REQUEST, Instant.now());
+
+        List<Map<String, Object>> activePlans = List.of(invalidPlan);
+        AtomicBoolean isCacheEnabled = new AtomicBoolean(false);
+
+        Method method = CbPlanLearnerServiceImpl.class.getDeclaredMethod("processActiveCbPlans",
+                List.class, String.class, String.class, Map.class, AtomicBoolean.class, List.class);
+        method.setAccessible(true);
+
+        method.invoke(service, activePlans, "org123", "user123", new HashMap<>(), isCacheEnabled, new ArrayList<>());
+    }
+
+    @Test
+    void testSetUserProfile_InvalidRawValueType() throws Exception {
+        Map<String, String> userProfile = new HashMap<>();
+        Map<String, Object> userBasicProfile = Map.of(
+                Constants.ID, "user123",
+                Constants.ROOT_ORG_ID, "org123",
+                Constants.PROFILE_DETAILS.toLowerCase(), 12345 // invalid type
+        );
+
+        Method method = CbPlanLearnerServiceImpl.class.getDeclaredMethod("setUserProfile", Map.class, Map.class);
+        method.setAccessible(true);
+        method.invoke(service, userProfile, userBasicProfile);
+
+        assertTrue(userProfile.isEmpty() || userProfile.containsKey(Constants.USER));
+    }
+
+    @Test
+    void testEvaluateContextAccessRule_NoUserGroups() throws Exception {
+        Map<String, Object> accessSettingMap = Map.of(Constants.ACCESS_CONTROL, Map.of());
+        Map<String, String> userProfile = Map.of("designation", "Test");
+
+        Method method = CbPlanLearnerServiceImpl.class.getDeclaredMethod("evaluateContextAccessRule", Map.class, Map.class);
+        method.setAccessible(true);
+        boolean result = (boolean) method.invoke(service, accessSettingMap, userProfile);
+        assertFalse(result);
+    }
+
+    @Test
+    void testGetCBPlanCourseListForUser_BlankUserId() {
+        ApiResponse response = service.getCBPlanCourseListForUser("", "org123");
+        assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+    }
+
+    @Test
+    void testGetCBPlanListForUser_EmptyRedisString() {
+        when(accessTokenValidator.fetchUserIdFromAccessToken(anyString(), any())).thenReturn("user123");
+        Map<String, Object> userData = createUserData();
+        when(cassandraOperation.getRecordsByProperties(eq(Constants.KEYSPACE_SUNBIRD), eq(Constants.USER), any(), any(), any()))
+                .thenReturn(List.of(userData));
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn("\"\"");
+        ApiResponse response = service.getCBPlanListForUser("org123", "token123", false);
+        assertEquals(0, response.getResult().get(Constants.COUNT));
+    }
+
+    @Test
+    void testGetCBPlanListForUser_WithCachedPlans() throws Exception {
+        when(accessTokenValidator.fetchUserIdFromAccessToken(anyString(), any())).thenReturn("user123");
+        Map<String, Object> userData = createUserData();
+        when(cassandraOperation.getRecordsByProperties(eq(Constants.KEYSPACE_SUNBIRD), eq(Constants.USER), any(), any(), any()))
+                .thenReturn(List.of(userData));
+
+        String cachedPlansJson = new ObjectMapper().writeValueAsString(List.of("plan1"));
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn(cachedPlansJson);
+        when(cbPlanCacheMgr.getCbPlansByPlanIdsInBatch(anyList()))
+                .thenReturn(List.of(Map.of(Constants.PLAN_ID, "plan1", Constants.CONTENT_LIST, List.of("c1"))));
+
+        Map<String, Object> contentDetails = Map.of(Constants.IDENTIFIER, "c1");
+        when(contentService.readContent("c1", null)).thenReturn(new HashMap<>(contentDetails));
+
+        ApiResponse response = service.getCBPlanListForUser("org123", "token123", false);
+        assertEquals(HttpStatus.OK, response.getResponseCode());
+    }
+
+
 }

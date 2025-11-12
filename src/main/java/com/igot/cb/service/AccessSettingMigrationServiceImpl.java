@@ -2,14 +2,7 @@ package com.igot.cb.service;
 
 import java.time.*;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.BitSet;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
@@ -274,10 +267,23 @@ public class AccessSettingMigrationServiceImpl {
 
             for (Map<String, Object> criteria : criteriaList) {
                 String criteriaKey = (String) criteria.get(Constants.CRITERIA_KEY);
-                List<String> criteriaValues = ((List<String>) criteria.get(Constants.CRITERIA_VALUE))
-                        .stream()
-                        .distinct()
-                        .collect(Collectors.toList());
+                Object criteriaValueObj = criteria.get(Constants.CRITERIA_VALUE);
+
+                List<String> criteriaValues = new ArrayList<>();
+
+                if (criteriaValueObj instanceof List) {
+                    criteriaValues = ((List<?>) criteriaValueObj).stream()
+                            .filter(Objects::nonNull)
+                            .map(Object::toString)
+                            .distinct()
+                            .collect(Collectors.toList());
+                } else if (criteriaValueObj instanceof Boolean) {
+                    // Handle boolean values safely
+                    criteriaValues = List.of(String.valueOf(criteriaValueObj));
+                } else if (criteriaValueObj instanceof String) {
+                    // Handle single string case
+                    criteriaValues = List.of((String) criteriaValueObj);
+                }
 
                 if (CollectionUtils.isEmpty(criteriaValues)) {
                     log.error("Criteria values are missing for criteriaKey: {} in userGroupId: {}", criteriaKey,

@@ -464,6 +464,9 @@ public class Constants {
     public static final String BP_ASSIGNMENT_EVALUATE = "BP_ASSIGNMENT_EVALUATE";
     public static final String BP_ASSIGNMENT_SUBMIT = "BP_ASSIGNMENT_SUBMIT";
     public static final String HTMLTemplate = "HTMLTemplate";
+    public static final String ACCESS_SETTINGS_ENABLED ="accessSettingsEnabled";
+    public static final String PROFILE_DETAILS_LOWERCASE = "profiledetails";
+    public static final String UNDERSCORE = "_";
 
     private Constants() {
     }

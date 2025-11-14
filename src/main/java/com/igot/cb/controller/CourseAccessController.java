@@ -37,4 +37,11 @@ public class CourseAccessController {
         ApiResponse response = courseAccessService.getCoursesForUser(requestBody, authToken);
         return new ResponseEntity<>(response, response.getResponseCode());
     }
+
+    @PostMapping("/user/v2/assignedcourses")
+    public ResponseEntity<ApiResponse> getAssignedCoursesForUser(@RequestBody Map<String, Object> requestBody,
+                                                         @RequestHeader(Constants.X_AUTH_TOKEN) String authToken) {
+        ApiResponse response = courseAccessService.getAssignedCoursesForUser(requestBody, authToken);
+        return new ResponseEntity<>(response, response.getResponseCode());
+    }
 }

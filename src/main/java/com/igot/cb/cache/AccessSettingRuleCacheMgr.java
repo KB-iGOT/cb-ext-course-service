@@ -1,9 +1,11 @@
 package com.igot.cb.cache;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 import com.igot.cb.cassandra.CassandraOperation;
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections.MapUtils;
 import org.springframework.stereotype.Component;
 
@@ -204,4 +206,98 @@ public class AccessSettingRuleCacheMgr {
         }
         return bitSet;
     }
+
+
+    public CachedAccessSettingRule getOrLoadAccessSettingRule(String courseId, String contextId) {
+
+        String cacheKey = courseId + "|" + contextId;
+        if (MapUtils.isEmpty(cachedAccessSettingRules)) {
+            cachedAccessSettingRules = new ConcurrentHashMap<>();
+        }
+        CachedAccessSettingRule rule = cachedAccessSettingRules.get(cacheKey);
+        if (rule != null) {
+            log.debug("Cache hit for rule key: {}", cacheKey);
+            return rule;
+        }
+        log.info("Cache miss for rule key: {}, loading from Cassandra...", cacheKey);
+        try {
+            Map<String, Object> filter = new HashMap<>();
+            filter.put(Constants.CONTEXT_ID, courseId);
+            filter.put(Constants.CONTEXT_ID_TYPE_KEY, contextId);
+
+            List<Map<String, Object>> records = cassandraOperation.getRecordsByProperties(
+                    Constants.KEYSPACE_SUNBIRD_COURSE,
+                    Constants.ACCESS_SETTINGS_RULES_TABLE_V2,
+                    filter,
+                    null,
+                    null
+            );
+            if (CollectionUtils.isEmpty(records)) {
+                log.warn("No access setting rule found in Cassandra for key: {}", cacheKey);
+                return null;
+            }
+            Map<String, Object> r = records.get(0);
+            CachedAccessSettingRule loadedRule = new CachedAccessSettingRule(
+                    (String) r.get(Constants.CONTEXT_ID_KEY),
+                    (String) r.get(Constants.CONTEXT_ID_TYPE),
+                    (String) r.get(Constants.CONTEXT_DATA_KEY),
+                    false
+            );
+            try {
+                Map<String, Object> contextData = loadedRule.getContextData();
+                if (MapUtils.isNotEmpty(contextData)) {
+                    processContextData(cacheKey, contextData);
+                }
+                cachedAccessSettingRules.put(cacheKey, loadedRule);
+                log.info("Loaded and cached rule for key: {}", cacheKey);
+            } catch (Exception e) {
+                log.error("Error processing rule {}: {}", cacheKey, e.getMessage(), e);
+            }
+            return loadedRule;
+        } catch (Exception e) {
+            log.error("Failed to load rule from Cassandra for key {}: {}", cacheKey, e.getMessage(), e);
+            return null;
+        }
+    }
+
+
+
+    private void loadRulesFromCassandraAndCache() {
+        log.info("Loading access setting rules from Cassandra...");
+        try {
+            List<Map<String, Object>> accessSettingRuleMapList = cassandraOperation.getRecordsByProperties(
+                    Constants.KEYSPACE_SUNBIRD_COURSE,
+                    Constants.ACCESS_SETTINGS_RULES_TABLE_V2,
+                    null,
+                    null,
+                    null);
+            cachedAccessSettingRules = accessSettingRuleMapList.stream()
+                    .map(record -> new CachedAccessSettingRule(
+                            (String) record.get(Constants.CONTEXT_ID_KEY),
+                            (String) record.get(Constants.CONTEXT_ID_TYPE),
+                            (String) record.get(Constants.CONTEXT_DATA_KEY),
+                            false))
+                    .collect(Collectors.toConcurrentMap(
+                            CachedAccessSettingRule::getCacheKey,
+                            rule -> rule));
+            for (CachedAccessSettingRule rule : cachedAccessSettingRules.values()) {
+                try {
+                    Map<String, Object> contextData = rule.getContextData();
+                    if (contextData == null) {
+                        log.warn("No contextData found for rule: {}", rule.getCacheKey());
+                        continue;
+                    }
+                    processContextData(rule.getCacheKey(), contextData);
+                    cachedAccessSettingRules.put(rule.getCacheKey(), rule);
+                } catch (Exception e) {
+                    log.error("Error processing rule {}: {}", rule.getCacheKey(), e.getMessage(), e);
+                }
+            }
+            log.info("Loaded and cached {} rules from Cassandra.", cachedAccessSettingRules.size());
+        } catch (Exception e) {
+            log.error("Error loading access setting rules from Cassandra: {}", e.getMessage(), e);
+        }
+    }
+
+
 }

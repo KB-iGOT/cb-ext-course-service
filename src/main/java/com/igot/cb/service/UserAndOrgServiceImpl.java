@@ -4,10 +4,7 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import org.apache.commons.collections.CollectionUtils;
@@ -125,6 +122,7 @@ public class UserAndOrgServiceImpl {
                     log.error("Failed to read the user profile for userId: {}", userId);
                     return Map.of();
                 }
+                userList.get(0).put(Constants.PROFILE_DETAILS,  userList.get(0).get(Constants.PROFILE_DETAILS_LOWERCASE));
                 setUserProfile(userProfile, userList.get(0));
             }
             getUserBitMap(userProfile, userProfileBitMap);
@@ -187,31 +185,42 @@ public class UserAndOrgServiceImpl {
             return;
         }
 
-        Map<String, Integer> idResultMap = idMapCacheMgr.getId(userProfile.values().stream().toList());
+        Map<String, Integer> idResultMap = idMapCacheMgr.getId(new ArrayList<>(userProfile.values()));
         if (MapUtils.isEmpty(idResultMap)) {
             log.error("Failed to fetch ID-Map for User: {}", userProfile.get(Constants.USER));
             return;
         }
+
         if (userProfile.values().size() != idResultMap.size()) {
-            log.error("ID-Map values size mismatch for User Profile: {}", userProfile.get(Constants.USER));
-            return;
+            log.warn("ID-Map values size mismatch for User Profile: {}", userProfile.get(Constants.USER));
         }
+
         for (Map.Entry<String, String> entry : userProfile.entrySet()) {
-            String encodedValue = null;
+            String rawValue = entry.getValue();
+            if (rawValue == null) continue;
+
+            String encodedValue;
             try {
-                encodedValue = new URI(null, entry.getValue(), null).toASCIIString();
+                encodedValue = new URI(null, rawValue, null).toASCIIString();
             } catch (URISyntaxException e) {
-                throw new RuntimeException(e);
+                log.error("Failed to encode value '{}' for key '{}'", rawValue, entry.getKey(), e);
+                continue;
             }
 
-            if (idResultMap.containsKey(encodedValue)) {
-                userProfileBitMap.put(entry.getKey().toLowerCase(), idResultMap.get(encodedValue));
+            Integer mappedValue = idResultMap.get(encodedValue.toLowerCase());
+            if (mappedValue == null) {
+                mappedValue = idResultMap.get(rawValue.toLowerCase());
+            }
+
+            if (mappedValue != null) {
+                userProfileBitMap.put(entry.getKey().toLowerCase(), mappedValue);
             } else {
-                log.warn("ID-Map does not contain value for User: {}, Key: {}, Value: {}",
-                        userProfile.get(Constants.USER), entry.getKey(), entry.getValue());
+                log.warn("ID-Map does not contain value for User: {}, Key: {}, RawValue: {}, EncodedValue: {}",
+                        userProfile.get(Constants.USER), entry.getKey(), rawValue, encodedValue);
                 userProfileBitMap.clear();
                 return;
             }
         }
     }
+
 }

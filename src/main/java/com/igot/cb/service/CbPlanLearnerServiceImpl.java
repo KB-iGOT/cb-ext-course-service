@@ -29,6 +29,7 @@ import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Service
 @Slf4j
@@ -168,7 +169,22 @@ public class CbPlanLearnerServiceImpl {
         List<String> plansToCache = new ArrayList<>();
         Map<String, String> coursePlanMappings = new HashMap<>();
         Set<String> globalSeen = new HashSet<>();
-        Set<String> aparCourseIds = new HashSet<>();
+        List<String> aparCourseIds = activeCbPlans.stream()
+                .filter(Objects::nonNull)
+                .filter(plan -> Boolean.parseBoolean(String.valueOf(plan.get(Constants.IS_APAR))))
+                .map(plan -> plan.get(Constants.CONTENT_LIST))
+                .flatMap(val -> {
+                    if (val instanceof List<?> list) {
+                        return list.stream().map(String::valueOf);
+                    }
+                    if (val != null) {
+                        return Stream.of(String.valueOf(val));
+                    }
+                    return Stream.empty();
+                })
+                .filter(StringUtils::isNotBlank)
+                .distinct()
+                .toList();
         for (Map<String, Object> cbPlan : activeCbPlans) {
             Object contextDataObj = cbPlan.get(Constants.CONTEXT_DATA_REQUEST);
             try {
@@ -203,14 +219,6 @@ public class CbPlanLearnerServiceImpl {
             List<Map<String, Object>> courseList = processCoursesForCbPlan(
                     courses, userOrgId, userProfile, courseDetailsMap, planEndDateStr, coursePlanMappings);
             boolean isApar = Boolean.TRUE.equals(cbPlanDetails.get(Constants.IS_APAR));
-            if (isApar) {
-                for (Map<String, Object> c : courseList) {
-                    String id = (String) c.get(Constants.IDENTIFIER);
-                    if (id != null) {
-                        aparCourseIds.add(id);
-                    }
-                }
-            }
             List<Map<String, Object>> filteredList = new ArrayList<>();
             for (Map<String, Object> c : courseList) {
                 String id = (String) c.get(Constants.IDENTIFIER);

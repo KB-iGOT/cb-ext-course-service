@@ -29,6 +29,7 @@ import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Service
 @Slf4j
@@ -167,7 +168,23 @@ public class CbPlanLearnerServiceImpl {
         Map<String, Object> courseDetailsMap = new HashMap<>();
         List<String> plansToCache = new ArrayList<>();
         Map<String, String> coursePlanMappings = new HashMap<>();
-
+        Set<String> globalSeen = new HashSet<>();
+        List<String> aparCourseIds = activeCbPlans.stream()
+                .filter(Objects::nonNull)
+                .filter(plan -> Boolean.parseBoolean(String.valueOf(plan.get(Constants.IS_APAR))))
+                .map(plan -> plan.get(Constants.CONTENT_LIST))
+                .flatMap(val -> {
+                    if (val instanceof List<?> list) {
+                        return list.stream().map(String::valueOf);
+                    }
+                    if (val != null) {
+                        return Stream.of(String.valueOf(val));
+                    }
+                    return Stream.empty();
+                })
+                .filter(StringUtils::isNotBlank)
+                .distinct()
+                .toList();
         for (Map<String, Object> cbPlan : activeCbPlans) {
             Object contextDataObj = cbPlan.get(Constants.CONTEXT_DATA_REQUEST);
             try {
@@ -199,15 +216,20 @@ public class CbPlanLearnerServiceImpl {
             // process per-course
             List<Map<String, Object>> courseList = processCoursesForCbPlan(
                     courses, userOrgId, userProfile, courseDetailsMap, planEndDateStr, coursePlanMappings);
-
-            boolean containsLanguageMap = courseList.stream().anyMatch(course ->
-                    course.get(Constants.LANGUAGE_MAP_V1) instanceof Map &&
-                            !((Map<?, ?>) course.get(Constants.LANGUAGE_MAP_V1)).isEmpty()
-            );
-            cbPlanDetails.put(Constants.CONTENT_LIST, containsLanguageMap
-                    ? removeDuplicateCourses(courseList)
-                    : courseList);
-
+            boolean isApar = Boolean.TRUE.equals(cbPlanDetails.get(Constants.IS_APAR));
+            List<Map<String, Object>> filteredList = new ArrayList<>();
+            for (Map<String, Object> c : courseList) {
+                String id = (String) c.get(Constants.IDENTIFIER);
+                if (StringUtils.isBlank(id)) {
+                    log.warn("Skipping course with invalid or blank identifier in plan {}", cbPlan.get(Constants.PLAN_ID));
+                    continue;
+                }
+                if (globalSeen.contains(id)) continue;
+                if (!isApar && aparCourseIds.contains(id)) continue;
+                filteredList.add(c);
+                globalSeen.add(id);
+            }
+            cbPlanDetails.put(Constants.CONTENT_LIST, filteredList);
             resultMap.add(cbPlanDetails);
         }
         //Cache if enabled
@@ -246,39 +268,10 @@ public class CbPlanLearnerServiceImpl {
         List<Map<String, Object>> courseList = new ArrayList<>();
 
         for (String courseId : courses) {
-            Map<String, Object> contentDetails = null;
+            Map<String, Object> contentDetails = new HashMap<>();
 
             if (!courseDetailsMap.containsKey(courseId)) {
-                contentDetails = contentService.readContent(courseId, null);
-
-                if (MapUtils.isNotEmpty(contentDetails)) {
-                    if (courseId.contains("_rc")) {
-                        if (Constants.VERIFIED.equalsIgnoreCase(userProfile.get(Constants.PROFILE_STATUS_KEY))) {
-                            Object secureSettingsObj = contentDetails.get(Constants.SECURE_SETTINGS);
-                            if (secureSettingsObj instanceof Map<?, ?> secureSettings && !secureSettings.isEmpty()) {
-                                Object orgListObj = secureSettings.get(Constants.ORGANISATION);
-                                if (orgListObj instanceof List<?> orgList && !orgList.isEmpty()) {
-                                    List<String> secureOrgList = orgList.stream()
-                                            .filter(String.class::isInstance)
-                                            .map(String.class::cast)
-                                            .toList();
-
-                                    if (secureOrgList.contains(userOrgId)) {
-                                        courseDetailsMap.put(courseId, contentDetails);
-                                    }
-                                }
-                            }
-                        }
-
-                        if (!courseDetailsMap.containsKey(courseId)) {
-                            contentDetails.clear();
-                        }
-                    } else {
-                        courseDetailsMap.put(courseId, contentDetails);
-                    }
-                } else {
-                    logger.error("Failed to read course details for Id: {}", courseId);
-                }
+                contentDetails.put("identifier", courseId);
             } else {
                 continue;
             }

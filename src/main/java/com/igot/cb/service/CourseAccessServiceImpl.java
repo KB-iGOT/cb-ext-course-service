@@ -51,7 +51,6 @@ public class CourseAccessServiceImpl {
     @Value("${sb.composite.v4.search}")
     private String sbCompositeV4Search;
 
-    // --- in-memory cache and TTL (4 hours) ---
     private final Map<String, List<String>> courseCategoryCache = new ConcurrentHashMap<>();
     private final Map<String, Long> cacheTimestamps = new ConcurrentHashMap<>();
     private static final long CACHE_TTL_MS = 4 * 60 * 60 * 1000L; // 4 hours

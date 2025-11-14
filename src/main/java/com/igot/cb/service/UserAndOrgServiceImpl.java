@@ -200,13 +200,12 @@ public class UserAndOrgServiceImpl {
 
             String encodedValue;
             try {
-                encodedValue = new URI(null, rawValue, null).toASCIIString(); // Encode to handle spaces (%20)
+                encodedValue = new URI(null, rawValue, null).toASCIIString();
             } catch (URISyntaxException e) {
                 log.error("Failed to encode value '{}' for key '{}'", rawValue, entry.getKey(), e);
                 continue;
             }
 
-            // 🔹 Try lookup with encoded first, then raw
             Integer mappedValue = idResultMap.get(encodedValue.toLowerCase());
             if (mappedValue == null) {
                 mappedValue = idResultMap.get(rawValue.toLowerCase());

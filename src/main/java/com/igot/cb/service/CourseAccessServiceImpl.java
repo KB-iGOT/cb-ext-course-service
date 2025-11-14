@@ -92,16 +92,41 @@ public class CourseAccessServiceImpl {
     public ApiResponse getCoursesForUser(Map<String, Object> request, String authToken) {
         log.info("CourseAccessServiceImpl::getCoursesForUser:inside");
         ApiResponse response = ApiResponse.createDefaultResponse("api/courseAccess/getCoursesForUser");
-        String userId = validateAndGetUserId(request, authToken, response);
-        if (userId == null) return response;
 
-        String redisKey = Constants.ACCESS_KEY + userId;
-        List<Map<String, Object>> cacheResult = fetchFromRedisCache(redisKey);
-
-        if (cacheResult != null) {
-            response.getResult().put(Constants.CONTENT, cacheResult);
+        String userId = accessTokenValidator.fetchUserIdFromAccessToken(authToken, response);
+        if (!StringUtils.hasText(userId)) {
+            String errMsg = "Invalid or missing authentication token";
+            log.error(errMsg);
+            response.updateErrorDetails(errMsg, HttpStatus.UNAUTHORIZED);
             return response;
         }
+
+        // Validate the request payload
+        if (MapUtils.isEmpty(request)) {
+            String errMsg = "Request body is null or empty";
+            log.error(errMsg);
+            response.updateErrorDetails(errMsg, HttpStatus.BAD_REQUEST);
+            return response;
+        }
+
+        String cachedCourseForUser = redisCacheMgr.getFromCache(Constants.ACCESS_KEY + userId);
+        if (cachedCourseForUser != null && !cachedCourseForUser.isEmpty()){
+            if (cachedCourseForUser.equalsIgnoreCase(Constants.NO_RECORDS_FOUND)){
+                response.getResult().put(Constants.CONTENT, new ArrayList<>());
+                return response;
+            }
+            try {
+                response.getResult().put(Constants.CONTENT, mapper.readValue(
+                        cachedCourseForUser,
+                        new TypeReference<List<Map<String, Object>>>() {}
+                ));
+                log.info("AccessSettingRule evalution: UserId: ", userId);
+                return response;
+            } catch (JsonProcessingException e) {
+                throw new RuntimeException(e);
+            }
+        }
+
         // Fetch user profile details
         Map<String, Integer> userProfile = userProfileServiceImpl.getUserProfile(userId);
         try {
@@ -198,15 +223,22 @@ public class CourseAccessServiceImpl {
         log.info("CourseAccessServiceImpl::getAssignedCoursesForUser:inside");
         ApiResponse response = ApiResponse.createDefaultResponse("api.courseAccess.getCoursesForUser");
         try {
-            String userId = validateAndGetUserId(request, authToken, response);
-            if (userId == null) return response;
-
+            String userId = accessTokenValidator.fetchUserIdFromAccessToken(authToken, response);
+            if (userId == null) {
+                return response;
+            }
+            // Validate the request payload
+            if (MapUtils.isEmpty(request)) {
+                String errMsg = "Request body is null or empty";
+                log.error(errMsg);
+                response.updateErrorDetails(errMsg, HttpStatus.BAD_REQUEST);
+                return response;
+            }
             String courseCategory = (String) request.get(Constants.COURSE_CATEGORY);
             if (!StringUtils.hasText(courseCategory)) {
                 response.updateErrorDetails("Missing course category in request", HttpStatus.BAD_REQUEST);
                 return response;
             }
-
             String redisKey = Constants.ACCESS_KEY + "_" + courseCategory + "_" + userId;
             List<Map<String, Object>> cacheResult = fetchFromRedisCache(redisKey);
 
@@ -319,8 +351,6 @@ public class CourseAccessServiceImpl {
                 } catch (Exception e) {
                     log.error("Error extracting identifiers for category {}: {}", courseCategory, e.getMessage(), e);
                 }
-
-                // Cache only identifiers list
                 if (!identifiers.isEmpty()) {
                     courseCategoryCache.put("access_settings_enabled_"+courseCategory, identifiers);
                     cacheTimestamps.put(courseCategory, System.currentTimeMillis());
@@ -338,29 +368,10 @@ public class CourseAccessServiceImpl {
         return Collections.emptyList();
     }
 
-    private String validateAndGetUserId(Map<String, Object> request, String authToken, ApiResponse response) {
-        String userId = accessTokenValidator.fetchUserIdFromAccessToken(authToken, response);
-        if (!StringUtils.hasText(userId)) {
-            String errMsg = "Invalid or missing authentication token";
-            response.updateErrorDetails(errMsg, HttpStatus.UNAUTHORIZED);
-            return null;
-        }
-        if (MapUtils.isEmpty(request)) {
-            String errMsg = "Request body is null or empty";
-            response.updateErrorDetails(errMsg, HttpStatus.BAD_REQUEST);
-            return null;
-        }
-        return userId;
-    }
-
-
     private List<Map<String, Object>> fetchFromRedisCache(String redisKey) {
         String cachedData = redisCacheMgr.getFromCache(redisKey);
         if (!StringUtils.hasText(cachedData)) {
             return null;
-        }
-        if (cachedData.equalsIgnoreCase(Constants.NO_RECORDS_FOUND)) {
-            return new ArrayList<>();
         }
         try {
             return mapper.readValue(

@@ -51,6 +51,15 @@ public class CourseAccessServiceImpl {
     @Value("${sb.composite.v4.search}")
     private String sbCompositeV4Search;
 
+    @Value("${cb.search.limit:100}")
+    private int searchLimit;
+
+    @Value("${cb.search.offset:0}")
+    private int searchOffset;
+
+    @Value("${cb.search.accessSettingsEnabled:true}")
+    private boolean accessSettingsEnabled;
+
     private final Map<String, List<String>> courseCategoryCache = new ConcurrentHashMap<>();
     private final Map<String, Long> cacheTimestamps = new ConcurrentHashMap<>();
     private static final long CACHE_TTL_MS = 4 * 60 * 60 * 1000L; // 4 hours
@@ -83,45 +92,18 @@ public class CourseAccessServiceImpl {
     public ApiResponse getCoursesForUser(Map<String, Object> request, String authToken) {
         log.info("CourseAccessServiceImpl::getCoursesForUser:inside");
         ApiResponse response = ApiResponse.createDefaultResponse("api/courseAccess/getCoursesForUser");
+        String userId = validateAndGetUserId(request, authToken, response);
+        if (userId == null) return response;
 
-        String userId = accessTokenValidator.fetchUserIdFromAccessToken(authToken, response);
-        if (!StringUtils.hasText(userId)) {
-            String errMsg = "Invalid or missing authentication token";
-            log.error(errMsg);
-            response.updateErrorDetails(errMsg, HttpStatus.UNAUTHORIZED);
+        String redisKey = Constants.ACCESS_KEY + userId;
+        List<Map<String, Object>> cacheResult = fetchFromRedisCache(redisKey);
+
+        if (cacheResult != null) {
+            response.getResult().put(Constants.CONTENT, cacheResult);
             return response;
         }
-
-        // Validate the request payload
-        if (MapUtils.isEmpty(request)) {
-            String errMsg = "Request body is null or empty";
-            log.error(errMsg);
-            response.updateErrorDetails(errMsg, HttpStatus.BAD_REQUEST);
-            return response;
-        }
-
-        String cachedCourseForUser = redisCacheMgr.getFromCache(Constants.ACCESS_KEY + userId);
-        if (cachedCourseForUser != null && !cachedCourseForUser.isEmpty()){
-            if (cachedCourseForUser.equalsIgnoreCase(Constants.NO_RECORDS_FOUND)){
-                response.getResult().put(Constants.CONTENT, new ArrayList<>());
-                return response;
-            }
-            try {
-                response.getResult().put(Constants.CONTENT, mapper.readValue(
-                        cachedCourseForUser,
-                        new TypeReference<List<Map<String, Object>>>() {}
-                ));
-                log.info("AccessSettingRule evalution: UserId: ", userId);
-                return response;
-            } catch (JsonProcessingException e) {
-                throw new RuntimeException(e);
-            }
-        }
-
         // Fetch user profile details
         Map<String, Integer> userProfile = userProfileServiceImpl.getUserProfile(userId);
-        // Evaluate the user profile value against all the courses in access settings
-        // rule table.
         try {
             List<Map<String, Object>> userCourses = new ArrayList<>();
             if (retrieveUserCourses(userProfile, userCourses)) {
@@ -216,34 +198,20 @@ public class CourseAccessServiceImpl {
         log.info("CourseAccessServiceImpl::getAssignedCoursesForUser:inside");
         ApiResponse response = ApiResponse.createDefaultResponse("api.courseAccess.getCoursesForUser");
         try {
-            String userId = accessTokenValidator.fetchUserIdFromAccessToken(authToken, response);
-            if (!StringUtils.hasText(userId)) {
-                String errMsg = "Invalid or missing authentication token";
-                response.updateErrorDetails(errMsg, HttpStatus.UNAUTHORIZED);
-                return response;
-            }
-            // Validate the request payload
-            if (MapUtils.isEmpty(request)) {
-                String errMsg = "Request body is null or empty";
-                response.updateErrorDetails(errMsg, HttpStatus.BAD_REQUEST);
-                return response;
-            }
+            String userId = validateAndGetUserId(request, authToken, response);
+            if (userId == null) return response;
+
             String courseCategory = (String) request.get(Constants.COURSE_CATEGORY);
             if (!StringUtils.hasText(courseCategory)) {
-                String errMsg = "Missing course category in request";
-                response.updateErrorDetails(errMsg, HttpStatus.BAD_REQUEST);
+                response.updateErrorDetails("Missing course category in request", HttpStatus.BAD_REQUEST);
                 return response;
             }
-            String redisKey = Constants.ACCESS_KEY + Constants.UNDERSCORE + courseCategory + Constants.UNDERSCORE + userId;
-            String cachedData = redisCacheMgr.getFromCache(redisKey);
 
-            if (StringUtils.hasText(cachedData)) {
-                log.info("Cache hit for assigned courses: category={} userId={}", courseCategory, userId);
-                List<Map<String, Object>> cachedCourses = mapper.readValue(
-                        cachedData,
-                        new TypeReference<List<Map<String, Object>>>() {}
-                );
-                response.getResult().put(Constants.CONTENT, cachedCourses);
+            String redisKey = Constants.ACCESS_KEY + "_" + courseCategory + "_" + userId;
+            List<Map<String, Object>> cacheResult = fetchFromRedisCache(redisKey);
+
+            if (cacheResult != null) {
+                response.getResult().put(Constants.CONTENT, cacheResult);
                 return response;
             }
             List<String> courseIds = getCoursesFromCacheOrService(courseCategory);
@@ -304,12 +272,12 @@ public class CourseAccessServiceImpl {
         HashMap<String, Object> req = new HashMap<>();
         Map<String, Object> filters = new HashMap<>();
         filters.put(Constants.COURSE_CATEGORY, courseCategory);
-        filters.put(Constants.ACCESS_SETTINGS_ENABLED, true);
+        filters.put(Constants.ACCESS_SETTINGS_ENABLED, accessSettingsEnabled);
         filters.put(Constants.STATUS, Arrays.asList(Constants.LIVE));
         req.put(Constants.FILTERS, filters);
-        req.put(Constants.LIMIT, 100);
-        req.put(Constants.OFFSET, 0);
-        List<String> fields = Collections.singletonList("identifier");
+        req.put(Constants.LIMIT, searchLimit);
+        req.put(Constants.OFFSET, searchOffset);
+        List<String> fields = Collections.singletonList(Constants.IDENTIFIER);
         req.put(Constants.FIELDS, fields);
         reqBody.put(Constants.REQUEST, req);
 
@@ -369,5 +337,41 @@ public class CourseAccessServiceImpl {
         }
         return Collections.emptyList();
     }
+
+    private String validateAndGetUserId(Map<String, Object> request, String authToken, ApiResponse response) {
+        String userId = accessTokenValidator.fetchUserIdFromAccessToken(authToken, response);
+        if (!StringUtils.hasText(userId)) {
+            String errMsg = "Invalid or missing authentication token";
+            response.updateErrorDetails(errMsg, HttpStatus.UNAUTHORIZED);
+            return null;
+        }
+        if (MapUtils.isEmpty(request)) {
+            String errMsg = "Request body is null or empty";
+            response.updateErrorDetails(errMsg, HttpStatus.BAD_REQUEST);
+            return null;
+        }
+        return userId;
+    }
+
+
+    private List<Map<String, Object>> fetchFromRedisCache(String redisKey) {
+        String cachedData = redisCacheMgr.getFromCache(redisKey);
+        if (!StringUtils.hasText(cachedData)) {
+            return null;
+        }
+        if (cachedData.equalsIgnoreCase(Constants.NO_RECORDS_FOUND)) {
+            return new ArrayList<>();
+        }
+        try {
+            return mapper.readValue(
+                    cachedData,
+                    new TypeReference<List<Map<String, Object>>>() {}
+            );
+        } catch (JsonProcessingException e) {
+            log.error("Failed parsing cached redis data for key {}: {}", redisKey, e.getMessage());
+            return null;
+        }
+    }
+
 
 }

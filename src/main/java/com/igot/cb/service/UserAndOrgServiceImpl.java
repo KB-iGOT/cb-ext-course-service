@@ -122,6 +122,7 @@ public class UserAndOrgServiceImpl {
                     log.error("Failed to read the user profile for userId: {}", userId);
                     return Map.of();
                 }
+                userList.get(0).put(Constants.PROFILE_DETAILS,  userList.get(0).get(Constants.PROFILE_DETAILS_LOWERCASE));
                 setUserProfile(userProfile, userList.get(0));
             }
             getUserBitMap(userProfile, userProfileBitMap);
@@ -142,7 +143,7 @@ public class UserAndOrgServiceImpl {
         }
         userProfile.put(Constants.USER, (String) userBasicProfile.get(Constants.ID));
         userProfile.put(Constants.ROOT_ORG_ID.toLowerCase(), (String) userBasicProfile.get(Constants.ROOT_ORG_ID));
-        Object rawValue = userBasicProfile.get(Constants.PROFILE_DETAILS_LOWERCASE);
+        Object rawValue = userBasicProfile.get(Constants.PROFILE_DETAILS);
         Map<String, Object> profileDetails;
 
         if (rawValue instanceof String) {

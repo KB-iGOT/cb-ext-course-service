@@ -260,44 +260,4 @@ public class AccessSettingRuleCacheMgr {
         }
     }
 
-
-
-    private void loadRulesFromCassandraAndCache() {
-        log.info("Loading access setting rules from Cassandra...");
-        try {
-            List<Map<String, Object>> accessSettingRuleMapList = cassandraOperation.getRecordsByProperties(
-                    Constants.KEYSPACE_SUNBIRD_COURSE,
-                    Constants.ACCESS_SETTINGS_RULES_TABLE_V2,
-                    null,
-                    null,
-                    null);
-            cachedAccessSettingRules = accessSettingRuleMapList.stream()
-                    .map(record -> new CachedAccessSettingRule(
-                            (String) record.get(Constants.CONTEXT_ID_KEY),
-                            (String) record.get(Constants.CONTEXT_ID_TYPE),
-                            (String) record.get(Constants.CONTEXT_DATA_KEY),
-                            false))
-                    .collect(Collectors.toConcurrentMap(
-                            CachedAccessSettingRule::getCacheKey,
-                            rule -> rule));
-            for (CachedAccessSettingRule rule : cachedAccessSettingRules.values()) {
-                try {
-                    Map<String, Object> contextData = rule.getContextData();
-                    if (contextData == null) {
-                        log.warn("No contextData found for rule: {}", rule.getCacheKey());
-                        continue;
-                    }
-                    processContextData(rule.getCacheKey(), contextData);
-                    cachedAccessSettingRules.put(rule.getCacheKey(), rule);
-                } catch (Exception e) {
-                    log.error("Error processing rule {}: {}", rule.getCacheKey(), e.getMessage(), e);
-                }
-            }
-            log.info("Loaded and cached {} rules from Cassandra.", cachedAccessSettingRules.size());
-        } catch (Exception e) {
-            log.error("Error loading access setting rules from Cassandra: {}", e.getMessage(), e);
-        }
-    }
-
-
 }

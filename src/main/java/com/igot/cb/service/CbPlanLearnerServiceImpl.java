@@ -268,10 +268,39 @@ public class CbPlanLearnerServiceImpl {
         List<Map<String, Object>> courseList = new ArrayList<>();
 
         for (String courseId : courses) {
-            Map<String, Object> contentDetails = new HashMap<>();
+            Map<String, Object> contentDetails = null;
 
             if (!courseDetailsMap.containsKey(courseId)) {
-                contentDetails.put("identifier", courseId);
+                contentDetails = contentService.readContent(courseId, null);
+
+                if (MapUtils.isNotEmpty(contentDetails)) {
+                    if (courseId.contains("_rc")) {
+                        if (Constants.VERIFIED.equalsIgnoreCase(userProfile.get(Constants.PROFILE_STATUS_KEY))) {
+                            Object secureSettingsObj = contentDetails.get(Constants.SECURE_SETTINGS);
+                            if (secureSettingsObj instanceof Map<?, ?> secureSettings && !secureSettings.isEmpty()) {
+                                Object orgListObj = secureSettings.get(Constants.ORGANISATION);
+                                if (orgListObj instanceof List<?> orgList && !orgList.isEmpty()) {
+                                    List<String> secureOrgList = orgList.stream()
+                                            .filter(String.class::isInstance)
+                                            .map(String.class::cast)
+                                            .toList();
+
+                                    if (secureOrgList.contains(userOrgId)) {
+                                        courseDetailsMap.put(courseId, contentDetails);
+                                    }
+                                }
+                            }
+                        }
+
+                        if (!courseDetailsMap.containsKey(courseId)) {
+                            contentDetails.clear();
+                        }
+                    } else {
+                        courseDetailsMap.put(courseId, contentDetails);
+                    }
+                } else {
+                    logger.error("Failed to read course details for Id: {}", courseId);
+                }
             } else {
                 continue;
             }

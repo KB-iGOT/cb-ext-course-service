@@ -23,7 +23,7 @@ import lombok.extern.slf4j.Slf4j;
 public class AccessSettingRuleCacheMgr {
     private final RedisCacheMgr redisCacheMgr;
     private final CassandraOperation cassandraOperation;
-    private Map<String, CachedAccessSettingRule> cachedAccessSettingRules;
+    private Map<String, CachedAccessSettingRule> cachedAccessSettingRules = new ConcurrentHashMap<>();
 
     private final long LOCAL_CACHE_TTL = 3600000;
 

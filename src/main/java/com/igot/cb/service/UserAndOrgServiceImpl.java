@@ -178,59 +178,6 @@ public class UserAndOrgServiceImpl {
         }
     }
 
-//    private void getUserBitMap(Map<String, String> userProfile, Map<String, Integer> userProfileBitMap) {
-//        if (MapUtils.isEmpty(userProfile)) {
-//            log.warn("User profile is empty, cannot generate bitmap");
-//            return;
-//        }
-//
-//        Map<String, Integer> idResultMap = idMapCacheMgr.getId(new ArrayList<>(userProfile.values()));
-//        if (MapUtils.isEmpty(idResultMap)) {
-//            log.error("Failed to fetch ID-Map for User: {}", userProfile.get(Constants.USER));
-//            return;
-//        }
-//
-//        if (userProfile.values().size() != idResultMap.size()) {
-//            log.warn("ID-Map values size mismatch for User Profile: {}", userProfile.get(Constants.USER));
-//        }
-//
-//        for (Map.Entry<String, String> entry : userProfile.entrySet()) {
-//            String encodedValue;
-//            try {
-//                encodedValue = new URI(null, entry.getValue(), null).toASCIIString();
-//            } catch (URISyntaxException e) {
-//                log.error("Error encoding value '{}' for key '{}'", entry.getValue(), entry.getKey(), e);
-//                continue;
-//            }
-//
-//            Integer mappedId = idResultMap.get(encodedValue);
-//            if (mappedId == null) {
-//                mappedId = idResultMap.get(entry.getValue());
-//            }
-//
-//            // 🔹 Safely parse integer from ID map (similar to your earlier logic)
-//            Integer intValue = null;
-//            if (mappedId != null) {
-//                try {
-//                    intValue = Integer.parseInt(mappedId.toString());
-//                } catch (NumberFormatException e) {
-//                    log.warn("Non-integer ID value '{}' for user {}, key {}",
-//                            mappedId, userProfile.get(Constants.USER), entry.getKey());
-//                }
-//            }
-//
-//            if (intValue != null) {
-//                userProfileBitMap.put(entry.getKey().toLowerCase(), intValue);
-//            } else {
-//                log.warn("ID-Map does not contain valid integer value for User: {}, Key: {}, Value: {}",
-//                        userProfile.get(Constants.USER), entry.getKey(), entry.getValue());
-//                userProfileBitMap.clear();
-//                return;
-//            }
-//        }
-//    }
-
-
     private void getUserBitMap(Map<String, String> userProfile, Map<String, Integer> userProfileBitMap) {
         if (MapUtils.isEmpty(userProfile)) {
             log.warn("User profile is empty, cannot generate bitmap");

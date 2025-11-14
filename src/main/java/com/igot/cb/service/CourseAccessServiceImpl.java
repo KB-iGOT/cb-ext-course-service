@@ -297,10 +297,8 @@ public class CourseAccessServiceImpl {
             log.error("Error occurred while evaluating access setting rules: {}", e.getMessage(), e);
             response.updateErrorDetails("Rule evaluation failed due to an error", HttpStatus.INTERNAL_SERVER_ERROR);
         }
-
         return response;
     }
-
 
     public Map<String, Object> fetchAccessSettingsEnabledCoursesForCategory(String courseCategory) {
         HashMap<String, Object> reqBody = new HashMap<>();

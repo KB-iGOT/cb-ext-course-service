@@ -209,9 +209,9 @@ public class AccessSettingRuleCacheMgr {
 
 
     public CachedAccessSettingRule getOrLoadAccessSettingRule(String courseId, String contextId) {
-        String cacheKey = courseId + "|" + contextId;
+        String cacheKey = courseId + Constants.UNDERSCORE + contextId;
 
-        if (cachedAccessSettingRules == null || cachedAccessSettingRules.isEmpty()) {
+        if (MapUtils.isEmpty(cachedAccessSettingRules)) {
             log.info("Cache not initialized. Loading rules from Cassandra and Redis...");
             try {
                 loadRulesFromCassandraAndCache();
@@ -253,14 +253,11 @@ public class AccessSettingRuleCacheMgr {
 
             try {
                 Map<String, Object> contextData = loadedRule.getContextData();
-                if (contextData != null) {
+                if (MapUtils.isNotEmpty(contextData)) {
                     processContextData(cacheKey, contextData);
                 }
-
                 cachedAccessSettingRules.put(cacheKey, loadedRule);
                 log.info("Loaded and cached rule for key: {}", cacheKey);
-
-
             } catch (Exception e) {
                 log.error("Error processing rule {}: {}", cacheKey, e.getMessage(), e);
             }
@@ -285,9 +282,9 @@ public class AccessSettingRuleCacheMgr {
                     null);
             cachedAccessSettingRules = accessSettingRuleMapList.stream()
                     .map(record -> new CachedAccessSettingRule(
-                            (String) record.get("contextId"),
-                            (String) record.get("contextIdType"),
-                            (String) record.get("contextData"),
+                            (String) record.get(Constants.CONTEXT_ID_KEY),
+                            (String) record.get(Constants.CONTEXT_ID_TYPE),
+                            (String) record.get(Constants.CONTEXT_DATA_KEY),
                             false))
                     .collect(Collectors.toConcurrentMap(
                             CachedAccessSettingRule::getCacheKey,

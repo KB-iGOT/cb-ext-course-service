@@ -209,7 +209,7 @@ public class AccessSettingRuleCacheMgr {
 
 
     public CachedAccessSettingRule getOrLoadAccessSettingRule(String courseId, String contextId) {
-        String cacheKey = courseId + Constants.UNDERSCORE + contextId;
+        String cacheKey = courseId + "|" + contextId;
 
         if (MapUtils.isEmpty(cachedAccessSettingRules)) {
             log.info("Cache not initialized. Loading rules from Cassandra and Redis...");

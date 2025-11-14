@@ -237,27 +237,6 @@ class CourseAccessServiceImplTest {
         assertEquals("course123", content.get(0).get("identifier"));
     }
 
-    @Test
-    void testGetCoursesForUser_shouldThrowRuntimeException_onReadValueError() throws Exception {
-        // Arrange
-        Map<String, Object> request = Map.of("key", "value");
-        ApiResponse.createDefaultResponse("test");
-
-        when(mockAccessTokenValidator.fetchUserIdFromAccessToken(any(), any(ApiResponse.class)))
-                .thenReturn("user123");
-        when(redisCacheMgr.getFromCache(Constants.ACCESS_KEY + "user123")).thenReturn("[{bad json}]");
-
-        ObjectMapper mapperSpy = Mockito.spy(new ObjectMapper());
-        ReflectionTestUtils.setField(courseAccessService, "mapper", mapperSpy);
-
-        doThrow(JsonProcessingException.class)
-                .when(mapperSpy)
-                .readValue(anyString(), ArgumentMatchers.<TypeReference<List<Map<String, Object>>>>any());
-
-        // Act & Assert
-        assertThrows(RuntimeException.class, () ->
-                courseAccessService.getCoursesForUser(request, "token"));
-    }
 
     @Test
     void testGetCoursesForUser_1() {

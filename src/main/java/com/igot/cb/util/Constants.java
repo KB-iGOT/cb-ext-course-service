@@ -468,6 +468,7 @@ public class Constants {
     public static final String PROFILE_DETAILS_LOWERCASE = "profiledetails";
     public static final String UNDERSCORE = "_";
     public static final String CONTEXT_ID_KEY = "contextId";
+    public static final String CONTEXT_ID_TYPE_KEY = "contextidtype";
 
     private Constants() {
     }

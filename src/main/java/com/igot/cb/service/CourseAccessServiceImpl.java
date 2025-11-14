@@ -57,7 +57,7 @@ public class CourseAccessServiceImpl {
     @Value("${cb.search.offset:0}")
     private int searchOffset;
 
-    @Value("${cb.search.accessSettingsEnabled:true}")
+    @Value("${cb.search.access.settings.enabled:true}")
     private boolean accessSettingsEnabled;
 
     private final Map<String, List<String>> courseCategoryCache = new ConcurrentHashMap<>();
@@ -283,15 +283,9 @@ public class CourseAccessServiceImpl {
                     userCourses.add(contentDetails);
                 }
             }
-            if (!userCourses.isEmpty()) {
-                log.info("AccessSettingRule evaluation: UserId: {} | Courses retrieved: {}", userId, userCourses.size());
-                redisCacheMgr.putInCache(Constants.ACCESS_KEY+Constants.UNDERSCORE+courseCategory+Constants.UNDERSCORE+userId, mapper.writeValueAsString(userCourses));
-                response.getResult().put(Constants.CONTENT, userCourses);
-            } else {
-                log.info("No matching user courses found for user: {}", userId);
-                response.getResult().put(Constants.CONTENT, new ArrayList<>());
-            }
-
+            log.info("AccessSettingRule evaluation: UserId: {} | Courses retrieved: {}", userId, userCourses.size());
+            redisCacheMgr.putInCache(Constants.ACCESS_KEY+Constants.UNDERSCORE+courseCategory+Constants.UNDERSCORE+userId, mapper.writeValueAsString(userCourses));
+            response.getResult().put(Constants.CONTENT, userCourses);
         } catch (Exception e) {
             log.error("Error occurred while evaluating access setting rules: {}", e.getMessage(), e);
             response.updateErrorDetails("Rule evaluation failed due to an error", HttpStatus.INTERNAL_SERVER_ERROR);

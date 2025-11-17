@@ -4,6 +4,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -21,7 +22,9 @@ import redis.clients.jedis.JedisPool;
 public class RedisCacheMgr {
     private final JedisPool jedisPool;
     private final ObjectMapper objectMapper = new ObjectMapper();
-    private static final int TTL_SECONDS = 7200; // 2 hours
+
+    @Value("${cb.cache.ttl:600}") 
+    private int ttlSeconds;
 
     /**
      * Constructor for RedisCacheMgr.
@@ -59,7 +62,7 @@ public class RedisCacheMgr {
         try (Jedis jedis = jedisPool.getResource()) {
             String fieldValue = objectMapper.writeValueAsString(fieldData);
             jedis.hset(redisKey, fieldKey, fieldValue);
-            jedis.expire(redisKey, TTL_SECONDS);
+            jedis.expire(redisKey, ttlSeconds);
             log.info("Cached field '{}' under Redis key '{}'", fieldKey, redisKey);
             return true;
         } catch (Exception e) {
@@ -95,7 +98,7 @@ public class RedisCacheMgr {
 
     public void putInCache(String key, String value) {
         try (Jedis jedis = jedisPool.getResource()) {
-            jedis.setex(key, TTL_SECONDS, value);
+            jedis.setex(key, ttlSeconds, value);
         } catch (Exception e) {
             log.error("Failed to write data to Redis with expiry: ", e);
         }

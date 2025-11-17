@@ -62,7 +62,9 @@ public class CourseAccessServiceImpl {
 
     private final Map<String, List<String>> courseCategoryCache = new ConcurrentHashMap<>();
     private final Map<String, Long> cacheTimestamps = new ConcurrentHashMap<>();
-    private static final long CACHE_TTL_MS = 4 * 60 * 60 * 1000L; // 4 hours
+    @Value("${cb.cache.course.ttl:600000}")
+    private long cacheTtlMs;  // Default 10 minutes
+
 
     private final ObjectMapper mapper = new ObjectMapper();
 
@@ -319,7 +321,7 @@ public class CourseAccessServiceImpl {
             List<String> cachedCourses = courseCategoryCache.get(courseCategory);
             Long lastUpdated = cacheTimestamps.get(courseCategory);
             boolean isCacheValid = lastUpdated != null &&
-                    (System.currentTimeMillis() - lastUpdated) < CACHE_TTL_MS;
+                    (System.currentTimeMillis() - lastUpdated) < cacheTtlMs;
 
             if (isCacheValid && cachedCourses != null) {
                 log.info("Cache hit for category: {}", courseCategory);

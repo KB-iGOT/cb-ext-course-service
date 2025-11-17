@@ -5,10 +5,12 @@ import static org.mockito.Mockito.*;
 
 import java.util.Map;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.*;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.JedisPool;
 
@@ -23,6 +25,7 @@ class RedisCacheMgrTest {
 
     @InjectMocks
     private RedisCacheMgr redisCacheMgr;
+
 
     @Test
     void testGetFromCache_success() {
@@ -60,13 +63,13 @@ class RedisCacheMgrTest {
 
         when(jedisPool.getResource()).thenReturn(jedis);
         when(jedis.hset(eq(redisKey), eq(fieldKey), anyString())).thenReturn(1L);
-        when(jedis.expire(redisKey, 7200)).thenReturn(1L);
+        when(jedis.expire(redisKey, 600)).thenReturn(1L);
 
         boolean result = redisCacheMgr.setAccessSettingRuleCache(redisKey, fieldKey, fieldData);
 
         assertTrue(result);
         verify(jedis).hset(eq(redisKey), eq(fieldKey), anyString());
-        verify(jedis).expire(redisKey, 7200);
+        verify(jedis).expire(redisKey, 600);
         verify(jedis).close();
     }
 
@@ -148,27 +151,24 @@ class RedisCacheMgrTest {
 
     @Test
     void testPutInCache_success() {
+        ReflectionTestUtils.setField(redisCacheMgr, "ttlSeconds", 600);
         String key = "testKey";
         String value = "testValue";
-
         when(jedisPool.getResource()).thenReturn(jedis);
-        when(jedis.setex(key, 7200, value)).thenReturn("OK");
-
+        when(jedis.setex(key, 600, value)).thenReturn("OK");
         assertDoesNotThrow(() -> redisCacheMgr.putInCache(key, value));
-        
-        verify(jedis).setex(key, 7200, value);
+        verify(jedis).setex(key, 600, value);
         verify(jedis).close();
     }
+
+
 
     @Test
     void testPutInCache_exception() {
         String key = "testKey";
         String value = "testValue";
-
         when(jedisPool.getResource()).thenThrow(new RuntimeException("Redis error"));
-
         assertDoesNotThrow(() -> redisCacheMgr.putInCache(key, value));
-        
         verify(jedisPool).getResource();
     }
 }

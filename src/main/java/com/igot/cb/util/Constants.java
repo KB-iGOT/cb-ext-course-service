@@ -429,6 +429,13 @@ public class Constants {
     public static final String STREAMING_URI = "streamUri";
     public static final String IS_ARCHIVED_KEY = "isArchived";
 
+    public static final String ACCESS_SETTINGS_ENABLED ="accessSettingsEnabled";
+    public static final String PROFILE_DETAILS_LOWERCASE = "profiledetails";
+    public static final String UNDERSCORE = "_";
+    public static final String CONTEXT_ID_KEY = "contextId";
+    public static final String CONTEXT_ID_TYPE_KEY = "contextidtype";
+    public static final String FILTERS = "filters";
+
     private Constants() {
     }
 }

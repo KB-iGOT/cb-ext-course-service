@@ -152,15 +152,11 @@ class RedisCacheMgrTest {
     @Test
     void testPutInCache_success() {
         ReflectionTestUtils.setField(redisCacheMgr, "ttlSeconds", 600);
-
         String key = "testKey";
         String value = "testValue";
-
         when(jedisPool.getResource()).thenReturn(jedis);
         when(jedis.setex(key, 600, value)).thenReturn("OK");
-
         assertDoesNotThrow(() -> redisCacheMgr.putInCache(key, value));
-
         verify(jedis).setex(key, 600, value);
         verify(jedis).close();
     }

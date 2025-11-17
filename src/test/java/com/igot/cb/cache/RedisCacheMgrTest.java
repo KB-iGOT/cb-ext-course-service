@@ -58,18 +58,17 @@ class RedisCacheMgrTest {
         String redisKey = "accessRules";
         String fieldKey = "rule1";
         Map<String, Object> fieldData = Map.of("key", "value");
-
+        ReflectionTestUtils.setField(redisCacheMgr, "ttlSeconds", 600);
         when(jedisPool.getResource()).thenReturn(jedis);
         when(jedis.hset(eq(redisKey), eq(fieldKey), anyString())).thenReturn(1L);
         when(jedis.expire(redisKey, 600)).thenReturn(1L);
-
         boolean result = redisCacheMgr.setAccessSettingRuleCache(redisKey, fieldKey, fieldData);
-
         assertTrue(result);
         verify(jedis).hset(eq(redisKey), eq(fieldKey), anyString());
         verify(jedis).expire(redisKey, 600);
         verify(jedis).close();
     }
+
 
     @Test
     void testSetAccessSettingRuleCache_exception() {

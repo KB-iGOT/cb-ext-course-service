@@ -167,11 +167,8 @@ class RedisCacheMgrTest {
     void testPutInCache_exception() {
         String key = "testKey";
         String value = "testValue";
-
         when(jedisPool.getResource()).thenThrow(new RuntimeException("Redis error"));
-
         assertDoesNotThrow(() -> redisCacheMgr.putInCache(key, value));
-        
         verify(jedisPool).getResource();
     }
 }

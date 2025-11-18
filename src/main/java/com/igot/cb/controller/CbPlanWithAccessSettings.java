@@ -101,7 +101,7 @@ public class CbPlanWithAccessSettings {
             @RequestHeader(Constants.X_AUTH_TOKEN) String token,
             @RequestHeader(Constants.X_AUTH_USER_ORG_ID)String userOrgId) throws Exception {
 
-        ApiResponse response = cbPlanLearnerService.getCBPlanListForUser(userOrgId, token, false);
+        ApiResponse response = cbPlanLearnerService.getCBPlanListForUser(userOrgId, token, true);
         return new ResponseEntity<>(response, response.getResponseCode());
     }
 

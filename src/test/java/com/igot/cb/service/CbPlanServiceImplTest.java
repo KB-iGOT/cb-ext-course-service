@@ -10,11 +10,13 @@ import java.lang.reflect.Method;
 import java.time.Instant;
 import java.util.*;
 
+import com.igot.cb.util.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.MockitoAnnotations;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
@@ -28,10 +30,6 @@ import com.igot.cb.elasticsearch.service.EsUtilService;
 import com.igot.cb.model.ApiRequest;
 import com.igot.cb.model.ApiResponse;
 import com.igot.cb.model.CbPlanDto;
-import com.igot.cb.util.AccessTokenValidator;
-import com.igot.cb.util.CbExtServerProperties;
-import com.igot.cb.util.Constants;
-import com.igot.cb.util.RequestValidator;
 
 
 class CbPlanServiceImplTest {
@@ -1734,6 +1732,93 @@ class CbPlanServiceImplTest {
         ApiResponse resp = cbPlanService.updateCbPlan(req, "org", "token", List.of("admin"));
         assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, resp.getResponseCode());
     }
+
+    @Test
+    void testCreateCbPlan_UserIdEmpty() {
+        ApiRequest request = new ApiRequest();
+        ApiResponse defaultResponse = ProjectUtil.createDefaultResponse(Constants.API_CB_PLAN_CREATE);
+        Mockito.when(accessTokenValidator.fetchUserIdFromAccessToken(Mockito.anyString(), Mockito.any()))
+                .thenReturn("");
+        ApiResponse response = cbPlanService.createCbPlan(request, "org1", "token123");
+        assertEquals(defaultResponse.getId(), response.getId());
+        assertEquals(Constants.SUCCESS, response.getParams().getStatus());
+    }
+
+    @Test
+    void testCreateCbPlan_RootOrgFailed() throws Exception {
+        ApiRequest request = new ApiRequest();
+
+        Mockito.when(accessTokenValidator.fetchUserIdFromAccessToken(Mockito.anyString(), Mockito.any()))
+                .thenReturn("user123");
+
+        Method m = CbPlanServiceImpl.class.getDeclaredMethod("getRootOrgFromUser", String.class, ApiResponse.class);
+        m.setAccessible(true);
+
+        ApiResponse tempResp = new ApiResponse();
+        m.invoke(cbPlanService, "user123", tempResp);
+        tempResp.getParams().setStatus(Constants.FAILED);
+
+        ApiResponse response = cbPlanService.createCbPlan(request, "org1", "token123");
+
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+    }
+
+    @Test
+    void testCreateCbPlan_CcaFailed() throws Exception {
+        ApiRequest request = new ApiRequest();
+
+        Mockito.when(accessTokenValidator.fetchUserIdFromAccessToken(Mockito.anyString(), Mockito.any()))
+                .thenReturn("user1");
+
+        Method rootOrgMethod = CbPlanServiceImpl.class.getDeclaredMethod("getRootOrgFromUser", String.class, ApiResponse.class);
+        Method ccaMethod = CbPlanServiceImpl.class.getDeclaredMethod("getCCAFromOrg", String.class, ApiResponse.class);
+
+        rootOrgMethod.setAccessible(true);
+        ccaMethod.setAccessible(true);
+
+        ApiResponse resp = cbPlanService.createCbPlan(request, "org1", "token");
+
+        assertEquals(Constants.FAILED, resp.getParams().getStatus());
+    }
+
+    @Test
+    void testCreateCbPlan_ValidationFails() {
+        ApiRequest request = new ApiRequest();
+        request.setRequest(new HashMap<>());
+
+        Mockito.when(accessTokenValidator.fetchUserIdFromAccessToken(Mockito.anyString(), Mockito.any()))
+                .thenReturn("user1");
+
+        Mockito.when(requestValidator.validateCbPlanCreateRequest(Mockito.any(), Mockito.anyBoolean(), Mockito.anyString()))
+                .thenReturn(List.of("error1"));
+
+        ApiResponse resp = cbPlanService.createCbPlan(request, "org1", "token");
+
+        assertEquals(Constants.FAILED, resp.getParams().getStatus());
+    }
+
+    @Test
+    void testCreateCbPlan_InsertFailure() {
+        ApiRequest request = new ApiRequest();
+        request.setRequest(new HashMap<>());
+
+        Mockito.when(accessTokenValidator.fetchUserIdFromAccessToken(Mockito.anyString(), Mockito.any()))
+                .thenReturn("user1");
+
+        Mockito.when(requestValidator.validateCbPlanCreateRequest(Mockito.any(), Mockito.anyBoolean(), Mockito.anyString()))
+                .thenReturn(Collections.emptyList());
+
+        Map<String, Object> cassResp = new HashMap<>();
+        cassResp.put(Constants.RESPONSE, "FAILED");
+
+        Mockito.when(cassandraOperation.insertRecord(Mockito.anyString(), Mockito.anyString(), Mockito.anyMap()))
+                .thenReturn(cassResp);
+
+        ApiResponse resp = cbPlanService.createCbPlan(request, "org1", "token");
+
+        assertEquals(Constants.FAILED, resp.getParams().getStatus());
+    }
+
 
 
 }

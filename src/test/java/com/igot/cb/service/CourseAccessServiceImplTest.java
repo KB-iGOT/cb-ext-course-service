@@ -9,6 +9,7 @@ import java.lang.reflect.Field;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.igot.cb.cache.IdMapCacheMgr;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -49,6 +50,10 @@ class CourseAccessServiceImplTest {
     @Mock
     private OutboundRequestHandlerServiceImpl outboundRequestHandlerService;
     private final String authToken = "validToken";
+
+    @Mock
+    private IdMapCacheMgr idMapCacheMgr;
+
 
     @BeforeEach
     void setUp() throws Exception {
@@ -226,8 +231,9 @@ class CourseAccessServiceImplTest {
             "name", "Test Course",
             "description", "Test Description"
         );
-        when(contentInfoService.readContent(eq("course123"), any(List.class))).thenReturn(courseDetails);
-        
+        when(contentInfoService.readContent(eq("course123"), anyList()))
+                .thenReturn(courseDetails);
+
         ApiResponse result = courseAccessService.getCoursesForUser(Map.of("key", "value"), "token");
         
         assertEquals(HttpStatus.OK, result.getResponseCode());
@@ -273,5 +279,198 @@ class CourseAccessServiceImplTest {
 
         // Assert
         assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getResponseCode());
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    void testGetCoursesForUser_CacheHasValidJson() throws Exception {
+        when(mockAccessTokenValidator.fetchUserIdFromAccessToken(eq(authToken), any(ApiResponse.class)))
+                .thenReturn("user1");
+
+        String json = "[{\"identifier\":\"c1\"}]";
+        when(redisCacheMgr.getFromCache(Constants.ACCESS_KEY + "user1")).thenReturn(json);
+
+        ObjectMapper mapperSpy = spy(new ObjectMapper());
+        ReflectionTestUtils.setField(courseAccessService, "mapper", mapperSpy);
+
+        ApiResponse response = courseAccessService.getCoursesForUser(Map.of("x", "y"), authToken);
+
+        List<Map<String, Object>> content =
+                (List<Map<String, Object>>) response.getResult().get(Constants.CONTENT);
+
+        assertEquals(1, content.size());
+        assertEquals("c1", content.get(0).get("identifier"));
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    void testGetCoursesForUser_CacheNoRecordsFound() {
+        when(mockAccessTokenValidator.fetchUserIdFromAccessToken(eq(authToken), any(ApiResponse.class)))
+                .thenReturn("user1");
+
+        when(redisCacheMgr.getFromCache(Constants.ACCESS_KEY + "user1"))
+                .thenReturn(Constants.NO_RECORDS_FOUND);
+
+        ApiResponse response = courseAccessService.getCoursesForUser(Map.of("x", "y"), authToken);
+
+        List<Map<String, Object>> content =
+                (List<Map<String, Object>>) response.getResult().get(Constants.CONTENT);
+
+        assertTrue(content.isEmpty());
+    }
+
+    @Test
+    void testGetCoursesForUser_CacheInvalidJson_ThrowsException() throws Exception {
+        when(mockAccessTokenValidator.fetchUserIdFromAccessToken(eq(authToken), any(ApiResponse.class)))
+                .thenReturn("u1");
+
+        when(redisCacheMgr.getFromCache(Constants.ACCESS_KEY + "u1")).thenReturn("invalid JSON");
+
+        ObjectMapper mapperSpy = spy(new ObjectMapper());
+        doThrow(new JsonProcessingException("error") {})
+                .when(mapperSpy)
+                .readValue(anyString(), (TypeReference<?>) any());
+        ReflectionTestUtils.setField(courseAccessService, "mapper", mapperSpy);
+
+        assertThrows(RuntimeException.class, () ->
+                courseAccessService.getCoursesForUser(Map.of("x", "y"), authToken));
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    void testGetCoursesForUser_RetrieveUserCoursesReturnsFalse() {
+        when(mockAccessTokenValidator.fetchUserIdFromAccessToken(eq(authToken), any(ApiResponse.class)))
+                .thenReturn("u1");
+
+        when(redisCacheMgr.getFromCache(Constants.ACCESS_KEY + "u1")).thenReturn(null);
+        when(mockUserProfileService.getUserProfile("u1")).thenReturn(Map.of("k", 1));
+        when(mockAccessSettingRuleCacheMgr.getAccessSettingRules()).thenReturn(Collections.emptyList());
+
+        ApiResponse response = courseAccessService.getCoursesForUser(Map.of("x", "y"), authToken);
+
+        List<Map<String, Object>> content =
+                (List<Map<String, Object>>) response.getResult().get(Constants.CONTENT);
+
+        assertTrue(content.isEmpty());
+    }
+
+    @Test
+    void testGetCoursesForUser_ExceptionInRedisPut() throws Exception {
+        when(mockAccessTokenValidator.fetchUserIdFromAccessToken(eq(authToken), any(ApiResponse.class)))
+                .thenReturn("u1");
+        when(redisCacheMgr.getFromCache(Constants.ACCESS_KEY + "u1")).thenReturn(null);
+        when(mockUserProfileService.getUserProfile("u1")).thenReturn(Map.of("cadre", 1));
+        BitSet bit = new BitSet();
+        bit.set(1);
+        Map<String, Object> contextData = new HashMap<>();
+        Map<String, Object> ac = new HashMap<>();
+        Map<String, Object> ug = new HashMap<>();
+        ug.put("userGroupCriteriaList", List.of(Map.of("criteriaKey", "cadre", "criteriaValue", bit)));
+        ac.put("userGroups", List.of(ug));
+        contextData.put("accessControlId", ac);
+        CachedAccessSettingRule rule = mock(CachedAccessSettingRule.class);
+        when(rule.getContextId()).thenReturn("c1");
+        when(rule.getContextData()).thenReturn(contextData);
+        when(contentInfoService.readContent(eq("c1"), anyList()))
+                .thenReturn(Map.of("identifier", "c1"));
+        when(mockAccessSettingRuleCacheMgr.getAccessSettingRules()).thenReturn(List.of(rule));
+        ObjectMapper mapperSpy = spy(new ObjectMapper());
+        ReflectionTestUtils.setField(courseAccessService, "mapper", mapperSpy);
+
+        doThrow(new RuntimeException("cache fail"))
+                .when(redisCacheMgr)
+                .putInCache(anyString(), anyString());
+        ApiResponse response = courseAccessService.getCoursesForUser(Map.of("x", "y"), authToken);
+
+        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getResponseCode());
+    }
+
+    @Test
+    void testFetchFromRedisCache_InvalidJson() throws Exception {
+        String key = "k1";
+        when(redisCacheMgr.getFromCache(key)).thenReturn("invalid");
+
+        ObjectMapper mapperSpy = spy(new ObjectMapper());
+        ReflectionTestUtils.setField(courseAccessService, "mapper", mapperSpy);
+        doThrow(new JsonProcessingException("error") {})
+                .when(mapperSpy)
+                .readValue(anyString(), (TypeReference<?>) any());
+        List<Map<String, Object>> result =
+                ReflectionTestUtils.invokeMethod(courseAccessService, "fetchFromRedisCache", key);
+
+        assertNull(result);
+    }
+
+    @Test
+    void testGetAssignedCoursesForUser_EmptyRequest() {
+        ApiResponse response = courseAccessService.getAssignedCoursesForUser(null, authToken);
+        assertNotNull(response);
+        assertEquals(HttpStatus.OK, response.getResponseCode());
+        assertInstanceOf(Map.class, response.getResult());
+        Map<String, Object> result = (Map<String, Object>) response.getResult();
+        assertTrue(result.isEmpty() || result.containsKey("courses"));
+    }
+
+
+
+    @Test
+    void testGetAssignedCoursesForUser_MissingCourseCategory() {
+        when(mockAccessTokenValidator.fetchUserIdFromAccessToken(eq(authToken), any(ApiResponse.class)))
+                .thenReturn("u1");
+
+        ApiResponse response = courseAccessService.getAssignedCoursesForUser(Map.of(), authToken);
+
+        assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
+    }
+
+    @Test
+    void testGetCoursesFromCacheOrService_NoIdentifiers() {
+        Map<String, Object> result = Map.of(
+                Constants.RESULT, Map.of(Constants.CONTENT, List.of())
+        );
+
+        when(outboundRequestHandlerService.fetchResultUsingPost(anyString(), anyMap(), isNull()))
+                .thenReturn(result);
+
+        List<String> list = ReflectionTestUtils.invokeMethod(
+                courseAccessService, "getCoursesFromCacheOrService", "category1");
+
+        assertNotNull(list);
+        assertTrue(list.isEmpty());
+    }
+
+    @Test
+    void testGetCoursesForUser_InvalidToken_ShouldReturnBadRequest() throws Exception {
+        when(mockAccessTokenValidator.fetchUserIdFromAccessToken(eq(authToken), any(ApiResponse.class)))
+                .thenReturn(null);
+        ApiResponse response = courseAccessService.getCoursesForUser(Map.of(), authToken);
+        assertEquals(HttpStatus.UNAUTHORIZED, response.getResponseCode());
+    }
+
+    @Test
+    void testGetCoursesForUser_NoUserProfile() throws Exception {
+        when(mockAccessTokenValidator.fetchUserIdFromAccessToken(eq(authToken), any(ApiResponse.class)))
+                .thenReturn("u1");
+        when(redisCacheMgr.getFromCache(Constants.ACCESS_KEY + "u1")).thenReturn(null);
+        when(mockUserProfileService.getUserProfile("u1")).thenReturn(Map.of());
+        ApiResponse response = courseAccessService.getCoursesForUser(Map.of("dummy", "value"), authToken);
+        assertEquals(HttpStatus.OK, response.getResponseCode());
+        assertTrue(((List<?>) response.getResult().get(Constants.CONTENT)).isEmpty());
+    }
+
+    @Test
+    void testGetCoursesForUser_NoAccessRules() throws Exception {
+        when(mockAccessTokenValidator.fetchUserIdFromAccessToken(eq(authToken), any(ApiResponse.class)))
+                .thenReturn("u1");
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
+        when(mockUserProfileService.getUserProfile("u1"))
+                .thenReturn(Map.of("cadre", 1));
+        when(mockAccessSettingRuleCacheMgr.getAccessSettingRules())
+                .thenReturn(List.of());
+        ApiResponse response = courseAccessService.getCoursesForUser(
+                Map.of("dummy", "value"),  // must be NON-EMPTY
+                authToken
+        );
+        assertEquals(HttpStatus.OK, response.getResponseCode());
     }
 }

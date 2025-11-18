@@ -275,36 +275,36 @@ public class CbPlanLearnerServiceImpl {
             Map<String, Object> contentDetails = null;
 
 
-                contentDetails = contentService.readContent(courseId, null);
+            contentDetails = contentService.readContent(courseId, null);
 
-                if (MapUtils.isNotEmpty(contentDetails)) {
-                    if (courseId.contains("_rc")) {
-                        if (Constants.VERIFIED.equalsIgnoreCase(userProfile.get(Constants.PROFILE_STATUS_KEY))) {
-                            Object secureSettingsObj = contentDetails.get(Constants.SECURE_SETTINGS);
-                            if (secureSettingsObj instanceof Map<?, ?> secureSettings && !secureSettings.isEmpty()) {
-                                Object orgListObj = secureSettings.get(Constants.ORGANISATION);
-                                if (orgListObj instanceof List<?> orgList && !orgList.isEmpty()) {
-                                    List<String> secureOrgList = orgList.stream()
-                                            .filter(String.class::isInstance)
-                                            .map(String.class::cast)
-                                            .toList();
+            if (MapUtils.isNotEmpty(contentDetails)) {
+                if (courseId.contains("_rc")) {
+                    if (Constants.VERIFIED.equalsIgnoreCase(userProfile.get(Constants.PROFILE_STATUS_KEY))) {
+                        Object secureSettingsObj = contentDetails.get(Constants.SECURE_SETTINGS);
+                        if (secureSettingsObj instanceof Map<?, ?> secureSettings && !secureSettings.isEmpty()) {
+                            Object orgListObj = secureSettings.get(Constants.ORGANISATION);
+                            if (orgListObj instanceof List<?> orgList && !orgList.isEmpty()) {
+                                List<String> secureOrgList = orgList.stream()
+                                        .filter(String.class::isInstance)
+                                        .map(String.class::cast)
+                                        .toList();
 
-                                    if (secureOrgList.contains(userOrgId)) {
-                                        courseDetailsMap.put(courseId, contentDetails);
-                                    }
+                                if (secureOrgList.contains(userOrgId)) {
+                                    courseDetailsMap.put(courseId, contentDetails);
                                 }
                             }
                         }
+                    }
 
-                        if (!courseDetailsMap.containsKey(courseId)) {
-                            contentDetails.clear();
-                        }
-                    } else {
-                        courseDetailsMap.put(courseId, contentDetails);
+                    if (!courseDetailsMap.containsKey(courseId)) {
+                        contentDetails.clear();
                     }
                 } else {
-                    logger.error("Failed to read course details for Id: {}", courseId);
+                    courseDetailsMap.put(courseId, contentDetails);
                 }
+            } else {
+                logger.error("Failed to read course details for Id: {}", courseId);
+            }
 
 
             if (MapUtils.isNotEmpty(contentDetails)) {

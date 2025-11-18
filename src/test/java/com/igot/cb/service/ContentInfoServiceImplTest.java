@@ -1,9 +1,8 @@
 package com.igot.cb.service;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 import java.util.Collections;
 import java.util.HashMap;
@@ -147,5 +146,112 @@ class ContentInfoServiceImplTest {
 
         String result = contentService.readCourseCategoryForContent("missing");
         assertEquals("", result);
+    }
+
+    @Test
+    void testReadContent_cacheHitFilteredFields() throws Exception {
+        Map<String, Object> content = Map.of("name", "course", "type", "video");
+        when(redisCacheMgr.getFromCache("cid")).thenReturn(new ObjectMapper().writeValueAsString(content));
+        Map<String, Object> result = contentService.readContent("cid", List.of("name"));
+        assertEquals("course", result.get("name"));
+        assertFalse(result.containsKey("type"));
+    }
+
+    @Test
+    void testReadContent_cacheEmpty_thenServiceCalled() {
+        when(redisCacheMgr.getFromCache("cid")).thenReturn(null);
+        Map<String, Object> inner = Map.of(Constants.CONTENT, Map.of("name", "x"));
+        Map<String, Object> resp = Map.of(Constants.RESPONSE_CODE, "OK", Constants.RESULT, inner);
+        when(outboundRequestHandlerService.fetchResult(anyString())).thenReturn(resp);
+        Map<String, Object> result = contentService.readContent("cid", List.of("name"));
+        assertEquals("x", result.get("name"));
+    }
+
+    @Test
+    void testReadContent_cacheThrowsException_returnsEmpty() throws Exception {
+        when(redisCacheMgr.getFromCache("cid")).thenReturn("invalid-json");
+        Map<String, Object> result = contentService.readContent("cid", List.of("name"));
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    void testReadContent_nullId_returnsEmpty() {
+        Map<String, Object> result = contentService.readContent("", List.of("x"));
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    void testReadContentFromCache_returnsAllWhenFieldsNull() throws Exception {
+        Map<String, Object> content = Map.of("a", 1, "b", 2);
+        when(redisCacheMgr.getFromCache("cid")).thenReturn(new ObjectMapper().writeValueAsString(content));
+        Map<String, Object> result = contentService.readContentFromCache("cid", null);
+        assertEquals(2, result.size());
+    }
+
+    @Test
+    void testReadContentFromCache_returnsEmptyForUnknownField() throws Exception {
+        Map<String, Object> content = Map.of("known", 1);
+        when(redisCacheMgr.getFromCache("cid")).thenReturn(new ObjectMapper().writeValueAsString(content));
+        Map<String, Object> result = contentService.readContentFromCache("cid", List.of("missing"));
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    void testReadContentFromCache_emptyRedisValue_returnsEmpty() throws Exception {
+        when(redisCacheMgr.getFromCache("cid")).thenReturn("");
+        Map<String, Object> result = contentService.readContentFromCache("cid", List.of("x"));
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    void testReadContentFromService_nullResponse_returnsEmpty() {
+        when(outboundRequestHandlerService.fetchResult(anyString())).thenReturn(null);
+        assertTrue(contentService.readContentFromService("x", List.of("a")).isEmpty());
+    }
+
+    @Test
+    void testReadContentFromService_wrongResponseCode_returnsEmpty() {
+        Map<String, Object> badResponse = Map.of(Constants.RESPONSE_CODE, "FAIL");
+        when(outboundRequestHandlerService.fetchResult(anyString())).thenReturn(badResponse);
+        assertTrue(contentService.readContentFromService("id", List.of("f1")).isEmpty());
+    }
+
+    @Test
+    void testReadCourseCategoryForContent_valuePresent() throws Exception {
+        String json = new ObjectMapper().writeValueAsString(Map.of(Constants.COURSE_CATEGORY, "Leadership"));
+        when(redisCacheMgr.getFromCache("cid")).thenReturn(json);
+        assertEquals("Leadership", contentService.readCourseCategoryForContent("cid"));
+    }
+
+    @Test
+    void testReadCourseCategoryForContent_missing_returnsEmptyString() {
+        when(redisCacheMgr.getFromCache("missing")).thenReturn(null);
+        assertEquals("", contentService.readCourseCategoryForContent("missing"));
+    }
+
+    @Test
+    void testEnrichContentInfoForCBPlan_withLiveAndNonLive() {
+        Map<String, Object> liveContent = new HashMap<>();
+        liveContent.put(Constants.STATUS, Constants.LIVE);
+        liveContent.put(Constants.NAME, "Live Course");
+        liveContent.put(Constants.IDENTIFIER, "ID-1");
+        liveContent.put(Constants.COURSE_APP_ICON, "icon.png");
+
+        Map<String, Object> nonLiveContent = new HashMap<>();
+        nonLiveContent.put(Constants.STATUS, "Draft");
+
+        ContentInfoServiceImpl spyService = spy(contentService);
+        doReturn(liveContent).when(spyService).readContent(eq("id1"), any());
+        doReturn(nonLiveContent).when(spyService).readContent(eq("id2"), any());
+
+        List<Map<String, Object>> result = spyService.enrichContentInfoForCBPlan(List.of("id1", "id2"));
+        assertEquals(1, result.size());
+        assertEquals("Live Course", result.get(0).get(Constants.NAME));
+    }
+
+    @Test
+    void testEnrichContentInfoForCBPlan_emptyInput() {
+        List<Map<String, Object>> result = contentService.enrichContentInfoForCBPlan(Collections.emptyList());
+        assertTrue(result.isEmpty());
     }
 }

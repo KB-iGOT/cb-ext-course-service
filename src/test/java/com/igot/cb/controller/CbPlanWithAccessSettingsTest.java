@@ -165,14 +165,32 @@ class CbPlanWithAccessSettingsTest {
         mockResponse.getParams().setStatus(Constants.SUCCESS);
         mockResponse.setResponseCode(HttpStatus.OK);
         mockResponse.getResult().put(Constants.COUNT, 2);
-        
+
         when(cbPlanLearnerService.getCBPlanListForUser(anyString(), anyString(), eq(false))).thenReturn(mockResponse);
 
         ResponseEntity<ApiResponse> response = controller.getCBPlanListForUser("token", "orgId");
-        
+
         assertEquals(HttpStatus.OK, response.getStatusCode());
         assertEquals(Constants.SUCCESS, response.getBody().getParams().getStatus());
     }
+
+    @Test
+    void testGetPrivateCBPlanListForUser() {
+        ApiResponse mockResponse = new ApiResponse();
+        mockResponse.getParams().setStatus(Constants.SUCCESS);
+        mockResponse.setResponseCode(HttpStatus.OK);
+        mockResponse.getResult().put("data", "mocked");
+
+        when(cbPlanLearnerService.getCBPlanCourseListForUser(anyString(), anyString()))
+                .thenReturn(mockResponse);
+
+        ResponseEntity<ApiResponse> response = controller.getPrivateCBPlanListForUser("org123", "user123");
+
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertEquals(Constants.SUCCESS, response.getBody().getParams().getStatus());
+        assertEquals("mocked", response.getBody().getResult().get("data"));
+    }
+
 
     @Test
     void testConstructor() {

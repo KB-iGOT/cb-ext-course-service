@@ -391,4 +391,190 @@ class CbPlanLearnerServiceImplTest {
         assertEquals("CustomValue", userProfile.get("customText"));
         assertEquals("Java", userProfile.get("skill"));
     }
+
+
+    @Test
+    void testGetCBPlanCourseListForUser_CacheHitValidJson() throws Exception {
+        String validJson = new ObjectMapper().writeValueAsString(Map.of("course1", "plan1"));
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn(validJson);
+
+        ApiResponse response = service.getCBPlanCourseListForUser("user123", "org123");
+        assertEquals(HttpStatus.OK, response.getResponseCode());
+        assertTrue(((Map<?, ?>) response.getResult().get("contents")).containsKey("course1"));
+    }
+
+    @Test
+    void testGetCBPlanCourseListForUser_InvalidJson() {
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn("{invalid}");
+        ApiResponse response = service.getCBPlanCourseListForUser("user123", "org123");
+        assertEquals(HttpStatus.OK, response.getResponseCode());
+        assertEquals(Constants.SUCCESS, response.getParams().getStatus());
+    }
+
+    @Test
+    void testGetCBPlanCourseListForUser_CacheMiss() {
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
+        when(accessTokenValidator.fetchUserIdFromAccessToken(anyString(), any())).thenReturn("user123");
+        ApiResponse response = service.getCBPlanCourseListForUser("user123", "org123");
+        assertEquals(HttpStatus.OK, response.getResponseCode());
+    }
+
+    @Test
+    void testProcessCoursesForCbPlan_WithSecureSettingsAndRC() throws Exception {
+        Map<String, Object> contentDetails = new HashMap<>();
+        contentDetails.put(Constants.SECURE_SETTINGS, Map.of(Constants.ORGANISATION, List.of("org123")));
+        when(contentService.readContent(eq("course_rc"), any())).thenReturn(contentDetails);
+
+        Map<String, String> userProfile = new HashMap<>();
+        userProfile.put(Constants.PROFILE_STATUS_KEY, Constants.VERIFIED);
+
+        Method method = CbPlanLearnerServiceImpl.class.getDeclaredMethod("processCoursesForCbPlan",
+                List.class, String.class, Map.class, Map.class, String.class, Map.class);
+        method.setAccessible(true);
+
+        List<Map<String, Object>> result = (List<Map<String, Object>>) method.invoke(service,
+                List.of("course_rc"), "org123", userProfile, new HashMap<>(), "2025-01-01", new HashMap<>());
+        assertNotNull(result);
+    }
+
+    @Test
+    void testEvaluateContextAccessRule_BooleanCriteria() throws Exception {
+        Map<String, Object> criteria = Map.of(Constants.CRITERIA_KEY, Constants.CENTRAL_DEPUTATION,
+                Constants.CRITERIA_VALUE, true);
+        Map<String, Object> userGroup = Map.of(Constants.USER_GROUP_CRITERIA_LIST, List.of(criteria),
+                Constants.USER_GROUP_NAME, "CentralGroup");
+        Map<String, Object> accessControl = Map.of(Constants.USER_GROUPS, List.of(userGroup));
+        Map<String, Object> accessSetting = Map.of(Constants.ACCESS_CONTROL, accessControl);
+
+        Map<String, String> userProfile = Map.of(Constants.CENTRAL_DEPUTATION_LOWER_KEY, "true");
+
+        Method method = CbPlanLearnerServiceImpl.class.getDeclaredMethod("evaluateContextAccessRule", Map.class, Map.class);
+        method.setAccessible(true);
+        boolean result = (boolean) method.invoke(service, accessSetting, userProfile);
+        assertTrue(result);
+    }
+
+
+    @Test
+    void testProcessActiveCbPlans_WithCacheEnabled() throws Exception {
+        ReflectionTestUtils.setField(service, "mapper", new ObjectMapper());
+        ReflectionTestUtils.setField(service, "redisCacheMgr", redisCacheMgr);
+
+        List<Map<String, Object>> activePlans = List.of(Map.of(
+                Constants.PLAN_ID, "plan123",
+                Constants.CONTENT_LIST, List.of("course1"),
+                Constants.END_DATE_REQUEST, Instant.now()
+        ));
+
+        Method m = CbPlanLearnerServiceImpl.class.getDeclaredMethod("processActiveCbPlans",
+                List.class, String.class, String.class, Map.class, AtomicBoolean.class, List.class);
+        m.setAccessible(true);
+
+        AtomicBoolean isCacheEnabled = new AtomicBoolean(true);
+        m.invoke(service, activePlans, "org123", "user123", new HashMap<>(), isCacheEnabled, new ArrayList<>());
+        verify(redisCacheMgr, atLeastOnce()).putInCache(anyString(), anyString());
+    }
+
+    @Test
+    void testGetExistingContextData_InvalidJson() throws Exception {
+        when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), any()))
+                .thenReturn(List.of(Map.of(Constants.CONTEXT_DATA_KEY, "{invalid")));
+        Method m = CbPlanLearnerServiceImpl.class.getDeclaredMethod("getExistingContextData",
+                String.class, String.class, Map.class);
+        m.setAccessible(true);
+        m.invoke(service, "user123", "org123", new HashMap<>());
+    }
+
+    @Test
+    void testRemoveDuplicateCourses_DuplicateIdentifiers() {
+        Map<String, Object> langMap = Map.of("en", Map.of(Constants.ID, "dup1"));
+        Map<String, Object> c1 = Map.of(Constants.IDENTIFIER, "dup1", Constants.LANGUAGE_MAP_V1, langMap);
+        Map<String, Object> c2 = Map.of(Constants.IDENTIFIER, "dup1", Constants.LANGUAGE_MAP_V1, langMap);
+        List<Map<String, Object>> result = service.removeDuplicateCourses(List.of(c1, c2));
+        assertEquals(1, result.size());
+    }
+
+    @Test
+    void testProcessActiveCbPlans_WithInvalidContextData() throws Exception {
+        Map<String, Object> invalidPlan = new HashMap<>();
+        invalidPlan.put(Constants.PLAN_ID, "plan123");
+        invalidPlan.put(Constants.CONTENT_LIST, List.of("course1"));
+        invalidPlan.put(Constants.CONTEXT_DATA_REQUEST, "{invalid-json}");
+        invalidPlan.put(Constants.END_DATE_REQUEST, Instant.now());
+
+        List<Map<String, Object>> activePlans = List.of(invalidPlan);
+        AtomicBoolean isCacheEnabled = new AtomicBoolean(false);
+
+        Method method = CbPlanLearnerServiceImpl.class.getDeclaredMethod("processActiveCbPlans",
+                List.class, String.class, String.class, Map.class, AtomicBoolean.class, List.class);
+        method.setAccessible(true);
+
+        method.invoke(service, activePlans, "org123", "user123", new HashMap<>(), isCacheEnabled, new ArrayList<>());
+    }
+
+    @Test
+    void testSetUserProfile_InvalidRawValueType() throws Exception {
+        Map<String, String> userProfile = new HashMap<>();
+        Map<String, Object> userBasicProfile = Map.of(
+                Constants.ID, "user123",
+                Constants.ROOT_ORG_ID, "org123",
+                Constants.PROFILE_DETAILS.toLowerCase(), 12345 // invalid type
+        );
+
+        Method method = CbPlanLearnerServiceImpl.class.getDeclaredMethod("setUserProfile", Map.class, Map.class);
+        method.setAccessible(true);
+        method.invoke(service, userProfile, userBasicProfile);
+
+        assertTrue(userProfile.isEmpty() || userProfile.containsKey(Constants.USER));
+    }
+
+    @Test
+    void testEvaluateContextAccessRule_NoUserGroups() throws Exception {
+        Map<String, Object> accessSettingMap = Map.of(Constants.ACCESS_CONTROL, Map.of());
+        Map<String, String> userProfile = Map.of("designation", "Test");
+
+        Method method = CbPlanLearnerServiceImpl.class.getDeclaredMethod("evaluateContextAccessRule", Map.class, Map.class);
+        method.setAccessible(true);
+        boolean result = (boolean) method.invoke(service, accessSettingMap, userProfile);
+        assertFalse(result);
+    }
+
+    @Test
+    void testGetCBPlanCourseListForUser_BlankUserId() {
+        ApiResponse response = service.getCBPlanCourseListForUser("", "org123");
+        assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+    }
+
+    @Test
+    void testGetCBPlanListForUser_EmptyRedisString() {
+        when(accessTokenValidator.fetchUserIdFromAccessToken(anyString(), any())).thenReturn("user123");
+        Map<String, Object> userData = createUserData();
+        when(cassandraOperation.getRecordsByProperties(eq(Constants.KEYSPACE_SUNBIRD), eq(Constants.USER), any(), any(), any()))
+                .thenReturn(List.of(userData));
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn("\"\"");
+        ApiResponse response = service.getCBPlanListForUser("org123", "token123", false);
+        assertEquals(0, response.getResult().get(Constants.COUNT));
+    }
+
+    @Test
+    void testGetCBPlanListForUser_WithCachedPlans() throws Exception {
+        when(accessTokenValidator.fetchUserIdFromAccessToken(anyString(), any())).thenReturn("user123");
+        Map<String, Object> userData = createUserData();
+        when(cassandraOperation.getRecordsByProperties(eq(Constants.KEYSPACE_SUNBIRD), eq(Constants.USER), any(), any(), any()))
+                .thenReturn(List.of(userData));
+
+        String cachedPlansJson = new ObjectMapper().writeValueAsString(List.of("plan1"));
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn(cachedPlansJson);
+        when(cbPlanCacheMgr.getCbPlansByPlanIdsInBatch(anyList()))
+                .thenReturn(List.of(Map.of(Constants.PLAN_ID, "plan1", Constants.CONTENT_LIST, List.of("c1"))));
+
+        Map<String, Object> contentDetails = Map.of(Constants.IDENTIFIER, "c1");
+        when(contentService.readContent("c1", null)).thenReturn(new HashMap<>(contentDetails));
+
+        ApiResponse response = service.getCBPlanListForUser("org123", "token123", false);
+        assertEquals(HttpStatus.OK, response.getResponseCode());
+    }
+
+
 }

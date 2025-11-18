@@ -274,7 +274,7 @@ public class CbPlanLearnerServiceImpl {
         for (String courseId : courses) {
             Map<String, Object> contentDetails = null;
 
-            if (!courseDetailsMap.containsKey(courseId)) {
+
                 contentDetails = contentService.readContent(courseId, null);
 
                 if (MapUtils.isNotEmpty(contentDetails)) {
@@ -305,9 +305,7 @@ public class CbPlanLearnerServiceImpl {
                 } else {
                     logger.error("Failed to read course details for Id: {}", courseId);
                 }
-            } else {
-                continue;
-            }
+
 
             if (MapUtils.isNotEmpty(contentDetails)) {
                 courseList.add(contentDetails);

@@ -473,4 +473,173 @@ class CourseAccessServiceImplTest {
         );
         assertEquals(HttpStatus.OK, response.getResponseCode());
     }
+
+    @Test
+    void testGetAssignedCoursesForUser_ValidFlow() throws Exception {
+        String userId = "u1";
+        when(mockAccessTokenValidator.fetchUserIdFromAccessToken(eq(authToken), any(ApiResponse.class)))
+                .thenReturn(userId);
+        Map<String, Object> request = Map.of(Constants.COURSE_CATEGORY, "cat1");
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
+        when(outboundRequestHandlerService.fetchResultUsingPost(anyString(), anyMap(), isNull()))
+                .thenReturn(Map.of(Constants.RESULT,
+                        Map.of(Constants.CONTENT,
+                                List.of(Map.of(Constants.IDENTIFIER, "C1")))));
+        ReflectionTestUtils.setField(courseAccessService, "cacheTtlMs", 99999999L);
+        BitSet bit = new BitSet();
+        bit.set(1);
+        Map<String,Object> accessControl = Map.of(
+                Constants.USER_GROUPS,
+                List.of(
+                        Map.of(
+                                Constants.USER_GROUP_ID, "G1",
+                                Constants.USER_GROUP_CRITERIA_LIST,
+                                List.of(
+                                        Map.of(Constants.CRITERIA_KEY, "cadre",
+                                                Constants.CRITERIA_VALUE, bit)
+                                )
+                        )
+                )
+        );
+        CachedAccessSettingRule rule = mock(CachedAccessSettingRule.class);
+        when(rule.getContextId()).thenReturn("C1");
+        when(rule.getContextData()).thenReturn(
+                Map.of(Constants.ACCESS_CONTROL_ID, accessControl)
+        );
+        when(mockAccessSettingRuleCacheMgr.getOrLoadAccessSettingRule(anyString(), anyString()))
+                .thenReturn(rule);
+        when(mockUserProfileService.getUserProfile(userId))
+                .thenReturn(Map.of("cadre", 1));
+        when(contentInfoService.readContent(eq("C1"), anyList()))
+                .thenReturn(Map.of("identifier", "C1"));
+        ApiResponse response = courseAccessService.getAssignedCoursesForUser(request, authToken);
+        assertNotNull(response);
+        assertEquals(HttpStatus.OK, response.getResponseCode());
+        assertEquals(1,
+                ((List<?>)response.getResult().get(Constants.CONTENT)).size()
+        );
+    }
+
+
+    @Test
+    void testGetAssignedCoursesForUser_InvalidToken() {
+        when(mockAccessTokenValidator.fetchUserIdFromAccessToken(eq(authToken), any(ApiResponse.class)))
+                .thenReturn(null);
+        ApiResponse response = courseAccessService.getAssignedCoursesForUser(
+                Map.of(Constants.COURSE_CATEGORY, "c1"), authToken);
+        assertEquals(HttpStatus.OK, response.getResponseCode()); // default response
+    }
+
+    @Test
+    void testGetAssignedCoursesForUser_CacheHit() throws Exception {
+        String userId = "u1";
+        when(mockAccessTokenValidator.fetchUserIdFromAccessToken(eq(authToken), any(ApiResponse.class)))
+                .thenReturn(userId);
+        List<Map<String, Object>> cached = List.of(Map.of("id","C1"));
+        ObjectMapper spyMapper = spy(new ObjectMapper());
+        ReflectionTestUtils.setField(courseAccessService, "mapper", spyMapper);
+        when(redisCacheMgr.getFromCache(anyString()))
+                .thenReturn("[{\"id\":\"C1\"}]");
+        ApiResponse response = courseAccessService.getAssignedCoursesForUser(
+                Map.of(Constants.COURSE_CATEGORY,"CAT"), authToken);
+        assertEquals("C1", ((Map<?,?>)((List<?>)response.getResult().get(Constants.CONTENT)).get(0)).get("id"));
+    }
+
+    @Test
+    void testFetchAccessSettingsEnabledCoursesForCategory() {
+        Map<String,Object> mockResponse = Map.of("RES","OK");
+        when(outboundRequestHandlerService.fetchResultUsingPost(anyString(), anyMap(), isNull()))
+                .thenReturn(mockResponse);
+        Map<String,Object> result = courseAccessService.fetchAccessSettingsEnabledCoursesForCategory("cat");
+        assertEquals("OK", result.get("RES"));
+    }
+
+    @Test
+    void testGetCoursesFromCacheOrService_CacheHit() {
+        ReflectionTestUtils.setField(courseAccessService, "courseCategoryCache",
+                new HashMap<>(Map.of("cat", List.of("C1","C2"))));
+        ReflectionTestUtils.setField(courseAccessService, "cacheTimestamps",
+                new HashMap<>(Map.of("cat", System.currentTimeMillis())));
+        ReflectionTestUtils.setField(courseAccessService, "cacheTtlMs", 99999999L);
+        List<String> result = ReflectionTestUtils.invokeMethod(courseAccessService,
+                "getCoursesFromCacheOrService", "cat");
+        assertNotNull(result);
+        assertEquals(2, result.size());
+    }
+    @Test
+    void testGetCoursesFromCacheOrService_Exception() {
+        ReflectionTestUtils.setField(courseAccessService, "courseCategoryCache",
+                new HashMap<>());
+        when(outboundRequestHandlerService.fetchResultUsingPost(anyString(), anyMap(), isNull()))
+                .thenThrow(new RuntimeException("ERR"));
+        List<String> result = ReflectionTestUtils.invokeMethod(courseAccessService,
+                "getCoursesFromCacheOrService", "cat");
+        assertNotNull(result);
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    void testEvaluateAccessSettingRule_FullMatchTrue() {
+        BitSet bs = new BitSet();
+        bs.set(1);
+        Map<String,Object> group = Map.of(
+                Constants.USER_GROUP_ID, "g1",
+                Constants.USER_GROUP_CRITERIA_LIST,
+                List.of(Map.of(Constants.CRITERIA_KEY,"cadre", Constants.CRITERIA_VALUE,bs))
+        );
+        Map<String,Object> access = Map.of(Constants.USER_GROUPS, List.of(group));
+        boolean result = Boolean.TRUE.equals(ReflectionTestUtils.invokeMethod(
+                courseAccessService,
+                "evaluateAccessSettingRule",
+                access,
+                Map.of("cadre", 1)
+        ));
+        assertTrue(result);
+    }
+    @Test
+    void testEvaluateAccessSettingRule_False() {
+        BitSet bs = new BitSet();
+        bs.set(1);
+        Map<String,Object> group = Map.of(
+                Constants.USER_GROUP_ID, "g1",
+                Constants.USER_GROUP_CRITERIA_LIST,
+                List.of(Map.of(Constants.CRITERIA_KEY,"grade", Constants.CRITERIA_VALUE,bs))
+        );
+        Map<String,Object> access = Map.of(Constants.USER_GROUPS, List.of(group));
+        // does NOT match
+        boolean result = Boolean.TRUE.equals(ReflectionTestUtils.invokeMethod(
+                courseAccessService,
+                "evaluateAccessSettingRule",
+                access,
+                Map.of("cadre", 1) // does NOT match
+        ));
+        assertFalse(result);
+    }
+
+    @Test
+    void testRetrieveUserCourses_RuleMatches() {
+        BitSet bs = new BitSet();
+        bs.set(1);
+        Map<String,Object> ruleData = Map.of(Constants.ACCESS_CONTROL_ID,
+                Map.of(Constants.USER_GROUPS,
+                        List.of(Map.of(Constants.USER_GROUP_ID,"G1",
+                                Constants.USER_GROUP_CRITERIA_LIST,
+                                List.of(Map.of(Constants.CRITERIA_KEY,"cadre", Constants.CRITERIA_VALUE,bs)))
+                        )));
+        CachedAccessSettingRule rule = mock(CachedAccessSettingRule.class);
+        when(rule.getContextId()).thenReturn("C1");
+        when(rule.getContextData()).thenReturn(ruleData);
+        when(mockAccessSettingRuleCacheMgr.getAccessSettingRules())
+                .thenReturn(List.of(rule));
+        when(contentInfoService.readContent(eq("C1"), anyList()))
+                .thenReturn(Map.of("id","C1"));
+        List<Map<String,Object>> list = new ArrayList<>();
+        boolean val = Boolean.TRUE.equals(ReflectionTestUtils.invokeMethod(courseAccessService,
+                "retrieveUserCourses",
+                Map.of("cadre", 1),
+                list));
+        assertTrue(val);
+        assertEquals(1, list.size());
+    }
+
 }

@@ -28,6 +28,21 @@ class OutboundRequestHandlerServiceImplTest {
         private Map<String, Object> postForObjectResponse;
         private RuntimeException exceptionToThrow;
 
+        private Map<String, Object> patchForObjectResponse;
+
+        public void setPatchForObjectResponse(Map<String, Object> response) {
+            this.patchForObjectResponse = response;
+        }
+
+        @Override
+        public <T> T patchForObject(String url, Object request, Class<T> responseType, Object... uriVariables) {
+            if (exceptionToThrow != null) {
+                throw exceptionToThrow;
+            }
+            return (T) patchForObjectResponse;
+        }
+
+
         public void setGetForObjectResponse(Map<String, Object> response) {
             this.getForObjectResponse = response;
         }
@@ -73,6 +88,8 @@ class OutboundRequestHandlerServiceImplTest {
     private TestRestTemplate testRestTemplate;
     private OutboundRequestHandlerServiceImpl outboundService;
     private ObjectMapper objectMapper;
+
+    private Map<String, Object> patchForObjectResponse;
 
     @BeforeEach
     void setup() throws Exception {
@@ -490,4 +507,65 @@ class OutboundRequestHandlerServiceImplTest {
 
         assertNull(result);
     }
+
+    @Test
+    void testFetchResultUsingPatch_Success() {
+        String uri = "http://test.com/api/patch";
+        Map<String, Object> request = Map.of("name", "John");
+        Map<String, String> headers = Map.of("Authorization", "token");
+        Map<String, Object> mockResponse = Map.of("updated", true);
+        testRestTemplate.setPatchForObjectResponse(mockResponse);
+        Map<String, Object> result = outboundService.fetchResultUsingPatch(uri, request, headers);
+        assertNotNull(result);
+        assertEquals(true, result.get("updated"));
+    }
+
+    @Test
+    void testFetchResultUsingPatch_SuccessNoHeaders() {
+        String uri = "http://test.com/api/patch";
+        Map<String, Object> request = Map.of("value", 1);
+        Map<String, Object> mockResponse = Map.of("ok", true);
+        testRestTemplate.setPatchForObjectResponse(mockResponse);
+        Map<String, Object> result = outboundService.fetchResultUsingPatch(uri, request, null);
+        assertNotNull(result);
+        assertEquals(true, result.get("ok"));
+    }
+
+    @Test
+    void testFetchResultUsingPatch_HttpError_ValidJson() throws Exception {
+        String uri = "http://test.com/api/patch";
+        Map<String, Object> request = Map.of("data", "test");
+        Map<String, Object> errorMap = Map.of("error", "Bad Request");
+        String errorJson = objectMapper.writeValueAsString(errorMap);
+        HttpClientErrorException ex = HttpClientErrorException.create(
+                HttpStatus.BAD_REQUEST, "Bad Request", new HttpHeaders(),
+                errorJson.getBytes(StandardCharsets.UTF_8), StandardCharsets.UTF_8);
+        testRestTemplate.setExceptionToThrow(ex);
+        Map<String, Object> result = outboundService.fetchResultUsingPatch(uri, request, null);
+        assertNotNull(result);
+        assertEquals("Bad Request", result.get("error"));
+    }
+
+    @Test
+    void testFetchResultUsingPatch_HttpError_InvalidJson() {
+        String uri = "http://test.com/api/patch";
+        Map<String, Object> request = Map.of("data", "test");
+        String invalid = "<html>err</html>";
+        HttpClientErrorException ex = HttpClientErrorException.create(
+                HttpStatus.INTERNAL_SERVER_ERROR, "Fail", new HttpHeaders(),
+                invalid.getBytes(StandardCharsets.UTF_8), StandardCharsets.UTF_8);
+        testRestTemplate.setExceptionToThrow(ex);
+        Map<String, Object> result = outboundService.fetchResultUsingPatch(uri, request, null);
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    void testFetchResultUsingPatch_NullResponse() {
+        String uri = "http://test.com/api/patch";
+        Map<String, Object> request = Map.of("data", 123);
+        testRestTemplate.setPostForObjectResponse(null);
+        Map<String, Object> result = outboundService.fetchResultUsingPatch(uri, request, null);
+        assertTrue(result.isEmpty());
+    }
+
 }

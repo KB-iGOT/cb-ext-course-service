@@ -1,7 +1,6 @@
 package com.igot.cb.controller;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -71,5 +70,33 @@ class CourseAccessControllerTest {
         assertEquals(HttpStatus.NO_CONTENT, response.getStatusCode());
         assertTrue(response.getBody().getResult().isEmpty());
         verify(courseAccessService, times(1)).getCoursesForUser(requestBody, authToken);
+    }
+
+    @Test
+    void testGetAssignedCoursesForUser() {
+        // Arrange
+        Map<String, Object> requestBody = new HashMap<>();
+        requestBody.put("userId", 123);
+
+        String authToken = "dummy-token";
+
+        ApiResponse mockResponse = new ApiResponse();
+        mockResponse.setResponseCode(HttpStatus.OK);
+        mockResponse.setResult(Map.of("course1", "Course A", "course2", "Course B"));
+
+        when(courseAccessService.getAssignedCoursesForUser(requestBody, authToken))
+                .thenReturn(mockResponse);
+
+        // Act
+        ResponseEntity<ApiResponse> response = courseAccessController.getAssignedCoursesForUser(requestBody, authToken);
+
+        // Assert
+        assertNotNull(response);
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertEquals(mockResponse, response.getBody());
+        assertEquals(mockResponse, response.getBody());
+
+        verify(courseAccessService, times(1))
+                .getAssignedCoursesForUser(requestBody, authToken);
     }
 }

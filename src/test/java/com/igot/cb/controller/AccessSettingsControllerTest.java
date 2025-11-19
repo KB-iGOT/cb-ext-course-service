@@ -1,10 +1,12 @@
 package com.igot.cb.controller;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.Mockito.when;
 
 import java.util.Map;
 
+import com.igot.cb.service.AccessSettingMigrationServiceImpl;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -22,6 +24,9 @@ class AccessSettingsControllerTest {
 
     @Mock
     private AccessSettingsServiceImpl accessSettingsService;
+
+    @Mock
+    private AccessSettingMigrationServiceImpl accessSettingMigrationService;
 
     @InjectMocks
     private AccessSettingsController accessSettingsController;
@@ -77,4 +82,17 @@ class AccessSettingsControllerTest {
         assertEquals("api.delete", response.getBody().getId());
         assertEquals(true, response.getBody().getResult().get("deleted"));
     }
+
+    @Test
+    void testMigrateAccessSettingRules() {
+        ApiResponse mockResponse = createApiResponse("api.migrate", HttpStatus.NO_CONTENT, Map.of("migrated", true));
+        when(accessSettingMigrationService.migrateAccessSettingRules())
+                .thenReturn(mockResponse);
+        ResponseEntity<ApiResponse> response = accessSettingsController.migrateAccessSettingRules();
+        assertNotNull(response);
+        assertEquals(HttpStatus.NO_CONTENT, response.getStatusCode());
+        assertNotNull(response.getBody());
+        assertEquals(true, response.getBody().getResult().get("migrated"));
+    }
+
 }

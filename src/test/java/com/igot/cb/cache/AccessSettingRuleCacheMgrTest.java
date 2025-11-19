@@ -5,11 +5,13 @@ import static org.mockito.Mockito.*;
 
 import java.util.*;
 import java.lang.reflect.Field;
+import java.util.concurrent.ConcurrentHashMap;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.model.CachedAccessSettingRule;
 
+import com.igot.cb.util.Constants;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -266,4 +268,86 @@ class AccessSettingRuleCacheMgrTest {
         assertFalse(result.get(2));
         assertFalse(result.get(4));
     }
+
+    @Test
+    void testGetOrLoadAccessSettingRule_cacheHit() {
+        // Use reflection to insert an entry into the internal cache
+        CachedAccessSettingRule rule = new CachedAccessSettingRule("do_123", "Course", "{}", false);
+
+        try {
+            Field field = AccessSettingRuleCacheMgr.class.getDeclaredField("cachedAccessSettingRules");
+            field.setAccessible(true);
+            Map<String, CachedAccessSettingRule> internalCache = new ConcurrentHashMap<>();
+            internalCache.put("do_123|Course", rule);
+            field.set(cacheMgr, internalCache);
+        } catch (Exception e) {
+            fail("Reflection failed: " + e.getMessage());
+        }
+
+        CachedAccessSettingRule result = cacheMgr.getOrLoadAccessSettingRule("do_123", "Course");
+
+        assertNotNull(result);
+        assertEquals("do_123", result.getContextId());
+        assertEquals("Course", result.getContextIdType());
+        verifyNoInteractions(cassandraOperation);
+    }
+
+    @Test
+    void testGetOrLoadAccessSettingRule_cacheMiss_loadsFromCassandra() {
+        Map<String, Object> cassRecord = new HashMap<>();
+        cassRecord.put(Constants.CONTEXT_ID_KEY, "do_123");
+        cassRecord.put(Constants.CONTEXT_ID_TYPE, "Course");
+        cassRecord.put(Constants.CONTEXT_DATA_KEY, "{\"sample\":true}");
+        when(cassandraOperation.getRecordsByProperties(
+                anyString(), anyString(), any(), any(), any()))
+                .thenReturn(List.of(cassRecord));
+        CachedAccessSettingRule result =
+                cacheMgr.getOrLoadAccessSettingRule("do_123", "Course");
+        assertNotNull(result);
+        assertEquals("do_123", result.getContextId());
+        assertEquals("Course", result.getContextIdType());
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, Object>> captor =
+                (ArgumentCaptor<Map<String, Object>>) (ArgumentCaptor<?>) ArgumentCaptor.forClass(Map.class);
+        verify(cassandraOperation).getRecordsByProperties(
+                anyString(),
+                anyString(),
+                captor.capture(),
+                isNull(),
+                isNull()
+        );
+        Map<String, Object> filter = captor.getValue();
+        assertEquals("do_123", filter.get(Constants.CONTEXT_ID));
+        assertEquals("Course", filter.get(Constants.CONTEXT_ID_TYPE_KEY));
+        CachedAccessSettingRule cached =
+                cacheMgr.getOrLoadAccessSettingRule("do_123", "Course");
+        assertEquals("do_123", cached.getContextId());
+        verifyNoMoreInteractions(cassandraOperation);
+    }
+
+
+    @Test
+    void testGetOrLoadAccessSettingRule_cacheMiss_noRecord() {
+        when(cassandraOperation.getRecordsByProperties(
+                anyString(), anyString(), any(), any(), any()))
+                .thenReturn(List.of()); // No records
+
+        CachedAccessSettingRule result =
+                cacheMgr.getOrLoadAccessSettingRule("do_999", "Course");
+
+        assertNull(result);
+    }
+
+    @Test
+    void testGetOrLoadAccessSettingRule_cassandraThrowsException() {
+        when(cassandraOperation.getRecordsByProperties(
+                anyString(), anyString(), any(), any(), any()))
+                .thenThrow(new RuntimeException("DB error"));
+
+        CachedAccessSettingRule result =
+                cacheMgr.getOrLoadAccessSettingRule("do_500", "Course");
+
+        assertNull(result);
+    }
+
 }

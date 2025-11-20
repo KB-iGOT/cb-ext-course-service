@@ -1,12 +1,17 @@
 package com.igot.cb.cache;
 
+import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import com.igot.cb.cassandra.CassandraOperation;
+import jakarta.annotation.PostConstruct;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections.MapUtils;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import com.igot.cb.model.CachedAccessSettingRule;
@@ -25,9 +30,24 @@ public class AccessSettingRuleCacheMgr {
     private final CassandraOperation cassandraOperation;
     private Map<String, CachedAccessSettingRule> cachedAccessSettingRules = new ConcurrentHashMap<>();
 
+    private Cache<String, CachedAccessSettingRule> accessSettingsCache;
+
+
     private final long LOCAL_CACHE_TTL = 3600000;
 
     private final String ACCESS_SETTINGS_CACHE_KEY = "accessSettingRules";
+
+    @Value("${access.rule.ttl.minutes}")
+    private int ttlMinutes;
+
+    @PostConstruct
+    public void initCache() {
+        accessSettingsCache = Caffeine.newBuilder()
+                .maximumSize(1000)
+                .expireAfterWrite(Duration.ofMinutes(ttlMinutes))
+                .build();
+    }
+
 
     /**
      * Constructor for AccessSettingRuleCacheMgr.
@@ -35,10 +55,12 @@ public class AccessSettingRuleCacheMgr {
      * @param redisCacheMgr      Cache manager for Redis operations.
      * @param cassandraOperation Cassandra operations for database interactions.
      */
-    public AccessSettingRuleCacheMgr(RedisCacheMgr redisCacheMgr, CassandraOperation cassandraOperation) {
+    public AccessSettingRuleCacheMgr(RedisCacheMgr redisCacheMgr,
+                                     CassandraOperation cassandraOperation) {
         this.redisCacheMgr = redisCacheMgr;
         this.cassandraOperation = cassandraOperation;
     }
+
 
     /**
      * Retrieves the cached access setting rules.
@@ -207,17 +229,12 @@ public class AccessSettingRuleCacheMgr {
         return bitSet;
     }
 
-
     public CachedAccessSettingRule getOrLoadAccessSettingRule(String courseId, String contextId) {
-
         String cacheKey = courseId + "|" + contextId;
-        if (MapUtils.isEmpty(cachedAccessSettingRules)) {
-            cachedAccessSettingRules = new ConcurrentHashMap<>();
-        }
-        CachedAccessSettingRule rule = cachedAccessSettingRules.get(cacheKey);
-        if (rule != null) {
+        CachedAccessSettingRule cachedRule = accessSettingsCache.getIfPresent(cacheKey);
+        if (cachedRule != null) {
             log.debug("Cache hit for rule key: {}", cacheKey);
-            return rule;
+            return cachedRule;
         }
         log.info("Cache miss for rule key: {}, loading from Cassandra...", cacheKey);
         try {
@@ -248,7 +265,7 @@ public class AccessSettingRuleCacheMgr {
                 if (MapUtils.isNotEmpty(contextData)) {
                     processContextData(cacheKey, contextData);
                 }
-                cachedAccessSettingRules.put(cacheKey, loadedRule);
+                accessSettingsCache.put(cacheKey, loadedRule);
                 log.info("Loaded and cached rule for key: {}", cacheKey);
             } catch (Exception e) {
                 log.error("Error processing rule {}: {}", cacheKey, e.getMessage(), e);

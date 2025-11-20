@@ -35,32 +35,34 @@ class AccessSettingRuleCacheMgrTest {
 
     @BeforeEach
     void setup() throws Exception {
-        cacheMgr = new AccessSettingRuleCacheMgr(redisCacheMgr, cassandraOperation);
+        cacheMgr = new AccessSettingRuleCacheMgr(redisCacheMgr, cassandraOperation); // 10 minutes TTL
+
         validJsonRule = """
-            {
-              "contextId": "do_123",
-              "contextIdType": "Course",
-              "contextData": {
-                "accessControlId": {
-                  "version": 1,
-                  "userGroups": [
+        {
+          "contextId": "do_123",
+          "contextIdType": "Course",
+          "contextData": {
+            "accessControlId": {
+              "version": 1,
+              "userGroups": [
+                {
+                  "userGroupId": "group-123",
+                  "userGroupName": "Test Group",
+                  "userGroupCriteriaList": [
                     {
-                      "userGroupId": "group-123",
-                      "userGroupName": "Test Group",
-                      "userGroupCriteriaList": [
-                        {
-                          "criteriaKey": "designation",
-                          "criteriaValue": [1, 2]
-                        }
-                      ]
+                      "criteriaKey": "designation",
+                      "criteriaValue": [1, 2]
                     }
                   ]
                 }
-              },
-              "isArchived": false
+              ]
             }
-            """;
+          },
+          "isArchived": false
+        }
+        """;
     }
+
 
     @Test
     void testGetAccessSettingRules_fromRedis() {

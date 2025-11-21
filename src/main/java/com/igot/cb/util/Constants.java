@@ -471,6 +471,10 @@ public class Constants {
     public static final String CONTEXT_ID_KEY = "contextId";
     public static final String CONTEXT_ID_TYPE_KEY = "contextidtype";
 
+    public static final String PROMOTIONAL_CONTENT_RULES = "promotional_content_rules";
+    public static final String PROMOTIONAL_CONTENT_KEY = "promotionalContent_";
+    public static final Object PROMOTIONAL_CONTENT_CREATED_RULES = "Promotional Content Rule created successfully";
+
     private Constants() {
     }
 }

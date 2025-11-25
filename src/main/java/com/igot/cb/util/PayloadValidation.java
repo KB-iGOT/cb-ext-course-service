@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.util.ObjectUtils;
@@ -17,6 +18,10 @@ public class PayloadValidation {
   public String validateAccessControlPayload(Map<String, Object> payload) {
     List<String> errList = new ArrayList<>();
 
+    if (MapUtils.isEmpty(payload)) {
+         log.error("User group details are null or empty");
+         return "User group details cannot be null or empty";
+    }
     // Check contentId
     if (ObjectUtils.isEmpty(payload.get(Constants.CONTENT_ID)) ||
         !(payload.get(Constants.CONTENT_ID) instanceof String) ||

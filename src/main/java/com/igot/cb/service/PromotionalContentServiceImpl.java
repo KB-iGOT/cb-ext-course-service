@@ -20,6 +20,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 
 import java.util.*;
+import static com.igot.cb.util.ProjectUtil.setFailedResponse;
 
 /**
  * Service for managing promotional content access rules and retrieval.
@@ -73,18 +74,10 @@ public class PromotionalContentServiceImpl implements IPromotionalContentService
         ApiResponse response = ApiResponse.createDefaultResponse("api/promotionalcontent/metadata/upsert");
         String userId = accessTokenValidator.fetchUserIdFromAccessToken(authToken, response);
         if (StringUtils.isEmpty(userId)) {
-            String errMsg = "Invalid or missing authentication token";
-            log.error(errMsg);
-            response.updateErrorDetails(errMsg, HttpStatus.UNAUTHORIZED);
-            return response;
-        }
-        if (MapUtils.isEmpty(userGroupDetails)) {
-            log.error("User group details are null or empty");
-            setFailedResponse(response, "User group details cannot be null or empty");
             return response;
         }
         String errMsg = payloadValidation.validateAccessControlPayload(userGroupDetails);
-        if (org.apache.commons.lang.StringUtils.isNotBlank(errMsg)) {
+        if (StringUtils.isNotEmpty(errMsg)) {
             setFailedResponse(response, errMsg);
             return response;
         }
@@ -123,22 +116,6 @@ public class PromotionalContentServiceImpl implements IPromotionalContentService
             setFailedResponse(response, "Failed to process access setting rule to id-map",
                     HttpStatus.INTERNAL_SERVER_ERROR);
         }
-    }
-
-    /**
-     * Sets error response with BAD_REQUEST status.
-     */
-    private void setFailedResponse(ApiResponse response, String errorMessage) {
-        setFailedResponse(response, errorMessage, HttpStatus.BAD_REQUEST);
-    }
-
-    /**
-     * Sets error response with custom HTTP status.
-     */
-    private void setFailedResponse(ApiResponse response, String errorMessage, HttpStatus httpStatus) {
-        response.getParams().setStatus(Constants.FAILED);
-        response.setResponseCode(httpStatus);
-        response.getParams().setErrMsg(errorMessage);
     }
 
     /**
@@ -183,9 +160,6 @@ public class PromotionalContentServiceImpl implements IPromotionalContentService
 
         String userId = accessTokenValidator.fetchUserIdFromAccessToken(authToken, response);
         if (StringUtils.isEmpty(userId)) {
-            String errMsg = "Invalid or missing authentication token";
-            log.error(errMsg);
-            response.updateErrorDetails(errMsg, HttpStatus.UNAUTHORIZED);
             return response;
         }
         String cachedCourseForUser = redisCacheMgr.getFromCache(Constants.PROMOTIONAL_CONTENT_KEY + userId);

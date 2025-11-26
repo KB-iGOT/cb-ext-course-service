@@ -32,4 +32,20 @@ public class ProjectUtil {
     public static Date getTimeStamp() {
         return new Timestamp(System.currentTimeMillis());
     }
+
+    /**
+     * Sets error response with BAD_REQUEST status.
+     */
+    public static void setFailedResponse(ApiResponse response, String errorMessage) {
+        setFailedResponse(response, errorMessage, HttpStatus.BAD_REQUEST);
+    }
+
+    /**
+     * Sets error response with custom HTTP status.
+     */
+    public static void setFailedResponse(ApiResponse response, String errorMessage, HttpStatus httpStatus) {
+        response.getParams().setStatus(Constants.FAILED);
+        response.setResponseCode(httpStatus);
+        response.getParams().setErrMsg(errorMessage);
+    }
 }

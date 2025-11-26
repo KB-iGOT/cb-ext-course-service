@@ -63,4 +63,19 @@ public class CbExtServerProperties {
 
     @Value("${cb.wrapper.notification.path}")
     private String cbWrapperNotificationPath;
+
+    @Value("${promotional.content.cache.ttl.minutes}")
+    private int promotionalContentCacheTtlMinutes;
+
+    @Value("${promotional.content.cache.max.size}")
+    private int promotionalContentCacheMaxSize;
+
+    @Value("${promotional.content.cache.warming.enabled}")
+    private boolean promotionalContentCacheWarmingEnabled;
+
+    @Value("${promotional.content.cache.batch.size}")
+    private int promotionalContentCacheBatchSize;
+
+    @Value("${promotional.content.cache.max.query.size}")
+    private int promotionalContentCacheMaxQuerySize;
 }

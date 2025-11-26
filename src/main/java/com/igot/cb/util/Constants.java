@@ -471,6 +471,12 @@ public class Constants {
     public static final String CONTEXT_ID_KEY = "contextId";
     public static final String CONTEXT_ID_TYPE_KEY = "contextidtype";
 
+    public static final String PROMOTIONAL_CONTENT_RULES = "promotional_content_rules";
+    public static final String PROMOTIONAL_CONTENT_KEY = "promotionalContent_";
+    public static final Object PROMOTIONAL_CONTENT_CREATED_RULES = "Promotional Content Rule created successfully";
+    public static final String API_PROMOTIONAL_CONTENT_METADATA_UPSERT = "api.promotionalcontent.metadata.upsert";
+    public static final String API_PROMOTIONAL_ASSIGNEDTO_USERS = "api.promotionalcontent.assignedto.users";
+    public static final String USER_GROUPDETAILS_ERR_VALIDATION_MSG = "User group details cannot be null or empty";
     private Constants() {
     }
 }

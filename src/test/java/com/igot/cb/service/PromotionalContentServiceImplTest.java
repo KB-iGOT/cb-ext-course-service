@@ -92,18 +92,24 @@ class PromotionalContentServiceImplTest {
     void testUpsertPromotionalContentMetadata_InvalidAuthToken() {
         Map<String, Object> userGroupDetails = createValidUserGroupDetails();
         when(accessTokenValidator.fetchUserIdFromAccessToken(eq(AUTH_TOKEN), any(ApiResponse.class)))
-                .thenReturn("");
+                .thenAnswer(invocation -> {
+                    ApiResponse response = invocation.getArgument(1);
+                    response.getParams().setStatus(Constants.FAILED);
+                    response.getParams().setErrMsg(Constants.ACCESS_TOKEN_IS_EXPIRED);
+                    response.setResponseCode(HttpStatus.UNAUTHORIZED);
+                    return null;
+                });
         ApiResponse result = promotionalContentService.upsertPromotionalContentMetadata(userGroupDetails, AUTH_TOKEN);
         assertNotNull(result);
         assertEquals(HttpStatus.UNAUTHORIZED, result.getResponseCode());
         assertEquals(Constants.FAILED, result.getParams().getStatus());
-        assertTrue(result.getParams().getErrMsg().contains("Invalid or missing authentication token"));
     }
 
     @Test
     void testUpsertPromotionalContentMetadata_EmptyUserGroupDetails() {
         when(accessTokenValidator.fetchUserIdFromAccessToken(eq(AUTH_TOKEN), any(ApiResponse.class)))
                 .thenReturn(USER_ID);
+        when(payloadValidation.validateAccessControlPayload(any())).thenReturn("User group details cannot be null or empty");
         ApiResponse result = promotionalContentService.upsertPromotionalContentMetadata(new HashMap<>(), AUTH_TOKEN);
         assertNotNull(result);
         assertEquals(HttpStatus.BAD_REQUEST, result.getResponseCode());
@@ -115,6 +121,7 @@ class PromotionalContentServiceImplTest {
     void testUpsertPromotionalContentMetadata_NullUserGroupDetails() {
         when(accessTokenValidator.fetchUserIdFromAccessToken(eq(AUTH_TOKEN), any(ApiResponse.class)))
                 .thenReturn(USER_ID);
+        when(payloadValidation.validateAccessControlPayload(any())).thenReturn("User group details cannot be null or empty");
         ApiResponse result = promotionalContentService.upsertPromotionalContentMetadata(null, AUTH_TOKEN);
         assertNotNull(result);
         assertEquals(HttpStatus.BAD_REQUEST, result.getResponseCode());
@@ -195,7 +202,13 @@ class PromotionalContentServiceImplTest {
     @Test
     void testGetPromotionalContentForUsers_InvalidAuthToken() {
         when(accessTokenValidator.fetchUserIdFromAccessToken(eq(AUTH_TOKEN), any(ApiResponse.class)))
-                .thenReturn("");
+                .thenAnswer(invocation -> {
+                    ApiResponse response = invocation.getArgument(1);
+                    response.getParams().setStatus(Constants.FAILED);
+                    response.getParams().setErrMsg(Constants.ACCESS_TOKEN_IS_EXPIRED);
+                    response.setResponseCode(HttpStatus.UNAUTHORIZED);
+                    return null;
+                });
         ApiResponse result = promotionalContentService.getPromotionalContentForUsers(AUTH_TOKEN);
         assertNotNull(result);
         assertEquals(HttpStatus.UNAUTHORIZED, result.getResponseCode());

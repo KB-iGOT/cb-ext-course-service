@@ -71,7 +71,7 @@ public class PromotionalContentServiceImpl implements IPromotionalContentService
     @Override
     public ApiResponse upsertPromotionalContentMetadata(Map<String, Object> userGroupDetails, String authToken) {
         log.info("PromotionalContentServiceImpl::upsertPromotionalContentMetadata:inside");
-        ApiResponse response = ApiResponse.createDefaultResponse("api/promotionalcontent/metadata/upsert");
+        ApiResponse response = ApiResponse.createDefaultResponse(Constants.API_PROMOTIONAL_CONTENT_METADATA_UPSERT);
         String userId = accessTokenValidator.fetchUserIdFromAccessToken(authToken, response);
         if (StringUtils.isEmpty(userId)) {
             return response;
@@ -156,7 +156,7 @@ public class PromotionalContentServiceImpl implements IPromotionalContentService
     @Override
     public ApiResponse getPromotionalContentForUsers(String authToken) {
         log.info("PromotionalContentServiceImpl::getPromotionalContentForUsers:inside");
-        ApiResponse response = ApiResponse.createDefaultResponse("api/promotionalcontent/assignedto/users");
+        ApiResponse response = ApiResponse.createDefaultResponse(Constants.API_PROMOTIONAL_ASSIGNEDTO_USERS);
 
         String userId = accessTokenValidator.fetchUserIdFromAccessToken(authToken, response);
         if (StringUtils.isEmpty(userId)) {

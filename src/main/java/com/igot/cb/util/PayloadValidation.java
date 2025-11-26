@@ -20,7 +20,7 @@ public class PayloadValidation {
 
     if (MapUtils.isEmpty(payload)) {
          log.error("User group details are null or empty");
-         return "User group details cannot be null or empty";
+         return Constants.USER_GROUPDETAILS_ERR_VALIDATION_MSG;
     }
     // Check contentId
     if (ObjectUtils.isEmpty(payload.get(Constants.CONTENT_ID)) ||

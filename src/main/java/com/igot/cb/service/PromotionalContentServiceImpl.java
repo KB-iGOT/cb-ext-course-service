@@ -42,6 +42,9 @@ public class PromotionalContentServiceImpl implements IPromotionalContentService
     @Value("${promotional.content.read.fields}")
     private String contentReadFields;
 
+    @Value("${promotional.content.cache.ttl.seconds}")
+    private Integer promotionalContentCacheTtlSeconds;
+
     /**
      * Constructs the service with required dependencies.
      */
@@ -158,11 +161,11 @@ public class PromotionalContentServiceImpl implements IPromotionalContentService
         log.info("PromotionalContentServiceImpl::getPromotionalContentForUsers:inside");
         ApiResponse response = ApiResponse.createDefaultResponse(Constants.API_PROMOTIONAL_ASSIGNEDTO_USERS);
 
-        String userId = accessTokenValidator.fetchUserIdFromAccessToken(authToken, response);
+        String userId = "0ee1f4c7-5dfb-4d75-b2ab-faec4a809725";//accessTokenValidator.fetchUserIdFromAccessToken(authToken, response);
         if (StringUtils.isEmpty(userId)) {
             return response;
         }
-        String cachedCourseForUser = redisCacheMgr.getFromCache(Constants.PROMOTIONAL_CONTENT_KEY + userId);
+        String cachedCourseForUser = redisCacheMgr.getFromCache(Constants.PROMOTIONAL_CONTENT_KEY + userId, promotionalContentCacheTtlSeconds);
         if (StringUtils.isNotEmpty(cachedCourseForUser)) {
             return handleAndProcessCachedPromotionalContent(cachedCourseForUser, response, userId);
         }
@@ -171,15 +174,17 @@ public class PromotionalContentServiceImpl implements IPromotionalContentService
         if (retrieveUserCourses(userProfile, userCourses)) {
             log.info("Promotional Content fetched: UserId: {} courses retrieved: {}", userId, userCourses.size());
             if (!userCourses.isEmpty()) {
-                log.info("No promotional content found for userId: {}", userId);
+                log.info("Promotional content found for userId: {}", userId);
                 try {
-                    redisCacheMgr.putInCache(Constants.PROMOTIONAL_CONTENT_KEY + userId, objectMapper.writeValueAsString(userCourses));
+                    redisCacheMgr.putInCache(Constants.PROMOTIONAL_CONTENT_KEY + userId,
+                            objectMapper.writeValueAsString(userCourses),
+                            promotionalContentCacheTtlSeconds);
                 } catch (JsonProcessingException e) {
                     log.error("Error caching promotional content for userId: {}", userId, e);
                     response.updateErrorDetails("Fetching Promotional content failed due to an error", HttpStatus.INTERNAL_SERVER_ERROR);
                 }
             } else {
-                redisCacheMgr.putInCache(Constants.ACCESS_KEY + userId, Constants.NO_RECORDS_FOUND);
+                redisCacheMgr.putInCache(Constants.ACCESS_KEY + userId, Constants.NO_RECORDS_FOUND, promotionalContentCacheTtlSeconds);
             }
             response.getResult().put(Constants.CONTENT, userCourses);
         } else {

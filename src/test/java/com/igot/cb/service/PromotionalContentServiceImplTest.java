@@ -70,6 +70,7 @@ class PromotionalContentServiceImplTest {
     @BeforeEach
     void setUp() {
         ReflectionTestUtils.setField(promotionalContentService, "contentReadFields", "name,description,identifier");
+        ReflectionTestUtils.setField(promotionalContentService, "promotionalContentCacheTtlSeconds", 600);
     }
 
 
@@ -176,21 +177,21 @@ class PromotionalContentServiceImplTest {
         String cachedData = "[{\"id\":\"content1\",\"name\":\"Course 1\"}]";
         when(accessTokenValidator.fetchUserIdFromAccessToken(eq(AUTH_TOKEN), any(ApiResponse.class)))
                 .thenReturn(USER_ID);
-        when(redisCacheMgr.getFromCache(Constants.PROMOTIONAL_CONTENT_KEY + USER_ID)).thenReturn(cachedData);
+        when(redisCacheMgr.getFromCache(eq(Constants.PROMOTIONAL_CONTENT_KEY + USER_ID), anyInt())).thenReturn(cachedData);
         when(objectMapper.readValue(eq(cachedData), any(com.fasterxml.jackson.core.type.TypeReference.class)))
                 .thenReturn(Collections.singletonList(Map.of("id", "content1", "name", "Course 1")));
         ApiResponse result = promotionalContentService.getPromotionalContentForUsers(AUTH_TOKEN);
         assertNotNull(result);
         assertEquals(HttpStatus.OK, result.getResponseCode());
         assertNotNull(result.getResult().get(Constants.CONTENT));
-        verify(redisCacheMgr).getFromCache(Constants.PROMOTIONAL_CONTENT_KEY + USER_ID);
+        verify(redisCacheMgr).getFromCache(eq(Constants.PROMOTIONAL_CONTENT_KEY + USER_ID), eq(600));
     }
 
     @Test
     void testGetPromotionalContentForUsers_CacheHit_NoRecordsFound() {
         when(accessTokenValidator.fetchUserIdFromAccessToken(eq(AUTH_TOKEN), any(ApiResponse.class)))
                 .thenReturn(USER_ID);
-        when(redisCacheMgr.getFromCache(Constants.PROMOTIONAL_CONTENT_KEY + USER_ID))
+        when(redisCacheMgr.getFromCache(eq(Constants.PROMOTIONAL_CONTENT_KEY + USER_ID), anyInt()))
                 .thenReturn(Constants.NO_RECORDS_FOUND);
         ApiResponse result = promotionalContentService.getPromotionalContentForUsers(AUTH_TOKEN);
         assertNotNull(result);
@@ -221,7 +222,7 @@ class PromotionalContentServiceImplTest {
         List<CachedAccessSettingRule> rules = createMockAccessRules();
         when(accessTokenValidator.fetchUserIdFromAccessToken(eq(AUTH_TOKEN), any(ApiResponse.class)))
                 .thenReturn(USER_ID);
-        when(redisCacheMgr.getFromCache(Constants.PROMOTIONAL_CONTENT_KEY + USER_ID)).thenReturn(null);
+        when(redisCacheMgr.getFromCache(eq(Constants.PROMOTIONAL_CONTENT_KEY + USER_ID), anyInt())).thenReturn(null);
         when(userProfileServiceImpl.getUserProfile(USER_ID)).thenReturn(userProfile);
         when(promotionalContentRuleCacheMgr.getAccessSettingRules()).thenReturn(rules);
         when(contentService.readContent(anyString(), anyList()))
@@ -238,7 +239,7 @@ class PromotionalContentServiceImplTest {
     void testGetPromotionalContentForUsers_NoAccessRules() {
         when(accessTokenValidator.fetchUserIdFromAccessToken(eq(AUTH_TOKEN), any(ApiResponse.class)))
                 .thenReturn(USER_ID);
-        when(redisCacheMgr.getFromCache(Constants.PROMOTIONAL_CONTENT_KEY + USER_ID)).thenReturn(null);
+        when(redisCacheMgr.getFromCache(eq(Constants.PROMOTIONAL_CONTENT_KEY + USER_ID), anyInt())).thenReturn(null);
         when(userProfileServiceImpl.getUserProfile(USER_ID)).thenReturn(new HashMap<>());
         when(promotionalContentRuleCacheMgr.getAccessSettingRules()).thenReturn(Collections.emptyList());
         ApiResponse result = promotionalContentService.getPromotionalContentForUsers(AUTH_TOKEN);
@@ -252,7 +253,7 @@ class PromotionalContentServiceImplTest {
         String cachedData = "[{\"invalid json";
         when(accessTokenValidator.fetchUserIdFromAccessToken(eq(AUTH_TOKEN), any(ApiResponse.class)))
                 .thenReturn(USER_ID);
-        when(redisCacheMgr.getFromCache(Constants.PROMOTIONAL_CONTENT_KEY + USER_ID)).thenReturn(cachedData);
+        when(redisCacheMgr.getFromCache(eq(Constants.PROMOTIONAL_CONTENT_KEY + USER_ID), anyInt())).thenReturn(cachedData);
         when(objectMapper.readValue(eq(cachedData), any(com.fasterxml.jackson.core.type.TypeReference.class)))
                 .thenThrow(new JsonProcessingException("Parse error") {});
         ApiResponse result = promotionalContentService.getPromotionalContentForUsers(AUTH_TOKEN);
@@ -268,7 +269,7 @@ class PromotionalContentServiceImplTest {
         List<CachedAccessSettingRule> rules = createMockAccessRules();
         when(accessTokenValidator.fetchUserIdFromAccessToken(eq(AUTH_TOKEN), any(ApiResponse.class)))
                 .thenReturn(USER_ID);
-        when(redisCacheMgr.getFromCache(Constants.PROMOTIONAL_CONTENT_KEY + USER_ID)).thenReturn(null);
+        when(redisCacheMgr.getFromCache(eq(Constants.PROMOTIONAL_CONTENT_KEY + USER_ID), anyInt())).thenReturn(null);
         when(userProfileServiceImpl.getUserProfile(USER_ID)).thenReturn(userProfile);
         when(promotionalContentRuleCacheMgr.getAccessSettingRules()).thenReturn(rules);
         when(contentService.readContent(anyString(), anyList()))
@@ -412,14 +413,14 @@ class PromotionalContentServiceImplTest {
         List<CachedAccessSettingRule> rules = createMockAccessRulesForNonMatchingTest();
         when(accessTokenValidator.fetchUserIdFromAccessToken(eq(AUTH_TOKEN), any(ApiResponse.class)))
                 .thenReturn(USER_ID);
-        when(redisCacheMgr.getFromCache(Constants.PROMOTIONAL_CONTENT_KEY + USER_ID)).thenReturn(null);
+        when(redisCacheMgr.getFromCache(eq(Constants.PROMOTIONAL_CONTENT_KEY + USER_ID), anyInt())).thenReturn(null);
         when(userProfileServiceImpl.getUserProfile(USER_ID)).thenReturn(userProfile);
         when(promotionalContentRuleCacheMgr.getAccessSettingRules()).thenReturn(rules);
         ApiResponse result = promotionalContentService.getPromotionalContentForUsers(AUTH_TOKEN);
         assertNotNull(result);
         List<Map<String, Object>> content = (List<Map<String, Object>>) result.getResult().get(Constants.CONTENT);
         assertTrue(content.isEmpty());
-        verify(redisCacheMgr).putInCache(Constants.ACCESS_KEY + USER_ID, Constants.NO_RECORDS_FOUND);
+        verify(redisCacheMgr).putInCache(eq(Constants.ACCESS_KEY + USER_ID), eq(Constants.NO_RECORDS_FOUND), eq(600));
     }
 
     @Test
@@ -428,7 +429,7 @@ class PromotionalContentServiceImplTest {
         List<CachedAccessSettingRule> rules = createMockAccessRulesWithEmptyCriteria();
         when(accessTokenValidator.fetchUserIdFromAccessToken(eq(AUTH_TOKEN), any(ApiResponse.class)))
                 .thenReturn(USER_ID);
-        when(redisCacheMgr.getFromCache(Constants.PROMOTIONAL_CONTENT_KEY + USER_ID)).thenReturn(null);
+        when(redisCacheMgr.getFromCache(eq(Constants.PROMOTIONAL_CONTENT_KEY + USER_ID), anyInt())).thenReturn(null);
         when(userProfileServiceImpl.getUserProfile(USER_ID)).thenReturn(userProfile);
         when(promotionalContentRuleCacheMgr.getAccessSettingRules()).thenReturn(rules);
         ApiResponse result = promotionalContentService.getPromotionalContentForUsers(AUTH_TOKEN);
@@ -442,7 +443,7 @@ class PromotionalContentServiceImplTest {
         List<CachedAccessSettingRule> rules = createMockAccessRulesWithNullCheck();
         when(accessTokenValidator.fetchUserIdFromAccessToken(eq(AUTH_TOKEN), any(ApiResponse.class)))
                 .thenReturn(USER_ID);
-        when(redisCacheMgr.getFromCache(Constants.PROMOTIONAL_CONTENT_KEY + USER_ID)).thenReturn(null);
+        when(redisCacheMgr.getFromCache(eq(Constants.PROMOTIONAL_CONTENT_KEY + USER_ID), anyInt())).thenReturn(null);
         when(userProfileServiceImpl.getUserProfile(USER_ID)).thenReturn(null);
         when(promotionalContentRuleCacheMgr.getAccessSettingRules()).thenReturn(rules);
         ApiResponse result = promotionalContentService.getPromotionalContentForUsers(AUTH_TOKEN);
@@ -457,7 +458,7 @@ class PromotionalContentServiceImplTest {
         List<CachedAccessSettingRule> rules = createMockAccessRulesWithMultipleCriteria();
         when(accessTokenValidator.fetchUserIdFromAccessToken(eq(AUTH_TOKEN), any(ApiResponse.class)))
                 .thenReturn(USER_ID);
-        when(redisCacheMgr.getFromCache(Constants.PROMOTIONAL_CONTENT_KEY + USER_ID)).thenReturn(null);
+        when(redisCacheMgr.getFromCache(eq(Constants.PROMOTIONAL_CONTENT_KEY + USER_ID), anyInt())).thenReturn(null);
         when(userProfileServiceImpl.getUserProfile(USER_ID)).thenReturn(userProfile);
         when(promotionalContentRuleCacheMgr.getAccessSettingRules()).thenReturn(rules);
         ApiResponse result = promotionalContentService.getPromotionalContentForUsers(AUTH_TOKEN);
@@ -476,7 +477,7 @@ class PromotionalContentServiceImplTest {
         rules.add(rule);
         when(accessTokenValidator.fetchUserIdFromAccessToken(eq(AUTH_TOKEN), any(ApiResponse.class)))
                 .thenReturn(USER_ID);
-        when(redisCacheMgr.getFromCache(Constants.PROMOTIONAL_CONTENT_KEY + USER_ID)).thenReturn(null);
+        when(redisCacheMgr.getFromCache(eq(Constants.PROMOTIONAL_CONTENT_KEY + USER_ID), anyInt())).thenReturn(null);
         when(userProfileServiceImpl.getUserProfile(USER_ID)).thenReturn(Map.of("designation", 1));
         when(promotionalContentRuleCacheMgr.getAccessSettingRules()).thenReturn(rules);
         ApiResponse result = promotionalContentService.getPromotionalContentForUsers(AUTH_TOKEN);
@@ -497,7 +498,7 @@ class PromotionalContentServiceImplTest {
         rules.add(rule);
         when(accessTokenValidator.fetchUserIdFromAccessToken(eq(AUTH_TOKEN), any(ApiResponse.class)))
                 .thenReturn(USER_ID);
-        when(redisCacheMgr.getFromCache(Constants.PROMOTIONAL_CONTENT_KEY + USER_ID)).thenReturn(null);
+        when(redisCacheMgr.getFromCache(eq(Constants.PROMOTIONAL_CONTENT_KEY + USER_ID), anyInt())).thenReturn(null);
         when(userProfileServiceImpl.getUserProfile(USER_ID)).thenReturn(Map.of("designation", 1));
         when(promotionalContentRuleCacheMgr.getAccessSettingRules()).thenReturn(rules);
         ApiResponse result = promotionalContentService.getPromotionalContentForUsers(AUTH_TOKEN);
@@ -512,7 +513,7 @@ class PromotionalContentServiceImplTest {
         List<CachedAccessSettingRule> rules = createMockAccessRulesWithMultipleGroups();
         when(accessTokenValidator.fetchUserIdFromAccessToken(eq(AUTH_TOKEN), any(ApiResponse.class)))
                 .thenReturn(USER_ID);
-        when(redisCacheMgr.getFromCache(Constants.PROMOTIONAL_CONTENT_KEY + USER_ID)).thenReturn(null);
+        when(redisCacheMgr.getFromCache(eq(Constants.PROMOTIONAL_CONTENT_KEY + USER_ID), anyInt())).thenReturn(null);
         when(userProfileServiceImpl.getUserProfile(USER_ID)).thenReturn(userProfile);
         when(promotionalContentRuleCacheMgr.getAccessSettingRules()).thenReturn(rules);
         when(contentService.readContent(anyString(), anyList()))
@@ -530,7 +531,7 @@ class PromotionalContentServiceImplTest {
         List<CachedAccessSettingRule> rules = createMockAccessRulesForNonMatchingTest();
         when(accessTokenValidator.fetchUserIdFromAccessToken(eq(AUTH_TOKEN), any(ApiResponse.class)))
                 .thenReturn(USER_ID);
-        when(redisCacheMgr.getFromCache(Constants.PROMOTIONAL_CONTENT_KEY + USER_ID)).thenReturn(null);
+        when(redisCacheMgr.getFromCache(eq(Constants.PROMOTIONAL_CONTENT_KEY + USER_ID), anyInt())).thenReturn(null);
         when(userProfileServiceImpl.getUserProfile(USER_ID)).thenReturn(userProfile);
         when(promotionalContentRuleCacheMgr.getAccessSettingRules()).thenReturn(rules);
         ApiResponse result = promotionalContentService.getPromotionalContentForUsers(AUTH_TOKEN);

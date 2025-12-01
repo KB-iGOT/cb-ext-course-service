@@ -76,15 +76,19 @@ public class PromotionalContentRuleCacheMgr {
     /**
      * Retrieves all cached access rules.
      * Returns values from indexed cache (O(1) per rule lookup).
+     * Automatically reloads from database when cache is empty or expired.
      *
-     * @return collection of cached rules, empty list if none cached
+     * @return collection of cached rules, empty collection if none available
      */
     public Collection<CachedAccessSettingRule> getAccessSettingRules() {
-        if (promotionalContentCache.estimatedSize() == 0) {
-            log.info("No promotional content rules in cache, loading from database");
+        Collection<CachedAccessSettingRule> cachedRules = promotionalContentCache.asMap().values();
+        if (CollectionUtils.isEmpty(cachedRules)) {
+            log.info("Cache is empty (size: {}), loading from database", promotionalContentCache.estimatedSize());
             loadAccessSettingRules();
+            cachedRules = promotionalContentCache.asMap().values();
+            log.info("After reload, cache contains {} rules", CollectionUtils.size(cachedRules));
         }
-        return promotionalContentCache.asMap().values();
+        return cachedRules;
     }
 
     /**

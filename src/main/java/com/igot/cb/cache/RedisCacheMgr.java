@@ -104,6 +104,42 @@ public class RedisCacheMgr {
         }
     }
 
+    /**
+     * Sets a key-value pair in the Redis cache with a custom TTL in seconds.
+     *
+     * @param key        The key under which the value is stored.
+     * @param value      The value to be stored.
+     * @param ttlSeconds The time-to-live in seconds for this cache entry.
+     */
+    public void putInCache(String key, String value, int ttlSeconds) {
+        try (Jedis jedis = jedisPool.getResource()) {
+            jedis.setex(key, ttlSeconds, value);
+            log.debug("Cached key '{}' with custom TTL: {} seconds", key, ttlSeconds);
+        } catch (Exception e) {
+            log.error("Failed to write data to Redis with custom expiry: ", e);
+        }
+    }
 
+    /**
+     * Gets a value from the Redis cache with a custom TTL applied on retrieval.
+     * Note: This retrieves the value and does NOT modify the existing TTL.
+     * If you need to refresh TTL on read, use getFromCacheAndRefreshTTL instead.
+     *
+     * @param key The key to retrieve.
+     * @return The cached value, or null if not found or error occurred.
+     */
+    public String getFromCache(String key, int ttlSeconds) {
+        try (Jedis jedis = jedisPool.getResource()) {
+            String value = jedis.get(key);
+            if (value != null && ttlSeconds > 0) {
+                jedis.expire(key, ttlSeconds);
+                log.debug("Retrieved and refreshed TTL for key '{}' to {} seconds", key, ttlSeconds);
+            }
+            return value;
+        } catch (Exception e) {
+            log.error("Failed to read data from Redis: ", e);
+            return null;
+        }
+    }
 
 }

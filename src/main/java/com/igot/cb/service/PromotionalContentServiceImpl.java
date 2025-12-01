@@ -161,7 +161,7 @@ public class PromotionalContentServiceImpl implements IPromotionalContentService
         log.info("PromotionalContentServiceImpl::getPromotionalContentForUsers:inside");
         ApiResponse response = ApiResponse.createDefaultResponse(Constants.API_PROMOTIONAL_ASSIGNEDTO_USERS);
 
-        String userId = "0ee1f4c7-5dfb-4d75-b2ab-faec4a809725";//accessTokenValidator.fetchUserIdFromAccessToken(authToken, response);
+        String userId = accessTokenValidator.fetchUserIdFromAccessToken(authToken, response);
         if (StringUtils.isEmpty(userId)) {
             return response;
         }

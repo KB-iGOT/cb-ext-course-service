@@ -248,7 +248,6 @@ public class PromotionalContentServiceImpl implements IPromotionalContentService
                     updateContentDetails.putIfAbsent(Constants.AVG_RATING, 0.0);
                     updateContentDetails.putIfAbsent(Constants.PROGRAM_DURATION, 0);
                     updateContentDetails.putIfAbsent(Constants.NAME, "");
-                    updateContentDetails.putIfAbsent(Constants.LANGUAGE_MAP_V1, new ArrayList<>());
                     updateContentDetails.putIfAbsent(Constants.CREATOR_LOGO, "");
                     userCourses.add(updateContentDetails);
                 }

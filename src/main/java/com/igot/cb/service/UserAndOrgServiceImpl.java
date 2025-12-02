@@ -2,8 +2,6 @@ package com.igot.cb.service;
 
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.util.*;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -141,8 +139,8 @@ public class UserAndOrgServiceImpl {
             log.warn("User basic profile is empty for userId: {}", userProfile.get(Constants.ID));
             return;
         }
-        userProfile.put(Constants.USER, (String) userBasicProfile.get(Constants.ID));
-        userProfile.put(Constants.ROOT_ORG_ID.toLowerCase(), (String) userBasicProfile.get(Constants.ROOT_ORG_ID));
+        putIfNotNullOrEmpty(userProfile, Constants.USER, (String) userBasicProfile.get(Constants.ID));
+        putIfNotNullOrEmpty(userProfile, Constants.ROOT_ORG_ID.toLowerCase(), (String) userBasicProfile.get(Constants.ROOT_ORG_ID));
         Object rawValue = userBasicProfile.get(Constants.PROFILE_DETAILS);
         Map<String, Object> profileDetails;
 
@@ -159,21 +157,21 @@ public class UserAndOrgServiceImpl {
                     .get(Constants.PROFESSIONAL_DETAILS);
             if (CollectionUtils.isNotEmpty(professionalDetailList)) {
                 Map<String, Object> professionalDetails = professionalDetailList.get(0);
-                userProfile.put(Constants.DESIGNATION, (String) professionalDetails.get(Constants.DESIGNATION));
-                userProfile.put(Constants.GROUP, (String) professionalDetails.get(Constants.GROUP));
+                putIfNotNullOrEmpty(userProfile, Constants.DESIGNATION, (String) professionalDetails.get(Constants.DESIGNATION));
+                putIfNotNullOrEmpty(userProfile, Constants.GROUP, (String) professionalDetails.get(Constants.GROUP));
             }
-            userProfile.put(Constants.PROFILE_STATUS_KEY.toLowerCase(),
+            putIfNotNullOrEmpty(userProfile, Constants.PROFILE_STATUS_KEY.toLowerCase(),
                     (String) profileDetails.get(Constants.PROFILE_STATUS_KEY));
             Map<String, Object> cadreDetails = (Map<String, Object>) profileDetails.get(Constants.CADRE_DETAILS);
 
             if (MapUtils.isNotEmpty(cadreDetails)) {
-                userProfile.put(Constants.CADRE, (String) cadreDetails.get(Constants.CADRE_NAME));
-                userProfile.put(Constants.SERVICE, (String) cadreDetails.get(Constants.CIVIL_SERVICE_NAME));
+                putIfNotNullOrEmpty(userProfile, Constants.CADRE, (String) cadreDetails.get(Constants.CADRE_NAME));
+                putIfNotNullOrEmpty(userProfile, Constants.SERVICE, (String) cadreDetails.get(Constants.CIVIL_SERVICE_NAME));
                 if (cadreDetails.containsKey(Constants.CADRE_BATCH)) {
-                    userProfile.put(Constants.BATCH, String.valueOf(cadreDetails.get(Constants.CADRE_BATCH)));
+                    putIfNotNullOrEmpty(userProfile, Constants.BATCH, String.valueOf(cadreDetails.get(Constants.CADRE_BATCH)));
                 }
                 if (cadreDetails.containsKey(Constants.CENTRAL_DEPUTATION)) {
-                    userProfile.put(Constants.CENTRAL_DEPUTATION, String.valueOf( cadreDetails.get(Constants.CENTRAL_DEPUTATION)));
+                    putIfNotNullOrEmpty(userProfile, Constants.CENTRAL_DEPUTATION, String.valueOf( cadreDetails.get(Constants.CENTRAL_DEPUTATION)));
                 }
             }
         }
@@ -223,4 +221,16 @@ public class UserAndOrgServiceImpl {
         }
     }
 
+    /**
+     * Safely adds a value to the map only if it's not null and not empty (after trimming).
+     *
+     * @param map   The map to add the value to
+     * @param key   The key to use
+     * @param value The value to add (can be null)
+     */
+    private void putIfNotNullOrEmpty(Map<String, String> map, String key, String value) {
+        if (value != null && !value.trim().isEmpty()) {
+            map.put(key, value);
+        }
+    }
 }

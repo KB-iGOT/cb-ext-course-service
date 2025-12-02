@@ -240,9 +240,18 @@ public class PromotionalContentServiceImpl implements IPromotionalContentService
             Map<String, Object> accessSettingIdMap = (Map<String, Object>) rule.getContextData()
                     .get(Constants.ACCESS_CONTROL_ID);
             if (evaluateAccessSettingRule(accessSettingIdMap, userProfile)) {
-                List<String> fieldsToFetch = Arrays.asList(contentReadFields.split(","));
+                List<String> fieldsToFetch = new ArrayList<>(Arrays.asList(contentReadFields.split(",")));
                 Map<String, Object> contentDetails = contentService.readContent(rule.getContextId(), fieldsToFetch);
-                userCourses.add(contentDetails);
+                // Set default values for missing attributes
+                if (MapUtils.isNotEmpty(contentDetails)) {
+                    Map<String, Object> updateContentDetails = new HashMap<>(contentDetails);
+                    updateContentDetails.putIfAbsent(Constants.AVG_RATING, 0.0);
+                    updateContentDetails.putIfAbsent(Constants.PROGRAM_DURATION, 0);
+                    updateContentDetails.putIfAbsent(Constants.NAME, "");
+                    updateContentDetails.putIfAbsent(Constants.LANGUAGE_MAP_V1, new ArrayList<>());
+                    updateContentDetails.putIfAbsent(Constants.CREATOR_LOGO, "");
+                    userCourses.add(updateContentDetails);
+                }
             }
         }
         return true;

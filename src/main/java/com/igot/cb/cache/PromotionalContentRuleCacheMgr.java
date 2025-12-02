@@ -85,8 +85,8 @@ public class PromotionalContentRuleCacheMgr {
         if (CollectionUtils.isEmpty(cachedRules)) {
             log.info("Cache is empty (size: {}), loading from database", promotionalContentCache.estimatedSize());
             loadAccessSettingRules();
-            cachedRules = promotionalContentCache.asMap().values();
-            log.info("After reload, cache contains {} rules", CollectionUtils.size(cachedRules));
+            cachedRules = new ArrayList<>(promotionalContentCache.asMap().values());
+            log.info("After reload, cache contains {} rules", cachedRules.size());
         }
         return cachedRules;
     }

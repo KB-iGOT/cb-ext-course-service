@@ -81,6 +81,7 @@ public class PromotionalContentRuleCacheMgr {
      * @return collection of cached rules, empty collection if none available
      */
     public Collection<CachedAccessSettingRule> getAccessSettingRules() {
+        promotionalContentCache.cleanUp();
         Collection<CachedAccessSettingRule> cachedRules = promotionalContentCache.asMap().values();
         if (CollectionUtils.isEmpty(cachedRules)) {
             log.info("Cache is empty (size: {}), loading from database", promotionalContentCache.estimatedSize());
@@ -157,10 +158,10 @@ public class PromotionalContentRuleCacheMgr {
                         promotionalContentCache.put(rule.getCacheKey(), rule);
                     });
             long totalProcessed = promotionalContentCache.estimatedSize();
-            log.info("Access setting rules loaded into cache successfully. Total rules loaded: {}",
+            log.info("Promotional Content rules loaded into cache successfully. Total rules loaded: {}",
                     totalProcessed);
         } catch (Exception e) {
-            log.error("Failed to load AccessSettingRule into Cache. Exception: ", e);
+            log.error("Failed to load Promotional Content rules into Cache. Exception: ", e);
         }
     }
 

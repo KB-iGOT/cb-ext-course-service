@@ -147,6 +147,10 @@ public class PromotionalContentRuleCacheMgr {
             }
             log.info("Total records fetched: {}, processing with parallel streams...", allRecords.size());
             allRecords.parallelStream()
+                    .filter(rec -> {
+                        Boolean isArchived = (Boolean) rec.get(Constants.IS_ARCHIVED_KEY);
+                        return !isArchived;
+                    })
                     .map(rec -> new CachedAccessSettingRule(
                             (String) rec.get("contextId"),
                             (String) rec.get("contextIdType"),

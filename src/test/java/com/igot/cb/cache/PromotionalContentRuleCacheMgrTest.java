@@ -121,10 +121,10 @@ class PromotionalContentRuleCacheMgrTest {
     @Test
     void testProcessCriteria_WithNonIntegerValues() {
         String contextData = "{\"accessControlId\":{\"version\":1,\"userGroups\":[{\"userGroupId\":\"group-1\",\"userGroupName\":\"Group 1\",\"userGroupCriteriaList\":[{\"criteriaKey\":\"designation\",\"criteriaValue\":[\"1\",\"invalid\",\"3\",\"not-a-number\",\"5\"]}]}]}}";
-        Map<String, Object> record = createCassandraRecord("do_non_integer", "Course", contextData);
+        Map<String, Object> nonIntegerRecord = createCassandraRecord("do_non_integer", "Course", contextData);
         when(cassandraOperation.getRecordsByProperties(
                 anyString(), anyString(), any(), any(), anyInt()
-        )).thenReturn(List.of(record));
+        )).thenReturn(List.of(nonIntegerRecord));
         Collection<CachedAccessSettingRule> result = cacheMgr.getAccessSettingRules();
         assertEquals(1, result.size());
         CachedAccessSettingRule rule = result.iterator().next();
@@ -143,10 +143,10 @@ class PromotionalContentRuleCacheMgrTest {
 
     @Test
     void testProcessContextData_WithNoAccessControl() {
-        Map<String, Object> record = createCassandraRecord("do_no_access", "Course", "{}");
+        Map<String, Object> noAccessControlRecord = createCassandraRecord("do_no_access", "Course", "{}");
         when(cassandraOperation.getRecordsByProperties(
                 anyString(), anyString(), any(), any(), anyInt()
-        )).thenReturn(List.of(record));
+        )).thenReturn(List.of(noAccessControlRecord));
         Collection<CachedAccessSettingRule> result = cacheMgr.getAccessSettingRules();
         assertEquals(1, result.size());
     }
@@ -190,12 +190,12 @@ class PromotionalContentRuleCacheMgrTest {
     }
 
     private Map<String, Object> createCassandraRecord(String contextId, String contextIdType, String contextData) {
-        Map<String, Object> record = new HashMap<>();
-        record.put("contextId", contextId);
-        record.put("contextIdType", contextIdType);
-        record.put("contextData", contextData);
-        record.put("isArchived", false);
-        return record;
+        Map<String, Object> createCassandraRecord = new HashMap<>();
+        createCassandraRecord.put("contextId", contextId);
+        createCassandraRecord.put("contextIdType", contextIdType);
+        createCassandraRecord.put("contextData", contextData);
+        createCassandraRecord.put("isArchived", false);
+        return createCassandraRecord;
     }
 
     private Map<String, Object> createCassandraRecordWithFullData(String contextId, String contextIdType) {

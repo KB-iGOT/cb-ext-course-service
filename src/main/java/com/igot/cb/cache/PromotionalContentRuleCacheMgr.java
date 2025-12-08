@@ -1,20 +1,18 @@
 package com.igot.cb.cache;
 
-import com.github.benmanes.caffeine.cache.Cache;
-import com.github.benmanes.caffeine.cache.Caffeine;
 import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.model.CachedAccessSettingRule;
 import com.igot.cb.util.CbExtServerProperties;
 import com.igot.cb.util.Constants;
-import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-import java.time.Duration;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Cache manager for promotional content access rules.
@@ -27,8 +25,9 @@ public class PromotionalContentRuleCacheMgr {
 
     private final CassandraOperation cassandraOperation;
     private final CbExtServerProperties properties;
-    private Cache<String, CachedAccessSettingRule> promotionalContentCache;
-
+    Map<String, CachedAccessSettingRule> cacheMap = new ConcurrentHashMap<>();
+    @Value("${promotional.content.cache.ttl.milliseconds}")
+    private Integer promotionalContentCacheTtlMiliSeconds;
     /**
      * Constructs the cache manager with required dependencies.
      */
@@ -39,41 +38,6 @@ public class PromotionalContentRuleCacheMgr {
     }
 
     /**
-     * Initializes the Caffeine cache with configured TTL and max size.
-     * Called after dependency injection to use @Value properties.
-     * Warms cache by loading rules from database if enabled.
-     */
-    @PostConstruct
-    private void initializeCache() {
-        this.promotionalContentCache = Caffeine.newBuilder()
-                .maximumSize(properties.getPromotionalContentCacheMaxSize())
-                .expireAfterWrite(Duration.ofMinutes(properties.getPromotionalContentCacheTtlMinutes()))
-                .build();
-        log.info("Promotional content cache initialized with TTL: {} minutes, Max size: {}",
-                properties.getPromotionalContentCacheTtlMinutes(),
-                properties.getPromotionalContentCacheMaxSize());
-        if (properties.isPromotionalContentCacheWarmingEnabled()) {
-            log.info("Cache warming enabled. Pre-loading promotional content rules...");
-            warmCache();
-        }
-    }
-
-    /**
-     * Pre-loads cache with rules from database to avoid cold-start penalty.
-     */
-    private void warmCache() {
-        try {
-            long startTime = System.currentTimeMillis();
-            loadAccessSettingRules();
-            long duration = System.currentTimeMillis() - startTime;
-            log.info("Cache warming completed in {} ms. Loaded {} rules",
-                    duration, promotionalContentCache.estimatedSize());
-        } catch (Exception e) {
-            log.error("Cache warming failed. Cache will be loaded on first request.", e);
-        }
-    }
-
-    /**
      * Retrieves all cached access rules.
      * Returns values from indexed cache (O(1) per rule lookup).
      * Automatically reloads from database when cache is empty or expired.
@@ -81,12 +45,31 @@ public class PromotionalContentRuleCacheMgr {
      * @return collection of cached rules, empty collection if none available
      */
     public Collection<CachedAccessSettingRule> getAccessSettingRules() {
-        Collection<CachedAccessSettingRule> cachedRules = promotionalContentCache.asMap().values();
+        Collection<CachedAccessSettingRule> cachedRules = cacheMap.values();
         if (CollectionUtils.isEmpty(cachedRules)) {
-            log.info("Cache is empty (size: {}), loading from database", promotionalContentCache.estimatedSize());
+            log.info("Cache is empty (size: {}), loading from database", cacheMap.size());
             loadAccessSettingRules();
-            cachedRules = new ArrayList<>(promotionalContentCache.asMap().values());
+            cachedRules = cacheMap.values();
             log.info("After reload, cache contains {} rules", cachedRules.size());
+            return cachedRules;
+        }
+        for (CachedAccessSettingRule rule : cachedRules) {
+            if (rule == null) {
+                log.warn("Found null cached rule entry, triggering reload");
+                loadAccessSettingRules();
+                return cacheMap.values();
+            }
+            try {
+                if (rule.isExpired(promotionalContentCacheTtlMiliSeconds)) {
+                    log.info("Found expired rule (key={}), reloading cache", rule.getCacheKey());
+                    loadAccessSettingRules();
+                    return cacheMap.values();
+                }
+            } catch (Exception e) {
+                log.warn("Error checking expiry for rule {}: {}. Triggering reload.", rule.getCacheKey(), e.getMessage());
+                loadAccessSettingRules();
+                return cacheMap.values();
+            }
         }
         return cachedRules;
     }
@@ -158,13 +141,13 @@ public class PromotionalContentRuleCacheMgr {
                             false))
                     .forEach(rule -> {
                         processAndCacheRule(rule);
-                        promotionalContentCache.put(rule.getCacheKey(), rule);
+                        cacheMap.put(rule.getCacheKey(), rule);
                     });
-            long totalProcessed = promotionalContentCache.estimatedSize();
-            log.info("Access setting rules loaded into cache successfully. Total rules loaded: {}",
+            long totalProcessed = cacheMap.size();
+            log.info("Promotional Content rules loaded into cache successfully. Total rules loaded: {}",
                     totalProcessed);
         } catch (Exception e) {
-            log.error("Failed to load AccessSettingRule into Cache. Exception: ", e);
+            log.error("Failed to load Promotional Content rules into Cache. Exception: ", e);
         }
     }
 

@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
 class PromotionalContentRuleCacheMgrTest {
@@ -34,13 +35,7 @@ class PromotionalContentRuleCacheMgrTest {
         lenient().when(properties.getPromotionalContentCacheBatchSize()).thenReturn(500);
         lenient().when(properties.getPromotionalContentCacheMaxQuerySize()).thenReturn(5000);
         cacheMgr = new PromotionalContentRuleCacheMgr(cassandraOperation, properties);
-        try {
-            var method = PromotionalContentRuleCacheMgr.class.getDeclaredMethod("initializeCache");
-            method.setAccessible(true);
-            method.invoke(cacheMgr);
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to initialize cache in test", e);
-        }
+        ReflectionTestUtils.setField(cacheMgr, "promotionalContentCacheTtlMiliSeconds", 3600000);
     }
 
     @Test

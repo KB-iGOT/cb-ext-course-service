@@ -87,6 +87,7 @@ public class PromotionalContentRuleCacheMgr {
 
         log.info("Loading access setting rules from database - Batch size: {}, Max query size: {}",
                 batchSize, maxQuerySize);
+        cacheMap.clear();
         try {
             List<Map<String, Object>> allRecords = new ArrayList<>();
             int totalFetched = 0;

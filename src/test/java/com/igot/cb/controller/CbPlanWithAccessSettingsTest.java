@@ -103,9 +103,9 @@ class CbPlanWithAccessSettingsTest {
         content.put(Constants.ID, "plan123");
         mockResponse.getResult().put(Constants.CONTENT, content);
         
-        when(cbPlanService.readCbPlan(anyString(), anyString(), anyString())).thenReturn(mockResponse);
+        when(cbPlanService.readCbPlan(anyString(), anyString())).thenReturn(mockResponse);
 
-        ResponseEntity<ApiResponse> response = controller.readCbPlan("plan123", "token", "orgId");
+        ResponseEntity<ApiResponse> response = controller.readCbPlan("plan123",  "orgId");
         
         assertEquals(HttpStatus.OK, response.getStatusCode());
         assertEquals(Constants.SUCCESS, response.getBody().getParams().getStatus());

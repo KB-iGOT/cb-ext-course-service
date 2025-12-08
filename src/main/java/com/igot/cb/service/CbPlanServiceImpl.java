@@ -295,7 +295,7 @@ public class CbPlanServiceImpl {
                 requestValidator.validateContextData(existingCbPlan, isCCA, userOrgId, existingRootOrgIdsInCriteria);
                 // Need to update live plan with draft data if any
                 // Need to update lookup table entries
-                updatedRequest.putAll(prepareCbPlanForRePublish(existingCbPlan, incomingRequest, userId));
+                updatedRequest.putAll(prepareCbPlanForRePublish(existingCbPlan, incomingRequest));
                 if (updatedRequest.containsKey(Constants.CONTEXT_DATA_REQUEST)) {
                     errors = requestValidator.validateContextData(updatedRequest, isCCA, userOrgId, rootOrgIdsInCriteria);
                 }
@@ -520,7 +520,7 @@ public class CbPlanServiceImpl {
         return null;
     }
 
-    public ApiResponse readCbPlan(String cbPlanId, String userOrgId, String authUserToken) {
+    public ApiResponse readCbPlan(String cbPlanId, String userOrgId) {
         ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_CB_PLAN_READ_BY_ID);
         try {
             if (StringUtils.isEmpty(cbPlanId)) {
@@ -820,7 +820,7 @@ public class CbPlanServiceImpl {
     }
 
     private Map<String, Object> prepareCbPlanForRePublish(Map<String, Object> existingCbPlan,
-            Map<String, Object> incomingRequest, String userId) throws JsonProcessingException {
+            Map<String, Object> incomingRequest) throws JsonProcessingException {
         Map<String, Object> dataInDraftObject = existingCbPlan.get(Constants.DRAFT_DATA) != null
                 ? mapper.readValue((String) existingCbPlan.get(Constants.DRAFT_DATA),
                         new TypeReference<Map<String, Object>>() {

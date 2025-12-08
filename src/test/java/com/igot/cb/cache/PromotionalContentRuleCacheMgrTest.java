@@ -194,6 +194,7 @@ class PromotionalContentRuleCacheMgrTest {
         record.put("contextId", contextId);
         record.put("contextIdType", contextIdType);
         record.put("contextData", contextData);
+        record.put("isArchived", false);
         return record;
     }
 

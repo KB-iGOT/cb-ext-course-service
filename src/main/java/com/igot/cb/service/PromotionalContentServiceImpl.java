@@ -312,7 +312,7 @@ public class PromotionalContentServiceImpl implements IPromotionalContentService
     public ApiResponse delete(String contentId) {
         log.info("PromotionalContentServiceImpl::delete:inside");
         ApiResponse response = ApiResponse.createDefaultResponse("api.promotionalcontent.metadata.delete");
-        if (org.apache.commons.lang.StringUtils.isBlank(contentId)) {
+        if (StringUtils.isEmpty(contentId)) {
             log.error("Content ID is null or empty");
             setFailedResponse(response, "Content ID cannot be null or empty");
             return response;
@@ -321,7 +321,9 @@ public class PromotionalContentServiceImpl implements IPromotionalContentService
             Map<String, Object> accessRuleData = new HashMap<>();
             accessRuleData.put(Constants.CONTEXT_ID, contentId);
             accessRuleData.put(Constants.CONTEXT_DATA, "");
-            accessRuleData.put(Constants.IS_ARCHIVED, false);
+            accessRuleData.put(Constants.IS_ARCHIVED, true);
+            String contextIdType = contentService.readCourseCategoryForContent(contentId);
+            accessRuleData.put(Constants.CONTEXT_ID_TYPE, contextIdType);
             cassandraOperation.insertRecord(Constants.KEYSPACE_SUNBIRD_COURSE,
                     Constants.PROMOTIONAL_CONTENT_RULES, accessRuleData);
             response.setResponseCode(HttpStatus.OK);

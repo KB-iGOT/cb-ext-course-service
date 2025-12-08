@@ -5,9 +5,8 @@ import static org.mockito.Mockito.*;
 
 import java.util.*;
 import java.lang.reflect.Field;
-import java.util.concurrent.ConcurrentHashMap;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.github.benmanes.caffeine.cache.Cache;
 import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.model.CachedAccessSettingRule;
 
@@ -37,7 +36,21 @@ class AccessSettingRuleCacheMgrTest {
 
     @BeforeEach
     void setup() throws Exception {
-        cacheMgr = new AccessSettingRuleCacheMgr(redisCacheMgr, cassandraOperation); // 10 minutes TTL
+        cacheMgr = new AccessSettingRuleCacheMgr(redisCacheMgr, cassandraOperation);
+        try {
+            Field ttlField = AccessSettingRuleCacheMgr.class.getDeclaredField("ttlMinutes");
+            ttlField.setAccessible(true);
+            ttlField.setInt(cacheMgr, 10);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to set ttlMinutes in test", e);
+        }
+        try {
+            var method = AccessSettingRuleCacheMgr.class.getDeclaredMethod("initCache");
+            method.setAccessible(true);
+            method.invoke(cacheMgr);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to initialize cache in test", e);
+        }
 
         validJsonRule = """
         {
@@ -273,15 +286,15 @@ class AccessSettingRuleCacheMgrTest {
 
     @Test
     void testGetOrLoadAccessSettingRule_cacheHit() {
-        // Use reflection to insert an entry into the internal cache
+        // Use reflection to insert an entry into the Caffeine cache
         CachedAccessSettingRule rule = new CachedAccessSettingRule("do_123", "Course", "{}", false);
 
         try {
-            Field field = AccessSettingRuleCacheMgr.class.getDeclaredField("cachedAccessSettingRules");
+            Field field = AccessSettingRuleCacheMgr.class.getDeclaredField("accessSettingsCache");
             field.setAccessible(true);
-            Map<String, CachedAccessSettingRule> internalCache = new ConcurrentHashMap<>();
-            internalCache.put("do_123|Course", rule);
-            field.set(cacheMgr, internalCache);
+            Cache<String, CachedAccessSettingRule> cache =
+                (Cache<String, CachedAccessSettingRule>) field.get(cacheMgr);
+            cache.put("do_123|Course", rule);
         } catch (Exception e) {
             fail("Reflection failed: " + e.getMessage());
         }

@@ -479,6 +479,8 @@ public class Constants {
     public static final String USER_GROUPDETAILS_ERR_VALIDATION_MSG = "User group details cannot be null or empty";
     public static final String PROGRAM_DURATION = "programDuration";
     public static final String NO_ACCESS_SETTINGS_FOUND = "No access settings found for the given contentId";
+    public static final String ADDITIONAL_PROPERTIES = "additionalProperties";
+    public static final String TAG = "tag";
     private Constants() {
     }
 }

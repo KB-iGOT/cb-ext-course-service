@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.igot.cb.cache.PromotionalContentRuleCacheMgr;
 import com.igot.cb.cache.RedisCacheMgr;
 import com.igot.cb.cassandra.CassandraOperation;
+import com.igot.cb.cassandra.exceptions.CustomException;
 import com.igot.cb.model.ApiResponse;
 import com.igot.cb.model.CachedAccessSettingRule;
 import com.igot.cb.util.AccessTokenValidator;
@@ -29,6 +30,8 @@ import static com.igot.cb.util.ProjectUtil.setFailedResponse;
 @Service
 @Slf4j
 public class PromotionalContentServiceImpl implements IPromotionalContentService {
+    private static final String NO_ACCESS_SETTINGS_FOUND = "No access settings found for the given contentId";
+    
     private final AccessTokenValidator accessTokenValidator;
     private final PayloadValidation payloadValidation;
     private final ObjectMapper objectMapper;
@@ -338,6 +341,94 @@ public class PromotionalContentServiceImpl implements IPromotionalContentService
             log.error("Error while deleting accessRule:", e);
             setFailedResponse(response, "Failed to delete access settings: " + e);
             return response;
+        }
+    }
+
+    @Override
+    public ApiResponse read(String contentId, String authToken) {
+        log.info("PromotionalContentServiceImpl::read:inside - contentId: {}", contentId);
+        ApiResponse response = ApiResponse.createDefaultResponse(Constants.API_ACCESS_RULE_READ);
+        try {
+            String contextIdType = contentService.readCourseCategoryForContent(contentId);
+            log.debug("Retrieved context ID type: {} for contentId: {}", contextIdType, contentId);
+            Map<String, Object> propertyMap = new HashMap<>();
+            propertyMap.put(Constants.CONTEXT_ID, contentId);
+            propertyMap.put(Constants.CONTEXT_ID_TYPE, contextIdType);
+            List<String> fields = Arrays.asList(Constants.CONTEXT_ID, Constants.CONTEXT_DATA, Constants.IS_ARCHIVED);
+            log.debug("Fetching promotional content setting rules from Cassandra for contentId: {}", contentId);
+            List<Map<String, Object>> accessSettingRule = cassandraOperation.getRecordsByProperties(
+                    Constants.KEYSPACE_SUNBIRD_COURSE, Constants.PROMOTIONAL_CONTENT_RULES, propertyMap,
+                    fields, null);
+            if (accessSettingRule.isEmpty()) {
+                log.warn("No promotional content rules found for contentId: {}", contentId);
+                setFailedResponse(response, NO_ACCESS_SETTINGS_FOUND, HttpStatus.NOT_FOUND);
+                return response;
+            }
+            log.debug("Found {} promotional content setting rule(s) for contentId: {}", accessSettingRule.size(), contentId);
+            return processContentSettingRecord(accessSettingRule.get(0), response);
+        } catch (Exception e) {
+            log.error("Error while reading promotional content rule for contentId: {}", contentId, e);
+            throw new CustomException(
+                    Constants.ERROR,
+                    "error while processing",
+                    HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    /**
+     * Processing promotional content setting record.
+     *
+     * @param accessRecord the access setting record
+     * @param response     the API response
+     * @return populated ApiResponse
+     */
+    private ApiResponse processContentSettingRecord(Map<String, Object> accessRecord, ApiResponse response) {
+        log.debug("Processing promotional content setting record");
+        Boolean status = (Boolean) accessRecord.get(Constants.IS_ARCHIVED_KEY);
+        log.debug("Promotional content setting archived status: {}", status);
+        if (Boolean.TRUE.equals(status)) {
+            log.warn("Promotional Content Access setting is archived, cannot retrieve");
+            setFailedResponse(response, NO_ACCESS_SETTINGS_FOUND, HttpStatus.NOT_FOUND);
+            return response;
+        }
+        Object contextDataObj = accessRecord.get(Constants.CONTEXT_DATA_KEY);
+        if (!(contextDataObj instanceof String contextDataJson) ||
+                StringUtils.isEmpty(contextDataJson)) {
+            log.warn("Context data is empty or not a valid string");
+            setFailedResponse(response, NO_ACCESS_SETTINGS_FOUND, HttpStatus.NOT_FOUND);
+            return response;
+        }
+        log.debug("Context data found, proceeding to parse JSON");
+        return parseAndSetContextData(contextDataJson, response);
+    }
+
+    /**
+     * Parse context data JSON and set it in the response.
+     *
+     * @param contextDataJson JSON string containing context data
+     * @param response        the API response
+     * @return populated ApiResponse
+     */
+    private ApiResponse parseAndSetContextData(String contextDataJson, ApiResponse response) {
+        try {
+            log.debug("Parsing context data JSON, length: {}", contextDataJson.length());
+            Map<String, Object> contextDataMap = objectMapper.readValue(
+                    contextDataJson, new TypeReference<Map<String, Object>>() {
+                    });
+            log.debug("Successfully parsed context data, entries: {}", contextDataMap.size());
+            if (!contextDataMap.isEmpty()) {
+                contextDataMap.remove(Constants.ACCESS_CONTROL_ID);
+                log.debug("Removed ACCESS_CONTROL_ID from context data");
+            }
+            response.setResult(contextDataMap);
+            log.info("Successfully retrieved and set access settings in response");
+            return response;
+        } catch (Exception e) {
+            log.error("Failed to parse CONTEXT_DATA JSON: {}", contextDataJson, e);
+            throw new CustomException(
+                    Constants.ERROR,
+                    "error while processing",
+                    HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 }

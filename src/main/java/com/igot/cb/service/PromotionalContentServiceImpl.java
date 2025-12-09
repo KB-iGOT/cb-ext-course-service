@@ -360,7 +360,7 @@ public class PromotionalContentServiceImpl implements IPromotionalContentService
                     fields, null);
             if (accessSettingRule.isEmpty()) {
                 log.warn("No promotional content rules found for contentId: {}", contentId);
-                setFailedResponse(response, Constants.NO_ACCESS_SETTINGS_FOUND, HttpStatus.NOT_FOUND);
+                setFailedResponse(response, Constants.NO_ACCESS_SETTINGS_FOUND, HttpStatus.OK);
                 return response;
             }
             log.debug("Found {} promotional content setting rule(s) for contentId: {}", accessSettingRule.size(), contentId);
@@ -389,14 +389,14 @@ public class PromotionalContentServiceImpl implements IPromotionalContentService
         log.debug("Promotional content setting archived status: {}", status);
         if (Boolean.TRUE.equals(status)) {
             log.warn("Promotional Content Access setting is archived, cannot retrieve");
-            setFailedResponse(response, Constants.NO_ACCESS_SETTINGS_FOUND, HttpStatus.NOT_FOUND);
+            setFailedResponse(response, Constants.NO_ACCESS_SETTINGS_FOUND, HttpStatus.OK);
             return Collections.emptyMap();
         }
         Object contextDataObj = accessRecord.get(Constants.CONTEXT_DATA_KEY);
         if (!(contextDataObj instanceof String contextDataJson) ||
                 StringUtils.isEmpty(contextDataJson)) {
             log.warn("Context data is empty or not a valid string");
-            setFailedResponse(response, Constants.NO_ACCESS_SETTINGS_FOUND, HttpStatus.NOT_FOUND);
+            setFailedResponse(response, Constants.NO_ACCESS_SETTINGS_FOUND, HttpStatus.OK);
             return Collections.emptyMap();
         }
         log.debug("Context data found, proceeding to parse JSON");

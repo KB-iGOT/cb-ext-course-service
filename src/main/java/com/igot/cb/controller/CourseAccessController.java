@@ -44,4 +44,10 @@ public class CourseAccessController {
         ApiResponse response = courseAccessService.getAssignedCoursesForUser(requestBody, authToken);
         return new ResponseEntity<>(response, response.getResponseCode());
     }
+
+    @GetMapping("/user/v1/assigned/externalcourses")
+    public ResponseEntity<ApiResponse> getAssignedExternalCoursesForUser(@RequestHeader(Constants.X_AUTH_TOKEN) String authToken) {
+        ApiResponse response = courseAccessService.getAssignedExternalCoursesForUser(authToken);
+        return new ResponseEntity<>(response, response.getResponseCode());
+    }
 }

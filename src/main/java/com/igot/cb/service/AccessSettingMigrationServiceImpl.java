@@ -206,8 +206,12 @@ public class AccessSettingMigrationServiceImpl {
             return false;
         }
 
-        String contextIdType = contentService.readCourseCategoryForContent(contextId);
-        accessSettingMap.put(Constants.CONTEXT_ID_TYPE, contextIdType);
+        if(contextId.startsWith("ext_")){
+            accessSettingMap.put(Constants.CONTEXT_ID_TYPE, Constants.EXTERNAL_COURSES);
+        } else {
+            String contextIdType = contentService.readCourseCategoryForContent(contextId);
+            accessSettingMap.put(Constants.CONTEXT_ID_TYPE, contextIdType);
+        }
 
         Map<String, Object> contextDataMap = objectMapper.readValue(contextData,
                 new TypeReference<Map<String, Object>>() {

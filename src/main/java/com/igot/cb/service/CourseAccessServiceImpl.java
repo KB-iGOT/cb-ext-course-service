@@ -6,11 +6,10 @@ import java.util.stream.Collectors;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.igot.cb.cache.RedisCacheMgr;
-import com.igot.cb.cassandra.exceptions.CustomException;
 import org.apache.commons.collections4.MapUtils;
-import org.apache.kafka.common.protocol.types.Field;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -62,6 +61,18 @@ public class CourseAccessServiceImpl {
 
     @Value("${cb.cache.course.ttl:600000}")
     private long cacheTtlMs;
+
+    @Value("${cios.integration.search.host}")
+    private String ciosSearchServiceHost;
+
+    @Value("${cios.integration.search}")
+    private String ciosSearch;
+
+    @Value("${cios.search.limit:100}")
+    private int ciosSearchLimit;
+
+    @Value("${cios.search.offset:0}")
+    private int ciosSearchOffset;
 
     private final Map<String, List<String>> courseCategoryCache = new ConcurrentHashMap<>();
     private final Map<String, Long> cacheTimestamps = new ConcurrentHashMap<>();
@@ -378,6 +389,134 @@ public class CourseAccessServiceImpl {
             log.error("Failed parsing cached redis data for key {}: {}", redisKey, e.getMessage());
             return null;
         }
+    }
+
+    public ApiResponse getAssignedExternalCoursesForUser(String authToken) {
+        log.info("CourseAccessServiceImpl::getAssignedCoursesForUser:inside");
+        ApiResponse response = ApiResponse.createDefaultResponse("api.courseAccess.getCoursesForUser");
+        try {
+            String userId = accessTokenValidator.fetchUserIdFromAccessToken(authToken, response);
+            if (userId == null) {
+                return response;
+            }
+            String redisKey = Constants.ACCESS_KEY + "_" + Constants.EXTERNAL_COURSE + "_" + userId;
+            List<Map<String, Object>> cacheResult = fetchFromRedisCache(redisKey);
+
+            if (cacheResult != null) {
+                response.getResult().put(Constants.CONTENT, cacheResult);
+                return response;
+            }
+            List<String> courseIds = getCoursesFromCacheOrServiceForExternalCourse(Constants.EXTERNAL_COURSES);
+            if (CollectionUtils.isEmpty(courseIds)) {
+                log.warn("No course identifiers found for externalCourses");
+                response.getResult().put(Constants.CONTENT, new ArrayList<>());
+                return response;
+            }
+
+            Map<String, Integer> userProfile = userProfileServiceImpl.getUserProfile(userId);
+            List<CachedAccessSettingRule> rules = new ArrayList<>();
+            for (String courseId : courseIds) {
+                CachedAccessSettingRule rule = accessSettingRuleCacheMgr.getOrLoadAccessSettingRule(courseId, Constants.EXTERNAL_COURSES);
+                if (rule != null) {
+                    rules.add(rule);
+                }
+            }
+            List<Map<String, Object>> userCourses = new ArrayList<>();
+            if (rules.isEmpty()) {
+                log.warn("No access setting rules found for External Courses");
+                response.getResult().put(Constants.CONTENT, userCourses);
+                return response;
+            }
+            for (CachedAccessSettingRule rule : rules) {
+                Map<String, Object> contextData = rule.getContextData();
+                if (contextData == null || !contextData.containsKey(Constants.ACCESS_CONTROL_ID)) {
+                    log.warn("No accessControl found in rule: {}", rule.getCacheKey());
+                    continue;
+                }
+                Map<String, Object> accessSettingIdMap =
+                        (Map<String, Object>) contextData.get(Constants.ACCESS_CONTROL_ID);
+
+                if (evaluateAccessSettingRule(accessSettingIdMap, userProfile)) {
+                    List<String> fieldsToFetch = Arrays.asList(contentReadFields.split(","));
+                    Map<String, Object> contentDetails =
+                            contentService.readContent(rule.getContextId(), fieldsToFetch);
+                    userCourses.add(contentDetails);
+                }
+            }
+            log.info("AccessSettingRule evaluation: UserId: {} | Courses retrieved: {}", userId, userCourses.size());
+            redisCacheMgr.putInCache(Constants.ACCESS_KEY+Constants.UNDERSCORE+Constants.EXTERNAL_COURSES+Constants.UNDERSCORE+userId, mapper.writeValueAsString(userCourses));
+            response.getResult().put(Constants.CONTENT, userCourses);
+        } catch (Exception e) {
+            log.error("Error occurred while evaluating access setting rules: {}", e.getMessage(), e);
+            response.updateErrorDetails("Rule evaluation failed due to an error", HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+        return response;
+    }
+
+    private List<String> getCoursesFromCacheOrServiceForExternalCourse(String courseCategory) {
+        try {
+            List<String> cachedCourses = courseCategoryCache.get(courseCategory);
+            Long lastUpdated = cacheTimestamps.get(courseCategory);
+            boolean isCacheValid = lastUpdated != null &&
+                    (System.currentTimeMillis() - lastUpdated) < cacheTtlMs;
+
+            if (isCacheValid && cachedCourses != null) {
+                log.info("Cache hit for category: {}", courseCategory);
+                return cachedCourses;
+            }
+
+            log.info("Cache miss or expired for category: {}, fetching from service", courseCategory);
+            List<String> fetchedCourses = fetchAccessSettingsEnabledCoursesForExternalCourses(courseCategory);
+            if (!fetchedCourses.isEmpty()) {
+                    courseCategoryCache.put("access_settings_enabled_"+courseCategory, fetchedCourses);
+                    cacheTimestamps.put(courseCategory, System.currentTimeMillis());
+                    log.info("Cached {} course identifiers for category {}", fetchedCourses.size(), courseCategory);
+                    return fetchedCourses;
+            } else {
+                    log.warn("No course identifiers found for category {}", courseCategory);
+            }
+
+
+        } catch (Exception e) {
+            log.error("Error while fetching or caching courses for category {}: {}", courseCategory, e.getMessage(), e);
+            return Collections.emptyList();
+        }
+        return Collections.emptyList();
+    }
+    public List<String> fetchAccessSettingsEnabledCoursesForExternalCourses(String courseCategory) {
+        HashMap<String, Object> req = new HashMap<>();
+        Map<String, Object> filters = new HashMap<>();
+        filters.put(Constants.ACCESS_SETTINGS_ENABLED, accessSettingsEnabled);
+        filters.put(Constants.STATUS, Constants.LIVE_KEY);
+        req.put(Constants.FILTER_CRITERIA_MAP, filters);
+        req.put(Constants.PAGE_SIZE, ciosSearchLimit);
+        req.put(Constants.PAGE_NUMBER, ciosSearchOffset);
+        List<String> fields = Collections.singletonList(Constants.CONTENT_ID);
+        req.put(Constants.REQUESTED_FIELDS, fields);
+
+        Map<String, Object> ciosSearchRes = outboundRequestHandlerService.fetchResultUsingPost(
+                ciosSearchServiceHost + ciosSearch, req,
+                null);
+        JsonNode ciosContentNode = mapper.convertValue(ciosSearchRes, JsonNode.class);
+        JsonNode dataArray = ciosContentNode.path(Constants.DATA);
+        List<String> contentIds = new ArrayList<>();
+
+        if (dataArray.isArray()) {
+            for (JsonNode node : dataArray) {
+                if (node.has(Constants.CONTENT_ID)) {
+                    contentIds.add(node.get(Constants.CONTENT_ID).asText());
+                }
+            }
+        }
+        if (!contentIds.isEmpty()) {
+            courseCategoryCache.put("access_settings_enabled_"+courseCategory, contentIds);
+            cacheTimestamps.put(courseCategory, System.currentTimeMillis());
+            log.info("Cached {} course identifiers for category {}", contentIds.size(), courseCategory);
+            return contentIds;
+        } else {
+            log.warn("No course identifiers found for category {}", courseCategory);
+        }
+        return contentIds;
     }
 
 

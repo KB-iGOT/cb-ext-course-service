@@ -13,6 +13,9 @@ import com.igot.cb.util.PayloadValidation;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -20,6 +23,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.*;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -184,7 +188,7 @@ class PromotionalContentServiceImplTest {
         assertNotNull(result);
         assertEquals(HttpStatus.OK, result.getResponseCode());
         assertNotNull(result.getResult().get(Constants.CONTENT));
-        verify(redisCacheMgr).getFromCache(eq(Constants.PROMOTIONAL_CONTENT_KEY + USER_ID), eq(600));
+        verify(redisCacheMgr).getFromCache(Constants.PROMOTIONAL_CONTENT_KEY + USER_ID, 600);
     }
 
     @Test
@@ -283,19 +287,28 @@ class PromotionalContentServiceImplTest {
     @Test
     void testDelete_Success() {
         ApiResponse mockResponse = ApiResponse.createDefaultResponse("test");
+        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(AUTH_TOKEN), any(ApiResponse.class)))
+                .thenReturn(USER_ID);
+        when(contentService.readCourseCategoryForContent(CONTENT_ID)).thenReturn("Course");
         when(cassandraOperation.insertRecord(anyString(), anyString(), any())).thenReturn(mockResponse);
-        ApiResponse result = promotionalContentService.delete(CONTENT_ID);
+        
+        ApiResponse result = promotionalContentService.delete(CONTENT_ID, AUTH_TOKEN);
+        
         assertNotNull(result);
         assertEquals(HttpStatus.OK, result.getResponseCode());
-        assertTrue(result.getResult().get(Constants.MSG).toString()
-                .contains("Promotional Content Metadata deleted successfully"));
+        assertEquals("Promotional Content Metadata deleted successfully", 
+                result.getResult().get(Constants.MSG));
         verify(cassandraOperation).insertRecord(eq(Constants.KEYSPACE_SUNBIRD_COURSE),
                 eq(Constants.PROMOTIONAL_CONTENT_RULES), any());
     }
 
     @Test
     void testDelete_EmptyContentId() {
-        ApiResponse result = promotionalContentService.delete("");
+        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(AUTH_TOKEN), any(ApiResponse.class)))
+                .thenReturn(USER_ID);
+        
+        ApiResponse result = promotionalContentService.delete("", AUTH_TOKEN);
+        
         assertNotNull(result);
         assertEquals(HttpStatus.BAD_REQUEST, result.getResponseCode());
         assertEquals(Constants.FAILED, result.getParams().getStatus());
@@ -304,7 +317,11 @@ class PromotionalContentServiceImplTest {
 
     @Test
     void testDelete_NullContentId() {
-        ApiResponse result = promotionalContentService.delete(null);
+        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(AUTH_TOKEN), any(ApiResponse.class)))
+                .thenReturn(USER_ID);
+        
+        ApiResponse result = promotionalContentService.delete(null, AUTH_TOKEN);
+        
         assertNotNull(result);
         assertEquals(HttpStatus.BAD_REQUEST, result.getResponseCode());
         assertEquals(Constants.FAILED, result.getParams().getStatus());
@@ -312,9 +329,14 @@ class PromotionalContentServiceImplTest {
 
     @Test
     void testDelete_ExceptionDuringDeletion() {
+        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(AUTH_TOKEN), any(ApiResponse.class)))
+                .thenReturn(USER_ID);
+        when(contentService.readCourseCategoryForContent(CONTENT_ID)).thenReturn("Course");
         when(cassandraOperation.insertRecord(anyString(), anyString(), any()))
                 .thenThrow(new RuntimeException("Database error"));
-        ApiResponse result = promotionalContentService.delete(CONTENT_ID);
+        
+        ApiResponse result = promotionalContentService.delete(CONTENT_ID, AUTH_TOKEN);
+        
         assertNotNull(result);
         assertEquals(HttpStatus.BAD_REQUEST, result.getResponseCode());
         assertEquals(Constants.FAILED, result.getParams().getStatus());
@@ -420,7 +442,7 @@ class PromotionalContentServiceImplTest {
         assertNotNull(result);
         List<Map<String, Object>> content = (List<Map<String, Object>>) result.getResult().get(Constants.CONTENT);
         assertTrue(content.isEmpty());
-        verify(redisCacheMgr).putInCache(eq(Constants.ACCESS_KEY + USER_ID), eq(Constants.NO_RECORDS_FOUND), eq(600));
+        verify(redisCacheMgr).putInCache(Constants.ACCESS_KEY + USER_ID, Constants.NO_RECORDS_FOUND, 600);
     }
 
     @Test
@@ -704,5 +726,198 @@ class PromotionalContentServiceImplTest {
         when(rule.getContextId()).thenReturn("content-123");
         rules.add(rule);
         return rules;
+    }
+
+
+    @Test
+    void testRead_Success() throws Exception {
+        String contextIdType = "Course";
+        Map<String, Object> accessRecord = new HashMap<>();
+        accessRecord.put(Constants.IS_ARCHIVED_KEY, false);
+        String contextDataJson = "{\"accessControl\":{\"userGroups\":[]},\"accessControlId\":{}}";
+        accessRecord.put(Constants.CONTEXT_DATA_KEY, contextDataJson);
+        Map<String, Object> expectedContextData = new HashMap<>();
+        expectedContextData.put("accessControl", Map.of("userGroups", Collections.emptyList()));
+        expectedContextData.put("accessControlId", Collections.emptyMap());
+        when(contentService.readCourseCategoryForContent(CONTENT_ID)).thenReturn(contextIdType);
+        when(cassandraOperation.getRecordsByProperties(
+                eq(Constants.KEYSPACE_SUNBIRD_COURSE),
+                eq(Constants.PROMOTIONAL_CONTENT_RULES),
+                any(Map.class),
+                anyList(),
+                isNull()
+        )).thenReturn(List.of(accessRecord));
+        when(objectMapper.readValue(eq(contextDataJson), any(com.fasterxml.jackson.core.type.TypeReference.class)))
+                .thenReturn(expectedContextData);
+        ApiResponse result = promotionalContentService.read(CONTENT_ID, AUTH_TOKEN);
+        assertNotNull(result);
+        assertEquals(expectedContextData, result.getResult());
+        verify(contentService).readCourseCategoryForContent(CONTENT_ID);
+        verify(cassandraOperation).getRecordsByProperties(
+                eq(Constants.KEYSPACE_SUNBIRD_COURSE),
+                eq(Constants.PROMOTIONAL_CONTENT_RULES),
+                any(Map.class),
+                anyList(),
+                isNull()
+        );
+        verify(objectMapper).readValue(eq(contextDataJson), any(com.fasterxml.jackson.core.type.TypeReference.class));
+    }
+
+    @Test
+    void testRead_NoAccessSettingsFound() throws Exception {
+        String contextIdType = "Course";
+        when(contentService.readCourseCategoryForContent(CONTENT_ID)).thenReturn(contextIdType);
+        when(cassandraOperation.getRecordsByProperties(
+                eq(Constants.KEYSPACE_SUNBIRD_COURSE),
+                eq(Constants.PROMOTIONAL_CONTENT_RULES),
+                any(Map.class),
+                anyList(),
+                isNull()
+        )).thenReturn(Collections.emptyList());
+        ApiResponse result = promotionalContentService.read(CONTENT_ID, AUTH_TOKEN);
+        assertNotNull(result);
+        assertEquals(HttpStatus.NOT_FOUND, result.getResponseCode());
+        assertEquals(Constants.FAILED, result.getParams().getStatus());
+        assertEquals("No access settings found for the given contentId", result.getParams().getErrMsg());
+        verify(contentService).readCourseCategoryForContent(CONTENT_ID);
+        verify(objectMapper, never()).readValue(anyString(), any(com.fasterxml.jackson.core.type.TypeReference.class));
+    }
+
+    private static Stream<Arguments> provideInvalidContextDataScenarios() {
+        return Stream.of(
+                Arguments.of("Archived record", true, "{\"accessControl\":{}}", "Archived record scenario"),
+                Arguments.of("Empty context data", false, "", "Empty string scenario"),
+                Arguments.of("Null context data", false, null, "Null value scenario"),
+                Arguments.of("Non-string context data", false, 12345, "Non-string type scenario")
+        );
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("provideInvalidContextDataScenarios")
+    void testRead_InvalidContextData(String testName, boolean isArchived, Object contextData, String description) throws Exception {
+        String contextIdType = "Course";
+        Map<String, Object> accessRecord = new HashMap<>();
+        accessRecord.put(Constants.IS_ARCHIVED_KEY, isArchived);
+        accessRecord.put(Constants.CONTEXT_DATA_KEY, contextData);
+        when(contentService.readCourseCategoryForContent(CONTENT_ID)).thenReturn(contextIdType);
+        when(cassandraOperation.getRecordsByProperties(
+                eq(Constants.KEYSPACE_SUNBIRD_COURSE),
+                eq(Constants.PROMOTIONAL_CONTENT_RULES),
+                any(Map.class),
+                anyList(),
+                isNull()
+        )).thenReturn(List.of(accessRecord));
+        ApiResponse result = promotionalContentService.read(CONTENT_ID, AUTH_TOKEN);
+        assertNotNull(result);
+        assertEquals(HttpStatus.NOT_FOUND, result.getResponseCode());
+        assertEquals(Constants.FAILED, result.getParams().getStatus());
+        assertEquals("No access settings found for the given contentId", result.getParams().getErrMsg());
+        verify(objectMapper, never()).readValue(anyString(), any(com.fasterxml.jackson.core.type.TypeReference.class));
+    }
+
+    @Test
+    void testRead_JsonParsingException() throws Exception {
+        String contextIdType = "Course";
+        Map<String, Object> accessRecord = new HashMap<>();
+        accessRecord.put(Constants.IS_ARCHIVED_KEY, false);
+        String invalidJson = "{invalid json}";
+        accessRecord.put(Constants.CONTEXT_DATA_KEY, invalidJson);
+        when(contentService.readCourseCategoryForContent(CONTENT_ID)).thenReturn(contextIdType);
+        when(cassandraOperation.getRecordsByProperties(
+                eq(Constants.KEYSPACE_SUNBIRD_COURSE),
+                eq(Constants.PROMOTIONAL_CONTENT_RULES),
+                any(Map.class),
+                anyList(),
+                isNull()
+        )).thenReturn(List.of(accessRecord));
+        when(objectMapper.readValue(eq(invalidJson), any(com.fasterxml.jackson.core.type.TypeReference.class)))
+                .thenThrow(new JsonProcessingException("Invalid JSON") {});
+        ApiResponse result = promotionalContentService.read(CONTENT_ID, AUTH_TOKEN);
+        assertNotNull(result);
+        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, result.getResponseCode());
+        assertEquals(Constants.FAILED, result.getParams().getStatus());
+        assertNotNull(result.getParams().getErrMsg());
+        verify(objectMapper).readValue(eq(invalidJson), any(com.fasterxml.jackson.core.type.TypeReference.class));
+    }
+
+    @Test
+    void testRead_RemovesAccessControlId() throws Exception {
+        String contextIdType = "Course";
+        Map<String, Object> accessRecord = new HashMap<>();
+        accessRecord.put(Constants.IS_ARCHIVED_KEY, false);
+        String contextDataJson = "{\"accessControl\":{},\"accessControlId\":{\"id\":\"123\"}}";
+        accessRecord.put(Constants.CONTEXT_DATA_KEY, contextDataJson);
+        Map<String, Object> parsedData = new HashMap<>();
+        parsedData.put("accessControl", Collections.emptyMap());
+        parsedData.put("accessControlId", Map.of("id", "123"));
+        when(contentService.readCourseCategoryForContent(CONTENT_ID)).thenReturn(contextIdType);
+        when(cassandraOperation.getRecordsByProperties(
+                eq(Constants.KEYSPACE_SUNBIRD_COURSE),
+                eq(Constants.PROMOTIONAL_CONTENT_RULES),
+                any(Map.class),
+                anyList(),
+                isNull()
+        )).thenReturn(List.of(accessRecord));
+        when(objectMapper.readValue(eq(contextDataJson), any(com.fasterxml.jackson.core.type.TypeReference.class)))
+                .thenReturn(parsedData);
+        ApiResponse result = promotionalContentService.read(CONTENT_ID, AUTH_TOKEN);
+        assertNotNull(result);
+        assertFalse(result.getResult().containsKey("accessControlId"));
+        assertTrue(result.getResult().containsKey("accessControl"));
+    }
+
+    @Test
+    void testRead_EmptyContextDataMap() throws Exception {
+        String contextIdType = "Course";
+        Map<String, Object> accessRecord = new HashMap<>();
+        accessRecord.put(Constants.IS_ARCHIVED_KEY, false);
+        String contextDataJson = "{}";
+        accessRecord.put(Constants.CONTEXT_DATA_KEY, contextDataJson);
+        Map<String, Object> emptyMap = new HashMap<>();
+        when(contentService.readCourseCategoryForContent(CONTENT_ID)).thenReturn(contextIdType);
+        when(cassandraOperation.getRecordsByProperties(
+                eq(Constants.KEYSPACE_SUNBIRD_COURSE),
+                eq(Constants.PROMOTIONAL_CONTENT_RULES),
+                any(Map.class),
+                anyList(),
+                isNull()
+        )).thenReturn(List.of(accessRecord));
+        when(objectMapper.readValue(eq(contextDataJson), any(com.fasterxml.jackson.core.type.TypeReference.class)))
+                .thenReturn(emptyMap);
+        ApiResponse result = promotionalContentService.read(CONTENT_ID, AUTH_TOKEN);
+        assertNotNull(result);
+        assertTrue(result.getResult().isEmpty());
+    }
+
+    @Test
+    void testRead_DatabaseException() throws Exception {
+        String contextIdType = "Course";
+        when(contentService.readCourseCategoryForContent(CONTENT_ID)).thenReturn(contextIdType);
+        when(cassandraOperation.getRecordsByProperties(
+                eq(Constants.KEYSPACE_SUNBIRD_COURSE),
+                eq(Constants.PROMOTIONAL_CONTENT_RULES),
+                any(Map.class),
+                anyList(),
+                isNull()
+        )).thenThrow(new RuntimeException("Database connection failed"));
+        ApiResponse result = promotionalContentService.read(CONTENT_ID, AUTH_TOKEN);
+        assertNotNull(result);
+        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, result.getResponseCode());
+        assertEquals(Constants.FAILED, result.getParams().getStatus());
+        assertNotNull(result.getParams().getErrMsg());
+        verify(objectMapper, never()).readValue(anyString(), any(com.fasterxml.jackson.core.type.TypeReference.class));
+    }
+
+    @Test
+    void testRead_ContentServiceException() {
+        when(contentService.readCourseCategoryForContent(CONTENT_ID))
+                .thenThrow(new RuntimeException("Content service unavailable"));
+        ApiResponse result = promotionalContentService.read(CONTENT_ID, AUTH_TOKEN);
+        assertNotNull(result);
+        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, result.getResponseCode());
+        assertEquals(Constants.FAILED, result.getParams().getStatus());
+        assertNotNull(result.getParams().getErrMsg());
+        verify(cassandraOperation, never()).getRecordsByProperties(
+                anyString(), anyString(), any(), anyList(), any());
     }
 }

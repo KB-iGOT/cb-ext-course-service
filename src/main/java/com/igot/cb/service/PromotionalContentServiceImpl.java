@@ -14,6 +14,7 @@ import com.igot.cb.util.PayloadValidation;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.keycloak.common.util.CollectionUtil;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -29,6 +30,7 @@ import static com.igot.cb.util.ProjectUtil.setFailedResponse;
 @Service
 @Slf4j
 public class PromotionalContentServiceImpl implements IPromotionalContentService {
+
     private final AccessTokenValidator accessTokenValidator;
     private final PayloadValidation payloadValidation;
     private final ObjectMapper objectMapper;
@@ -307,11 +309,16 @@ public class PromotionalContentServiceImpl implements IPromotionalContentService
      * Deletes promotional content metadata by marking it as archived.
      *
      * @param contentId ID of the promotional content to delete
+     * @param authToken authentication token for user validation
      * @return ApiResponse with operation result
      */
-    public ApiResponse delete(String contentId) {
+    public ApiResponse delete(String contentId, String authToken) {
         log.info("PromotionalContentServiceImpl::delete:inside");
         ApiResponse response = ApiResponse.createDefaultResponse("api.promotionalcontent.metadata.delete");
+        String userId = accessTokenValidator.fetchUserIdFromAccessToken(authToken, response);
+        if (StringUtils.isEmpty(userId)) {
+            return response;
+        }
         if (StringUtils.isEmpty(contentId)) {
             log.error("Content ID is null or empty");
             setFailedResponse(response, "Content ID cannot be null or empty");
@@ -333,6 +340,93 @@ public class PromotionalContentServiceImpl implements IPromotionalContentService
             log.error("Error while deleting accessRule:", e);
             setFailedResponse(response, "Failed to delete access settings: " + e);
             return response;
+        }
+    }
+
+    @Override
+    public ApiResponse read(String contentId, String authToken) {
+        log.info("PromotionalContentServiceImpl::read:inside - contentId: {}", contentId);
+        ApiResponse response = ApiResponse.createDefaultResponse(Constants.API_ACCESS_RULE_READ);
+        try {
+            String contextIdType = contentService.readCourseCategoryForContent(contentId);
+            log.debug("Retrieved context ID type: {} for contentId: {}", contextIdType, contentId);
+            Map<String, Object> propertyMap = new HashMap<>();
+            propertyMap.put(Constants.CONTEXT_ID, contentId);
+            propertyMap.put(Constants.CONTEXT_ID_TYPE, contextIdType);
+            List<String> fields = Arrays.asList(Constants.CONTEXT_ID, Constants.CONTEXT_DATA, Constants.IS_ARCHIVED);
+            log.debug("Fetching promotional content setting rules from Cassandra for contentId: {}", contentId);
+            List<Map<String, Object>> accessSettingRule = cassandraOperation.getRecordsByProperties(
+                    Constants.KEYSPACE_SUNBIRD_COURSE, Constants.PROMOTIONAL_CONTENT_RULES, propertyMap,
+                    fields, null);
+            if (accessSettingRule.isEmpty()) {
+                log.warn("No promotional content rules found for contentId: {}", contentId);
+                setFailedResponse(response, Constants.NO_ACCESS_SETTINGS_FOUND, HttpStatus.OK);
+                return response;
+            }
+            log.debug("Found {} promotional content setting rule(s) for contentId: {}", accessSettingRule.size(), contentId);
+            Map<String, Object> contextDataMap = processContentSettingRecord(accessSettingRule.get(0), response);
+            if (MapUtils.isNotEmpty(contextDataMap)) {
+                response.setResult(contextDataMap);
+            }
+            return response;
+        } catch (Exception e) {
+            log.error("Error while reading promotional content rule for contentId: {}", contentId, e);
+            setFailedResponse(response, "error while processing", HttpStatus.INTERNAL_SERVER_ERROR);
+            return response;
+        }
+    }
+
+    /**
+     * Processing promotional content setting record.
+     *
+     * @param accessRecord the access setting record
+     * @param response     the API response
+     * @return parsed context data map, or null if error occurred
+     */
+    private Map<String, Object> processContentSettingRecord(Map<String, Object> accessRecord, ApiResponse response) {
+        log.debug("Processing promotional content setting record");
+        Boolean status = (Boolean) accessRecord.get(Constants.IS_ARCHIVED_KEY);
+        log.debug("Promotional content setting archived status: {}", status);
+        if (Boolean.TRUE.equals(status)) {
+            log.warn("Promotional Content Access setting is archived, cannot retrieve");
+            setFailedResponse(response, Constants.NO_ACCESS_SETTINGS_FOUND, HttpStatus.OK);
+            return Collections.emptyMap();
+        }
+        Object contextDataObj = accessRecord.get(Constants.CONTEXT_DATA_KEY);
+        if (!(contextDataObj instanceof String contextDataJson) ||
+                StringUtils.isEmpty(contextDataJson)) {
+            log.warn("Context data is empty or not a valid string");
+            setFailedResponse(response, Constants.NO_ACCESS_SETTINGS_FOUND, HttpStatus.OK);
+            return Collections.emptyMap();
+        }
+        log.debug("Context data found, proceeding to parse JSON");
+        return parseAndSetContextData(contextDataJson, response);
+    }
+
+    /**
+     * Parse context data JSON and return the parsed map.
+     *
+     * @param contextDataJson JSON string containing context data
+     * @param response        the API response
+     * @return parsed context data map, or null if error occurred
+     */
+    private Map<String, Object> parseAndSetContextData(String contextDataJson, ApiResponse response) {
+        try {
+            log.debug("Parsing context data JSON, length: {}", contextDataJson.length());
+            Map<String, Object> contextDataMap = objectMapper.readValue(
+                    contextDataJson, new TypeReference<Map<String, Object>>() {
+                    });
+            log.debug("Successfully parsed context data, entries: {}", contextDataMap.size());
+            if (!contextDataMap.isEmpty()) {
+                contextDataMap.remove(Constants.ACCESS_CONTROL_ID);
+                log.debug("Removed ACCESS_CONTROL_ID from context data");
+            }
+            log.info("Successfully retrieved and set access settings in response");
+            return contextDataMap;
+        } catch (Exception e) {
+            log.error("Failed to parse CONTEXT_DATA JSON: {}", contextDataJson, e);
+            setFailedResponse(response, "error while processing", HttpStatus.INTERNAL_SERVER_ERROR);
+            return Collections.emptyMap();
         }
     }
 }

@@ -478,6 +478,9 @@ public class Constants {
     public static final String API_PROMOTIONAL_ASSIGNEDTO_USERS = "api.promotionalcontent.assignedto.users";
     public static final String USER_GROUPDETAILS_ERR_VALIDATION_MSG = "User group details cannot be null or empty";
     public static final String PROGRAM_DURATION = "programDuration";
+    public static final String NO_ACCESS_SETTINGS_FOUND = "No access settings found for the given contentId";
+    public static final String ADDITIONAL_PROPERTIES = "additionalProperties";
+    public static final String TAG = "tag";
     public static final String EXTERNAL_COURSE = "externalCourse";
     public static final String EXTERNAL_COURSES = "External Courses";
     public static final String LIVE_KEY = "live";

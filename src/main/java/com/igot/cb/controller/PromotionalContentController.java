@@ -32,8 +32,17 @@ public class PromotionalContentController {
     }
 
     @DeleteMapping("/v1/delete/{contentId}")
-    public ResponseEntity<ApiResponse> delete(@PathVariable("contentId") String contentId) {
-        ApiResponse response = promotionalContentService.delete(contentId);
+    public ResponseEntity<ApiResponse> delete(@PathVariable("contentId") String contentId,
+                                              @RequestHeader(Constants.X_AUTH_TOKEN) String authToken) {
+        ApiResponse response = promotionalContentService.delete(contentId, authToken);
         return new ResponseEntity<>(response, response.getResponseCode());
     }
+
+    @GetMapping("/v1/read/{contentId}")
+    public ResponseEntity<ApiResponse> read(@PathVariable("contentId") String contentId,
+                                            @RequestHeader(Constants.X_AUTH_TOKEN) String authToken) {
+        ApiResponse response = promotionalContentService.read(contentId, authToken);
+        return new ResponseEntity<>(response, response.getResponseCode());
+    }
+
 }

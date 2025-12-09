@@ -6,7 +6,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.igot.cb.cache.PromotionalContentRuleCacheMgr;
 import com.igot.cb.cache.RedisCacheMgr;
 import com.igot.cb.cassandra.CassandraOperation;
-import com.igot.cb.cassandra.exceptions.CustomException;
 import com.igot.cb.model.ApiResponse;
 import com.igot.cb.model.CachedAccessSettingRule;
 import com.igot.cb.util.AccessTokenValidator;
@@ -15,6 +14,7 @@ import com.igot.cb.util.PayloadValidation;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.keycloak.common.util.CollectionUtil;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -30,8 +30,7 @@ import static com.igot.cb.util.ProjectUtil.setFailedResponse;
 @Service
 @Slf4j
 public class PromotionalContentServiceImpl implements IPromotionalContentService {
-    private static final String NO_ACCESS_SETTINGS_FOUND = "No access settings found for the given contentId";
-    
+
     private final AccessTokenValidator accessTokenValidator;
     private final PayloadValidation payloadValidation;
     private final ObjectMapper objectMapper;
@@ -361,17 +360,19 @@ public class PromotionalContentServiceImpl implements IPromotionalContentService
                     fields, null);
             if (accessSettingRule.isEmpty()) {
                 log.warn("No promotional content rules found for contentId: {}", contentId);
-                setFailedResponse(response, NO_ACCESS_SETTINGS_FOUND, HttpStatus.NOT_FOUND);
+                setFailedResponse(response, Constants.NO_ACCESS_SETTINGS_FOUND, HttpStatus.NOT_FOUND);
                 return response;
             }
             log.debug("Found {} promotional content setting rule(s) for contentId: {}", accessSettingRule.size(), contentId);
-            return processContentSettingRecord(accessSettingRule.get(0), response);
+            Map<String, Object> contextDataMap = processContentSettingRecord(accessSettingRule.get(0), response);
+            if (MapUtils.isNotEmpty(contextDataMap)) {
+                response.setResult(contextDataMap);
+            }
+            return response;
         } catch (Exception e) {
             log.error("Error while reading promotional content rule for contentId: {}", contentId, e);
-            throw new CustomException(
-                    Constants.ERROR,
-                    "error while processing",
-                    HttpStatus.INTERNAL_SERVER_ERROR);
+            setFailedResponse(response, "error while processing", HttpStatus.INTERNAL_SERVER_ERROR);
+            return response;
         }
     }
 
@@ -380,36 +381,36 @@ public class PromotionalContentServiceImpl implements IPromotionalContentService
      *
      * @param accessRecord the access setting record
      * @param response     the API response
-     * @return populated ApiResponse
+     * @return parsed context data map, or null if error occurred
      */
-    private ApiResponse processContentSettingRecord(Map<String, Object> accessRecord, ApiResponse response) {
+    private Map<String, Object> processContentSettingRecord(Map<String, Object> accessRecord, ApiResponse response) {
         log.debug("Processing promotional content setting record");
         Boolean status = (Boolean) accessRecord.get(Constants.IS_ARCHIVED_KEY);
         log.debug("Promotional content setting archived status: {}", status);
         if (Boolean.TRUE.equals(status)) {
             log.warn("Promotional Content Access setting is archived, cannot retrieve");
-            setFailedResponse(response, NO_ACCESS_SETTINGS_FOUND, HttpStatus.NOT_FOUND);
-            return response;
+            setFailedResponse(response, Constants.NO_ACCESS_SETTINGS_FOUND, HttpStatus.NOT_FOUND);
+            return Collections.emptyMap();
         }
         Object contextDataObj = accessRecord.get(Constants.CONTEXT_DATA_KEY);
         if (!(contextDataObj instanceof String contextDataJson) ||
                 StringUtils.isEmpty(contextDataJson)) {
             log.warn("Context data is empty or not a valid string");
-            setFailedResponse(response, NO_ACCESS_SETTINGS_FOUND, HttpStatus.NOT_FOUND);
-            return response;
+            setFailedResponse(response, Constants.NO_ACCESS_SETTINGS_FOUND, HttpStatus.NOT_FOUND);
+            return Collections.emptyMap();
         }
         log.debug("Context data found, proceeding to parse JSON");
         return parseAndSetContextData(contextDataJson, response);
     }
 
     /**
-     * Parse context data JSON and set it in the response.
+     * Parse context data JSON and return the parsed map.
      *
      * @param contextDataJson JSON string containing context data
      * @param response        the API response
-     * @return populated ApiResponse
+     * @return parsed context data map, or null if error occurred
      */
-    private ApiResponse parseAndSetContextData(String contextDataJson, ApiResponse response) {
+    private Map<String, Object> parseAndSetContextData(String contextDataJson, ApiResponse response) {
         try {
             log.debug("Parsing context data JSON, length: {}", contextDataJson.length());
             Map<String, Object> contextDataMap = objectMapper.readValue(
@@ -420,15 +421,12 @@ public class PromotionalContentServiceImpl implements IPromotionalContentService
                 contextDataMap.remove(Constants.ACCESS_CONTROL_ID);
                 log.debug("Removed ACCESS_CONTROL_ID from context data");
             }
-            response.setResult(contextDataMap);
             log.info("Successfully retrieved and set access settings in response");
-            return response;
+            return contextDataMap;
         } catch (Exception e) {
             log.error("Failed to parse CONTEXT_DATA JSON: {}", contextDataJson, e);
-            throw new CustomException(
-                    Constants.ERROR,
-                    "error while processing",
-                    HttpStatus.INTERNAL_SERVER_ERROR);
+            setFailedResponse(response, "error while processing", HttpStatus.INTERNAL_SERVER_ERROR);
+            return Collections.emptyMap();
         }
     }
 }

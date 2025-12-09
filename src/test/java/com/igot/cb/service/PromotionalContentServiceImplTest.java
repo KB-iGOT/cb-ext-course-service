@@ -832,9 +832,11 @@ class PromotionalContentServiceImplTest {
         )).thenReturn(List.of(accessRecord));
         when(objectMapper.readValue(eq(invalidJson), any(com.fasterxml.jackson.core.type.TypeReference.class)))
                 .thenThrow(new JsonProcessingException("Invalid JSON") {});
-        assertThrows(com.igot.cb.cassandra.exceptions.CustomException.class, () -> {
-            promotionalContentService.read(CONTENT_ID, AUTH_TOKEN);
-        });
+        ApiResponse result = promotionalContentService.read(CONTENT_ID, AUTH_TOKEN);
+        assertNotNull(result);
+        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, result.getResponseCode());
+        assertEquals(Constants.FAILED, result.getParams().getStatus());
+        assertNotNull(result.getParams().getErrMsg());
         verify(objectMapper).readValue(eq(invalidJson), any(com.fasterxml.jackson.core.type.TypeReference.class));
     }
 
@@ -898,9 +900,11 @@ class PromotionalContentServiceImplTest {
                 anyList(),
                 isNull()
         )).thenThrow(new RuntimeException("Database connection failed"));
-        assertThrows(com.igot.cb.cassandra.exceptions.CustomException.class, () -> {
-            promotionalContentService.read(CONTENT_ID, AUTH_TOKEN);
-        });
+        ApiResponse result = promotionalContentService.read(CONTENT_ID, AUTH_TOKEN);
+        assertNotNull(result);
+        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, result.getResponseCode());
+        assertEquals(Constants.FAILED, result.getParams().getStatus());
+        assertNotNull(result.getParams().getErrMsg());
         verify(objectMapper, never()).readValue(anyString(), any(com.fasterxml.jackson.core.type.TypeReference.class));
     }
 
@@ -908,9 +912,11 @@ class PromotionalContentServiceImplTest {
     void testRead_ContentServiceException() {
         when(contentService.readCourseCategoryForContent(CONTENT_ID))
                 .thenThrow(new RuntimeException("Content service unavailable"));
-        assertThrows(com.igot.cb.cassandra.exceptions.CustomException.class, () -> {
-            promotionalContentService.read(CONTENT_ID, AUTH_TOKEN);
-        });
+        ApiResponse result = promotionalContentService.read(CONTENT_ID, AUTH_TOKEN);
+        assertNotNull(result);
+        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, result.getResponseCode());
+        assertEquals(Constants.FAILED, result.getParams().getStatus());
+        assertNotNull(result.getParams().getErrMsg());
         verify(cassandraOperation, never()).getRecordsByProperties(
                 anyString(), anyString(), any(), anyList(), any());
     }

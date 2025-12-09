@@ -7,6 +7,7 @@ import java.util.*;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections4.MapUtils;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -27,6 +28,12 @@ public class UserAndOrgServiceImpl {
     private final IdMapCacheMgr idMapCacheMgr;
 
     private final ObjectMapper mapper = new ObjectMapper();
+
+    @Value("${user.profile.tag.value}")
+    private String userProfileTagValue;
+
+    @Value("${user.profile.tag.bitmap.key}")
+    private String userProfileTagBitmapKey;
 
     public UserAndOrgServiceImpl(RedisCacheMgr redisCacheMgr, CassandraOperation cassandraOperation,
             IdMapCacheMgr idMapCacheMgr) {
@@ -174,6 +181,7 @@ public class UserAndOrgServiceImpl {
                     putIfNotNullOrEmpty(userProfile, Constants.CENTRAL_DEPUTATION, String.valueOf( cadreDetails.get(Constants.CENTRAL_DEPUTATION)));
                 }
             }
+            checkUserTaggedUnderRozgarMela(userProfile, profileDetails);
         }
     }
 
@@ -231,6 +239,16 @@ public class UserAndOrgServiceImpl {
     private void putIfNotNullOrEmpty(Map<String, String> map, String key, String value) {
         if (value != null && !value.trim().isEmpty()) {
             map.put(key, value);
+        }
+    }
+
+    private void checkUserTaggedUnderRozgarMela(Map<String, String> userProfile, Map<String, Object> profileDetails) {
+        Map<String, Object> additionalProperties = (Map<String, Object>) profileDetails.get(Constants.ADDITIONAL_PROPERTIES);
+        if (MapUtils.isNotEmpty(additionalProperties)) {
+            List<String> tagList = (List<String>) additionalProperties.get(Constants.TAG);
+            if (CollectionUtils.isNotEmpty(tagList) && tagList.contains(userProfileTagValue)) {
+                putIfNotNullOrEmpty(userProfile, userProfileTagBitmapKey, userProfileTagValue);
+            }
         }
     }
 }

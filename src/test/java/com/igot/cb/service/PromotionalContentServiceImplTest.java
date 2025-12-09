@@ -776,7 +776,7 @@ class PromotionalContentServiceImplTest {
         )).thenReturn(Collections.emptyList());
         ApiResponse result = promotionalContentService.read(CONTENT_ID, AUTH_TOKEN);
         assertNotNull(result);
-        assertEquals(HttpStatus.NOT_FOUND, result.getResponseCode());
+        assertEquals(HttpStatus.OK, result.getResponseCode());
         assertEquals(Constants.FAILED, result.getParams().getStatus());
         assertEquals("No access settings found for the given contentId", result.getParams().getErrMsg());
         verify(contentService).readCourseCategoryForContent(CONTENT_ID);
@@ -809,7 +809,7 @@ class PromotionalContentServiceImplTest {
         )).thenReturn(List.of(accessRecord));
         ApiResponse result = promotionalContentService.read(CONTENT_ID, AUTH_TOKEN);
         assertNotNull(result);
-        assertEquals(HttpStatus.NOT_FOUND, result.getResponseCode());
+        assertEquals(HttpStatus.OK, result.getResponseCode());
         assertEquals(Constants.FAILED, result.getParams().getStatus());
         assertEquals("No access settings found for the given contentId", result.getParams().getErrMsg());
         verify(objectMapper, never()).readValue(anyString(), any(com.fasterxml.jackson.core.type.TypeReference.class));

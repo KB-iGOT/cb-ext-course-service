@@ -186,9 +186,9 @@ public class AccessSettingMigrationServiceImpl {
         Map<String, Object> sanitized = new HashMap<>();
         for (Map.Entry<String, Object> entry : input.entrySet()) {
             Object value = entry.getValue();
-            if (value instanceof Instant instant) {
+            if (value instanceof Instant instantValue) {
                 // Convert Instant → ISO String (e.g., 2025-09-02T09:30:56.446Z)
-                sanitized.put(entry.getKey(), DateTimeFormatter.ISO_INSTANT.format(instant));
+                sanitized.put(entry.getKey(), DateTimeFormatter.ISO_INSTANT.format(instantValue));
             } else {
                 sanitized.put(entry.getKey(), value);
             }
@@ -280,9 +280,9 @@ public class AccessSettingMigrationServiceImpl {
                 } else if (criteriaValueObj instanceof Boolean) {
                     // Handle boolean values safely
                     criteriaValues = List.of(String.valueOf(criteriaValueObj));
-                } else if (criteriaValueObj instanceof String string) {
+                } else if (criteriaValueObj instanceof String strValue) {
                     // Handle single string case
-                    criteriaValues = List.of(string);
+                    criteriaValues = List.of(strValue);
                 }
 
                 if (CollectionUtils.isEmpty(criteriaValues)) {

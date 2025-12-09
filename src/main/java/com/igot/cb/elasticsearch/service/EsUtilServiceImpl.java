@@ -398,10 +398,10 @@ public class EsUtilServiceImpl implements EsUtilService {
                             } else {
                                 boolQueryBuilder.must(Query.of(q -> q.terms(t -> t.field(field + Constants.KEYWORD).terms(terms -> terms.value(termsList)))));
                             }
-                        } else if (value instanceof String string) {
+                        } else if (value instanceof String strValue) {
                             boolQueryBuilder.must(Query.of(q -> q.terms(t ->
                                     t.field(field + Constants.KEYWORD)
-                                            .terms(terms -> terms.value(List.of(FieldValue.of(string))))
+                                            .terms(terms -> terms.value(List.of(FieldValue.of(strValue))))
                             )));
                         } else if (value instanceof Set) {
                             Set<String> termsSet = (Set<String>) value;
@@ -441,8 +441,8 @@ public class EsUtilServiceImpl implements EsUtilService {
                                     String fullPath = field + "." + nestedField;
                                     if (nestedValue instanceof Boolean booleanValue) {
                                         boolQueryBuilder.must(Query.of(q -> q.term(t -> t.field(fullPath).value(booleanValue))));
-                                    } else if (nestedValue instanceof String string) {
-                                        List<FieldValue> termList = Collections.singletonList(FieldValue.of(string));
+                                    } else if (nestedValue instanceof String strValue) {
+                                        List<FieldValue> termList = Collections.singletonList(FieldValue.of(strValue));
                                         boolQueryBuilder.must(Query.of(q -> q.terms(t -> t.field(fullPath + Constants.KEYWORD).terms((TermsQueryField) termList))));
                                     } else if (nestedValue instanceof ArrayList) {
                                         boolQueryBuilder.must(Query.of(q -> q.terms(t -> t.field(fullPath + Constants.KEYWORD).terms((TermsQueryField) nestedValue))));

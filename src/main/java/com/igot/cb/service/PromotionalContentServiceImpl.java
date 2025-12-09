@@ -307,11 +307,16 @@ public class PromotionalContentServiceImpl implements IPromotionalContentService
      * Deletes promotional content metadata by marking it as archived.
      *
      * @param contentId ID of the promotional content to delete
+     * @param authToken authentication token for user validation
      * @return ApiResponse with operation result
      */
-    public ApiResponse delete(String contentId) {
+    public ApiResponse delete(String contentId, String authToken) {
         log.info("PromotionalContentServiceImpl::delete:inside");
         ApiResponse response = ApiResponse.createDefaultResponse("api.promotionalcontent.metadata.delete");
+        String userId = accessTokenValidator.fetchUserIdFromAccessToken(authToken, response);
+        if (StringUtils.isEmpty(userId)) {
+            return response;
+        }
         if (StringUtils.isEmpty(contentId)) {
             log.error("Content ID is null or empty");
             setFailedResponse(response, "Content ID cannot be null or empty");

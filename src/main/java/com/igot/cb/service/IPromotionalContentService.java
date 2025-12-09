@@ -9,5 +9,5 @@ public interface IPromotionalContentService {
 
     ApiResponse getPromotionalContentForUsers(String authToken);
 
-    ApiResponse delete(String contentId);
+    ApiResponse delete(String contentId, String authToken);
 }

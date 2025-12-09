@@ -283,19 +283,28 @@ class PromotionalContentServiceImplTest {
     @Test
     void testDelete_Success() {
         ApiResponse mockResponse = ApiResponse.createDefaultResponse("test");
+        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(AUTH_TOKEN), any(ApiResponse.class)))
+                .thenReturn(USER_ID);
+        when(contentService.readCourseCategoryForContent(CONTENT_ID)).thenReturn("Course");
         when(cassandraOperation.insertRecord(anyString(), anyString(), any())).thenReturn(mockResponse);
-        ApiResponse result = promotionalContentService.delete(CONTENT_ID);
+        
+        ApiResponse result = promotionalContentService.delete(CONTENT_ID, AUTH_TOKEN);
+        
         assertNotNull(result);
         assertEquals(HttpStatus.OK, result.getResponseCode());
-        assertTrue(result.getResult().get(Constants.MSG).toString()
-                .contains("Promotional Content Metadata deleted successfully"));
+        assertEquals("Promotional Content Metadata deleted successfully", 
+                result.getResult().get(Constants.MSG));
         verify(cassandraOperation).insertRecord(eq(Constants.KEYSPACE_SUNBIRD_COURSE),
                 eq(Constants.PROMOTIONAL_CONTENT_RULES), any());
     }
 
     @Test
     void testDelete_EmptyContentId() {
-        ApiResponse result = promotionalContentService.delete("");
+        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(AUTH_TOKEN), any(ApiResponse.class)))
+                .thenReturn(USER_ID);
+        
+        ApiResponse result = promotionalContentService.delete("", AUTH_TOKEN);
+        
         assertNotNull(result);
         assertEquals(HttpStatus.BAD_REQUEST, result.getResponseCode());
         assertEquals(Constants.FAILED, result.getParams().getStatus());
@@ -304,7 +313,11 @@ class PromotionalContentServiceImplTest {
 
     @Test
     void testDelete_NullContentId() {
-        ApiResponse result = promotionalContentService.delete(null);
+        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(AUTH_TOKEN), any(ApiResponse.class)))
+                .thenReturn(USER_ID);
+        
+        ApiResponse result = promotionalContentService.delete(null, AUTH_TOKEN);
+        
         assertNotNull(result);
         assertEquals(HttpStatus.BAD_REQUEST, result.getResponseCode());
         assertEquals(Constants.FAILED, result.getParams().getStatus());
@@ -312,9 +325,14 @@ class PromotionalContentServiceImplTest {
 
     @Test
     void testDelete_ExceptionDuringDeletion() {
+        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(AUTH_TOKEN), any(ApiResponse.class)))
+                .thenReturn(USER_ID);
+        when(contentService.readCourseCategoryForContent(CONTENT_ID)).thenReturn("Course");
         when(cassandraOperation.insertRecord(anyString(), anyString(), any()))
                 .thenThrow(new RuntimeException("Database error"));
-        ApiResponse result = promotionalContentService.delete(CONTENT_ID);
+        
+        ApiResponse result = promotionalContentService.delete(CONTENT_ID, AUTH_TOKEN);
+        
         assertNotNull(result);
         assertEquals(HttpStatus.BAD_REQUEST, result.getResponseCode());
         assertEquals(Constants.FAILED, result.getParams().getStatus());

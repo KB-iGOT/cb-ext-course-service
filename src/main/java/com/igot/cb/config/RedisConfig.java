@@ -11,6 +11,8 @@ import lombok.extern.slf4j.Slf4j;
 import redis.clients.jedis.JedisPool;
 import redis.clients.jedis.JedisPoolConfig;
 
+import java.time.Duration;
+
 /**
  * Configuration class for Redis connection pool.
  * It sets up the JedisPool with specified configurations and properties.
@@ -53,8 +55,8 @@ public class RedisConfig {
         poolConfig.setTestOnBorrow(true);
         poolConfig.setTestOnReturn(true);
         poolConfig.setTestWhileIdle(true);
-        poolConfig.setMinEvictableIdleTimeMillis(120000);
-        poolConfig.setTimeBetweenEvictionRunsMillis(30000);
+        poolConfig.setMinEvictableIdleDuration(Duration.ofMillis(120000));
+        poolConfig.setTimeBetweenEvictionRuns(Duration.ofMillis(30000));
         poolConfig.setNumTestsPerEvictionRun(3);
         poolConfig.setBlockWhenExhausted(true);
         return poolConfig;

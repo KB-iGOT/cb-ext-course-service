@@ -48,11 +48,11 @@ public class EsUtilServiceImpl implements EsUtilService {
 
     @Override
     public String addDocument(
-            String esIndexName, String type, String id, Map<String, Object> document, String JsonFilePath) {
+            String esIndexName, String type, String id, Map<String, Object> document, String jsonFilePath) {
         log.info("EsUtilServiceImpl :: addDocument");
         try {
             JsonSchemaFactory schemaFactory = JsonSchemaFactory.getInstance();
-            InputStream schemaStream = schemaFactory.getClass().getResourceAsStream(JsonFilePath);
+            InputStream schemaStream = schemaFactory.getClass().getResourceAsStream(jsonFilePath);
             Map<String, Object> map = objectMapper.readValue(schemaStream,
                     new TypeReference<Map<String, Object>>() {
                     });
@@ -80,11 +80,11 @@ public class EsUtilServiceImpl implements EsUtilService {
 
     @Override
     public String updateDocument(
-            String index, String indexType, String entityId, Map<String, Object> updatedDocument, String JsonFilePath) {
+            String index, String indexType, String entityId, Map<String, Object> updatedDocument, String jsonFilePath) {
         try {
             // 1. Filter incoming map using schema (same logic as addDocument)
             JsonSchemaFactory schemaFactory = JsonSchemaFactory.getInstance();
-            try (InputStream schemaStream = schemaFactory.getClass().getResourceAsStream(JsonFilePath)) {
+            try (InputStream schemaStream = schemaFactory.getClass().getResourceAsStream(jsonFilePath)) {
                 Map<String, Object> schemaMap = objectMapper.readValue(schemaStream, new TypeReference<Map<String, Object>>() {});
                 updatedDocument.entrySet().removeIf(e -> !schemaMap.containsKey(e.getKey()));
             }
@@ -123,8 +123,8 @@ public class EsUtilServiceImpl implements EsUtilService {
     }
 
     @Override
-    public SearchResult searchDocuments(String esIndexName, SearchCriteria searchCriteria, String JsonFilePath) {
-        SearchRequest.Builder searchRequestBuilder = buildSearchRequest(searchCriteria, JsonFilePath);
+    public SearchResult searchDocuments(String esIndexName, SearchCriteria searchCriteria, String jsonFilePath) {
+        SearchRequest.Builder searchRequestBuilder = buildSearchRequest(searchCriteria, jsonFilePath);
         assert searchRequestBuilder != null;
         searchRequestBuilder.index(esIndexName);
         try {
@@ -398,10 +398,10 @@ public class EsUtilServiceImpl implements EsUtilService {
                             } else {
                                 boolQueryBuilder.must(Query.of(q -> q.terms(t -> t.field(field + Constants.KEYWORD).terms(terms -> terms.value(termsList)))));
                             }
-                        } else if (value instanceof String) {
+                        } else if (value instanceof String string) {
                             boolQueryBuilder.must(Query.of(q -> q.terms(t ->
                                     t.field(field + Constants.KEYWORD)
-                                            .terms(terms -> terms.value(List.of(FieldValue.of((String) value))))
+                                            .terms(terms -> terms.value(List.of(FieldValue.of(string))))
                             )));
                         } else if (value instanceof Set) {
                             Set<String> termsSet = (Set<String>) value;
@@ -439,10 +439,10 @@ public class EsUtilServiceImpl implements EsUtilService {
                             } else {
                                 nestedMap.forEach((nestedField, nestedValue) -> {
                                     String fullPath = field + "." + nestedField;
-                                    if (nestedValue instanceof Boolean) {
-                                        boolQueryBuilder.must(Query.of(q -> q.term(t -> t.field(fullPath).value((Boolean) nestedValue))));
-                                    } else if (nestedValue instanceof String) {
-                                        List<FieldValue> termList = Collections.singletonList(FieldValue.of((String) nestedValue));
+                                    if (nestedValue instanceof Boolean booleanValue) {
+                                        boolQueryBuilder.must(Query.of(q -> q.term(t -> t.field(fullPath).value(booleanValue))));
+                                    } else if (nestedValue instanceof String string) {
+                                        List<FieldValue> termList = Collections.singletonList(FieldValue.of(string));
                                         boolQueryBuilder.must(Query.of(q -> q.terms(t -> t.field(fullPath + Constants.KEYWORD).terms((TermsQueryField) termList))));
                                     } else if (nestedValue instanceof ArrayList) {
                                         boolQueryBuilder.must(Query.of(q -> q.terms(t -> t.field(fullPath + Constants.KEYWORD).terms((TermsQueryField) nestedValue))));
@@ -519,5 +519,3 @@ public class EsUtilServiceImpl implements EsUtilService {
         }
     }
 }
-
-

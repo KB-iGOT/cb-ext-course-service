@@ -25,9 +25,9 @@ public class AccessSettingRuleCacheMgr {
     private final CassandraOperation cassandraOperation;
     private Map<String, CachedAccessSettingRule> cachedAccessSettingRules = new ConcurrentHashMap<>();
 
-    private final long LOCAL_CACHE_TTL = 3600000;
+    private static final long localCacheTtl = 3600000;
 
-    private final String ACCESS_SETTINGS_CACHE_KEY = "accessSettingRules";
+    private static final String accessSettingsCacheKey = "accessSettingRules";
 
     /**
      * Constructor for AccessSettingRuleCacheMgr.
@@ -51,7 +51,7 @@ public class AccessSettingRuleCacheMgr {
         if (MapUtils.isNotEmpty(cachedAccessSettingRules)) {
             // Check the cached value's ttl. If expired load again
             for (CachedAccessSettingRule rule : cachedAccessSettingRules.values()) {
-                if (rule.isExpired(LOCAL_CACHE_TTL)) {
+                if (rule.isExpired(localCacheTtl)) {
                     cachedAccessSettingRules = null; // Invalidate cache
                     isCacheLoadRequired = true;
                     break;
@@ -80,7 +80,7 @@ public class AccessSettingRuleCacheMgr {
     private void loadAccessSettingRules() {
         log.info("Loading access setting rules from cache or database");
         try {
-            Map<String, String> cachedRules = redisCacheMgr.getAllCachedAccessRules(ACCESS_SETTINGS_CACHE_KEY);
+            Map<String, String> cachedRules = redisCacheMgr.getAllCachedAccessRules(accessSettingsCacheKey);
             if (MapUtils.isNotEmpty(cachedRules)) {
                 cachedAccessSettingRules = cachedRules.entrySet().stream()
                         .collect(Collectors.toMap(
@@ -115,7 +115,7 @@ public class AccessSettingRuleCacheMgr {
                         cachedAccessSettingRules.put(rule.getCacheKey(), rule);
 
                         // Finally, push the raw contextData to Redis
-                        redisCacheMgr.setAccessSettingRuleCache(ACCESS_SETTINGS_CACHE_KEY, rule.getCacheKey(),
+                        redisCacheMgr.setAccessSettingRuleCache(accessSettingsCacheKey, rule.getCacheKey(),
                                 contextData);
 
                     } catch (Exception e) {

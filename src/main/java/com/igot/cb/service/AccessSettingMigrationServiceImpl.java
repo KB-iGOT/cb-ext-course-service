@@ -119,11 +119,11 @@ public class AccessSettingMigrationServiceImpl {
                         }
                     }
                 } else {
-                    cbPlanV2Map.put(Constants.STATUS, (String) cbPlanMap.get(Constants.STATUS));
-                    cbPlanV2Map.put(Constants.NAME, (String) cbPlanMap.get(Constants.NAME));
-                    cbPlanV2Map.put(Constants.END_DATE_KEY, (Instant) cbPlanMap.get(Constants.END_DATE_KEY));
-                    cbPlanV2Map.put(Constants.CONTENT_LIST, (List<String>) cbPlanMap.get(Constants.CONTENT_LIST));
-                    cbPlanV2Map.put(Constants.CONTENT_TYPE, (String) cbPlanMap.get(Constants.CONTENT_TYPE));
+                    cbPlanV2Map.put(Constants.STATUS, cbPlanMap.get(Constants.STATUS));
+                    cbPlanV2Map.put(Constants.NAME, cbPlanMap.get(Constants.NAME));
+                    cbPlanV2Map.put(Constants.END_DATE_KEY, cbPlanMap.get(Constants.END_DATE_KEY));
+                    cbPlanV2Map.put(Constants.CONTENT_LIST, cbPlanMap.get(Constants.CONTENT_LIST));
+                    cbPlanV2Map.put(Constants.CONTENT_TYPE, cbPlanMap.get(Constants.CONTENT_TYPE));
                     assignmentType = (String) cbPlanMap.get(Constants.ASSIGNMENT_TYPE);
                     assignmentTypeInfo = (List<String>) cbPlanMap.get(Constants.ASSIGNMENT_TYPE_INFO);
                 }
@@ -134,17 +134,17 @@ public class AccessSettingMigrationServiceImpl {
                 cbPlanV2Map.put(Constants.PLAN_ID, cbPlanId);
                 cbPlanV2Map.put(Constants.ORG_SCOPE, Constants.SINGLE);
                 cbPlanV2Map.put(Constants.ORG_ID_LIST, Collections.singletonList(orgId));
-                cbPlanV2Map.put(Constants.CREATED_AT, (Instant) cbPlanMap.get(Constants.CREATED_AT_KEY));
-                cbPlanV2Map.put(Constants.CREATED_BY, (String) cbPlanMap.get(Constants.CREATED_BY));
+                cbPlanV2Map.put(Constants.CREATED_AT, cbPlanMap.get(Constants.CREATED_AT_KEY));
+                cbPlanV2Map.put(Constants.CREATED_BY, cbPlanMap.get(Constants.CREATED_BY));
 
                 Boolean isApar = (Boolean) cbPlanMap.get(Constants.IS_APAR);
                 cbPlanV2Map.put(Constants.IS_APAR, isApar != null ? isApar : Boolean.FALSE);
 
-                cbPlanV2Map.put(Constants.PUBLISHED_AT, (Instant) cbPlanMap.get(Constants.PUBLISHED_AT_KEY));
-                cbPlanV2Map.put(Constants.PUBLISHED_BY, (String) cbPlanMap.get(Constants.CB_PUBLISHED_BY));
-                cbPlanV2Map.put(Constants.COMMENT, (String) cbPlanMap.get(Constants.COMMENT));
-                cbPlanV2Map.put(Constants.UPDATED_AT, (Instant) cbPlanMap.get(Constants.UPDATED_AT));
-                cbPlanV2Map.put(Constants.UPDATED_BY, (String) cbPlanMap.get(Constants.UPDATED_BY));
+                cbPlanV2Map.put(Constants.PUBLISHED_AT, cbPlanMap.get(Constants.PUBLISHED_AT_KEY));
+                cbPlanV2Map.put(Constants.PUBLISHED_BY, cbPlanMap.get(Constants.CB_PUBLISHED_BY));
+                cbPlanV2Map.put(Constants.COMMENT, cbPlanMap.get(Constants.COMMENT));
+                cbPlanV2Map.put(Constants.UPDATED_AT, cbPlanMap.get(Constants.UPDATED_AT));
+                cbPlanV2Map.put(Constants.UPDATED_BY, cbPlanMap.get(Constants.UPDATED_BY));
 
                 String contextData = buildContextData(orgId, assignmentType, assignmentTypeInfo);
                 if (!StringUtils.hasLength(contextData)) {
@@ -186,9 +186,9 @@ public class AccessSettingMigrationServiceImpl {
         Map<String, Object> sanitized = new HashMap<>();
         for (Map.Entry<String, Object> entry : input.entrySet()) {
             Object value = entry.getValue();
-            if (value instanceof Instant) {
+            if (value instanceof Instant instant) {
                 // Convert Instant → ISO String (e.g., 2025-09-02T09:30:56.446Z)
-                sanitized.put(entry.getKey(), DateTimeFormatter.ISO_INSTANT.format((Instant) value));
+                sanitized.put(entry.getKey(), DateTimeFormatter.ISO_INSTANT.format(instant));
             } else {
                 sanitized.put(entry.getKey(), value);
             }
@@ -280,9 +280,9 @@ public class AccessSettingMigrationServiceImpl {
                 } else if (criteriaValueObj instanceof Boolean) {
                     // Handle boolean values safely
                     criteriaValues = List.of(String.valueOf(criteriaValueObj));
-                } else if (criteriaValueObj instanceof String) {
+                } else if (criteriaValueObj instanceof String string) {
                     // Handle single string case
-                    criteriaValues = List.of((String) criteriaValueObj);
+                    criteriaValues = List.of(string);
                 }
 
                 if (CollectionUtils.isEmpty(criteriaValues)) {
@@ -430,9 +430,3 @@ public class AccessSettingMigrationServiceImpl {
         }
     }
 }
-
-
-
-
-
-

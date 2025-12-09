@@ -1,6 +1,5 @@
 package com.igot.cb.elasticsearch.dto;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;

@@ -130,9 +130,9 @@ public class ContentStateServiceImpl {
                 for (Map.Entry<String, Object> entry : record.entrySet()) {
                     if (!allowedCassandraKeys.contains(entry.getKey())) continue;
                     String payloadKey = cassandraToPayloadMap.getOrDefault(entry.getKey(), entry.getKey());
-                    if (payloadKey.equalsIgnoreCase(Constants.PROGRESSDETAILS) && entry.getValue() instanceof String) {
+                    if (payloadKey.equalsIgnoreCase(Constants.PROGRESSDETAILS) && entry.getValue() instanceof String strValue) {
                         try {
-                            mapped.put(payloadKey, objectMapper.readValue((String) entry.getValue(), Object.class));
+                            mapped.put(payloadKey, objectMapper.readValue(strValue, Object.class));
                         } catch (Exception ex) {
                             mapped.put(payloadKey, entry.getValue());
                         }
@@ -254,7 +254,7 @@ public class ContentStateServiceImpl {
                         Map<String, Object> content = (Map<String, Object>) contentObj;
                         for (String attr : requiredAttributes) {
                             Object value = content.get(attr);
-                            if (value == null || (value instanceof String && StringUtils.isBlank((String) value))) {
+                            if (value == null || (value instanceof String strValue && StringUtils.isBlank(strValue))) {
                                 errList.add("contents[" + i + "]." + attr);
                             }
                         }
@@ -291,8 +291,8 @@ public class ContentStateServiceImpl {
         Date inputCompletedTime = parseDate((String) inputContent.getOrDefault(Constants.LAST_COMPLETED_TIME, ""));
         Date inputAccessTime = parseDate((String) inputContent.getOrDefault(Constants.LAST_ACCESS_TIME, ""));
         Object completionPercentage = updatedContent.get(Constants.COMPLETION_PERCENTAGE);
-        if (completionPercentage instanceof Integer) {
-            double value = ((Integer) completionPercentage).doubleValue();
+        if (completionPercentage instanceof Integer intValue) {
+            double value = intValue.doubleValue();
             if (value < 0.0 || value > 100.0) {
                 throw new CustomException(
                         "INVALID_COMPLETION_PERCENTAGE",
@@ -301,8 +301,8 @@ public class ContentStateServiceImpl {
                 );
             }
             updatedContent.put(Constants.COMPLETION_PERCENTAGE, value);
-        } else if (completionPercentage instanceof Double) {
-            double value = (Double) completionPercentage;
+        } else if (completionPercentage instanceof Double doubleValue) {
+            double value = doubleValue;
             if (value < 0.0 || value > 100.0) {
                 throw new CustomException(
                         "INVALID_COMPLETION_PERCENTAGE",
@@ -321,10 +321,10 @@ public class ContentStateServiceImpl {
         if (existingContent != null && !existingContent.isEmpty()) {
             Date existingAccessTime;
             Object existingAccessTimeObj = existingContent.get(Constants.LAST_ACCESS_TIME);
-            if (existingAccessTimeObj instanceof String) {
-                existingAccessTime = parseDate((String) existingAccessTimeObj);
-            } else if (existingAccessTimeObj instanceof Date) {
-                existingAccessTime = (Date) existingAccessTimeObj;
+            if (existingAccessTimeObj instanceof String strValue) {
+                existingAccessTime = parseDate(strValue);
+            } else if (existingAccessTimeObj instanceof Date dateValue) {
+                existingAccessTime = dateValue;
             } else {
                 existingAccessTime = null;
             }

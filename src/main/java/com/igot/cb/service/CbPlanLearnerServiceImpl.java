@@ -178,8 +178,8 @@ public class CbPlanLearnerServiceImpl {
                 continue;
             }
             Object planEndDateObj = cbPlan.get(Constants.END_DATE_REQUEST);
-            String planEndDateStr = (planEndDateObj instanceof Instant)
-                    ? ((Instant) planEndDateObj).toString()
+            String planEndDateStr = (planEndDateObj instanceof Instant instantValue)
+                    ? instantValue.toString()
                     : planEndDateObj != null ? planEndDateObj.toString() : null;
 
             plansToCache.add((String) cbPlan.get(Constants.PLAN_ID));
@@ -354,9 +354,9 @@ public class CbPlanLearnerServiceImpl {
         if (rawValue == null) {
             log.warn("profileDetails is null for userId: {}", userBasicProfile.get(Constants.ID));
             return;
-        } else if (rawValue instanceof String) {
-            if (StringUtils.isNotBlank((String) rawValue)) {
-                profileDetails = mapper.readValue((String) rawValue, new TypeReference<Map<String, Object>>() {
+        } else if (rawValue instanceof String strValue) {
+            if (StringUtils.isNotBlank(strValue)) {
+                profileDetails = mapper.readValue(strValue, new TypeReference<Map<String, Object>>() {
                 });
             }
         } else if (rawValue instanceof Map) {
@@ -565,6 +565,3 @@ public class CbPlanLearnerServiceImpl {
     }
 
 }
-
-
-

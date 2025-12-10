@@ -279,7 +279,7 @@ public class CbPlanServiceImpl {
             }
 
             String comment = (String) incomingRequest.get(Constants.COMMENT);
-            Map<String, Object> updatedRequest = new HashMap<String, Object>();
+            Map<String, Object> updatedRequest = new HashMap<>();
             updatedRequest.put(Constants.PUBLISHED_AT, Instant.now());
             updatedRequest.put(Constants.PUBLISHED_BY, userId);
             updatedRequest.put(Constants.UPDATED_AT, Instant.now());
@@ -405,17 +405,16 @@ public class CbPlanServiceImpl {
 
     private Instant parseEndDate(Object endDateObj) {
         try {
-            if (endDateObj instanceof Date) {
-                return ((Date) endDateObj).toInstant();
+            if (endDateObj instanceof Date dateValue) {
+                return dateValue.toInstant();
             }
-            if (endDateObj instanceof Instant) {
-                return (Instant) endDateObj;
+            if (endDateObj instanceof Instant instantValue) {
+                return instantValue;
             }
-            if (endDateObj instanceof Long) {
-                return Instant.ofEpochMilli((Long) endDateObj);
+            if (endDateObj instanceof Long longValue) {
+                return Instant.ofEpochMilli(longValue);
             }
-            if (endDateObj instanceof String) {
-                String endDateStr = (String) endDateObj;
+            if (endDateObj instanceof String endDateStr) {
                 try {
                     // Try ISO_INSTANT first (e.g. 2025-12-31T10:15:30Z)
                     return Instant.parse(endDateStr);
@@ -443,8 +442,8 @@ public class CbPlanServiceImpl {
 
         Map<String, Object> contextData = new HashMap<>();
         try {
-            if (contextDataObj instanceof String) {
-                contextData = mapper.readValue((String) contextDataObj, Map.class);
+            if (contextDataObj instanceof String strValue) {
+                contextData = mapper.readValue(strValue, Map.class);
             } else if (contextDataObj instanceof Map) {
                 contextData = (Map<String, Object>) contextDataObj;
             } else {
@@ -490,9 +489,8 @@ public class CbPlanServiceImpl {
             return null;
 
         try {
-            if (endDateObj instanceof String) {
+            if (endDateObj instanceof String str) {
                 // ISO 8601 string, e.g., "2023-12-14T00:00:00Z"
-                String str = (String) endDateObj;
                 try {
                     // Try full ISO-8601 datetime first
                     return Date.from(Instant.parse(str));
@@ -506,12 +504,12 @@ public class CbPlanServiceImpl {
                     ZoneId kolkata = ZoneId.of("Asia/Kolkata");
                     return Date.from(localDate.atTime(23, 59, 59).atZone(kolkata).toInstant());
                 }
-            } else if (endDateObj instanceof Instant) {
-                return Date.from((Instant) endDateObj);
-            } else if (endDateObj instanceof java.sql.Timestamp) {
-                return new Date(((java.sql.Timestamp) endDateObj).getTime());
-            } else if (endDateObj instanceof java.util.Date) {
-                return new Date(((java.util.Date) endDateObj).getTime());
+            } else if (endDateObj instanceof Instant instantValue) {
+                return Date.from(instantValue);
+            } else if (endDateObj instanceof java.sql.Timestamp timestampVal) {
+                return new Date(timestampVal.getTime());
+            } else if (endDateObj instanceof java.util.Date dateValue) {
+                return new Date(dateValue.getTime());
             }
         } catch (Exception e) {
             log.error("Error parsing endDate: {}", endDateObj, e);
@@ -624,10 +622,10 @@ public class CbPlanServiceImpl {
                         if (item.containsKey(Constants.CREATED_BY) && item.get(Constants.CREATED_BY) != null) {
                             Object createdByObj = item.get(Constants.CREATED_BY);
                             Map<String, Object> userInfoMap;
-                            if (createdByObj instanceof String && !((String) createdByObj).trim().isEmpty()) {
+                            if (createdByObj instanceof String strValue && !strValue.trim().isEmpty()) {
                                 // fetch user details from DB
                                 userInfoMap = userAndOrgService.readUserProfile(
-                                        (String) item.get(Constants.CREATED_BY),
+                                        strValue,
                                         Arrays.asList(Constants.FIRSTNAME, Constants.USER_ID)
                                 );
                                 if (userInfoMap != null) {

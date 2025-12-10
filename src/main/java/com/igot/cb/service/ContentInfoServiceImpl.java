@@ -200,7 +200,7 @@ public class ContentInfoServiceImpl {
             }
             return Collections.emptyMap();
         } catch (Exception e) {
-            log.error("Failed to parse content info from redis. Exception: " + e.getMessage(), e);
+            log.error("Failed to parse external content info. Exception: " + e.getMessage(), e);
         }
         return Collections.emptyMap();
     }

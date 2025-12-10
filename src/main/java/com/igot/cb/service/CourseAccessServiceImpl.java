@@ -399,7 +399,7 @@ public class CourseAccessServiceImpl {
         ApiResponse response = ApiResponse.createDefaultResponse("api.courseAccess.getCoursesForUser");
         try {
             String userId = accessTokenValidator.fetchUserIdFromAccessToken(authToken, response);
-            if (userId == null) {
+            if (!StringUtils.hasText(userId)) {
                 return response;
             }
             if (MapUtils.isEmpty(request)) {
@@ -416,7 +416,7 @@ public class CourseAccessServiceImpl {
             String redisKey = Constants.ACCESS_KEY + partnerId + "_" + userId;
             List<Map<String, Object>> cacheResult = fetchFromRedisCache(redisKey);
 
-            if (cacheResult != null) {
+            if (org.apache.commons.collections4.CollectionUtils.isNotEmpty(cacheResult)) {
                 response.getResult().put(Constants.CONTENT, cacheResult);
                 return response;
             }
@@ -478,7 +478,7 @@ public class CourseAccessServiceImpl {
             boolean isCacheValid = lastUpdated != null &&
                     (System.currentTimeMillis() - lastUpdated) < cacheTtlMs;
 
-            if (isCacheValid && cachedCourses != null) {
+            if (isCacheValid && org.apache.commons.collections4.CollectionUtils.isNotEmpty(cachedCourses)) {
                 log.info("Cache hit for category: {}", partnerId);
                 return cachedCourses;
             }
@@ -526,10 +526,7 @@ public class CourseAccessServiceImpl {
                 }
             }
         }
-
         return contentIds;
-
-
     }
 
 }

@@ -481,6 +481,16 @@ public class Constants {
     public static final String NO_ACCESS_SETTINGS_FOUND = "No access settings found for the given contentId";
     public static final String ADDITIONAL_PROPERTIES = "additionalProperties";
     public static final String TAG = "tag";
+    public static final String EXTERNAL_COURSE = "externalCourse";
+    public static final String EXTERNAL_COURSES = "External Courses";
+    public static final String LIVE_KEY = "live";
+    public static final String FILTER_CRITERIA_MAP = "filterCriteriaMap";
+    public static final String PAGE_SIZE = "pageSize";
+    public static final String PAGE_NUMBER = "pageNumber";
+    public static final String REQUESTED_FIELDS = "requestedFields";
+    public static final String PARTNER_ID = "partnerId";
+    public static final String CB_PORES_SERVICE_HOST = "cbpores.service.host";
+    public static final String EXTERNAL_CONTENT_READ_END_POINT = "external.content.read.endpoint";
     private Constants() {
     }
 }

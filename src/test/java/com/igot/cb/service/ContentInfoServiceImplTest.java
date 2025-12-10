@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
+import java.lang.reflect.Field;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -254,4 +255,69 @@ class ContentInfoServiceImplTest {
         List<Map<String, Object>> result = contentService.enrichContentInfoForCBPlan(Collections.emptyList());
         assertTrue(result.isEmpty());
     }
+
+    @Test
+    void testReadExternalContent_success_returnsResponse() throws Exception {
+        Properties testProps = new Properties();
+        testProps.setProperty(Constants.CB_PORES_SERVICE_HOST, "http://mock-pores");
+        testProps.setProperty(Constants.EXTERNAL_CONTENT_READ_END_POINT, "/external/read");
+        PropertiesCache cache = PropertiesCache.getInstance();
+        Field cfgField = PropertiesCache.class.getDeclaredField("configProp");
+        cfgField.setAccessible(true);
+        cfgField.set(cache, testProps);
+
+        String contentId = "ext-1";
+        Map<String, Object> content = Map.of(Constants.IDENTIFIER, contentId, Constants.NAME, "Ext Course");
+        Map<String, Object> response = Map.of(Constants.CONTENT, content);
+
+        when(outboundRequestHandlerService.fetchResult(anyString())).thenReturn(response);
+
+        Map<String, Object> result = contentService.readExternalContent(contentId);
+
+        assertNotNull(result);
+        assertFalse(result.isEmpty());
+        assertTrue(result.containsKey(Constants.CONTENT));
+        assertEquals(contentId, ((Map<?,?>) result.get(Constants.CONTENT)).get(Constants.IDENTIFIER));
+    }
+
+    @Test
+    void testReadExternalContent_missingContentKey_returnsEmpty() throws Exception {
+        Properties testProps = new Properties();
+        testProps.setProperty(Constants.CB_PORES_SERVICE_HOST, "http://mock-pores");
+        testProps.setProperty(Constants.EXTERNAL_CONTENT_READ_END_POINT, "/external/read");
+        PropertiesCache cache = PropertiesCache.getInstance();
+        Field cfgField = PropertiesCache.class.getDeclaredField("configProp");
+        cfgField.setAccessible(true);
+        cfgField.set(cache, testProps);
+
+        String contentId = "ext-2";
+        Map<String, Object> response = Map.of(Constants.RESPONSE_CODE, "OK"); // no CONTENT key
+
+        when(outboundRequestHandlerService.fetchResult(anyString())).thenReturn(response);
+
+        Map<String, Object> result = contentService.readExternalContent(contentId);
+
+        assertNotNull(result);
+        assertTrue(result.isEmpty(), "Expected empty map when response does not contain CONTENT");
+    }
+
+    @Test
+    void testReadExternalContent_outboundThrowsException_returnsEmpty() throws Exception {
+        Properties testProps = new Properties();
+        testProps.setProperty(Constants.CB_PORES_SERVICE_HOST, "http://mock-pores");
+        testProps.setProperty(Constants.EXTERNAL_CONTENT_READ_END_POINT, "/external/read");
+        PropertiesCache cache = PropertiesCache.getInstance();
+        Field cfgField = PropertiesCache.class.getDeclaredField("configProp");
+        cfgField.setAccessible(true);
+        cfgField.set(cache, testProps);
+
+        String contentId = "ext-3";
+        when(outboundRequestHandlerService.fetchResult(anyString())).thenThrow(new RuntimeException("network"));
+
+        Map<String, Object> result = contentService.readExternalContent(contentId);
+
+        assertNotNull(result);
+        assertTrue(result.isEmpty(), "Expected empty map when outbound call throws");
+    }
+
 }

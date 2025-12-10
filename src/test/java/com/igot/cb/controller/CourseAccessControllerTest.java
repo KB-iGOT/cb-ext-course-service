@@ -1,6 +1,8 @@
 package com.igot.cb.controller;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -10,6 +12,7 @@ import java.util.Map;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -98,5 +101,66 @@ class CourseAccessControllerTest {
 
         verify(courseAccessService, times(1))
                 .getAssignedCoursesForUser(requestBody, authToken);
+    }
+
+    @Test
+    void testGetAssignedExternalCoursesForUser_Success() {
+        Map<String, Object> requestBody = new HashMap<>();
+        requestBody.put("partnerId", "partner-1");
+
+        String authToken = "Bearer some-auth-token";
+
+        ApiResponse mockResponse = new ApiResponse();
+        mockResponse.setResponseCode(HttpStatus.OK);
+        mockResponse.setResult(Map.of("content", Map.of("id", "C1", "name", "External Course")));
+
+        when(courseAccessService.getAssignedExternalCoursesForUser(requestBody, authToken)).thenReturn(mockResponse);
+
+        ResponseEntity<ApiResponse> response = courseAccessController.getAssignedExternalCoursesForUser(requestBody, authToken);
+
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertEquals(mockResponse, response.getBody());
+        verify(courseAccessService, times(1)).getAssignedExternalCoursesForUser(requestBody, authToken);
+    }
+
+    @Test
+    void testGetAssignedExternalCoursesForUser_NoContent() {
+        Map<String, Object> requestBody = Map.of("partnerId", "partner-2");
+        String authToken = "Bearer token";
+
+        ApiResponse noContent = new ApiResponse();
+        noContent.setResponseCode(HttpStatus.NO_CONTENT);
+        noContent.setResult(Map.of());
+
+        when(courseAccessService.getAssignedExternalCoursesForUser(requestBody, authToken)).thenReturn(noContent);
+
+        ResponseEntity<ApiResponse> response = courseAccessController.getAssignedExternalCoursesForUser(requestBody, authToken);
+
+        assertEquals(HttpStatus.NO_CONTENT, response.getStatusCode());
+        assertNotNull(response.getBody());
+        assertTrue(response.getBody().getResult().isEmpty());
+        verify(courseAccessService, times(1)).getAssignedExternalCoursesForUser(requestBody, authToken);
+    }
+
+    @Test
+    void testGetAssignedExternalCoursesForUser_ServiceCalledWithRequestAndToken() {
+        Map<String, Object> requestBody = Map.of("partnerId", "partner-verify");
+        String authToken = "Bearer verify-token";
+
+        ApiResponse ok = new ApiResponse();
+        ok.setResponseCode(HttpStatus.OK);
+        ok.setResult(Map.of("status", "ok"));
+
+        when(courseAccessService.getAssignedExternalCoursesForUser(anyMap(), anyString())).thenReturn(ok);
+
+        ResponseEntity<ApiResponse> response = courseAccessController.getAssignedExternalCoursesForUser(requestBody, authToken);
+
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        ArgumentCaptor<Map> reqCaptor = ArgumentCaptor.forClass(Map.class);
+        ArgumentCaptor<String> tokenCaptor = ArgumentCaptor.forClass(String.class);
+        verify(courseAccessService, times(1)).getAssignedExternalCoursesForUser(reqCaptor.capture(), tokenCaptor.capture());
+
+        assertEquals(requestBody, reqCaptor.getValue());
+        assertEquals(authToken, tokenCaptor.getValue());
     }
 }

@@ -6,6 +6,7 @@ import java.util.stream.Collectors;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.igot.cb.cache.RedisCacheMgr;
 import com.igot.cb.cassandra.exceptions.CustomException;
@@ -62,6 +63,18 @@ public class CourseAccessServiceImpl {
 
     @Value("${cb.cache.course.ttl:600000}")
     private long cacheTtlMs;
+
+    @Value("${cios.integration.search.host}")
+    private String ciosSearchServiceHost;
+
+    @Value("${cios.integration.search}")
+    private String ciosSearch;
+
+    @Value("${cios.search.limit:100}")
+    private int ciosSearchLimit;
+
+    @Value("${cios.search.offset:0}")
+    private int ciosSearchOffset;
 
     private final Map<String, List<String>> courseCategoryCache = new ConcurrentHashMap<>();
     private final Map<String, Long> cacheTimestamps = new ConcurrentHashMap<>();
@@ -365,6 +378,7 @@ public class CourseAccessServiceImpl {
     }
 
     private List<Map<String, Object>> fetchFromRedisCache(String redisKey) {
+        log.info("Fetching data from Redis cache for key: {}", redisKey);
         String cachedData = redisCacheMgr.getFromCache(redisKey);
         if (!StringUtils.hasText(cachedData)) {
             return null;
@@ -380,5 +394,139 @@ public class CourseAccessServiceImpl {
         }
     }
 
+    public ApiResponse getAssignedExternalCoursesForUser(Map<String,Object> request,String authToken) {
+        log.info("CourseAccessServiceImpl::getAssignedCoursesForUser:inside");
+        ApiResponse response = ApiResponse.createDefaultResponse("api.courseAccess.getCoursesForUser");
+        try {
+            String userId = accessTokenValidator.fetchUserIdFromAccessToken(authToken, response);
+            if (!StringUtils.hasText(userId)) {
+                return response;
+            }
+            if (MapUtils.isEmpty(request)) {
+                String errMsg = "Request body is null or empty";
+                log.error(errMsg);
+                response.updateErrorDetails(errMsg, HttpStatus.BAD_REQUEST);
+                return response;
+            }
+            String partnerId = (String) request.get(Constants.PARTNER_ID);
+            if (!StringUtils.hasText(partnerId)) {
+                response.updateErrorDetails("Missing partnerId in request", HttpStatus.BAD_REQUEST);
+                return response;
+            }
+            String redisKey = Constants.ACCESS_KEY + partnerId + "_" + userId;
+            List<Map<String, Object>> cacheResult = fetchFromRedisCache(redisKey);
+
+            if (org.apache.commons.collections4.CollectionUtils.isNotEmpty(cacheResult)) {
+                response.getResult().put(Constants.CONTENT, cacheResult);
+                return response;
+            }
+            List<String> courseIds = getCoursesFromCacheOrServiceForExternalCourse(partnerId);
+            if (CollectionUtils.isEmpty(courseIds)) {
+                log.warn("No course identifiers found for externalCourses");
+                response.getResult().put(Constants.CONTENT, new ArrayList<>());
+                return response;
+            }
+
+            Map<String, Integer> userProfile = userProfileServiceImpl.getUserProfile(userId);
+            List<CachedAccessSettingRule> rules = new ArrayList<>();
+            for (String courseId : courseIds) {
+                CachedAccessSettingRule rule = accessSettingRuleCacheMgr.getOrLoadAccessSettingRule(courseId, Constants.EXTERNAL_COURSES);
+                if (rule != null) {
+                    rules.add(rule);
+                }
+            }
+            List<Map<String, Object>> userCourses = new ArrayList<>();
+            if (rules.isEmpty()) {
+                log.warn("No access setting rules found for External Courses");
+                response.getResult().put(Constants.CONTENT, userCourses);
+                return response;
+            }
+            for (CachedAccessSettingRule rule : rules) {
+                Map<String, Object> contextData = rule.getContextData();
+                if (MapUtils.isNotEmpty(contextData) || contextData.containsKey(Constants.ACCESS_CONTROL_ID)) {
+                    Map<String, Object> accessSettingIdMap =
+                            (Map<String, Object>) contextData.get(Constants.ACCESS_CONTROL_ID);
+
+                    if (evaluateAccessSettingRule(accessSettingIdMap, userProfile)) {
+                        List<String> fieldsToFetch = new ArrayList<>();
+                        Map<String, Object> contentDetails =
+                                contentService.readContent(rule.getContextId(), fieldsToFetch);
+                        Object contentObj = contentDetails.get("content");
+                        Map<String, Object> externalCourse = mapper.convertValue(
+                                contentObj,
+                                new TypeReference<Map<String, Object>>() {
+                                }
+                        );
+                        userCourses.add(externalCourse);
+                    }
+                }
+            }
+            log.info("AccessSettingRule evaluation: UserId: {} | Courses retrieved: {}", userId, userCourses.size());
+            redisCacheMgr.putInCache(Constants.ACCESS_KEY+partnerId+Constants.UNDERSCORE+userId, mapper.writeValueAsString(userCourses));
+            response.getResult().put(Constants.CONTENT, userCourses);
+        } catch (Exception e) {
+            log.error("Error occurred while evaluating access setting rules: {}", e.getMessage(), e);
+            response.updateErrorDetails("Rule evaluation failed due to an error", HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+        return response;
+    }
+
+    private List<String> getCoursesFromCacheOrServiceForExternalCourse(String partnerId) {
+        try {
+            List<String> cachedCourses = courseCategoryCache.get(partnerId);
+            Long lastUpdated = cacheTimestamps.get(partnerId);
+            boolean isCacheValid = lastUpdated != null &&
+                    (System.currentTimeMillis() - lastUpdated) < cacheTtlMs;
+
+            if (isCacheValid && org.apache.commons.collections4.CollectionUtils.isNotEmpty(cachedCourses)) {
+                log.info("Cache hit for category: {}", partnerId);
+                return cachedCourses;
+            }
+
+            log.info("Cache miss or expired for category: {}, fetching from service", partnerId);
+            List<String> fetchedCourses = fetchAccessSettingsEnabledCoursesForExternalCourses(partnerId);
+            if (!fetchedCourses.isEmpty()) {
+                courseCategoryCache.put("access_settings_enabled_" + partnerId, fetchedCourses);
+                cacheTimestamps.put(partnerId, System.currentTimeMillis());
+                log.info("Cached {} course identifiers for partnerId {}", fetchedCourses.size(), partnerId);
+                return fetchedCourses;
+            } else {
+                log.warn("No course identifiers found for category {}", partnerId);
+            }
+        } catch (Exception e) {
+            log.error("Error while fetching or caching courses for category {}: {}", partnerId, e.getMessage(), e);
+            return Collections.emptyList();
+        }
+        return Collections.emptyList();
+    }
+
+    public List<String> fetchAccessSettingsEnabledCoursesForExternalCourses(String partnerId) {
+        HashMap<String, Object> req = new HashMap<>();
+        Map<String, Object> filters = new HashMap<>();
+        filters.put(Constants.ACCESS_SETTINGS_ENABLED, accessSettingsEnabled);
+        filters.put(Constants.STATUS, Constants.LIVE_KEY);
+        filters.put(Constants.PARTNER_ID, partnerId);
+        req.put(Constants.FILTER_CRITERIA_MAP, filters);
+        req.put(Constants.PAGE_SIZE, ciosSearchLimit);
+        req.put(Constants.PAGE_NUMBER, ciosSearchOffset);
+        List<String> fields = Collections.singletonList(Constants.CONTENT_ID);
+        req.put(Constants.REQUESTED_FIELDS, fields);
+
+        Map<String, Object> ciosSearchRes = outboundRequestHandlerService.fetchResultUsingPost(
+                ciosSearchServiceHost + ciosSearch, req,
+                null);
+        JsonNode ciosContentNode = mapper.convertValue(ciosSearchRes, JsonNode.class);
+        JsonNode dataArray = ciosContentNode.path(Constants.DATA);
+        List<String> contentIds = new ArrayList<>();
+
+        if (dataArray.isArray()) {
+            for (JsonNode node : dataArray) {
+                if (node.has(Constants.CONTENT_ID)) {
+                    contentIds.add(node.get(Constants.CONTENT_ID).asText());
+                }
+            }
+        }
+        return contentIds;
+    }
 
 }

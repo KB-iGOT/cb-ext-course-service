@@ -64,6 +64,9 @@ public class ContentInfoServiceImpl {
             Map<String, Object> responseData = readContentFromCache(contentId, fields);
             if (MapUtils.isEmpty(responseData)) {
                 log.info("Content not found in cache, fetching from service for contentId: {}", contentId);
+                if(contentId.startsWith("ext_")){
+                    return readExternalContent(contentId);
+                }
                 return readContentFromService(contentId, fields);
             } else {
                 return responseData;
@@ -182,5 +185,23 @@ public class ContentInfoServiceImpl {
             }
         }
         return enrichContentInfoMap;
+    }
+
+    public Map<String, Object> readExternalContent(String contentId) {
+        log.info("Reading external content with ID: {}", contentId);
+        try {
+            StringBuilder url = new StringBuilder();
+            url.append(propertiesCache.getProperty(Constants.CB_PORES_SERVICE_HOST))
+                    .append(propertiesCache.getProperty(Constants.EXTERNAL_CONTENT_READ_END_POINT)).append("/" + contentId);
+            Map<String, Object> response = (Map<String, Object>) outboundRequestHandlerService
+                    .fetchResult(url.toString());
+            if (MapUtils.isNotEmpty(response) && response.containsKey(Constants.CONTENT)) {
+                return response;
+            }
+            return Collections.emptyMap();
+        } catch (Exception e) {
+            log.error("Failed to parse external content info. Exception: " + e.getMessage(), e);
+        }
+        return Collections.emptyMap();
     }
 }

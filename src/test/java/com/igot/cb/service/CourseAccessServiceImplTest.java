@@ -642,4 +642,65 @@ class CourseAccessServiceImplTest {
         assertEquals(1, list.size());
     }
 
+    @Test
+    void testGetAssignedExternalCoursesForUser_ContentDirectMap() throws Exception {
+        String userId = "u_ext";
+        when(mockAccessTokenValidator.fetchUserIdFromAccessToken(eq(authToken), any(ApiResponse.class)))
+                .thenReturn(userId);
+        Map<String, Object> request = Map.of(Constants.PARTNER_ID, "partner1");
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
+        ReflectionTestUtils.setField(courseAccessService, "courseCategoryCache",
+                new HashMap<>(Map.of("partner1", List.of("C1"))));
+        ReflectionTestUtils.setField(courseAccessService, "cacheTimestamps",
+                new HashMap<>(Map.of("partner1", System.currentTimeMillis())));
+        ReflectionTestUtils.setField(courseAccessService, "cacheTtlMs", 99999999L);
+        BitSet bit = new BitSet();
+        bit.set(1);
+        Map<String, Object> ug = new HashMap<>();
+        ug.put(Constants.USER_GROUP_CRITERIA_LIST, List.of(Map.of(Constants.CRITERIA_KEY, "cadre", Constants.CRITERIA_VALUE, bit)));
+        Map<String, Object> accessControl = Map.of(Constants.USER_GROUPS, List.of(ug));
+
+        CachedAccessSettingRule rule = mock(CachedAccessSettingRule.class);
+        when(rule.getContextId()).thenReturn("C1");
+        when(rule.getContextData()).thenReturn(Map.of(Constants.ACCESS_CONTROL_ID, accessControl));
+        when(mockAccessSettingRuleCacheMgr.getOrLoadAccessSettingRule(eq("C1"), eq(Constants.EXTERNAL_COURSES)))
+                .thenReturn(rule);
+
+        when(mockUserProfileService.getUserProfile(userId)).thenReturn(Map.of("cadre", 1));
+
+        when(contentInfoService.readContent(eq("C1"), anyList()))
+                .thenReturn(Map.of("content", Map.of(Constants.IDENTIFIER, "C1", "name", "External Course")));
+
+        ApiResponse resp = courseAccessService.getAssignedExternalCoursesForUser(request, authToken);
+
+        assertEquals(HttpStatus.OK, resp.getResponseCode());
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> content = (List<Map<String, Object>>) resp.getResult().get(Constants.CONTENT);
+        assertNotNull(content);
+        assertEquals(1, content.size());
+        assertEquals("C1", content.get(0).get(Constants.IDENTIFIER));
+    }
+
+    @Test
+    void testGetCoursesFromCacheOrServiceForExternalCourse_CacheHit_viaReflection() throws Exception {
+        String partnerId = "partnerCache";
+        Map<String, List<String>> partnerCache = new HashMap<>();
+        partnerCache.put(partnerId, List.of("E1", "E2"));
+        Map<String, Long> timestamps = new HashMap<>();
+        timestamps.put(partnerId, System.currentTimeMillis());
+
+        ReflectionTestUtils.setField(courseAccessService, "courseCategoryCache", partnerCache);
+        ReflectionTestUtils.setField(courseAccessService, "cacheTimestamps", timestamps);
+        ReflectionTestUtils.setField(courseAccessService, "cacheTtlMs", 99999999L);
+
+        @SuppressWarnings("unchecked")
+        List<String> result = (List<String>) ReflectionTestUtils.invokeMethod(
+                courseAccessService, "getCoursesFromCacheOrServiceForExternalCourse", partnerId);
+
+        assertNotNull(result);
+        assertEquals(2, result.size());
+        assertTrue(result.contains("E1"));
+        assertTrue(result.contains("E2"));
+    }
+
 }

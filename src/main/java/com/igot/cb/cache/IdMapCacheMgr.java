@@ -1,10 +1,11 @@
 package com.igot.cb.cache;
 
 import java.net.URI;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
-import org.apache.commons.collections4.MapUtils;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
@@ -84,13 +85,13 @@ public class IdMapCacheMgr {
                     log.error("IdMapCacheMgr::getId: No response from ID Map service for keys: {}", batch);
                     break;
                 } else {
-                    for (Map<String, Integer> responseObject : response) {
-                        for (Map.Entry<String, Integer> entry : responseObject.entrySet()) {
-                            String key = entry.getKey().trim().toLowerCase();
-                            cacheMap.put(key, new CachedIdMap(entry.getValue(), defaultExpiryTime));
-                            result.put(key, entry.getValue());
-                        }
-                    }
+                    response.stream()
+                        .flatMap(responseObject -> responseObject.entrySet().stream())
+                        .forEach(entry -> {
+                            String decodedKey = decodeKey(entry.getKey());
+                            cacheMap.put(decodedKey, new CachedIdMap(entry.getValue(), defaultExpiryTime));
+                            result.put(decodedKey, entry.getValue());
+                        });
                 }
                 log.info("IdMapCacheMgr::getId: request url : {}, response: {}", uri.toString(), result);
             }
@@ -104,5 +105,15 @@ public class IdMapCacheMgr {
             batches.add(missingKeys.subList(i, Math.min(i + batchSize, missingKeys.size())));
         }
         return batches;
+    }
+
+    /**
+     * Decodes a URL-encoded key and normalizes it to lowercase.
+     *
+     * @param encodedKey The URL-encoded key from ID-Mapping service
+     * @return Decoded and normalized key
+     */
+    private String decodeKey(String encodedKey) {
+        return URLDecoder.decode(encodedKey, StandardCharsets.UTF_8).trim().toLowerCase();
     }
 }

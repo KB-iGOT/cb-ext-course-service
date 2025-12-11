@@ -206,7 +206,7 @@ public class AccessSettingMigrationServiceImpl {
             return false;
         }
 
-        if(contextId.startsWith("ext_")){
+        if (contextId.startsWith("ext_")) {
             accessSettingMap.put(Constants.CONTEXT_ID_TYPE, Constants.EXTERNAL_COURSES);
         } else {
             String contextIdType = contentService.readCourseCategoryForContent(contextId);

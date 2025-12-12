@@ -182,6 +182,8 @@ public class UserAndOrgServiceImpl {
                 }
             }
             checkUserTaggedUnderRozgarMela(userProfile, profileDetails);
+            putIfNotNullOrEmpty(userProfile, Constants.MINISTRY_OR_STATEID, (String) profileDetails.get(Constants.MINISTRY_OR_STATEID));
+            putIfNotNullOrEmpty(userProfile, Constants.MINISTRY_OR_STATETYPE, (String) profileDetails.get(Constants.MINISTRY_OR_STATETYPE));
         }
     }
 

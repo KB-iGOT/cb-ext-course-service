@@ -491,6 +491,8 @@ public class Constants {
     public static final String PARTNER_ID = "partnerId";
     public static final String CB_PORES_SERVICE_HOST = "cbpores.service.host";
     public static final String EXTERNAL_CONTENT_READ_END_POINT = "external.content.read.endpoint";
+    public static final String MINISTRY_OR_STATEID = "ministryOrStateId";
+    public static final String MINISTRY_OR_STATETYPE = "ministryOrStateType";
     private Constants() {
     }
 }

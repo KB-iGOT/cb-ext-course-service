@@ -248,8 +248,12 @@ public class UserAndOrgServiceImpl {
         Map<String, Object> additionalProperties = (Map<String, Object>) profileDetails.get(Constants.ADDITIONAL_PROPERTIES);
         if (MapUtils.isNotEmpty(additionalProperties)) {
             List<String> tagList = (List<String>) additionalProperties.get(Constants.TAG);
-            if (CollectionUtils.isNotEmpty(tagList) && tagList.contains(userProfileTagValue)) {
-                putIfNotNullOrEmpty(userProfile, userProfileTagBitmapKey, userProfileTagValue);
+            if (CollectionUtils.isNotEmpty(tagList)) {
+                boolean hasTag = tagList.stream()
+                        .anyMatch(tag -> tag.equalsIgnoreCase(userProfileTagValue));
+                if (hasTag) {
+                    putIfNotNullOrEmpty(userProfile, userProfileTagBitmapKey, userProfileTagValue);
+                }
             }
         }
     }

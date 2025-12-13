@@ -247,7 +247,7 @@ class CbPlanServiceImplTest {
 
         when(contentService.readContent(anyString(), any())).thenReturn(createMockContent());
 
-        ApiResponse response = cbPlanService.readCbPlan("planId", "orgId", "token");
+        ApiResponse response = cbPlanService.readCbPlan("planId", "orgId");
 
         assertNotNull(response);
     }
@@ -1464,7 +1464,7 @@ class CbPlanServiceImplTest {
         when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), any(), any(), any()))
             .thenReturn(new ArrayList<>());
 
-        ApiResponse response = cbPlanService.readCbPlan("planId", "orgId", "token");
+        ApiResponse response = cbPlanService.readCbPlan("planId", "orgId");
 
         assertEquals(Constants.FAILED, response.getParams().getStatus());
         assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
@@ -1484,7 +1484,7 @@ class CbPlanServiceImplTest {
         when(contentService.readContent(anyString(), any()))
             .thenThrow(new RuntimeException("Content service error"));
 
-        ApiResponse response = cbPlanService.readCbPlan("planId", "orgId", "token");
+        ApiResponse response = cbPlanService.readCbPlan("planId", "orgId");
 
         assertEquals(Constants.FAILED, response.getParams().getStatus());
         assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getResponseCode());
@@ -1585,11 +1585,11 @@ class CbPlanServiceImplTest {
 
     @Test
     void testReadCbPlan_EmptyAndErrorPaths() {
-        ApiResponse r1 = cbPlanService.readCbPlan("", "org", "t");
+        ApiResponse r1 = cbPlanService.readCbPlan("", "org");
         assertEquals(HttpStatus.BAD_REQUEST, r1.getResponseCode());
         when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), anyMap(), any(), any()))
                 .thenThrow(new RuntimeException("fail"));
-        ApiResponse r2 = cbPlanService.readCbPlan("id", "org", "t");
+        ApiResponse r2 = cbPlanService.readCbPlan("id", "org");
         assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, r2.getResponseCode());
     }
 

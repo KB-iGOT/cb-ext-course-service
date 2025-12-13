@@ -241,7 +241,7 @@ public class CbPlanServiceImplFullTest {
 
     @Test
     void readCbPlan_emptyId_badRequest() {
-        ApiResponse r = cbPlanService.readCbPlan("", "org", "token");
+        ApiResponse r = cbPlanService.readCbPlan("", "org");
         assertEquals(HttpStatus.BAD_REQUEST, r.getResponseCode());
     }
 
@@ -249,7 +249,7 @@ public class CbPlanServiceImplFullTest {
     void readCbPlan_whenDbThrows_internalError() {
         when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), anyMap(), any(), any()))
                 .thenThrow(new RuntimeException("db"));
-        ApiResponse r = cbPlanService.readCbPlan("id1", "org", "token");
+        ApiResponse r = cbPlanService.readCbPlan("id1", "org");
         assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, r.getResponseCode());
     }
 
@@ -322,7 +322,7 @@ public class CbPlanServiceImplFullTest {
 
         Map<String, Object> result =
                 ReflectionTestUtils.invokeMethod(cbPlanService, "prepareCbPlanForRePublish",
-                        existingCbPlan, incomingRequest, "user123");
+                        existingCbPlan, incomingRequest);
 
         assertNotNull(result);
         assertEquals(true, result.get(Constants.IS_APAR));

@@ -144,8 +144,8 @@ public class UserAndOrgServiceImpl {
         Object rawValue = userBasicProfile.get(Constants.PROFILE_DETAILS);
         Map<String, Object> profileDetails;
 
-        if (rawValue instanceof String) {
-            profileDetails = mapper.readValue((String) rawValue, new TypeReference<Map<String, Object>>() {});
+        if (rawValue instanceof String strValue) {
+            profileDetails = mapper.readValue(strValue, new TypeReference<Map<String, Object>>() {});
         } else if (rawValue instanceof Map) {
             profileDetails = (Map<String, Object>) rawValue;
         } else {

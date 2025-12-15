@@ -98,7 +98,7 @@ class NotificationServiceImplTest {
     private final String authToken = "validToken";
 
     @BeforeEach
-    void setUp() throws Exception {
+    void setUp() {
         MockitoAnnotations.openMocks(this);
 
         // Create mocks manually to avoid @Mock annotation
@@ -268,4 +268,66 @@ class NotificationServiceImplTest {
         // assert
         assertEquals(HttpStatus.OK, response.getResponseCode());
     }
+    @Test
+    void notifyAssignmentSubmit_missingInstructor() {
+        Map<String, Object> request = Map.of(
+                Constants.COURSE_ID, "course1",
+                Constants.BATCH_ID, "batch1",
+                Constants.ASSIGNMENT_TITLE, "A"
+        );
+
+        var response = notificationService.notifyAssignmentSubmit(request, authToken);
+
+        assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+    }
+
+    @Test
+    void notifyAssignmentUploaded_noActiveUsers() {
+        Map<String, Object> request = Map.of(
+                Constants.COURSE_ID, "course1",
+                Constants.BATCH_ID, "batch1",
+                Constants.ASSIGNMENT_TITLE, "A"
+        );
+
+        Map<String, Object> enrollment = new HashMap<>();
+        enrollment.put(Constants.USER_ID, "u1");
+        enrollment.put(Constants.ACTIVE, false);
+
+        when(cassandraOperation.getRecordsByProperties(any(), any(), anyMap(), anyList(), isNull()))
+                .thenReturn(List.of(enrollment));
+
+        var response = notificationService.notifyAssignmentUploaded(request, authToken);
+
+        assertEquals(HttpStatus.OK, response.getResponseCode());
+    }
+    @Test
+    void notifyAssignmentUploaded_validationFailure() {
+        Map<String, Object> request = Map.of(
+                Constants.COURSE_ID, "course1"
+                // batchId & assignment missing
+        );
+
+        var response = notificationService.notifyAssignmentUploaded(request, authToken);
+
+        assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+    }
+    @Test
+    void notifyAssignmentUploaded_invalidToken() {
+        when(accessTokenValidator.fetchUserIdFromAccessToken(anyString(), any()))
+                .thenReturn("");
+
+        Map<String, Object> request = Map.of(
+                Constants.COURSE_ID, "course1",
+                Constants.BATCH_ID, "batch1",
+                Constants.ASSIGNMENT_TITLE, "A"
+        );
+
+        var response = notificationService.notifyAssignmentUploaded(request, authToken);
+
+        assertEquals(HttpStatus.OK, response.getResponseCode());
+    }
+
+
 }

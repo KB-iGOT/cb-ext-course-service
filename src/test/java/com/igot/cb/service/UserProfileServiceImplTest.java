@@ -131,7 +131,7 @@ class UserProfileServiceImplTest {
     }
 
     @Test
-    void testGetUserProfile_NullCadreDetails() throws Exception {
+    void testGetUserProfile_NullCadreDetails() {
         when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
         Map<String, Object> professionalDetails = new HashMap<>();
         professionalDetails.put("designation", "teacher");

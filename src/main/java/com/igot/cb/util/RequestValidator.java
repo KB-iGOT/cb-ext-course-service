@@ -42,7 +42,7 @@ public class RequestValidator {
         if (cbPlanDto.getIsApar() == null) {
             cbPlanDto.setIsApar(false);
         }
-        request.put(Constants.IS_APAR, cbPlanDto.getIsApar() != null ? cbPlanDto.getIsApar() : false);
+        request.put(Constants.IS_APAR, Boolean.TRUE.equals(cbPlanDto.getIsApar()));
         List<String> validationErrors = new ArrayList<>();
 
         ValidatorFactory validatorFactory = Validation.buildDefaultValidatorFactory();
@@ -75,9 +75,9 @@ public class RequestValidator {
 
         Map<String, Object> contextData = null;
         Object contextDataObj = request.get(Constants.CONTEXT_DATA_REQUEST);
-        if (contextDataObj instanceof String) {
+        if (contextDataObj instanceof String strValue) {
             try {
-                contextData = mapper.readValue((String) contextDataObj, new TypeReference<Map<String, Object>>() {
+                contextData = mapper.readValue(strValue, new TypeReference<Map<String, Object>>() {
                 });
             } catch (Exception e) {
                 errors.add("Validation Error: Failed to parse contextData");
@@ -144,9 +144,9 @@ public class RequestValidator {
                 } else if (criteriaValueObj instanceof Boolean) {
                     // Convert boolean (or isOnCentralDeputation key) to string list
                     criteriaValues = Collections.singletonList(String.valueOf(criteriaValueObj));
-                } else if (criteriaValueObj instanceof String) {
+                } else if (criteriaValueObj instanceof String strValue) {
                     // Wrap single string into a list
-                    criteriaValues = Collections.singletonList((String) criteriaValueObj);
+                    criteriaValues = Collections.singletonList(strValue);
                 } else {
                     errors.add("Validation Error: Unsupported criteriaValue type for criteriaKey: "
                             + criteriaKey + ", type=" + criteriaValueObj.getClass().getSimpleName());
@@ -172,7 +172,7 @@ public class RequestValidator {
         }
 
         if (isCCA) {
-            if (rootOrgIdsInCriteria.size() == 0) {
+            if (rootOrgIdsInCriteria.isEmpty()) {
                 request.put(Constants.ORG_SCOPE, Constants.ALL);
             } else if (rootOrgCriteriaNotFoundInUserGroup) {
                 errors.add(cbExtServerProperties.getMsgOnUserGroupRestrictionForAllOrg());

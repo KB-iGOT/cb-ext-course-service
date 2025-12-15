@@ -1,7 +1,5 @@
 package com.igot.cb.util;
 
-import java.util.Arrays;
-import java.util.List;
 
 /**
  * @author Mahesh RV
@@ -372,7 +370,7 @@ public class Constants {
     public static final String CREATOR_LOGO = "creatorLogo";
     public static final String LANGUAGE_MAP_V1 = "languageMapV1";
     public static final String CIPHER_ALGORITHM = "AES";
-    public static final byte[] CIPHER_KEY = new byte[] { 'T', 'h', 'i', 's', 'A', 's', 'I', 'S', 'e', 'r', 'c', 'e',
+    protected static final byte[] CIPHER_KEY = new byte[] { 'T', 'h', 'i', 's', 'A', 's', 'I', 'S', 'e', 'r', 'c', 'e',
             'K', 't', 'e', 'y' };
     public static final String CREATED_AT_REQ = "createdat";
     public static final String PUBLISHED_AT= "publishedAt";

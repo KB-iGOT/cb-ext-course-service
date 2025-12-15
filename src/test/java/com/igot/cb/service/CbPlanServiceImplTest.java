@@ -13,6 +13,7 @@ import java.util.*;
 import com.igot.cb.util.*;
 
 import org.igot.common.ApiResponse;
+import org.igot.common.CustomException;
 import org.igot.common.auth.AccessTokenValidator;
 import org.igot.common.cassandra.CassandraOperation;
 import org.junit.jupiter.api.BeforeEach;
@@ -772,7 +773,7 @@ class CbPlanServiceImplTest {
 
     @Test
     @Disabled("This test is ignored due to optimization code changes")
-    void testEnrichUserInfo() throws Exception {
+    void testEnrichUserInfo(){
         Map<String, Map<String, String>> userInfoMap = new HashMap<>();
         Map<String, String> userDetails = new HashMap<>();
         userDetails.put("firstName", "Test");
@@ -786,7 +787,7 @@ class CbPlanServiceImplTest {
 
     @Test
     @Disabled("This test is ignored due to optimization code changes")
-    void testPopulateReadData() throws Exception {
+    void testPopulateReadData(){
         Map<String, Object> cbPlan = new HashMap<>();
         cbPlan.put("contentList", Arrays.asList("content1"));
         cbPlan.put("createdBy", "userId");
@@ -1162,7 +1163,7 @@ class CbPlanServiceImplTest {
 
     @SuppressWarnings("unchecked")
     @Test
-    void testPopulateReadData_NullDraftData() throws Exception {
+    void testPopulateReadData_NullDraftData()  {
         Map<String, Object> cbPlan = new HashMap<>();
         cbPlan.put("name", "Test Plan");
         cbPlan.put("contentType", "Course");
@@ -1194,7 +1195,7 @@ class CbPlanServiceImplTest {
 
     @SuppressWarnings("unchecked")
     @Test
-    void testPopulateReadData_WithDraftStatus() throws Exception {
+    void testPopulateReadData_WithDraftStatus()  {
         // Arrange
         Map<String, Object> cbPlan = new HashMap<>();
         cbPlan.put(Constants.DRAFT_DATA,
@@ -1231,7 +1232,7 @@ class CbPlanServiceImplTest {
 
     @Test
     @Disabled("This test is ignored due to optimization code changes")
-    void testSearchCbPlan_NoResults() throws Exception {
+    void testSearchCbPlan_NoResults()  {
         SearchCriteria criteria = new SearchCriteria();
 
         when(accessTokenValidator.fetchUserIdFromAccessToken(anyString(), any())).thenReturn("userId");
@@ -1491,7 +1492,7 @@ class CbPlanServiceImplTest {
     }
 
     @Test
-    void testSearchCbPlan_Exception() throws Exception {
+    void testSearchCbPlan_Exception() {
         SearchCriteria criteria = new SearchCriteria();
         when(accessTokenValidator.fetchUserIdFromAccessToken(anyString(), any())).thenReturn("userId");
         when(esUtilService.searchDocuments(anyString(), any(), anyString()))
@@ -1576,7 +1577,7 @@ class CbPlanServiceImplTest {
     }
 
     @Test
-    void testSearchCbPlan_ExceptionPath() throws Exception {
+    void testSearchCbPlan_ExceptionPath() {
         when(accessTokenValidator.fetchUserIdFromAccessToken(anyString(), any())).thenReturn("u1");
         when(esUtilService.searchDocuments(anyString(), any(), anyString())).thenThrow(new RuntimeException("boom"));
         SearchCriteria sc = new SearchCriteria();
@@ -1677,7 +1678,7 @@ class CbPlanServiceImplTest {
     }
 
     @Test
-    void testUpdateCbPlan_DraftPlanValidationError() throws Exception {
+    void testUpdateCbPlan_DraftPlanValidationError() {
         when(accessTokenValidator.fetchUserIdFromAccessToken(anyString(), any())).thenReturn("u1");
 
         Map<String, Object> existing = new HashMap<>();
@@ -1698,7 +1699,7 @@ class CbPlanServiceImplTest {
 
 
     @Test
-    void testUpdateCbPlan_DraftPlanUpdateFailure() throws Exception {
+    void testUpdateCbPlan_DraftPlanUpdateFailure() {
         when(accessTokenValidator.fetchUserIdFromAccessToken(anyString(), any())).thenReturn("u1");
 
         Map<String, Object> existing = new HashMap<>();
@@ -1807,7 +1808,104 @@ class CbPlanServiceImplTest {
 
         assertEquals(Constants.FAILED, resp.getParams().getStatus());
     }
+    @Test
+    void createCbPlan_rootOrgReadFails() {
+        when(accessTokenValidator.fetchUserIdFromAccessToken(any(), any()))
+                .thenReturn("u1");
 
+        when(userUtilityService.readUserProfileFromDB(any(), any()))
+                .thenReturn(Collections.emptyMap());
 
+        ApiRequest req = new ApiRequest();
+        req.setRequest(Map.of());
+
+        ApiResponse resp = cbPlanService.createCbPlan(req, "org", "t");
+
+        assertEquals(Constants.FAILED, resp.getParams().getStatus());
+    }
+    @Test
+    void createCbPlan_ccaLookupFails() {
+        when(accessTokenValidator.fetchUserIdFromAccessToken(any(), any()))
+                .thenReturn("u1");
+
+        when(userUtilityService.readUserProfileFromDB(any(), any()))
+                .thenReturn(Map.of(Constants.ROOT_ORG_ID, "org1"));
+
+        when(userUtilityService.readOrgFromDB(any(), any()))
+                .thenReturn(Collections.emptyMap());
+
+        ApiRequest req = new ApiRequest();
+        req.setRequest(Map.of());
+
+        ApiResponse resp = cbPlanService.createCbPlan(req, "org", "t");
+
+        assertEquals(Constants.FAILED, resp.getParams().getStatus());
+    }
+    @Test
+    void updateCbPlan_invalidStatus() {
+        when(accessTokenValidator.fetchUserIdFromAccessToken(any(), any()))
+                .thenReturn("u1");
+
+        Map<String, Object> plan = new HashMap<>();
+        plan.put(Constants.CREATED_BY, "u1");
+        plan.put(Constants.STATUS, "archived"); // 👈 else branch
+
+        when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), any()))
+                .thenReturn(List.of(plan));
+
+        ApiRequest req = new ApiRequest();
+        req.setRequest(Map.of(Constants.ID, "p1"));
+
+        ApiResponse resp = cbPlanService.updateCbPlan(req, "org", "t", List.of("admin"));
+
+        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, resp.getResponseCode());
+    }
+    @Test
+    void publishCbPlan_contextValidationFails() {
+        when(accessTokenValidator.fetchUserIdFromAccessToken(any(), any()))
+                .thenReturn("u1");
+
+        Map<String, Object> plan = new HashMap<>();
+        plan.put(Constants.CREATED_BY, "u1");
+        plan.put(Constants.STATUS, Constants.DRAFT);
+
+        when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), any()))
+                .thenReturn(List.of(plan));
+
+        when(requestValidator.validateContextData(any(), anyBoolean(), anyString(), any()))
+                .thenReturn(List.of("error"));
+
+        ApiRequest req = new ApiRequest();
+        req.setRequest(Map.of(Constants.ID, "p1"));
+
+        ApiResponse resp = cbPlanService.publishCbPlan(req, "org", "t", List.of("admin"));
+
+        assertEquals(Constants.FAILED, resp.getParams().getStatus());
+    }
+    @Test
+    void retireCbPlan_lookupFails() {
+        when(accessTokenValidator.fetchUserIdFromAccessToken(any(), any()))
+                .thenReturn("u1");
+
+        Map<String, Object> plan = new HashMap<>();
+        plan.put(Constants.CREATED_BY, "u1");
+        plan.put(Constants.STATUS, Constants.LIVE);
+        plan.put(Constants.ORG_SCOPE, Constants.SINGLE);
+
+        when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), any()))
+                .thenReturn(List.of(plan));
+
+        ApiResponse lookupFail = new ApiResponse();
+        lookupFail.getParams().setStatus(Constants.FAILED);
+        when(cassandraOperation.insertBulkRecord(any(), any(), any()))
+                .thenReturn(lookupFail);
+
+        ApiRequest req = new ApiRequest();
+        req.setRequest(Map.of(Constants.ID, "p1"));
+
+        ApiResponse resp = cbPlanService.retireCbPlan(req, "org", "t", List.of("admin"));
+
+        assertEquals(Constants.FAILED, resp.getParams().getStatus());
+    }
 
 }

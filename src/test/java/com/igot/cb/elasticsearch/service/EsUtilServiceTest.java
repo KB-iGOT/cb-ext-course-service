@@ -56,7 +56,7 @@ class EsUtilServiceTest {
     }
 
     @Test
-    void testSearchDocuments() throws Exception {
+    void testSearchDocuments() {
         String esIndexName = "test-index";
         SearchCriteria searchCriteria = new SearchCriteria();
         String elasticCbPlanJsonPath = "/test.json";

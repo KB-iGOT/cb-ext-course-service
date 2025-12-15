@@ -308,11 +308,8 @@ public class CourseAccessServiceImpl {
         req.put(Constants.FIELDS, fields);
         reqBody.put(Constants.REQUEST, req);
 
-        Map<String, Object> compositeSearchRes = outboundRequestHandlerService.fetchResultUsingPost(
-                sbSearchServiceHost + sbCompositeV4Search, reqBody,
-                null);
-
-        return compositeSearchRes;
+        return outboundRequestHandlerService.fetchResultUsingPost(
+                sbSearchServiceHost + sbCompositeV4Search, reqBody, null);
     }
 
     private List<String> getCoursesFromCacheOrService(String courseCategory) {

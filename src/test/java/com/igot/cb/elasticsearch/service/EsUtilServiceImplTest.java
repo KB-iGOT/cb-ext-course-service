@@ -12,13 +12,11 @@ import co.elastic.clients.elasticsearch.core.search.HitsMetadata;
 import co.elastic.clients.elasticsearch.core.search.TotalHits;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.igot.cb.elasticsearch.config.EsConfig;
 import com.igot.cb.elasticsearch.dto.FacetDTO;
 import com.igot.cb.elasticsearch.dto.SearchCriteria;
 import com.igot.cb.elasticsearch.dto.SearchResult;
 import com.igot.cb.util.CbExtServerProperties;
 import com.igot.cb.util.Constants;
-import com.networknt.schema.JsonSchemaFactory;
 
 import org.igot.common.CustomException;
 import org.junit.jupiter.api.BeforeEach;
@@ -380,7 +378,7 @@ class EsUtilServiceImplTest {
     }
 
     @Test
-    void testUnsupportedQueryType() throws Exception {
+    void testUnsupportedQueryType() {
         SearchCriteria criteria = createBasicSearchCriteria();
         
         Map<String, Object> query = new HashMap<>();
@@ -393,7 +391,7 @@ class EsUtilServiceImplTest {
     }
 
     @Test
-    void testMustNotQueryWithNonList() throws Exception {
+    void testMustNotQueryWithNonList() {
         SearchCriteria criteria = createBasicSearchCriteria();
         
         Map<String, Object> query = new HashMap<>();
@@ -406,7 +404,7 @@ class EsUtilServiceImplTest {
     }
 
     @Test
-    void testUnsupportedRangeCondition() throws Exception {
+    void testUnsupportedRangeCondition() {
         SearchCriteria criteria = createBasicSearchCriteria();
         
         Map<String, Object> rangeConditions = new HashMap<>();

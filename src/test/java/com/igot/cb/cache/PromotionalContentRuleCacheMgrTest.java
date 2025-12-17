@@ -29,7 +29,6 @@ class PromotionalContentRuleCacheMgrTest {
 
     @BeforeEach
     void setup() {
-        lenient().when(properties.getPromotionalContentCacheTtlMinutes()).thenReturn(60);
         lenient().when(properties.getPromotionalContentCacheMaxSize()).thenReturn(5000);
         lenient().when(properties.isPromotionalContentCacheWarmingEnabled()).thenReturn(false);
         lenient().when(properties.getPromotionalContentCacheBatchSize()).thenReturn(500);

@@ -26,7 +26,7 @@ public class PromotionalContentRuleCacheMgr {
     private final CassandraOperation cassandraOperation;
     private final CbExtServerProperties properties;
     Map<String, CachedAccessSettingRule> cacheMap = new ConcurrentHashMap<>();
-    @Value("${promotional.content.cache.ttl.milliseconds}")
+    @Value("${promotional.content.rules.cache.expiry.ms}")
     private Integer promotionalContentCacheTtlMiliSeconds;
     /**
      * Constructs the cache manager with required dependencies.

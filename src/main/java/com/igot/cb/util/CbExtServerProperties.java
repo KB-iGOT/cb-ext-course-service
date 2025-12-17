@@ -64,9 +64,6 @@ public class CbExtServerProperties {
     @Value("${cb.wrapper.notification.path}")
     private String cbWrapperNotificationPath;
 
-    @Value("${promotional.content.cache.ttl.minutes}")
-    private int promotionalContentCacheTtlMinutes;
-
     @Value("${promotional.content.cache.max.size}")
     private int promotionalContentCacheMaxSize;
 

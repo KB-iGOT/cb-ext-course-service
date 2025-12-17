@@ -14,7 +14,7 @@ import com.igot.cb.util.PayloadValidation;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
-import org.keycloak.common.util.CollectionUtil;
+
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -44,7 +44,7 @@ public class PromotionalContentServiceImpl implements IPromotionalContentService
     @Value("${promotional.content.read.fields}")
     private String contentReadFields;
 
-    @Value("${promotional.content.cache.ttl.seconds}")
+    @Value("${promotional.content.user.cache.ttl.seconds}")
     private Integer promotionalContentCacheTtlSeconds;
 
     /**

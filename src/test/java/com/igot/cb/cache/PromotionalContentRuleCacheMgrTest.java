@@ -34,7 +34,7 @@ class PromotionalContentRuleCacheMgrTest {
         lenient().when(properties.getPromotionalContentCacheBatchSize()).thenReturn(500);
         lenient().when(properties.getPromotionalContentCacheMaxQuerySize()).thenReturn(5000);
         cacheMgr = new PromotionalContentRuleCacheMgr(cassandraOperation, properties);
-        ReflectionTestUtils.setField(cacheMgr, "promotionalContentCacheTtlMiliSeconds", 3600000);
+        ReflectionTestUtils.setField(cacheMgr, "promotionalContentRulesCacheExpiryMs", 3600000);
     }
 
     @Test

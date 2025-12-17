@@ -27,7 +27,7 @@ public class PromotionalContentRuleCacheMgr {
     private final CbExtServerProperties properties;
     Map<String, CachedAccessSettingRule> cacheMap = new ConcurrentHashMap<>();
     @Value("${promotional.content.rules.cache.expiry.ms}")
-    private Integer promotionalContentCacheTtlMiliSeconds;
+    private Integer promotionalContentRulesCacheExpiryMs;
     /**
      * Constructs the cache manager with required dependencies.
      */
@@ -60,7 +60,7 @@ public class PromotionalContentRuleCacheMgr {
                 return cacheMap.values();
             }
             try {
-                if (rule.isExpired(promotionalContentCacheTtlMiliSeconds)) {
+                if (rule.isExpired(promotionalContentRulesCacheExpiryMs)) {
                     log.info("Found expired rule (key={}), reloading cache", rule.getCacheKey());
                     loadAccessSettingRules();
                     return cacheMap.values();

@@ -74,7 +74,7 @@ class PromotionalContentServiceImplTest {
     @BeforeEach
     void setUp() {
         ReflectionTestUtils.setField(promotionalContentService, "contentReadFields", "name,description,identifier");
-        ReflectionTestUtils.setField(promotionalContentService, "promotionalContentCacheTtlSeconds", 600);
+        ReflectionTestUtils.setField(promotionalContentService, "promotionalContentUserCacheTtlSeconds", 600);
     }
 
 

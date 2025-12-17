@@ -187,4 +187,73 @@ public class OutboundRequestHandlerServiceImpl {
         }
         return response;
     }
+
+    /**
+     * DELETE request helper which accepts an optional request object and headers map.
+     */
+    public Map<String, Object> fetchResultUsingDelete(
+            String uri,
+            Object request,
+            Map<String, String> headersValues) {
+
+        ObjectMapper mapper = new ObjectMapper();
+        mapper.configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false);
+
+        Map<String, Object> response = null;
+
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            if (!CollectionUtils.isEmpty(headersValues)) {
+                headersValues.forEach(headers::set);
+            }
+            headers.setContentType(MediaType.APPLICATION_JSON);
+
+            HttpEntity<Object> entity = new HttpEntity<>(request, headers);
+
+            if (log.isDebugEnabled()) {
+                StringBuilder str = new StringBuilder(this.getClass().getCanonicalName())
+                        .append(".fetchResultUsingDelete")
+                        .append(System.lineSeparator());
+                str.append("URI: ").append(uri).append(System.lineSeparator());
+                str.append("Request: ").append(mapper.writeValueAsString(request)).append(System.lineSeparator());
+                log.debug(str.toString());
+            }
+
+            ResponseEntity<Map> responseEntity = restTemplate.exchange(
+                    uri,
+                    HttpMethod.DELETE,
+                    entity,
+                    Map.class
+            );
+
+            response = responseEntity.getBody();
+
+            if (log.isDebugEnabled()) {
+                log.debug("Response: {}", mapper.writeValueAsString(response));
+            }
+
+        } catch (HttpStatusCodeException hce) {
+
+            try {
+                response = new ObjectMapper().readValue(
+                        hce.getResponseBodyAsString(),
+                        new TypeReference<HashMap<String, Object>>() {}
+                );
+            } catch (Exception e1) {
+                log.debug("Failed to parse error response: {}", hce.getResponseBodyAsString(), e1);
+            }
+
+            log.error("Error received: {}", hce.getResponseBodyAsString(), hce);
+
+        } catch (Exception e) {
+            log.error("Failed to call DELETE URL: {}", uri, e);
+            try {
+                log.warn("Error Response: {}", mapper.writeValueAsString(response));
+            } catch (Exception e1) {
+                log.debug("Failed to parse error response", e1);
+            }
+        }
+
+        return response;
+    }
 }

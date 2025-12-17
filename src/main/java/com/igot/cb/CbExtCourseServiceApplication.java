@@ -13,6 +13,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.http.client.ClientHttpRequestFactory;
 import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
+import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.web.client.RestTemplate;
 
 
@@ -23,6 +24,7 @@ import org.springframework.web.client.RestTemplate;
 @ComponentScan(basePackages = "com.igot.cb")
 @EntityScan("com.igot.cb")
 @SpringBootApplication
+@EnableScheduling
 public class CbExtCourseServiceApplication {
 
 

@@ -493,6 +493,17 @@ public class Constants {
     public static final String EXTERNAL_CONTENT_READ_END_POINT = "external.content.read.endpoint";
     public static final String MINISTRY_OR_STATEID = "ministryOrStateId";
     public static final String MINISTRY_OR_STATETYPE = "ministryOrStateType";
+    public static final String CONTENT_RETIREMENT_REQUEST_TABLE = "content_retirement_requests";
+    public static final String REQUEST_ID = "requestId";
+    public static final String RETIREMENT_DATE = "retirementDate";
+    public static final String APPROVED = "Approved";
+    public static final String RETIRED = "Retired";
+    public static final String CONTENT_RETIRE_END_POINT = "content.service.retire.url";
+    public static final String REQUEST_ID_KEY = "request_id";
+    public static final String RETIREMENT_DATE_KEY = "retirement_date";
+    public static final String CONTENT_ID_KEY = "content_id";
+    public static final String UPDATED_AT_KEY = "updated_at";
+
     private Constants() {
     }
 }

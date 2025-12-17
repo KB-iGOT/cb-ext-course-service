@@ -320,4 +320,46 @@ class ContentInfoServiceImplTest {
         assertTrue(result.isEmpty(), "Expected empty map when outbound call throws");
     }
 
+    @Test
+    void retireContent_SuccessfulResponse_ShouldReturnResult() {
+        String contentId = "content123";
+        Map<String, Object> mockResponse = new HashMap<>();
+        mockResponse.put(Constants.RESPONSE_CODE, Constants.OK);
+        Map<String, Object> result = Map.of("status", "retired");
+        mockResponse.put(Constants.RESULT, result);
+
+        when(outboundRequestHandlerService.fetchResultUsingDelete(anyString(), any(), any()))
+                .thenReturn(mockResponse);
+
+        Map<String, Object> response = contentService.retireContent(contentId);
+
+        assertEquals(result, response);
+        verify(outboundRequestHandlerService).fetchResultUsingDelete(anyString(), any(), any());
+    }
+
+    @Test
+    void retireContent_FailedResponse_ShouldReturnEmptyMap() {
+        String contentId = "content123";
+        Map<String, Object> mockResponse = new HashMap<>();
+        mockResponse.put(Constants.RESPONSE_CODE, "FAILED");
+
+        when(outboundRequestHandlerService.fetchResultUsingDelete(anyString(), any(), any()))
+                .thenReturn(mockResponse);
+
+        Map<String, Object> response = contentService.retireContent(contentId);
+
+        assertTrue(response.isEmpty());
+    }
+
+    @Test
+    void retireContent_NullResponse_ShouldReturnEmptyMap() {
+        String contentId = "content123";
+
+        when(outboundRequestHandlerService.fetchResultUsingDelete(anyString(), any(), any()))
+                .thenReturn(null);
+
+        Map<String, Object> response = contentService.retireContent(contentId);
+
+        assertEquals(Collections.emptyMap(), response);
+    }
 }

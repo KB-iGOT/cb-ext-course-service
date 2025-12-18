@@ -282,7 +282,7 @@ public class PromotionalContentServiceImpl implements IPromotionalContentService
             List<Map<String, Object>> criteriaList = (List<Map<String, Object>>) userGroup
                     .get(Constants.USER_GROUP_CRITERIA_LIST);
             if (CollectionUtils.isEmpty(criteriaList)) {
-                break;
+                return true;
             }
             for (Map<String, Object> criteria : criteriaList) {
                 String criteriaKey = criteria.get(Constants.CRITERIA_KEY).toString().toLowerCase();

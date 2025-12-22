@@ -36,7 +36,7 @@ class AccessSettingRuleCacheMgrTest {
     private String validJsonRule;
 
     @BeforeEach
-    void setup() throws Exception {
+    void setup() {
         cacheMgr = new AccessSettingRuleCacheMgr(redisCacheMgr, cassandraOperation);
         validJsonRule = """
             {

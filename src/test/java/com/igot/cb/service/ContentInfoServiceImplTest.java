@@ -43,7 +43,7 @@ class ContentInfoServiceImplTest {
     private ContentInfoServiceImpl contentService;
 
     @BeforeEach
-    void init() throws Exception {
+    void init(){
         Properties testProps = new Properties();
         testProps.setProperty(Constants.CONTENT_SERVICE_HOST, "http://mock-content");
     }
@@ -165,7 +165,7 @@ class ContentInfoServiceImplTest {
     }
 
     @Test
-    void testReadContent_cacheThrowsException_returnsEmpty() throws Exception {
+    void testReadContent_cacheThrowsException_returnsEmpty() {
         when(redisCacheMgr.getFromCache("cid")).thenReturn("invalid-json");
         Map<String, Object> result = contentService.readContent("cid", List.of("name"));
         assertTrue(result.isEmpty());

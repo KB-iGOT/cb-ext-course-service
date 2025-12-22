@@ -218,7 +218,7 @@ public class EsUtilServiceImpl implements EsUtilService {
         return paginatedResult;
     }
 
-    private SearchRequest.Builder buildSearchRequest(SearchCriteria searchCriteria, String JsonFilePath) {
+    private SearchRequest.Builder buildSearchRequest(SearchCriteria searchCriteria, String jsonFilePath) {
         log.info("Building search query");
         if (searchCriteria == null || searchCriteria.toString().isEmpty()) {
             log.error("Search criteria body is missing");
@@ -227,7 +227,7 @@ public class EsUtilServiceImpl implements EsUtilService {
         BoolQuery.Builder boolQueryBuilder = buildFilterQuery(searchCriteria.getFilter());
         SearchRequest.Builder searchSourceBuilder = new SearchRequest.Builder();
         searchSourceBuilder.query(boolQueryBuilder.build()._toQuery());
-        addSortToSearchSourceBuilder(searchCriteria, searchSourceBuilder, JsonFilePath);
+        addSortToSearchSourceBuilder(searchCriteria, searchSourceBuilder, jsonFilePath);
         addRequestedFieldsToSearchSourceBuilder(searchCriteria, searchSourceBuilder);
         String searchString = searchCriteria.getSearchString();
         if (isNotBlank(searchString)) {
@@ -451,9 +451,8 @@ public class EsUtilServiceImpl implements EsUtilService {
                             }
                         }
                     });
-            mustNotQueries.forEach(mustNotQuery -> boolQueryBuilder.mustNot(mustNotQuery));
-            boolQueries.forEach(boolQuery -> boolQueryBuilder.must(boolQuery));
-        }
+            mustNotQueries.forEach(boolQueryBuilder::mustNot);
+            boolQueries.forEach(boolQueryBuilder::must);}
         return boolQueryBuilder;
     }
 

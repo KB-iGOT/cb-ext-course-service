@@ -13,7 +13,6 @@ import java.util.*;
 import com.igot.cb.util.*;
 
 import org.igot.common.ApiResponse;
-import org.igot.common.CustomException;
 import org.igot.common.auth.AccessTokenValidator;
 import org.igot.common.cassandra.CassandraOperation;
 import org.junit.jupiter.api.BeforeEach;
@@ -265,7 +264,7 @@ class CbPlanServiceImplTest {
 
     @SuppressWarnings("unchecked")
     @Test
-    void testSearchCbPlan_WithResults() throws Exception {
+    void testSearchCbPlan_WithResults() {
         SearchCriteria criteria = new SearchCriteria();
         criteria.setQuery(new HashMap<>());
         criteria.setFilter(new HashMap<>());
@@ -1499,7 +1498,7 @@ class CbPlanServiceImplTest {
             .thenThrow(new RuntimeException("Test exception"));
 
         try {
-            ApiResponse response = cbPlanService.searchCbPlan(criteria, "token");
+            cbPlanService.searchCbPlan(criteria, "token");
             fail("Expected CustomException to be thrown");
         } catch (Exception e) {
             assertTrue(e.getMessage().contains("error while processing"));

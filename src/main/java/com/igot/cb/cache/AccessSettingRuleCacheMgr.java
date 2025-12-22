@@ -25,9 +25,9 @@ public class AccessSettingRuleCacheMgr {
     private final CassandraOperation cassandraOperation;
     private Map<String, CachedAccessSettingRule> cachedAccessSettingRules = new ConcurrentHashMap<>();
 
-    private static final long localCacheTtl = 3600000;
+    private static final long ACCESS_SETTINGS_CACHE_TTL = 3600000;
 
-    private static final String accessSettingsCacheKey = "accessSettingRules";
+    private static final String ACCESS_SETTINGS_CACHE_KEY = "accessSettingRules";
 
     /**
      * Constructor for AccessSettingRuleCacheMgr.
@@ -51,7 +51,7 @@ public class AccessSettingRuleCacheMgr {
         if (MapUtils.isNotEmpty(cachedAccessSettingRules)) {
             // Check the cached value's ttl. If expired load again
             for (CachedAccessSettingRule rule : cachedAccessSettingRules.values()) {
-                if (rule.isExpired(localCacheTtl)) {
+                if (rule.isExpired(ACCESS_SETTINGS_CACHE_TTL)) {
                     cachedAccessSettingRules = null; // Invalidate cache
                     isCacheLoadRequired = true;
                     break;
@@ -80,7 +80,7 @@ public class AccessSettingRuleCacheMgr {
     private void loadAccessSettingRules() {
         log.info("Loading access setting rules from cache or database");
         try {
-            Map<String, String> cachedRules = redisCacheMgr.getAllCachedAccessRules(accessSettingsCacheKey);
+            Map<String, String> cachedRules = redisCacheMgr.getAllCachedAccessRules(ACCESS_SETTINGS_CACHE_KEY);
             if (MapUtils.isNotEmpty(cachedRules)) {
                 cachedAccessSettingRules = cachedRules.entrySet().stream()
                         .collect(Collectors.toMap(
@@ -115,7 +115,7 @@ public class AccessSettingRuleCacheMgr {
                         cachedAccessSettingRules.put(rule.getCacheKey(), rule);
 
                         // Finally, push the raw contextData to Redis
-                        redisCacheMgr.setAccessSettingRuleCache(accessSettingsCacheKey, rule.getCacheKey(),
+                        redisCacheMgr.setAccessSettingRuleCache(ACCESS_SETTINGS_CACHE_KEY, rule.getCacheKey(),
                                 contextData);
 
                     } catch (Exception e) {

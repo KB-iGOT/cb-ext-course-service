@@ -97,7 +97,7 @@ public class AccessSettingsServiceImpl {
         Boolean status = (Boolean) record.get(Constants.IS_ARCHIVED_KEY);
         if (Boolean.FALSE.equals(status)) {
           Object contextDataObj = record.get(Constants.CONTEXT_DATA_KEY);
-          String contextDataJson = (contextDataObj instanceof String) ? (String) contextDataObj : null;
+          String contextDataJson = (contextDataObj instanceof String strValue) ? strValue : null;
           if (StringUtils.isNotEmpty(contextDataJson)) {
             try {
               Map<String, Object> contextDataMap = objectMapper.readValue(

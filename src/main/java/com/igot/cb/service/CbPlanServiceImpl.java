@@ -560,7 +560,7 @@ public class CbPlanServiceImpl {
             enrichData.put(Constants.NAME, cbPlanDto.getName());
             contentTypeInfo = cbPlanDto.getContentList();
             enrichData.put(Constants.END_DATE_REQUEST, cbPlanDto.getEndDate());
-            enrichData.put(Constants.IS_APAR, cbPlanDto.getIsApar() != null ? cbPlanDto.getIsApar() : false);
+            enrichData.put(Constants.IS_APAR, Boolean.TRUE.equals(cbPlanDto.getIsApar()));
         } else {
             enrichData.put(Constants.NAME, cbPlan.get(Constants.NAME));
             contentTypeInfo = (List<String>) cbPlan.get(Constants.CONTENT_LIST);
@@ -859,9 +859,9 @@ public class CbPlanServiceImpl {
         Map<String, Object> sanitized = new HashMap<>();
         for (Map.Entry<String, Object> entry : input.entrySet()) {
             Object value = entry.getValue();
-            if (value instanceof Instant) {
+            if (value instanceof Instant instantValue) {
                 // Convert Instant → ISO String (e.g., 2025-09-02T09:30:56.446Z)
-                sanitized.put(entry.getKey(), DateTimeFormatter.ISO_INSTANT.format((Instant) value));
+                sanitized.put(entry.getKey(), DateTimeFormatter.ISO_INSTANT.format(instantValue));
             } else {
                 sanitized.put(entry.getKey(), value);
             }

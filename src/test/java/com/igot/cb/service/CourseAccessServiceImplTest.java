@@ -17,7 +17,6 @@ import org.igot.common.service.OutboundRequestHandlerServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentMatchers;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -285,7 +284,7 @@ class CourseAccessServiceImplTest {
 
     @SuppressWarnings("unchecked")
     @Test
-    void testGetCoursesForUser_CacheHasValidJson() throws Exception {
+    void testGetCoursesForUser_CacheHasValidJson() {
         when(mockAccessTokenValidator.fetchUserIdFromAccessToken(eq(authToken), any(ApiResponse.class)))
                 .thenReturn("user1");
 
@@ -357,7 +356,7 @@ class CourseAccessServiceImplTest {
     }
 
     @Test
-    void testGetCoursesForUser_ExceptionInRedisPut() throws Exception {
+    void testGetCoursesForUser_ExceptionInRedisPut() {
         when(mockAccessTokenValidator.fetchUserIdFromAccessToken(eq(authToken), any(ApiResponse.class)))
                 .thenReturn("u1");
         when(redisCacheMgr.getFromCache(Constants.ACCESS_KEY + "u1")).thenReturn(null);
@@ -442,7 +441,7 @@ class CourseAccessServiceImplTest {
     }
 
     @Test
-    void testGetCoursesForUser_InvalidToken_ShouldReturnBadRequest() throws Exception {
+    void testGetCoursesForUser_InvalidToken_ShouldReturnBadRequest() {
         when(mockAccessTokenValidator.fetchUserIdFromAccessToken(eq(authToken), any(ApiResponse.class)))
                 .thenReturn(null);
         ApiResponse response = courseAccessService.getCoursesForUser(Map.of(), authToken);
@@ -450,7 +449,7 @@ class CourseAccessServiceImplTest {
     }
 
     @Test
-    void testGetCoursesForUser_NoUserProfile() throws Exception {
+    void testGetCoursesForUser_NoUserProfile() {
         when(mockAccessTokenValidator.fetchUserIdFromAccessToken(eq(authToken), any(ApiResponse.class)))
                 .thenReturn("u1");
         when(redisCacheMgr.getFromCache(Constants.ACCESS_KEY + "u1")).thenReturn(null);
@@ -461,7 +460,7 @@ class CourseAccessServiceImplTest {
     }
 
     @Test
-    void testGetCoursesForUser_NoAccessRules() throws Exception {
+    void testGetCoursesForUser_NoAccessRules() {
         when(mockAccessTokenValidator.fetchUserIdFromAccessToken(eq(authToken), any(ApiResponse.class)))
                 .thenReturn("u1");
         when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
@@ -477,7 +476,7 @@ class CourseAccessServiceImplTest {
     }
 
     @Test
-    void testGetAssignedCoursesForUser_ValidFlow() throws Exception {
+    void testGetAssignedCoursesForUser_ValidFlow() {
         String userId = "u1";
         when(mockAccessTokenValidator.fetchUserIdFromAccessToken(eq(authToken), any(ApiResponse.class)))
                 .thenReturn(userId);
@@ -533,11 +532,10 @@ class CourseAccessServiceImplTest {
     }
 
     @Test
-    void testGetAssignedCoursesForUser_CacheHit() throws Exception {
+    void testGetAssignedCoursesForUser_CacheHit() {
         String userId = "u1";
         when(mockAccessTokenValidator.fetchUserIdFromAccessToken(eq(authToken), any(ApiResponse.class)))
                 .thenReturn(userId);
-        List<Map<String, Object>> cached = List.of(Map.of("id","C1"));
         ObjectMapper spyMapper = spy(new ObjectMapper());
         ReflectionTestUtils.setField(courseAccessService, "mapper", spyMapper);
         when(redisCacheMgr.getFromCache(anyString()))

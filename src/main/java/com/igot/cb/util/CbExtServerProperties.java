@@ -75,4 +75,11 @@ public class CbExtServerProperties {
 
     @Value("${promotional.content.cache.max.query.size}")
     private int promotionalContentCacheMaxQuerySize;
+
+    @Value("${cb-plan.content.read.fields}")
+    private String cbPlanContentReadFields;
+
+    public List<String> getCbPlanContentReadFields() {
+        return Arrays.asList(cbPlanContentReadFields.split(",", -1));
+    }
 }

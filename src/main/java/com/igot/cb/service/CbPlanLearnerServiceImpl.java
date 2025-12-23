@@ -275,7 +275,7 @@ public class CbPlanLearnerServiceImpl {
             Map<String, Object> contentDetails = null;
 
 
-            contentDetails = contentService.readContent(courseId, null);
+            contentDetails = contentService.readContent(courseId, serverProperties.getCbPlanContentReadFields());
 
             if (MapUtils.isNotEmpty(contentDetails)) {
                 if (courseId.contains("_rc")) {

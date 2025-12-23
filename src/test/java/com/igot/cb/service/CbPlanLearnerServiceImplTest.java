@@ -6,6 +6,7 @@ import com.igot.cb.cache.RedisCacheMgr;
 import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.model.ApiResponse;
 import com.igot.cb.util.AccessTokenValidator;
+import com.igot.cb.util.CbExtServerProperties;
 import com.igot.cb.util.Constants;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
@@ -43,6 +44,9 @@ class CbPlanLearnerServiceImplTest {
     @Mock(lenient = true)
     private RedisCacheMgr redisCacheMgr;
 
+    @Mock(lenient = true)
+    private CbExtServerProperties serverProperties;
+
 
     private CbPlanLearnerServiceImpl service;
 
@@ -51,6 +55,8 @@ class CbPlanLearnerServiceImplTest {
         service = new CbPlanLearnerServiceImpl(accessTokenValidator, cassandraOperation, cbPlanCacheMgr);
         ReflectionTestUtils.setField(service, "contentService", contentService);
         ReflectionTestUtils.setField(service, "redisCacheMgr", redisCacheMgr);
+        ReflectionTestUtils.setField(service, "serverProperties", serverProperties);
+        when(serverProperties.getCbPlanContentReadFields()).thenReturn(Arrays.asList("identifier", "name", "status"));
     }
 
 

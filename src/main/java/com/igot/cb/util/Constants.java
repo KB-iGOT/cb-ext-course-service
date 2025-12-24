@@ -503,6 +503,7 @@ public class Constants {
     public static final String RETIREMENT_DATE_KEY = "retirement_date";
     public static final String CONTENT_ID_KEY = "content_id";
     public static final String UPDATED_AT_KEY = "updated_at";
+    public static final String TABLE_CB_PLAN_V2_CONTENT_LOOKUP = "cb_plan_v2_content_lookup";
 
     private Constants() {
     }

@@ -1947,7 +1947,7 @@ class CbPlanServiceImplTest {
         List<String> contentIds = Arrays.asList("content1");
         Set<String> existingPlanIds = new HashSet<>(Arrays.asList("plan2"));
         
-        Map<String, Object> existingRecord = Map.of("planid", existingPlanIds);
+        Map<String, Object> existingRecord = Map.of("planId", existingPlanIds); // Note: planId not planid
         when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), any(), any(), anyInt()))
             .thenReturn(Arrays.asList(existingRecord));
         
@@ -1961,7 +1961,7 @@ class CbPlanServiceImplTest {
         List<String> contentIds = Arrays.asList("content1");
         Set<String> existingPlanIds = new HashSet<>(Arrays.asList("plan1"));
         
-        Map<String, Object> existingRecord = Map.of("planid", existingPlanIds);
+        Map<String, Object> existingRecord = Map.of("planId", existingPlanIds); // Note: planId not planid
         when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), any(), any(), anyInt()))
             .thenReturn(Arrays.asList(existingRecord));
         
@@ -2119,6 +2119,169 @@ class CbPlanServiceImplTest {
         assertFalse(result);
         assertEquals(Constants.FAILED, response.getParams().getStatus());
         assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getResponseCode());
+    }
+
+    // Tests for removeCbPlanInfoForUpdateOrDeleteCbPlan method
+    @Test
+    void testRemoveCbPlanInfoForUpdateOrDeleteCbPlan_SinglePlanDelete() {
+        List<String> contentIds = Arrays.asList("content1");
+        Set<String> planIds = new HashSet<>(Arrays.asList("plan1"));
+        
+        Map<String, Object> existingRecord = Map.of("planId", planIds);
+        when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), any(), any(), anyInt()))
+            .thenReturn(Arrays.asList(existingRecord));
+        
+        ReflectionTestUtils.invokeMethod(cbPlanService, "removeCbPlanInfoForUpdateOrDeleteCbPlan", "plan1", contentIds);
+        
+        verify(cassandraOperation).deleteRecord(anyString(), anyString(), any());
+    }
+
+    @Test
+    void testRemoveCbPlanInfoForUpdateOrDeleteCbPlan_MultiplePlansUpdate() {
+        List<String> contentIds = Arrays.asList("content1");
+        Set<String> planIds = new HashSet<>(Arrays.asList("plan1", "plan2"));
+        
+        Map<String, Object> existingRecord = Map.of("planId", planIds);
+        when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), any(), any(), anyInt()))
+            .thenReturn(Arrays.asList(existingRecord));
+        
+        ReflectionTestUtils.invokeMethod(cbPlanService, "removeCbPlanInfoForUpdateOrDeleteCbPlan", "plan1", contentIds);
+        
+        verify(cassandraOperation).updateRecord(anyString(), anyString(), any(), any());
+        verify(cassandraOperation, never()).deleteRecord(anyString(), anyString(), any());
+    }
+
+    @Test
+    void testRemoveCbPlanInfoForUpdateOrDeleteCbPlan_EmptyRows() {
+        List<String> contentIds = Arrays.asList("content1");
+        
+        when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), any(), any(), anyInt()))
+            .thenReturn(Collections.emptyList());
+        
+        // Should not throw exception and should not call delete/update
+        ReflectionTestUtils.invokeMethod(cbPlanService, "removeCbPlanInfoForUpdateOrDeleteCbPlan", "plan1", contentIds);
+        
+        verify(cassandraOperation, never()).deleteRecord(anyString(), anyString(), any());
+        verify(cassandraOperation, never()).updateRecord(anyString(), anyString(), any(), any());
+    }
+
+    @Test
+    void testRemoveCbPlanInfoForUpdateOrDeleteCbPlan_InvalidPlanIdData() {
+        List<String> contentIds = Arrays.asList("content1");
+        
+        Map<String, Object> existingRecord = Map.of("planId", "not-a-set");
+        when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), any(), any(), anyInt()))
+            .thenReturn(Arrays.asList(existingRecord));
+        
+        // Should handle ClassCastException gracefully and not call delete/update
+        ReflectionTestUtils.invokeMethod(cbPlanService, "removeCbPlanInfoForUpdateOrDeleteCbPlan", "plan1", contentIds);
+        
+        verify(cassandraOperation, never()).deleteRecord(anyString(), anyString(), any());
+        verify(cassandraOperation, never()).updateRecord(anyString(), anyString(), any(), any());
+    }
+
+    // Tests for getAddedContent method
+    @Test
+    void testGetAddedContent_NewContentAdded() {
+        List<String> existingContent = Arrays.asList("content1", "content2");
+        List<String> updatedContent = Arrays.asList("content1", "content2", "content3");
+        
+        List<String> result = (List<String>) ReflectionTestUtils.invokeMethod(
+            cbPlanService, "getAddedContent", existingContent, updatedContent);
+        
+        assertEquals(1, result.size());
+        assertTrue(result.contains("content3"));
+    }
+
+    @Test
+    void testGetAddedContent_NoNewContent() {
+        List<String> existingContent = Arrays.asList("content1", "content2");
+        List<String> updatedContent = Arrays.asList("content1", "content2");
+        
+        List<String> result = (List<String>) ReflectionTestUtils.invokeMethod(
+            cbPlanService, "getAddedContent", existingContent, updatedContent);
+        
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    void testGetAddedContent_NullExistingContent() {
+        List<String> updatedContent = Arrays.asList("content1", "content2");
+        
+        List<String> result = (List<String>) ReflectionTestUtils.invokeMethod(
+            cbPlanService, "getAddedContent", null, updatedContent);
+        
+        assertEquals(2, result.size());
+        assertTrue(result.containsAll(updatedContent));
+    }
+
+    @Test
+    void testGetAddedContent_NullUpdatedContent() {
+        List<String> existingContent = Arrays.asList("content1", "content2");
+        
+        List<String> result = (List<String>) ReflectionTestUtils.invokeMethod(
+            cbPlanService, "getAddedContent", existingContent, null);
+        
+        assertTrue(result.isEmpty());
+    }
+
+    // Tests for getDeletedContent method
+    @Test
+    void testGetDeletedContent_ContentRemoved() {
+        List<String> existingContent = Arrays.asList("content1", "content2", "content3");
+        List<String> updatedContent = Arrays.asList("content1", "content2");
+        
+        List<String> result = (List<String>) ReflectionTestUtils.invokeMethod(
+            cbPlanService, "getDeletedContent", existingContent, updatedContent);
+        
+        assertEquals(1, result.size());
+        assertTrue(result.contains("content3"));
+    }
+
+    @Test
+    void testGetDeletedContent_NoContentRemoved() {
+        List<String> existingContent = Arrays.asList("content1", "content2");
+        List<String> updatedContent = Arrays.asList("content1", "content2", "content3");
+        
+        List<String> result = (List<String>) ReflectionTestUtils.invokeMethod(
+            cbPlanService, "getDeletedContent", existingContent, updatedContent);
+        
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    void testGetDeletedContent_NullExistingContent() {
+        List<String> updatedContent = Arrays.asList("content1", "content2");
+        
+        List<String> result = (List<String>) ReflectionTestUtils.invokeMethod(
+            cbPlanService, "getDeletedContent", null, updatedContent);
+        
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    void testGetDeletedContent_NullUpdatedContent() {
+        List<String> existingContent = Arrays.asList("content1", "content2");
+        
+        List<String> result = (List<String>) ReflectionTestUtils.invokeMethod(
+            cbPlanService, "getDeletedContent", existingContent, null);
+        
+        assertEquals(2, result.size());
+        assertTrue(result.containsAll(existingContent));
+    }
+
+    @Test
+    void testUpsertCbPlanContentLookup_FixedFieldName() {
+        List<String> contentIds = Arrays.asList("content1");
+        Set<String> existingPlanIds = new HashSet<>(Arrays.asList("plan2"));
+        
+        Map<String, Object> existingRecord = Map.of("planId", existingPlanIds);
+        when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), any(), any(), anyInt()))
+            .thenReturn(Arrays.asList(existingRecord));
+        
+        ReflectionTestUtils.invokeMethod(cbPlanService, "upsertCbPlanContentLookup", "plan1", contentIds);
+        
+        verify(cassandraOperation).updateRecord(anyString(), anyString(), any(), any());
     }
 
 }

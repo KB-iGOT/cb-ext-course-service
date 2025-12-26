@@ -1,6 +1,8 @@
 package com.igot.cb.controller;
 
+import com.igot.cb.model.ApiResponse;
 import com.igot.cb.service.ContentRetirementService;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -16,10 +18,21 @@ public class ContentRetirementController {
         this.contentRetirementService = contentRetirementService;
     }
 
-    @GetMapping("/run")
-    public ResponseEntity<String> runManually() {
-        contentRetirementService.processDueRetirements();
-        return ResponseEntity.ok("Content retirement job triggered");
+    @GetMapping("/schedule")
+    public ResponseEntity<ApiResponse> runManually() {
+        ApiResponse response = contentRetirementService.processDueRetirements();
+        return new ResponseEntity<>(response, HttpStatus.OK);
     }
+
+    @GetMapping("/notify/users")
+    public ResponseEntity<String> triggerNotifications() {
+
+        //notificationService.triggerNotificationJob();
+
+        return ResponseEntity
+                .status(HttpStatus.CREATED)
+                .body("Notification job accepted");
+    }
+
 }
 

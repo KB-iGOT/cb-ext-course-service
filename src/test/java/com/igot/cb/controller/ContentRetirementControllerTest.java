@@ -1,5 +1,6 @@
 package com.igot.cb.controller;
 
+import com.igot.cb.model.ApiResponse;
 import com.igot.cb.service.ContentRetirementService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -10,6 +11,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
@@ -26,11 +29,27 @@ class ContentRetirementControllerTest {
     }
 
     @Test
-    void runManually_ShouldTriggerRetirementAndReturnOk() {
-        ResponseEntity<String> response = contentRetirementController.runManually();
+    void runManually_ShouldCallServiceAndReturnResponse() {
+        ApiResponse mockResponse = new ApiResponse();
+        when(contentRetirementService.processDueRetirements()).thenReturn(mockResponse);
+
+        ResponseEntity<ApiResponse> response = contentRetirementController.runManually();
 
         verify(contentRetirementService).processDueRetirements();
         assertEquals(HttpStatus.OK, response.getStatusCode());
-        assertEquals("Content retirement job triggered", response.getBody());
+        assertEquals(mockResponse, response.getBody());
+    }
+
+    @Test
+    void triggerNotifications_ShouldReturnCreatedStatus() {
+        ResponseEntity<String> response = contentRetirementController.triggerNotifications();
+
+        assertEquals(HttpStatus.CREATED, response.getStatusCode());
+        assertEquals("Notification job accepted", response.getBody());
+    }
+
+    @Test
+    void constructor_ShouldInitializeService() {
+        assertNotNull(contentRetirementController);
     }
 }

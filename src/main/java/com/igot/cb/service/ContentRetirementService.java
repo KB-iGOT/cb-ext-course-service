@@ -1,6 +1,7 @@
 package com.igot.cb.service;
 
 import com.igot.cb.cassandra.CassandraOperation;
+import com.igot.cb.model.ApiResponse;
 import com.igot.cb.util.Constants;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.MapUtils;
@@ -9,10 +10,7 @@ import org.springframework.util.CollectionUtils;
 
 import java.time.Instant;
 import java.time.LocalDate;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 @Slf4j
 @Service
@@ -26,7 +24,8 @@ public class ContentRetirementService {
         this.contentService = contentService;
     }
 
-    public void processDueRetirements() {
+    public ApiResponse processDueRetirements() {
+        ApiResponse response = ApiResponse.createDefaultResponse("retirement.schedule.cron");
 
         LocalDate today = LocalDate.now();
 
@@ -53,27 +52,37 @@ public class ContentRetirementService {
 
         if (CollectionUtils.isEmpty(records)) {
             log.info("No approved content retirement requests found");
-            return;
+            response.getResult().put(Constants.CONTENT, new ArrayList<>());
+            return response;
         }
+        List<Map<String, Object>> responseList = new ArrayList<>();
+        for (Map<String, Object> retirementRecord : records) {
 
-        for (Map<String, Object> enrolmentRecord : records) {
-
-            LocalDate retirementDate = (LocalDate) enrolmentRecord.get(Constants.RETIREMENT_DATE);
+            LocalDate retirementDate = (LocalDate) retirementRecord.get(Constants.RETIREMENT_DATE);
 
             if (retirementDate != null && !retirementDate.isAfter(today)) {
-                retireContent(enrolmentRecord);
+                responseList.add(retireContent(retirementRecord));
             }
         }
+        response.getResult().put(Constants.CONTENT, responseList);
+        return response;
     }
 
-    private void retireContent(Map<String, Object> retirementRecord) {
+    private Map<String, Object> retireContent(Map<String, Object> retirementRecord) {
+
+        Map<String, Object> result = new HashMap<>();
 
         String contentId = (String) retirementRecord.get(Constants.CONTENT_ID);
         String requestId = (String) retirementRecord.get(Constants.REQUEST_ID);
 
+        result.put(Constants.CONTENT_ID, contentId);
+
         try {
-            Map<String, Object> contentRetireStatusMap = contentService.retireContent(contentId);
+            Map<String, Object> contentRetireStatusMap =
+                    contentService.retireContent(contentId);
+
             if (MapUtils.isNotEmpty(contentRetireStatusMap)) {
+
                 Map<String, Object> updateMap = new HashMap<>();
                 updateMap.put(Constants.STATUS, Constants.RETIRED);
                 updateMap.put(Constants.UPDATED_AT_KEY, Instant.now());
@@ -90,12 +99,25 @@ public class ContentRetirementService {
                 );
 
                 log.info("Content retired successfully: {}", contentId);
+
+                result.put(Constants.RETIRED, true);
+                result.put(Constants.MESSAGE, "Content retired successfully");
+
             } else {
-                log.info("Not able to retire the content: " + contentId);
+                log.warn("Retirement API returned empty response for {}", contentId);
+
+                result.put(Constants.RETIRED, false);
+                result.put(Constants.MESSAGE, "Retirement API returned empty response");
             }
+
         } catch (Exception ex) {
             log.error("Failed to retire content {}", contentId, ex);
+
+            result.put(Constants.RETIRED, false);
+            result.put(Constants.MESSAGE, ex.getMessage());
         }
+
+        return result;
     }
 }
 

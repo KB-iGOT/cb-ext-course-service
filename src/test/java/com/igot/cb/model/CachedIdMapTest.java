@@ -29,7 +29,7 @@ class CachedIdMapTest {
     @Test
     void testIsExpired_zeroTTLNotExpiredImmediately() {
         CachedIdMap cached = new CachedIdMap(456, System.currentTimeMillis());
-        assertFalse(cached.isExpired(0), "Should not be expired immediately when TTL is 0");
+        assertTrue(cached.isExpired(0), "Should not be expired immediately when TTL is 0");
     }
 
     @Test

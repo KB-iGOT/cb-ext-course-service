@@ -2,9 +2,7 @@ package com.igot.cb.service;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.doAnswer;
-import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 import java.lang.reflect.Method;
 import java.time.Instant;
@@ -29,6 +27,7 @@ import com.igot.cb.elasticsearch.dto.SearchResult;
 import com.igot.cb.elasticsearch.service.EsUtilService;
 import com.igot.cb.model.ApiRequest;
 import com.igot.cb.model.ApiResponse;
+import com.igot.cb.model.ApiRespParam;
 import com.igot.cb.model.CbPlanDto;
 
 
@@ -41,6 +40,7 @@ class CbPlanServiceImplTest {
     @Mock private EsUtilService esUtilService;
     @Mock private CbExtServerProperties serverProperties;
     @Mock private RequestValidator requestValidator;
+    @Mock private UserAndOrgServiceImpl userAndOrgService;
 
     private CbPlanServiceImpl cbPlanService;
 
@@ -1819,6 +1819,306 @@ class CbPlanServiceImplTest {
         assertEquals(Constants.FAILED, resp.getParams().getStatus());
     }
 
+    // Tests for handleUpdateOfLiveCbPlan method
+    @Test
+    void testHandleUpdateOfLiveCbPlan_ValidationError() {
+        ApiResponse response = new ApiResponse();
+        response.setParams(new ApiRespParam());
+        Map<String, Object> incomingRequest = Map.of("name", "Updated Plan");
+        Map<String, Object> existingPlan = Map.of(Constants.PLAN_ID, "plan1");
+        
+        when(requestValidator.validateContextData(any(), anyBoolean(), anyString(), any()))
+            .thenReturn(Arrays.asList("Validation error"));
+        
+        ReflectionTestUtils.invokeMethod(cbPlanService, "handleUpdateOfLiveCbPlan", 
+            response, incomingRequest, existingPlan, "user1", "rootOrg1", false);
+        
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
+    }
 
+    @Test
+    void testHandleUpdateOfLiveCbPlan_IsAparRestriction() {
+        ApiResponse response = new ApiResponse();
+        response.setParams(new ApiRespParam());
+        Map<String, Object> incomingRequest = Map.of(Constants.IS_APAR, false);
+        Map<String, Object> existingPlan = Map.of(
+            Constants.PLAN_ID, "plan1",
+            Constants.IS_APAR, true
+        );
+        
+        when(requestValidator.validateContextData(any(), anyBoolean(), anyString(), any()))
+            .thenReturn(Collections.emptyList());
+        when(serverProperties.getCbPlanUpdateAllowedFields())
+            .thenReturn(Arrays.asList(Constants.IS_APAR));
+        
+        ReflectionTestUtils.invokeMethod(cbPlanService, "handleUpdateOfLiveCbPlan", 
+            response, incomingRequest, existingPlan, "user1", "rootOrg1", false);
+        
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertTrue(response.getParams().getErr().contains("Cannot change isApar from true to false"));
+    }
+
+    @Test
+    void testHandleUpdateOfLiveCbPlan_NullFieldValue() {
+        ApiResponse response = new ApiResponse();
+        response.setParams(new ApiRespParam()); // Initialize params to avoid NullPointerException
+        Map<String, Object> incomingRequest = new HashMap<>();
+        incomingRequest.put("name", null); // Use HashMap to allow null values
+        Map<String, Object> existingPlan = Map.of(Constants.PLAN_ID, "plan1");
+        
+        when(requestValidator.validateContextData(any(), anyBoolean(), anyString(), any()))
+            .thenReturn(Collections.emptyList());
+        when(serverProperties.getCbPlanUpdateAllowedFields())
+            .thenReturn(Arrays.asList("name"));
+        
+        ReflectionTestUtils.invokeMethod(cbPlanService, "handleUpdateOfLiveCbPlan", 
+            response, incomingRequest, existingPlan, "user1", "rootOrg1", false);
+        
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertTrue(response.getParams().getErr().contains("Field 'name' cannot be null"));
+    }
+
+    @Test
+    void testHandleUpdateOfLiveCbPlan_Success() throws Exception {
+        ApiResponse response = new ApiResponse();
+        response.setParams(new ApiRespParam());
+        response.setResult(new HashMap<>());
+        Map<String, Object> incomingRequest = Map.of("name", "Updated Plan");
+        Map<String, Object> existingPlan = Map.of(Constants.PLAN_ID, "plan1");
+        
+        when(requestValidator.validateContextData(any(), anyBoolean(), anyString(), any()))
+            .thenReturn(Collections.emptyList());
+        when(serverProperties.getCbPlanUpdateAllowedFields())
+            .thenReturn(Arrays.asList("name"));
+        
+        Map<String, Object> updateResp = Map.of(Constants.RESPONSE, Constants.SUCCESS);
+        when(cassandraOperation.updateRecord(anyString(), anyString(), any(), any()))
+            .thenReturn(updateResp);
+        
+        ReflectionTestUtils.invokeMethod(cbPlanService, "handleUpdateOfLiveCbPlan", 
+            response, incomingRequest, existingPlan, "user1", "rootOrg1", false);
+        
+        assertEquals(Constants.UPDATED, response.getResult().get(Constants.STATUS));
+        assertTrue(response.getResult().get(Constants.MESSAGE).toString().contains("Updated cbPlan as draft"));
+    }
+
+    @Test
+    void testHandleUpdateOfLiveCbPlan_CassandraFailure() {
+        ApiResponse response = new ApiResponse();
+        response.setParams(new ApiRespParam());
+        Map<String, Object> incomingRequest = Map.of("name", "Updated Plan");
+        Map<String, Object> existingPlan = Map.of(Constants.PLAN_ID, "plan1");
+        
+        when(requestValidator.validateContextData(any(), anyBoolean(), anyString(), any()))
+            .thenReturn(Collections.emptyList());
+        when(serverProperties.getCbPlanUpdateAllowedFields())
+            .thenReturn(Arrays.asList("name"));
+        
+        Map<String, Object> updateResp = Map.of(
+            Constants.RESPONSE, Constants.FAILED,
+            Constants.ERROR_MESSAGE, "DB Error"
+        );
+        when(cassandraOperation.updateRecord(anyString(), anyString(), any(), any()))
+            .thenReturn(updateResp);
+        
+        ReflectionTestUtils.invokeMethod(cbPlanService, "handleUpdateOfLiveCbPlan", 
+            response, incomingRequest, existingPlan, "user1", "rootOrg1", false);
+        
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
+    }
+
+    // Tests for upsertCbPlanContentLookup method
+    @Test
+    void testUpsertCbPlanContentLookup_NewContent() {
+        List<String> contentIds = Arrays.asList("content1");
+        
+        when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), any(), any(), anyInt()))
+            .thenReturn(Collections.emptyList());
+        
+        ReflectionTestUtils.invokeMethod(cbPlanService, "upsertCbPlanContentLookup", "plan1", contentIds);
+        
+        verify(cassandraOperation).updateRecord(anyString(), anyString(), any(), any());
+    }
+
+    @Test
+    void testUpsertCbPlanContentLookup_ExistingContent() {
+        List<String> contentIds = Arrays.asList("content1");
+        Set<String> existingPlanIds = new HashSet<>(Arrays.asList("plan2"));
+        
+        Map<String, Object> existingRecord = Map.of("planid", existingPlanIds);
+        when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), any(), any(), anyInt()))
+            .thenReturn(Arrays.asList(existingRecord));
+        
+        ReflectionTestUtils.invokeMethod(cbPlanService, "upsertCbPlanContentLookup", "plan1", contentIds);
+        
+        verify(cassandraOperation).updateRecord(anyString(), anyString(), any(), any());
+    }
+
+    @Test
+    void testUpsertCbPlanContentLookup_PlanAlreadyExists() {
+        List<String> contentIds = Arrays.asList("content1");
+        Set<String> existingPlanIds = new HashSet<>(Arrays.asList("plan1"));
+        
+        Map<String, Object> existingRecord = Map.of("planid", existingPlanIds);
+        when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), any(), any(), anyInt()))
+            .thenReturn(Arrays.asList(existingRecord));
+        
+        ReflectionTestUtils.invokeMethod(cbPlanService, "upsertCbPlanContentLookup", "plan1", contentIds);
+        
+        verify(cassandraOperation, never()).updateRecord(anyString(), anyString(), any(), any());
+    }
+
+    @Test
+    void testUpsertCbPlanContentLookup_MultipleContents() {
+        List<String> contentIds = Arrays.asList("content1", "content2");
+        
+        when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), any(), any(), anyInt()))
+            .thenReturn(Collections.emptyList());
+        
+        ReflectionTestUtils.invokeMethod(cbPlanService, "upsertCbPlanContentLookup", "plan1", contentIds);
+        
+        verify(cassandraOperation, times(2)).updateRecord(anyString(), anyString(), any(), any());
+    }
+
+    // Tests for upsertAllOrgLookup method
+    @Test
+    void testUpsertAllOrgLookup_Success() {
+        ApiResponse successResp = new ApiResponse();
+        successResp.setParams(new ApiRespParam());
+        successResp.getParams().setStatus(Constants.SUCCESS);
+        when(cassandraOperation.insertRecord(anyString(), anyString(), any())).thenReturn(successResp);
+        
+        ApiResponse result = (ApiResponse) ReflectionTestUtils.invokeMethod(
+            cbPlanService, "upsertAllOrgLookup", "plan1", Instant.now(), true);
+        
+        assertEquals(Constants.SUCCESS, result.getParams().getStatus());
+    }
+
+    @Test
+    void testUpsertAllOrgLookup_WithNullEndDate() {
+        ApiResponse successResp = new ApiResponse();
+        successResp.setParams(new ApiRespParam());
+        successResp.getParams().setStatus(Constants.SUCCESS);
+        when(cassandraOperation.insertRecord(anyString(), anyString(), any())).thenReturn(successResp);
+        
+        ApiResponse result = (ApiResponse) ReflectionTestUtils.invokeMethod(
+            cbPlanService, "upsertAllOrgLookup", "plan1", null, false);
+        
+        assertEquals(Constants.SUCCESS, result.getParams().getStatus());
+    }
+
+    @Test
+    void testUpsertAllOrgLookup_Exception() {
+        when(cassandraOperation.insertRecord(anyString(), anyString(), any()))
+            .thenThrow(new RuntimeException("DB error"));
+        
+        ApiResponse result = (ApiResponse) ReflectionTestUtils.invokeMethod(
+            cbPlanService, "upsertAllOrgLookup", "plan1", Instant.now(), true);
+        
+        assertEquals(Constants.FAILED, result.getParams().getStatus());
+        assertTrue(result.getParams().getErr().contains("Exception while inserting SINGLE org lookup"));
+    }
+
+    // Tests for getRootOrgFromUser method
+    @Test
+    void testGetRootOrgFromUser_Success() {
+        Map<String, Object> userMap = Map.of(
+            Constants.ID, "user1",
+            Constants.ROOT_ORG_ID, "rootOrg1"
+        );
+        when(userUtilityService.readUserProfileFromDB(anyString(), any())).thenReturn(userMap);
+        
+        ApiResponse response = new ApiResponse();
+        response.setParams(new ApiRespParam());
+        String result = (String) ReflectionTestUtils.invokeMethod(
+            cbPlanService, "getRootOrgFromUser", "user1", response);
+        
+        assertEquals("rootOrg1", result);
+        assertNotEquals(Constants.FAILED, response.getParams().getStatus());
+    }
+
+    @Test
+    void testGetRootOrgFromUser_EmptyUserMap() {
+        when(userUtilityService.readUserProfileFromDB(anyString(), any())).thenReturn(new HashMap<>());
+        
+        ApiResponse response = new ApiResponse();
+        response.setParams(new ApiRespParam());
+        String result = (String) ReflectionTestUtils.invokeMethod(
+            cbPlanService, "getRootOrgFromUser", "user1", response);
+        
+        assertNull(result);
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getResponseCode());
+    }
+
+    @Test
+    void testGetRootOrgFromUser_NullUserMap() {
+        when(userUtilityService.readUserProfileFromDB(anyString(), any())).thenReturn(null);
+        
+        ApiResponse response = new ApiResponse();
+        response.setParams(new ApiRespParam());
+        String result = (String) ReflectionTestUtils.invokeMethod(
+            cbPlanService, "getRootOrgFromUser", "user1", response);
+        
+        assertNull(result);
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+    }
+
+    // Tests for getCCAFromOrg method
+    @Test
+    void testGetCCAFromOrg_Success_True() {
+        Map<String, Object> orgMap = Map.of(Constants.IS_CCA, true);
+        when(userUtilityService.readOrgFromDB(anyString(), any())).thenReturn(orgMap);
+        
+        ApiResponse response = new ApiResponse();
+        response.setParams(new ApiRespParam());
+        boolean result = (Boolean) ReflectionTestUtils.invokeMethod(
+            cbPlanService, "getCCAFromOrg", "org1", response);
+        
+        assertTrue(result);
+        assertNotEquals(Constants.FAILED, response.getParams().getStatus());
+    }
+
+    @Test
+    void testGetCCAFromOrg_Success_False() {
+        Map<String, Object> orgMap = Map.of(Constants.IS_CCA, "false");
+        when(userUtilityService.readOrgFromDB(anyString(), any())).thenReturn(orgMap);
+        
+        ApiResponse response = new ApiResponse();
+        response.setParams(new ApiRespParam());
+        boolean result = (Boolean) ReflectionTestUtils.invokeMethod(
+            cbPlanService, "getCCAFromOrg", "org1", response);
+        
+        assertFalse(result);
+    }
+
+    @Test
+    void testGetCCAFromOrg_NoCCAField() {
+        Map<String, Object> orgMap = Map.of("name", "Test Org");
+        when(userUtilityService.readOrgFromDB(anyString(), any())).thenReturn(orgMap);
+        
+        ApiResponse response = new ApiResponse();
+        response.setParams(new ApiRespParam());
+        boolean result = (Boolean) ReflectionTestUtils.invokeMethod(
+            cbPlanService, "getCCAFromOrg", "org1", response);
+        
+        assertFalse(result);
+    }
+
+    @Test
+    void testGetCCAFromOrg_EmptyOrgMap() {
+        when(userUtilityService.readOrgFromDB(anyString(), any())).thenReturn(new HashMap<>());
+        
+        ApiResponse response = new ApiResponse();
+        response.setParams(new ApiRespParam());
+        boolean result = (Boolean) ReflectionTestUtils.invokeMethod(
+            cbPlanService, "getCCAFromOrg", "org1", response);
+        
+        assertFalse(result);
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getResponseCode());
+    }
 
 }

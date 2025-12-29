@@ -7,6 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.MapUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
+import org.springframework.util.StringUtils;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -18,10 +19,12 @@ public class ContentRetirementService {
 
     private final CassandraOperation cassandraOperation;
     private final ContentInfoServiceImpl contentService;
+    private final NotificationService notificationService;
 
-    public ContentRetirementService(CassandraOperation cassandraOperation, ContentInfoServiceImpl contentService) {
+    public ContentRetirementService(CassandraOperation cassandraOperation, ContentInfoServiceImpl contentService, NotificationService notificationService) {
         this.cassandraOperation = cassandraOperation;
         this.contentService = contentService;
+        this.notificationService = notificationService;
     }
 
     public ApiResponse processDueRetirements() {
@@ -118,6 +121,138 @@ public class ContentRetirementService {
         }
 
         return result;
+    }
+
+
+    public void sendContentRetirementNotifications() {
+
+        LocalDate today = LocalDate.now();
+
+        log.info("Running content retirement notification job for {}", today);
+
+        Map<String, Object> properties = Map.of(
+                Constants.STATUS, Constants.APPROVED
+        );
+
+        List<Map<String, Object>> retirementRequests =
+                cassandraOperation.getRecordsByProperties(
+                        Constants.KEYSPACE_SUNBIRD_COURSE,
+                        Constants.CONTENT_RETIREMENT_REQUEST_TABLE,
+                        properties,
+                        Arrays.asList(
+                                Constants.CONTENT_ID_KEY,
+                                Constants.APPROVED_AT,
+                                Constants.RETIREMENT_DATE
+                        ),
+                        null
+                );
+
+        if (CollectionUtils.isEmpty(retirementRequests)) {
+            log.info("No approved retirement requests found");
+        }
+
+        for (Map<String, Object> record : retirementRequests) {
+
+            String contentId = (String) record.get(Constants.CONTENT_ID_KEY);
+            LocalDate approvedDate = (LocalDate) record.get(Constants.APPROVED_AT);
+            LocalDate retirementDate = (LocalDate) record.get(Constants.RETIREMENT_DATE);
+
+            String notificationType = null;
+
+            if (approvedDate != null && approvedDate.equals(today)) {
+                notificationType = Constants.CONTENT_RETIREMENT_APPROVED_NOTIFICATION;
+            } else if (retirementDate != null && retirementDate.equals(today.plusDays(1))) {
+                notificationType = Constants.REMINDER_NOTIFICATION_ONE_DAY;
+            } else if (retirementDate != null && retirementDate.equals(today.plusDays(7))) {
+                notificationType = Constants.REMINDER_NOTIFICATION_SEVEN_DAY;
+            }
+
+            if (!StringUtils.hasText(notificationType)) {
+                continue;
+            }
+
+            log.info("Triggering {} notification for content {}", notificationType, contentId);
+
+            Map<String, Object> content =
+                    contentService.readContent(contentId, Arrays.asList("name", "batches"));
+
+            List<Map<String, Object>> batches =
+                    (List<Map<String, Object>>) content.get("batches");
+
+            if (CollectionUtils.isEmpty(batches)) {
+                log.info("No batches found for content {}", contentId);
+                continue;
+            }
+
+            for (Map<String, Object> batch : batches) {
+
+                String batchId = (String) batch.get("identifier");
+
+                List<Map<String, Object>> batchUsers =
+                        cassandraOperation.getRecordsByProperties(
+                                Constants.KEYSPACE_SUNBIRD_COURSE,
+                                Constants.ENROLLMENT_BATCH_LOOKUP,
+                                Map.of(Constants.BATCH_ID, batchId),
+                                Arrays.asList(Constants.USER_ID),
+                                null
+                        );
+
+                if (CollectionUtils.isEmpty(batchUsers)) {
+                    continue;
+                }
+
+                for (Map<String, Object> batchUser : batchUsers) {
+
+                    String userId = (String) batchUser.get(Constants.USER_ID);
+                    Map<String, Object> enrolmentProperties = Map.of(
+                            Constants.USER_ID, userId,
+                            Constants.COURSE_ID, contentId,
+                            Constants.BATCH_ID, batchId
+                    );
+
+                    List<Map<String, Object>> enrolment =
+                            cassandraOperation.getRecordsByProperties(
+                                    Constants.KEYSPACE_SUNBIRD_COURSE,
+                                    Constants.USER_ENROLMENTS_V2_TABLE,
+                                    enrolmentProperties,
+                                    null,
+                                    null
+                            );
+
+                    if (CollectionUtils.isEmpty(enrolment)) {
+                        continue;
+                    }
+
+                    List<Map<String, Object>> eligibleEnrolments =
+                            enrolment.stream()
+                                    .filter(Objects::nonNull)
+                                    .filter(e -> {
+                                        Object statusObj = e.get(Constants.STATUS);
+                                        Object activeObj = e.get(Constants.ACTIVE);
+                                        Object certificates = e.get(Constants.ISSUED_CERTIFICATES);
+
+                                        return statusObj instanceof Integer
+                                                && activeObj instanceof Boolean
+                                                && !Objects.equals(statusObj, 2)
+                                                && certificates == null
+                                                && Boolean.TRUE.equals(activeObj);
+                                    })
+                                    .toList();
+
+
+                    if (CollectionUtils.isEmpty(eligibleEnrolments)) {
+                        continue;
+                    }
+
+                    /*notificationService.sendNotificationForContentRetirement(
+                            contentId,
+                            List.of(userId),
+                            notificationType
+                    );*/
+
+                }
+            }
+        }
     }
 }
 

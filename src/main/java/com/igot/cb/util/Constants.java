@@ -504,6 +504,13 @@ public class Constants {
     public static final String CONTENT_ID_KEY = "content_id";
     public static final String UPDATED_AT_KEY = "updated_at";
     public static final String TABLE_CB_PLAN_V2_CONTENT_LOOKUP = "cb_plan_v2_content_lookup";
+    public static final String APPROVED_AT = "approved_at";
+    public static final String CONTENT_RETIREMENT_APPROVED_NOTIFICATION = "CONTENT_RETIREMENT";
+    public static final String REMINDER_NOTIFICATION_ONE_DAY = "CONTENT_RETIREMENT_ONE_DAYS";
+    public static final String REMINDER_NOTIFICATION_SEVEN_DAY = "CONTENT_RETIREMENT_SEVEN_DAYS";
+    public static final String USER_ENROLMENTS_V2_TABLE = "user_enrolments_v2";
+    public static final String ISSUED_CERTIFICATES = "issued_certificates";
+
 
     private Constants() {
     }

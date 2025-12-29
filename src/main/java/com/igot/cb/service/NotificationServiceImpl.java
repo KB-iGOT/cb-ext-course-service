@@ -444,4 +444,19 @@ public class NotificationServiceImpl implements NotificationService {
             return response;
         }
     }
+
+    /**
+     * @param contentName
+     * @param userId
+     * @param notificationType
+     * @return
+     */
+    @Override
+    public void sendNotificationForContentRetirement(String contentName, List<String> userId, String notificationType) {
+        try {
+
+
+        } catch (Exception e) {
+        }
+    }
 }

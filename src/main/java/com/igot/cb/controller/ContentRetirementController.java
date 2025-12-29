@@ -26,9 +26,7 @@ public class ContentRetirementController {
 
     @GetMapping("/notify/users")
     public ResponseEntity<String> triggerNotifications() {
-
-        //notificationService.triggerNotificationJob();
-
+        contentRetirementService.sendContentRetirementNotifications();
         return ResponseEntity
                 .status(HttpStatus.CREATED)
                 .body("Notification job accepted");

@@ -2,6 +2,7 @@ package com.igot.cb.service;
 
 import com.igot.cb.model.ApiResponse;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
@@ -13,5 +14,5 @@ public interface NotificationService {
 
     ApiResponse notifyAssignmentSubmit(Map<String, Object> requestData, String authToken);
 
-    void sendNotificationForContentRetirement(String contentName, List<String> userId, String notificationType);
+    void sendNotificationForContentRetirement(String contentId, String contentName, LocalDate retirementDate, List<String> userId, String notificationType);
 }

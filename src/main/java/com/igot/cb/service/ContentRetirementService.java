@@ -11,6 +11,7 @@ import org.springframework.util.StringUtils;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.*;
 
 @Slf4j
@@ -142,7 +143,7 @@ public class ContentRetirementService {
                         Arrays.asList(
                                 Constants.CONTENT_ID_KEY,
                                 Constants.APPROVED_AT,
-                                Constants.RETIREMENT_DATE
+                                Constants.RETIREMENT_DATE_NOTIFICATION
                         ),
                         null
                 );
@@ -153,8 +154,13 @@ public class ContentRetirementService {
 
         for (Map<String, Object> record : retirementRequests) {
 
-            String contentId = (String) record.get(Constants.CONTENT_ID_KEY);
-            LocalDate approvedDate = (LocalDate) record.get(Constants.APPROVED_AT);
+            String contentId = (String) record.get(Constants.CONTENT_ID);
+            Instant approvedInstant =
+                    (Instant) record.get(Constants.APPROVED_AT);
+
+            LocalDate approvedDate = approvedInstant != null
+                    ? approvedInstant.atZone(ZoneId.systemDefault()).toLocalDate()
+                    : null;
             LocalDate retirementDate = (LocalDate) record.get(Constants.RETIREMENT_DATE);
 
             String notificationType = null;
@@ -186,7 +192,7 @@ public class ContentRetirementService {
 
             for (Map<String, Object> batch : batches) {
 
-                String batchId = (String) batch.get("identifier");
+                String batchId = (String) batch.get(Constants.BATCH_ID);
 
                 List<Map<String, Object>> batchUsers =
                         cassandraOperation.getRecordsByProperties(
@@ -234,7 +240,7 @@ public class ContentRetirementService {
                                         return statusObj instanceof Integer
                                                 && activeObj instanceof Boolean
                                                 && !Objects.equals(statusObj, 2)
-                                                && certificates == null
+                                                && (certificates == null || ((List<?>) certificates).isEmpty())
                                                 && Boolean.TRUE.equals(activeObj);
                                     })
                                     .toList();
@@ -243,12 +249,14 @@ public class ContentRetirementService {
                     if (CollectionUtils.isEmpty(eligibleEnrolments)) {
                         continue;
                     }
-
-                    /*notificationService.sendNotificationForContentRetirement(
+                    String courseName = (String) content.get(Constants.NAME);
+                    notificationService.sendNotificationForContentRetirement(
                             contentId,
+                            courseName,
+                            retirementDate,
                             List.of(userId),
                             notificationType
-                    );*/
+                    );
 
                 }
             }

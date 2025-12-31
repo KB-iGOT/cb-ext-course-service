@@ -23,6 +23,7 @@ import com.igot.cb.util.CbExtServerProperties;
 import com.igot.cb.util.ProjectUtil;
 
 import java.io.StringWriter;
+import java.time.LocalDate;
 import java.util.*;
 
 @Service
@@ -457,6 +458,30 @@ public class NotificationServiceImpl implements NotificationService {
 
 
         } catch (Exception e) {
+        }
+    }
+
+    @Override
+    public void sendNotificationForContentRetirementSpv(String contentId, String contentName, ArrayList<String> userIds, String notificationType, LocalDate date) {
+        try {
+            if (CollectionUtils.isEmpty(userIds) || StringUtils.isEmpty(notificationType)) {
+                log.warn("Invalid input for content retirement in-app notification");
+                return;
+            }
+            String subCategory = notificationType;
+            Map<String, String> placeHolders = new HashMap<>();
+            placeHolders.put(Constants.TITLE, contentName);
+            placeHolders.put(Constants.DATE_KEY, date.toString());
+            Map<String, Object> data = new HashMap<>();
+            data.put(Constants.ID, contentId);
+            Map<String, Object> message = new HashMap<>();
+            message.put(Constants.PLACE_HOLDERS, placeHolders);
+            message.put(Constants.DATA, data);
+            sendInAppNotification(subCategory, Constants.ALERT, userIds, message);
+            log.info("In-app retirement notification [{}] sent for course {}",
+                    notificationType, contentName);
+        } catch (Exception e) {
+            log.error("Error while sending in-app retirement notification", e);
         }
     }
 }

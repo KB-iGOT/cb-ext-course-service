@@ -510,7 +510,12 @@ public class Constants {
     public static final String REMINDER_NOTIFICATION_SEVEN_DAY = "CONTENT_RETIREMENT_SEVEN_DAYS";
     public static final String USER_ENROLMENTS_V2_TABLE = "user_enrolments_v2";
     public static final String ISSUED_CERTIFICATES = "issued_certificates";
-
+    public static final String QUERY = "query";
+    public static final String CREATED_AT_FIELD = "created_at";
+    public static final String USER_ID_RAISED_FIELD = "user_id_raised";
+    public static final String CONTENT_RETIREMENT_SCHEDULED_NOTIFICATION = "RETIRE_SCHEDULED";
+    public static final String TITLE= "title";
+    public static final String DATE_KEY= "Date";
 
     private Constants() {
     }

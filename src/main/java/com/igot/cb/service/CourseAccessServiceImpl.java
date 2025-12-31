@@ -19,13 +19,15 @@ import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 
 import com.igot.cb.cache.AccessSettingRuleCacheMgr;
+import com.igot.cb.exception.CbCourseServiceException;
 import com.igot.cb.model.CachedAccessSettingRule;
 import com.igot.cb.util.Constants;
 
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * Service implementation for managing course access based on user profiles and access setting rules.
+ * Service implementation for managing course access based on user profiles and
+ * access setting rules.
  */
 @Service
 @Slf4j
@@ -36,7 +38,6 @@ public class CourseAccessServiceImpl {
     private final ContentInfoServiceImpl contentService;
     private final OutboundRequestHandlerServiceImpl outboundRequestHandlerService;
     private final RedisCacheMgr redisCacheMgr;
-
 
     @Value("${content.read.fields}")
     private String contentReadFields;
@@ -67,8 +68,8 @@ public class CourseAccessServiceImpl {
     /**
      * Constructor for CourseAccessServiceImpl.
      *
-     * @param accessTokenValidator Validator for access tokens.
-     * @param userProfileServiceImpl Service to fetch user profiles.
+     * @param accessTokenValidator      Validator for access tokens.
+     * @param userProfileServiceImpl    Service to fetch user profiles.
      * @param accessSettingRuleCacheMgr Cache manager for access setting rules.
      */
     public CourseAccessServiceImpl(AccessTokenValidator accessTokenValidator,
@@ -84,11 +85,13 @@ public class CourseAccessServiceImpl {
     }
 
     /**
-     * Retrieves courses accessible to a user based on their profile and access setting rules.
+     * Retrieves courses accessible to a user based on their profile and access
+     * setting rules.
      *
      * @param request   The request containing user details.
      * @param authToken The authentication token for the user.
-     * @return ApiResponse containing the list of accessible courses or error details.
+     * @return ApiResponse containing the list of accessible courses or error
+     *         details.
      */
     public ApiResponse getCoursesForUser(Map<String, Object> request, String authToken) {
         log.info("CourseAccessServiceImpl::getCoursesForUser:inside");
@@ -111,20 +114,20 @@ public class CourseAccessServiceImpl {
         }
 
         String cachedCourseForUser = redisCacheMgr.getFromCache(Constants.ACCESS_KEY + userId);
-        if (cachedCourseForUser != null && !cachedCourseForUser.isEmpty()){
-            if (cachedCourseForUser.equalsIgnoreCase(Constants.NO_RECORDS_FOUND)){
+        if (cachedCourseForUser != null && !cachedCourseForUser.isEmpty()) {
+            if (cachedCourseForUser.equalsIgnoreCase(Constants.NO_RECORDS_FOUND)) {
                 response.getResult().put(Constants.CONTENT, new ArrayList<>());
                 return response;
             }
             try {
                 response.getResult().put(Constants.CONTENT, mapper.readValue(
                         cachedCourseForUser,
-                        new TypeReference<List<Map<String, Object>>>() {}
-                ));
+                        new TypeReference<List<Map<String, Object>>>() {
+                        }));
                 log.info("AccessSettingRule evalution: UserId: ", userId);
                 return response;
             } catch (JsonProcessingException e) {
-                throw new RuntimeException(e);
+                throw new CbCourseServiceException(e);
             }
         }
 
@@ -137,12 +140,12 @@ public class CourseAccessServiceImpl {
                 if (!userCourses.isEmpty()) {
                     log.info("No courses found for user profile: {}", userProfile);
                     try {
-                        redisCacheMgr.putInCache(Constants.ACCESS_KEY+userId, mapper.writeValueAsString(userCourses));
+                        redisCacheMgr.putInCache(Constants.ACCESS_KEY + userId, mapper.writeValueAsString(userCourses));
                     } catch (JsonProcessingException e) {
-                        throw new RuntimeException(e);
+                        throw new CbCourseServiceException(e);
                     }
-                }else {
-                    redisCacheMgr.putInCache(Constants.ACCESS_KEY+userId, Constants.NO_RECORDS_FOUND);
+                } else {
+                    redisCacheMgr.putInCache(Constants.ACCESS_KEY + userId, Constants.NO_RECORDS_FOUND);
                 }
                 response.getResult().put(Constants.CONTENT, userCourses);
             } else {
@@ -241,10 +244,10 @@ public class CourseAccessServiceImpl {
                 return response;
             }
             String redisKey = Constants.ACCESS_KEY + "_" + courseCategory + "_" + userId;
-            List<Map<String, Object>> cacheResult = fetchFromRedisCache(redisKey);
+            Optional<List<Map<String, Object>>> cacheResultOpt = fetchFromRedisCache(redisKey);
 
-            if (cacheResult != null) {
-                response.getResult().put(Constants.CONTENT, cacheResult);
+            if (cacheResultOpt.isPresent()) {
+                response.getResult().put(Constants.CONTENT, cacheResultOpt.get());
                 return response;
             }
             List<String> courseIds = getCoursesFromCacheOrService(courseCategory);
@@ -257,7 +260,8 @@ public class CourseAccessServiceImpl {
             Map<String, Integer> userProfile = userProfileServiceImpl.getUserProfile(userId);
             List<CachedAccessSettingRule> rules = new ArrayList<>();
             for (String courseId : courseIds) {
-                CachedAccessSettingRule rule = accessSettingRuleCacheMgr.getOrLoadAccessSettingRule(courseId, courseCategory);
+                CachedAccessSettingRule rule = accessSettingRuleCacheMgr.getOrLoadAccessSettingRule(courseId,
+                        courseCategory);
                 if (rule != null) {
                     rules.add(rule);
                 }
@@ -274,18 +278,19 @@ public class CourseAccessServiceImpl {
                     log.warn("No accessControl found in rule: {}", rule.getCacheKey());
                     continue;
                 }
-                Map<String, Object> accessSettingIdMap =
-                        (Map<String, Object>) contextData.get(Constants.ACCESS_CONTROL_ID);
+                Map<String, Object> accessSettingIdMap = (Map<String, Object>) contextData
+                        .get(Constants.ACCESS_CONTROL_ID);
 
                 if (evaluateAccessSettingRule(accessSettingIdMap, userProfile)) {
                     List<String> fieldsToFetch = Arrays.asList(contentReadFields.split(","));
-                    Map<String, Object> contentDetails =
-                            contentService.readContent(rule.getContextId(), fieldsToFetch);
+                    Map<String, Object> contentDetails = contentService.readContent(rule.getContextId(), fieldsToFetch);
                     userCourses.add(contentDetails);
                 }
             }
             log.info("AccessSettingRule evaluation: UserId: {} | Courses retrieved: {}", userId, userCourses.size());
-            redisCacheMgr.putInCache(Constants.ACCESS_KEY+Constants.UNDERSCORE+courseCategory+Constants.UNDERSCORE+userId, mapper.writeValueAsString(userCourses));
+            redisCacheMgr.putInCache(
+                    Constants.ACCESS_KEY + Constants.UNDERSCORE + courseCategory + Constants.UNDERSCORE + userId,
+                    mapper.writeValueAsString(userCourses));
             response.getResult().put(Constants.CONTENT, userCourses);
         } catch (Exception e) {
             log.error("Error occurred while evaluating access setting rules: {}", e.getMessage(), e);
@@ -332,7 +337,8 @@ public class CourseAccessServiceImpl {
                 try {
                     Map<String, Object> result = (Map<String, Object>) fetchedCourses.get(Constants.RESULT);
                     if (result != null && result.containsKey(Constants.CONTENT)) {
-                        List<Map<String, Object>> contentList = (List<Map<String, Object>>) result.get(Constants.CONTENT);
+                        List<Map<String, Object>> contentList = (List<Map<String, Object>>) result
+                                .get(Constants.CONTENT);
                         if (contentList != null) {
                             identifiers = contentList.stream()
                                     .map(item -> (String) item.get(Constants.IDENTIFIER))
@@ -344,7 +350,7 @@ public class CourseAccessServiceImpl {
                     log.error("Error extracting identifiers for category {}: {}", courseCategory, e.getMessage(), e);
                 }
                 if (!identifiers.isEmpty()) {
-                    courseCategoryCache.put("access_settings_enabled_"+courseCategory, identifiers);
+                    courseCategoryCache.put("access_settings_enabled_" + courseCategory, identifiers);
                     cacheTimestamps.put(courseCategory, System.currentTimeMillis());
                     log.info("Cached {} course identifiers for category {}", identifiers.size(), courseCategory);
                     return identifiers;
@@ -360,21 +366,20 @@ public class CourseAccessServiceImpl {
         return Collections.emptyList();
     }
 
-    private List<Map<String, Object>> fetchFromRedisCache(String redisKey) {
+    private Optional<List<Map<String, Object>>> fetchFromRedisCache(String redisKey) {
         String cachedData = redisCacheMgr.getFromCache(redisKey);
         if (!StringUtils.hasText(cachedData)) {
-            return null;
+            return Optional.empty();
         }
         try {
-            return mapper.readValue(
+            return Optional.ofNullable(mapper.readValue(
                     cachedData,
-                    new TypeReference<List<Map<String, Object>>>() {}
-            );
+                    new TypeReference<List<Map<String, Object>>>() {
+                    }));
         } catch (JsonProcessingException e) {
             log.error("Failed parsing cached redis data for key {}: {}", redisKey, e.getMessage());
-            return null;
+            return Optional.empty();
         }
     }
-
 
 }

@@ -28,6 +28,7 @@ import com.igot.cb.cache.RedisCacheMgr;
 import com.igot.cb.model.CachedAccessSettingRule;
 import com.igot.cb.util.Constants;
 import org.springframework.test.util.ReflectionTestUtils;
+import com.igot.cb.exception.CbCourseServiceException;
 
 @ExtendWith(MockitoExtension.class)
 class CourseAccessServiceImplTest {
@@ -351,7 +352,8 @@ class CourseAccessServiceImplTest {
                 ReflectionTestUtils.setField(courseAccessService, "mapper", mapperSpy);
 
                 Map<String, Object> request = Map.of("x", "y");
-                assertThrows(RuntimeException.class, () -> courseAccessService.getCoursesForUser(request, authToken));
+                assertThrows(CbCourseServiceException.class,
+                                () -> courseAccessService.getCoursesForUser(request, authToken));
         }
 
         @SuppressWarnings("unchecked")
@@ -414,10 +416,11 @@ class CourseAccessServiceImplTest {
                 })
                                 .when(mapperSpy)
                                 .readValue(anyString(), (TypeReference<?>) any());
-                List<Map<String, Object>> result = ReflectionTestUtils.invokeMethod(courseAccessService,
+                Optional<List<Map<String, Object>>> result = ReflectionTestUtils.invokeMethod(courseAccessService,
                                 "fetchFromRedisCache", key);
 
-                assertNull(result);
+                assertNotNull(result);
+                assertTrue(result.isEmpty());
         }
 
         @Test

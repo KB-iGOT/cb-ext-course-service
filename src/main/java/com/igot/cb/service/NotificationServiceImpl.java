@@ -23,6 +23,7 @@ import com.igot.cb.util.CbExtServerProperties;
 import com.igot.cb.util.ProjectUtil;
 
 import java.io.StringWriter;
+import java.time.LocalDate;
 import java.util.*;
 
 @Service
@@ -447,16 +448,58 @@ public class NotificationServiceImpl implements NotificationService {
 
     /**
      * @param contentName
-     * @param userId
+     * @param userIds
      * @param notificationType
      * @return
      */
     @Override
-    public void sendNotificationForContentRetirement(String contentName, List<String> userId, String notificationType) {
+    public void sendNotificationForContentRetirement(
+            String contentId,
+            String contentName,
+            LocalDate retirementDate,
+            List<String> userIds,
+            String notificationType) {
+
         try {
+            if (CollectionUtils.isEmpty(userIds) || StringUtils.isEmpty(notificationType)) {
+                log.warn("Invalid input for content retirement in-app notification");
+                return;
+            }
 
+            // Placeholders (ONLY what templates need)
+            String subCategory = "";
+            Map<String, String> placeHolders = new HashMap<>();
+            placeHolders.put(Constants.COURSE_NAME, contentName);
+            if (Constants.CONTENT_RETIREMENT_APPROVED_NOTIFICATION.equals(notificationType)) {
+                placeHolders.put(Constants.RETIREMENT_DATE, retirementDate.toString());
+                subCategory = Constants.APPROVED_CONTENT_RETIREMENT;
+            } else if (Constants.REMINDER_NOTIFICATION_SEVEN_DAY.equals(notificationType)) {
+                placeHolders.put(Constants.REMINDER_TYPE, "7 Days Before");
+                placeHolders.put(Constants.RETIREMENT_DATE, retirementDate.toString());
+                subCategory = Constants.SEVEN_DAYS_BEFORE_CONTENT_RETIREMENT;
+            } else if (Constants.REMINDER_NOTIFICATION_ONE_DAY.equals(notificationType)) {
+                placeHolders.put(Constants.REMINDER_TYPE, "1 Day Before");
+                placeHolders.put(Constants.RETIREMENT_DATE, retirementDate.toString());
+                subCategory = Constants.ONE_DAYS_BEFORE_CONTENT_RETIREMENT;
+            } else {
+                subCategory = Constants.CONTENT_FINALLY_RETIRED;
+            }
 
+            Map<String, Object> data = new HashMap<>();
+            data.put(Constants.ID, contentId);
+
+            Map<String, Object> message = new HashMap<>();
+            message.put(Constants.PLACE_HOLDERS, placeHolders);
+            message.put(Constants.DATA, data);
+
+            sendInAppNotification(subCategory, Constants.ALERT, userIds, message);
+            log.info("In-app retirement notification [{}] sent for course {}",
+                    notificationType, contentName);
         } catch (Exception e) {
+            log.error("Error while sending in-app retirement notification", e);
         }
     }
+
+
+
 }

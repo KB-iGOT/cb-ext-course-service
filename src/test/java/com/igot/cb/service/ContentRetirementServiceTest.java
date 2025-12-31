@@ -28,9 +28,11 @@ class ContentRetirementServiceTest {
 
     private ContentRetirementService contentRetirementService;
 
+    private NotificationService notificationService;
+
     @BeforeEach
     void setUp() {
-        contentRetirementService = new ContentRetirementService(cassandraOperation, contentService);
+        contentRetirementService = new ContentRetirementService(cassandraOperation, contentService, notificationService);
     }
 
     @Test

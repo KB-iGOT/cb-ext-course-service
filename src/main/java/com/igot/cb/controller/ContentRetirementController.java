@@ -32,5 +32,13 @@ public class ContentRetirementController {
                 .body("Notification job accepted");
     }
 
+    @GetMapping("/notify/spv/user")
+    public ResponseEntity<String> triggerNotificationsToSpv() {
+        contentRetirementService.sendContentRetirementNotificationsToSpv();
+        return ResponseEntity
+                .status(HttpStatus.CREATED)
+                .body("Notification job accepted");
+    }
+
 }
 

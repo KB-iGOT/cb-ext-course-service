@@ -517,7 +517,12 @@ public class Constants {
     public static final String ONE_DAYS_BEFORE_CONTENT_RETIREMENT  = "CONTENT_RETIREMENT_ONE_DAYS";
     public static final String CONTENT_FINALLY_RETIRED = "CONTENT_FINALLY_RETIRED";
     public static final String RETIREMENT_DATE_NOTIFICATION = "retirement_Date";
-
+    public static final String QUERY = "query";
+    public static final String CREATED_AT_FIELD = "created_at";
+    public static final String USER_ID_RAISED_FIELD = "user_id_raised";
+    public static final String CONTENT_RETIREMENT_SCHEDULED_NOTIFICATION = "RETIRE_SCHEDULED";
+    public static final String TITLE= "title";
+    public static final String DATE_KEY= "Date";
 
     private Constants() {
     }

@@ -2,9 +2,11 @@ package com.igot.cb.service;
 
 import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.model.ApiResponse;
+import com.igot.cb.util.CbExtServerProperties;
 import com.igot.cb.util.Constants;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.MapUtils;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
@@ -27,6 +29,12 @@ public class ContentRetirementService {
         this.contentService = contentService;
         this.notificationService = notificationService;
     }
+
+    @Autowired
+    private OutboundRequestHandlerServiceImpl outboundRequestHandlerService;
+
+    @Autowired
+    private CbExtServerProperties props;
 
     public ApiResponse processDueRetirements() {
         ApiResponse response = ApiResponse.createDefaultResponse("retirement.schedule.cron");
@@ -262,5 +270,112 @@ public class ContentRetirementService {
             }
         }
     }
+
+    public void sendContentRetirementNotificationsToSpv() {
+        LocalDate today = LocalDate.now();
+        log.info("Running content retirement notification job for spv admins {}", today);
+        List<Map<String, Object>> retirementRequests =
+                cassandraOperation.getRecordsByProperties(
+                        Constants.KEYSPACE_SUNBIRD_COURSE,
+                        Constants.CONTENT_RETIREMENT_REQUEST_TABLE,
+                        null,
+                        Arrays.asList(
+                                Constants.CONTENT_ID_KEY,
+                                Constants.CREATED_AT_FIELD,
+                                Constants.USER_ID_RAISED_FIELD
+                        ),
+                        1000
+                );
+        if (CollectionUtils.isEmpty(retirementRequests)) {
+            log.info("No approved retirement requests found");
+            return;
+        }
+        List<String> spvPublishers = fetchSpvPublishers();
+        for (Map<String, Object> record : retirementRequests) {
+            String contentId = (String) record.get(Constants.CONTENT_ID_KEY);
+            Object createdObj = record.get(Constants.CREATED_AT_FIELD);
+            LocalDate createdDate = null;
+            if (createdObj instanceof Instant instant) {
+                createdDate = instant.atZone(ZoneId.systemDefault()).toLocalDate();
+            } else if (createdObj instanceof LocalDate localDate) {
+                createdDate = localDate;
+            }
+            String requestedBy = (String) record.get(Constants.USER_ID_RAISED_FIELD);
+            if (createdDate == null || !createdDate.equals(today)) continue;
+            Set<String> finalRecipients = new HashSet<>(spvPublishers);
+            if (StringUtils.hasText(requestedBy)) {
+                finalRecipients.add(requestedBy);
+            }
+            if (finalRecipients.isEmpty()) continue;
+            log.info("Triggering retirement approved notification for content {}", contentId);
+            Map<String, Object> content =
+                    contentService.readContent(contentId, List.of("name"));
+            String contentName =
+                    (String) content.get("name");
+            notificationService.sendNotificationForContentRetirementSpv(
+                    contentId,  contentName,
+                    new ArrayList<>(finalRecipients),
+                    Constants.CONTENT_RETIREMENT_SCHEDULED_NOTIFICATION, createdDate
+            );
+        }
+    }
+
+    private List<String> fetchSpvPublishers() {
+        List<String> userIds = new ArrayList<>();
+        Map<String, Object> filters = Map.of(
+                "organisations.roles", List.of("SPV_PUBLISHER"),
+                "status", 1
+        );
+        List<String> userFields = List.of(Constants.USER_ID);
+        Map<String, Object> requestObject = Map.of(
+                Constants.REQUEST, Map.of(
+                        Constants.QUERY, "",
+                        Constants.FILTERS, filters,
+                        Constants.FIELDS, userFields,
+                        Constants.LIMIT, 1000
+                )
+        );
+        Map<String, String> headers = Map.of(
+                Constants.CONTENT_TYPE, Constants.APPLICATION_JSON
+        );
+        String url = props.getSbUrl() + props.getUserSearchEndPoint();
+        Map<String, Object> resp =
+                outboundRequestHandlerService.fetchResultUsingPost(url, requestObject, headers);
+
+        if (MapUtils.isEmpty(resp) ||
+                !"OK".equalsIgnoreCase(String.valueOf(resp.get(Constants.RESPONSE_CODE)))) {
+            log.error("[FETCH-SPV][FAILED] Invalid response {}", resp);
+            return userIds;
+        }
+
+        Object contentsObj = Optional.ofNullable(resp.get(Constants.RESULT))
+                .filter(Map.class::isInstance)
+                .map(Map.class::cast)
+                .map(result -> result.get(Constants.RESPONSE))
+                .filter(Map.class::isInstance)
+                .map(Map.class::cast)
+                .map(response -> response.get(Constants.CONTENT))
+                .orElse(null);
+
+        if (!(contentsObj instanceof List<?> contents)) {
+            log.warn("[FETCH-SPV][EMPTY] No content in response");
+            return userIds;
+        }
+
+        for (Object item : contents) {
+            if (!(item instanceof Map<?, ?> content)) continue;
+
+            Object userIdObj = content.get(Constants.USER_ID);
+            if (userIdObj instanceof String userId && StringUtils.hasText(userId)) {
+                userIds.add(userId);
+            }
+        }
+
+        log.info("[FETCH-SPV][SUCCESS] totalPublishers={}", userIds.size());
+        return userIds.stream().distinct().toList();
+    }
+
+
+
 }
 

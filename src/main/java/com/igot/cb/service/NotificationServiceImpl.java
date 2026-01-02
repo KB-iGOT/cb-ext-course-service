@@ -482,12 +482,12 @@ public class NotificationServiceImpl implements NotificationService {
                 placeHolders.put(Constants.RETIREMENT_DATE, retirementDate.toString());
                 subCategory = Constants.ONE_DAYS_BEFORE_CONTENT_RETIREMENT;
             } else {
-                subCategory = Constants.CONTENT_FINALLY_RETIRED;
+                subCategory = Constants.CONTENT_RETIRED;
             }
 
             Map<String, Object> data = new HashMap<>();
             data.put(Constants.ID, contentId);
-
+            data.put(Constants.RETIREMENT_DATE,retirementDate);
             Map<String, Object> message = new HashMap<>();
             message.put(Constants.PLACE_HOLDERS, placeHolders);
             message.put(Constants.DATA, data);

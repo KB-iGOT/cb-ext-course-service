@@ -282,7 +282,8 @@ public class ContentRetirementService {
                         Arrays.asList(
                                 Constants.CONTENT_ID_KEY,
                                 Constants.CREATED_AT_FIELD,
-                                Constants.USER_ID_RAISED_FIELD
+                                Constants.USER_ID_RAISED_FIELD,
+                                Constants.RETIREMENT_DATE_KEY
                         ),
                         1000
                 );
@@ -292,7 +293,7 @@ public class ContentRetirementService {
         }
         List<String> spvPublishers = fetchSpvPublishers();
         for (Map<String, Object> record : retirementRequests) {
-            String contentId = (String) record.get(Constants.CONTENT_ID_KEY);
+            String contentId = (String) record.get(Constants.CONTENT_ID);
             Object createdObj = record.get(Constants.CREATED_AT_FIELD);
             LocalDate createdDate = null;
             if (createdObj instanceof Instant instant) {
@@ -312,10 +313,17 @@ public class ContentRetirementService {
                     contentService.readContent(contentId, List.of("name"));
             String contentName =
                     (String) content.get("name");
+            Object retirementDateObj = record.get(Constants.RETIREMENT_DATE);
+            LocalDate retirementDate = null;
+            if (retirementDateObj instanceof Instant instant) {
+                retirementDate = instant.atZone(ZoneId.systemDefault()).toLocalDate();
+            } else if (retirementDateObj instanceof LocalDate localDate) {
+                retirementDate = localDate;
+            }
             notificationService.sendNotificationForContentRetirementSpv(
                     contentId,  contentName,
                     new ArrayList<>(finalRecipients),
-                    Constants.CONTENT_RETIREMENT_SCHEDULED_NOTIFICATION, createdDate
+                    Constants.CONTENT_RETIREMENT_SCHEDULED_NOTIFICATION, retirementDate
             );
         }
     }

@@ -487,7 +487,7 @@ public class NotificationServiceImpl implements NotificationService {
 
             Map<String, Object> data = new HashMap<>();
             data.put(Constants.ID, contentId);
-            data.put(Constants.RETIREMENT_DATE,retirementDate);
+            data.put(Constants.RETIREMENT_DATE,(retirementDate.toString()));
             Map<String, Object> message = new HashMap<>();
             message.put(Constants.PLACE_HOLDERS, placeHolders);
             message.put(Constants.DATA, data);

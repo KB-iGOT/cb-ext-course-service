@@ -205,17 +205,13 @@ class ContentRetirementServiceTest {
     @Test
     void sendContentRetirementNotifications_ApprovedToday_ShouldSendApprovedNotification() {
         LocalDate today = LocalDate.now();
-
         Map<String, Object> retirementRecord = Map.of(
                 Constants.CONTENT_ID, "content1",
                 Constants.APPROVED_AT, Instant.now(),
                 Constants.RETIREMENT_DATE, today.plusDays(10)
         );
-
         mockHappyPath(retirementRecord);
-
         contentRetirementService.sendContentRetirementNotifications();
-
         verify(notificationService).sendNotificationForContentRetirement(
                 eq("content1"),
                 eq("Test Course"),
@@ -228,17 +224,13 @@ class ContentRetirementServiceTest {
     @Test
     void sendContentRetirementNotifications_SevenDaysBefore_ShouldSendSevenDayReminder() {
         LocalDate today = LocalDate.now();
-
         Map<String, Object> retirementRecord = Map.of(
                 Constants.CONTENT_ID, "content2",
                 Constants.APPROVED_AT, Instant.now().minusSeconds(86400),
                 Constants.RETIREMENT_DATE, today.plusDays(7)
         );
-
         mockHappyPath(retirementRecord);
-
         contentRetirementService.sendContentRetirementNotifications();
-
         verify(notificationService).sendNotificationForContentRetirement(
                 eq("content2"),
                 eq("Test Course"),
@@ -251,17 +243,13 @@ class ContentRetirementServiceTest {
     @Test
     void sendContentRetirementNotifications_OneDayBefore_ShouldSendOneDayReminder() {
         LocalDate today = LocalDate.now();
-
         Map<String, Object> retirementRecord = Map.of(
                 Constants.CONTENT_ID, "content3",
                 Constants.APPROVED_AT, Instant.now().minusSeconds(86400),
                 Constants.RETIREMENT_DATE, today.plusDays(1)
         );
-
         mockHappyPath(retirementRecord);
-
         contentRetirementService.sendContentRetirementNotifications();
-
         verify(notificationService).sendNotificationForContentRetirement(
                 eq("content3"),
                 eq("Test Course"),
@@ -339,26 +327,22 @@ class ContentRetirementServiceTest {
 
     @Test
     void sendContentRetirementNotificationsToSpv_NoRequests_ShouldReturn() {
-
         when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), any()))
                 .thenReturn(Collections.emptyList());
 
         contentRetirementService.sendContentRetirementNotificationsToSpv();
-
         verifyNoInteractions(contentService);
         verifyNoInteractions(notificationService);
     }
 
     @Test
     void sendContentRetirementNotificationsToSpv_CreatedDateNotToday_ShouldSkip() {
-
         Map<String, Object> record = Map.of(
                 Constants.CONTENT_ID, "do_123",
                 Constants.CREATED_AT_FIELD, Instant.now().minus(1, ChronoUnit.DAYS),
                 Constants.USER_ID_RAISED_FIELD, "user-1",
                 Constants.RETIREMENT_DATE, LocalDate.now().plusDays(10)
         );
-
         when(cassandraOperation.getRecordsByProperties(
                 any(), any(), any(), any(), any()))
                 .thenReturn(List.of(record));
@@ -378,7 +362,6 @@ class ContentRetirementServiceTest {
                                 )
                         )
                 );
-
         when(outboundRequestHandlerService.fetchResultUsingPost(
                 anyString(), any(), any()))
                 .thenReturn(spvResponse);
@@ -395,16 +378,13 @@ class ContentRetirementServiceTest {
 
     @Test
     void sendContentRetirementNotificationsToSpv_ValidRequest_ShouldNotify() {
-
         LocalDate today = LocalDate.now();
-
         Map<String, Object> record = Map.of(
                 Constants.CONTENT_ID, "do_123",
                 Constants.CREATED_AT_FIELD, Instant.now(),
                 Constants.USER_ID_RAISED_FIELD, "requester-1",
                 Constants.RETIREMENT_DATE, today.plusDays(5)
         );
-
         when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), any()))
                 .thenReturn(List.of(record));
 
@@ -412,7 +392,6 @@ class ContentRetirementServiceTest {
                 .thenReturn(Map.of("name", "Sample Course"));
 
         mockSpvUsers(List.of("spv-1", "spv-2"));
-
         contentRetirementService.sendContentRetirementNotificationsToSpv();
 
         verify(notificationService).sendNotificationForContentRetirementSpv(
@@ -430,21 +409,16 @@ class ContentRetirementServiceTest {
 
     @Test
     void sendContentRetirementNotificationsToSpv_NoRequester_ShouldNotifyOnlySpv() {
-
         Map<String, Object> record = Map.of(
                 Constants.CONTENT_ID, "do_124",
                 Constants.CREATED_AT_FIELD, Instant.now(),
                 Constants.RETIREMENT_DATE, LocalDate.now().plusDays(7)
         );
-
         when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), any()))
                 .thenReturn(List.of(record));
-
         when(contentService.readContent(eq("do_124"), any()))
                 .thenReturn(Map.of("name", "Course X"));
-
         mockSpvUsers(List.of("spv-1"));
-
         contentRetirementService.sendContentRetirementNotificationsToSpv();
 
         verify(notificationService).sendNotificationForContentRetirementSpv(
@@ -459,25 +433,20 @@ class ContentRetirementServiceTest {
 
     @Test
     void sendContentRetirementNotificationsToSpv_NoSpvUsers_ShouldNotifyRequesterOnly() {
-
         Map<String, Object> record = Map.of(
                 Constants.CONTENT_ID, "do_125",
                 Constants.CREATED_AT_FIELD, Instant.now(),
                 Constants.USER_ID_RAISED_FIELD, "requester-2",
                 Constants.RETIREMENT_DATE, LocalDate.now().plusDays(3)
         );
-
         when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), any()))
                 .thenReturn(List.of(record));
-
         when(contentService.readContent(eq("do_125"), any()))
                 .thenReturn(Map.of("name", "Course Y"));
 
         // This now mocks props + outbound call
         mockSpvUsers(Collections.emptyList());
-
         contentRetirementService.sendContentRetirementNotificationsToSpv();
-
         ArgumentCaptor<ArrayList<String>> captor =
                 ArgumentCaptor.forClass(ArrayList.class);
 
@@ -496,7 +465,6 @@ class ContentRetirementServiceTest {
 
     @Test
     void sendContentRetirementNotificationsToSpv_RetirementDateInstant_ShouldConvert() {
-
         Map<String, Object> record = Map.of(
                 Constants.CONTENT_ID, "do_126",
                 Constants.CREATED_AT_FIELD, Instant.now(),
@@ -506,12 +474,10 @@ class ContentRetirementServiceTest {
 
         when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), any()))
                 .thenReturn(List.of(record));
-
         when(contentService.readContent(any(), any()))
                 .thenReturn(Map.of("name", "Course Z"));
 
         mockSpvUsers(List.of("spv"));
-
         contentRetirementService.sendContentRetirementNotificationsToSpv();
 
         verify(notificationService).sendNotificationForContentRetirementSpv(
@@ -522,7 +488,6 @@ class ContentRetirementServiceTest {
     private void mockSpvUsers(List<String> spvUserIds) {
         when(props.getSbUrl()).thenReturn("http://test");
         when(props.getUserSearchEndPoint()).thenReturn("/search");
-
         Map<String, Object> response = Map.of(
                 Constants.RESPONSE_CODE, "OK",
                 Constants.RESULT, Map.of(
@@ -534,7 +499,6 @@ class ContentRetirementServiceTest {
                         )
                 )
         );
-
         when(outboundRequestHandlerService.fetchResultUsingPost(
                 eq("http://test/search"),
                 any(),

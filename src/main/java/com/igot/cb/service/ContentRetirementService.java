@@ -23,18 +23,16 @@ public class ContentRetirementService {
     private final CassandraOperation cassandraOperation;
     private final ContentInfoServiceImpl contentService;
     private final NotificationService notificationService;
+    private final OutboundRequestHandlerServiceImpl outboundRequestHandlerService;
+    private final CbExtServerProperties props;
 
-    public ContentRetirementService(CassandraOperation cassandraOperation, ContentInfoServiceImpl contentService, NotificationService notificationService) {
+    public ContentRetirementService(CassandraOperation cassandraOperation, ContentInfoServiceImpl contentService, NotificationService notificationService, OutboundRequestHandlerServiceImpl outboundRequestHandlerService, CbExtServerProperties props) {
         this.cassandraOperation = cassandraOperation;
         this.contentService = contentService;
         this.notificationService = notificationService;
+        this.outboundRequestHandlerService = outboundRequestHandlerService;
+        this.props = props ;
     }
-
-    @Autowired
-    private OutboundRequestHandlerServiceImpl outboundRequestHandlerService;
-
-    @Autowired
-    private CbExtServerProperties props;
 
     public ApiResponse processDueRetirements() {
         ApiResponse response = ApiResponse.createDefaultResponse("retirement.schedule.cron");

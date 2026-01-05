@@ -11,18 +11,16 @@ import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 
 import java.lang.reflect.Field;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.time.LocalDate;
+import java.util.*;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 class NotificationServiceImplTest {
 
@@ -300,4 +298,165 @@ class NotificationServiceImplTest {
         // assert
         assertEquals(HttpStatus.OK, response.getResponseCode());
     }
+
+    @Test
+    void sendNotificationForContentRetirement_emptyUsers_shouldReturn() {
+
+        notificationService.sendNotificationForContentRetirement(
+                "do_1",
+                "Course A",
+                LocalDate.now(),
+                Collections.emptyList(),
+                Constants.CONTENT_RETIREMENT_APPROVED_NOTIFICATION
+        );
+    }
+
+    @Test
+    void sendNotificationForContentRetirement_approved_shouldSendApprovedTemplate() {
+
+        notificationService.sendNotificationForContentRetirement(
+                "do_2",
+                "Course Approved",
+                LocalDate.of(2026, 1, 10),
+                List.of("user1"),
+                Constants.CONTENT_RETIREMENT_APPROVED_NOTIFICATION
+        );
+    }
+
+    @Test
+    void sendNotificationForContentRetirement_sevenDayReminder_shouldSendReminder() {
+
+        notificationService.sendNotificationForContentRetirement(
+                "do_3",
+                "Course Reminder",
+                LocalDate.of(2026, 1, 10),
+                List.of("user1"),
+                Constants.REMINDER_NOTIFICATION_SEVEN_DAY
+        );
+    }
+
+    @Test
+    void sendNotificationForContentRetirement_oneDayReminder_shouldSendReminder() {
+
+        notificationService.sendNotificationForContentRetirement(
+                "do_4",
+                "Course Reminder",
+                LocalDate.of(2026, 1, 10),
+                List.of("user1"),
+                Constants.REMINDER_NOTIFICATION_ONE_DAY
+        );
+    }
+
+    @Test
+    void sendNotificationForContentRetirement_finalRetired_shouldSendFinalNotification() {
+
+        notificationService.sendNotificationForContentRetirement(
+                "do_5",
+                "Course Retired",
+                LocalDate.of(2026, 1, 10),
+                List.of("user1"),
+                "UNKNOWN_TYPE"
+        );
+    }
+
+    @Test
+    void sendNotificationForContentRetirement_exceptionThrown_shouldBeCaught() {
+        NotificationServiceImpl spyService = spy(notificationService);
+
+        doThrow(new RuntimeException("Boom"))
+                .when(spyService)
+                .sendInAppNotification(
+                        anyString(),
+                        anyString(),
+                        anyList(),
+                        anyMap()
+                );
+
+        assertDoesNotThrow(() ->
+                spyService.sendNotificationForContentRetirement(
+                        "do_999",
+                        "Crash Course",
+                        LocalDate.now(),
+                        List.of("user1"),
+                        Constants.CONTENT_RETIREMENT_APPROVED_NOTIFICATION
+                )
+        );
+    }
+
+    @Test
+    void sendNotificationForContentRetirementSpv_validInput_shouldSendNotification() {
+
+        NotificationServiceImpl spyService = spy(notificationService);
+
+        ArrayList<String> users = new ArrayList<>(List.of("user1", "user2"));
+        LocalDate date = LocalDate.now();
+
+        // Act
+        spyService.sendNotificationForContentRetirementSpv(
+                "do_123",
+                "Sample Course",
+                users,
+                Constants.CONTENT_RETIREMENT_SCHEDULED_NOTIFICATION,
+                date
+        );
+
+        // Assert
+        verify(spyService).sendInAppNotification(
+                eq(Constants.CONTENT_RETIREMENT_SCHEDULED_NOTIFICATION),
+                eq(Constants.ALERT),
+                eq(users),
+                argThat(message -> {
+                    Map<String, String> placeholders =
+                            (Map<String, String>) message.get(Constants.PLACE_HOLDERS);
+                    Map<String, Object> data =
+                            (Map<String, Object>) message.get(Constants.DATA);
+
+                    return "Sample Course".equals(placeholders.get(Constants.TITLE))
+                            && date.toString().equals(placeholders.get(Constants.DATE_KEY))
+                            && "do_123".equals(data.get(Constants.ID));
+                })
+        );
+    }
+
+    @Test
+    void sendNotificationForContentRetirementSpv_emptyUsers_shouldReturnEarly() {
+
+        NotificationServiceImpl spyService = spy(notificationService);
+
+        // Act
+        spyService.sendNotificationForContentRetirementSpv(
+                "do_124",
+                "Course X",
+                new ArrayList<>(),
+                Constants.CONTENT_RETIREMENT_SCHEDULED_NOTIFICATION,
+                LocalDate.now()
+        );
+
+        // Assert
+        verify(spyService, never()).sendInAppNotification(any(), any(), any(), any());
+    }
+
+    @Test
+    void sendNotificationForContentRetirementSpv_exceptionThrown_shouldBeCaught() {
+
+        NotificationServiceImpl spyService = spy(notificationService);
+
+        doThrow(new RuntimeException("Boom"))
+                .when(spyService)
+                .sendInAppNotification(any(), any(), any(), any());
+
+        ArrayList<String> users = new ArrayList<>(List.of("user1"));
+
+        assertDoesNotThrow(() ->
+                spyService.sendNotificationForContentRetirementSpv(
+                        "do_500",
+                        "Crash Course",
+                        users,
+                        Constants.CONTENT_RETIREMENT_SCHEDULED_NOTIFICATION,
+                        LocalDate.now()
+                )
+        );
+    }
+
+
 }

@@ -52,4 +52,16 @@ class ContentRetirementControllerTest {
     void constructor_ShouldInitializeService() {
         assertNotNull(contentRetirementController);
     }
+
+    @Test
+    void triggerNotificationsToSpv_ShouldCallServiceAndReturnCreatedStatus() {
+        ResponseEntity<String> response =
+                contentRetirementController.triggerNotificationsToSpv();
+        verify(contentRetirementService)
+                .sendContentRetirementNotificationsToSpv();
+
+        assertEquals(HttpStatus.CREATED, response.getStatusCode());
+        assertEquals("Notification job accepted", response.getBody());
+    }
+
 }

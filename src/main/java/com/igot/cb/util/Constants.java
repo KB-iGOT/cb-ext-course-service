@@ -524,6 +524,9 @@ public class Constants {
     public static final String DATE_KEY= "Date";
     public static final String CONTENT_RETIRED = "CONTENT_RETIRED";
     public static final String RETIRED_DATE = "retiredDate";
+    public static final String CONTENT_RETIREMENT_BY_DATE = "content_retirement_by_date";
+    public static final String CONTENT_RETIREMENT_LOOKUP_TABLE = "content_retirement_lookup";
+    public static final String REQUEST_RAISED_DATE = "request_raised_date";
 
     private Constants() {
     }

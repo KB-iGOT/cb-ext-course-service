@@ -279,7 +279,7 @@ public class CbPlanLearnerServiceImpl {
 
             if (MapUtils.isNotEmpty(contentDetails)) {
                 if (courseId.contains("_rc")) {
-                    if (Constants.VERIFIED.equalsIgnoreCase(userProfile.get(Constants.PROFILE_STATUS_KEY))) {
+                    if (Constants.VERIFIED.equalsIgnoreCase(userProfile.get(Constants.PROFILE_STATUS_LOWER_KEY))) {
                         Object secureSettingsObj = contentDetails.get(Constants.SECURE_SETTINGS);
                         if (secureSettingsObj instanceof Map<?, ?> secureSettings && !secureSettings.isEmpty()) {
                             Object orgListObj = secureSettings.get(Constants.ORGANISATION);

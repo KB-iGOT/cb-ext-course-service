@@ -289,7 +289,20 @@ public class ContentRetirementService {
             log.info("No approved retirement requests found");
             return;
         }
-        List<String> spvPublishers = fetchSpvPublishers();
+        List<Map<String, String>> spvPublishers = fetchSpvPublishers();
+        List<String> spvPublisherUserIds = new ArrayList<>();
+        List<String> spvPublisherEmails = new ArrayList<>();
+        for (Map<String, String> publisher : spvPublishers) {
+            String userId = publisher.get(Constants.USER_ID);
+            String email  = publisher.get(Constants.EMAIL);
+            if (StringUtils.hasText(userId)) {
+                spvPublisherUserIds.add(userId);
+            }
+            if (StringUtils.hasText(email)) {
+                spvPublisherEmails.add(email);
+            }
+        }
+        Set<String> finalRecipients = new HashSet<>(spvPublisherUserIds);
         for (Map<String, Object> record : retirementRequests) {
             String contentId = (String) record.get(Constants.CONTENT_ID);
             Object createdObj = record.get(Constants.CREATED_AT_FIELD);
@@ -301,10 +314,6 @@ public class ContentRetirementService {
             }
             String requestedBy = (String) record.get(Constants.USER_ID_RAISED_FIELD);
             if (createdDate == null || !createdDate.equals(today)) continue;
-            Set<String> finalRecipients = new HashSet<>(spvPublishers);
-            if (StringUtils.hasText(requestedBy)) {
-                finalRecipients.add(requestedBy);
-            }
             if (finalRecipients.isEmpty()) continue;
             log.info("Triggering retirement approved notification for content {}", contentId);
             Map<String, Object> content =
@@ -326,13 +335,13 @@ public class ContentRetirementService {
         }
     }
 
-    private List<String> fetchSpvPublishers() {
-        List<String> userIds = new ArrayList<>();
+    private List<Map<String, String>> fetchSpvPublishers() {
+        List<Map<String, String>> publishers = new ArrayList<>();
         Map<String, Object> filters = Map.of(
                 "organisations.roles", List.of("SPV_PUBLISHER"),
                 "status", 1
         );
-        List<String> userFields = List.of(Constants.USER_ID);
+        List<String> userFields = List.of(Constants.USER_ID, Constants.PROFILE_DETAILS_PERSONAL_DETAILS_MAIL) ;
         Map<String, Object> requestObject = Map.of(
                 Constants.REQUEST, Map.of(
                         Constants.QUERY, "",
@@ -351,7 +360,7 @@ public class ContentRetirementService {
         if (MapUtils.isEmpty(resp) ||
                 !"OK".equalsIgnoreCase(String.valueOf(resp.get(Constants.RESPONSE_CODE)))) {
             log.error("[FETCH-SPV][FAILED] Invalid response {}", resp);
-            return userIds;
+            return publishers;
         }
 
         Object contentsObj = Optional.ofNullable(resp.get(Constants.RESULT))
@@ -362,26 +371,34 @@ public class ContentRetirementService {
                 .map(Map.class::cast)
                 .map(response -> response.get(Constants.CONTENT))
                 .orElse(null);
-
         if (!(contentsObj instanceof List<?> contents)) {
             log.warn("[FETCH-SPV][EMPTY] No content in response");
-            return userIds;
+            return publishers;
         }
-
         for (Object item : contents) {
             if (!(item instanceof Map<?, ?> content)) continue;
 
             Object userIdObj = content.get(Constants.USER_ID);
-            if (userIdObj instanceof String userId && StringUtils.hasText(userId)) {
-                userIds.add(userId);
-            }
+            if (!(userIdObj instanceof String userId) || !StringUtils.hasText(userId)) continue;
+
+            Object profileDetailsObj = content.get(Constants.PROFILE_DETAILS);
+            if (!(profileDetailsObj instanceof Map<?, ?> profileDetails)) continue;
+
+            Object personalDetailsObj = profileDetails.get(Constants.PERSONAL_DETAILS);
+            if (!(personalDetailsObj instanceof Map<?, ?> personalDetails)) continue;
+
+            Object emailObj = personalDetails.get(Constants.PRIMARY_EMAIL);
+            if (!(emailObj instanceof String email) || !StringUtils.hasText(email)) continue;
+
+            Map<String, String> record = new HashMap<>();
+            record.put(Constants.USER_ID, userId);
+            record.put(Constants.EMAIL, email);
+
+            publishers.add(record);
         }
-
-        log.info("[FETCH-SPV][SUCCESS] totalPublishers={}", userIds.size());
-        return userIds.stream().distinct().toList();
+        log.info("[FETCH-SPV][SUCCESS] totalPublishers={}", publishers.size());
+        return publishers;
     }
-
-
 
 }
 

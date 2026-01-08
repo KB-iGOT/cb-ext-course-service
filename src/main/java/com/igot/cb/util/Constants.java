@@ -523,7 +523,7 @@ public class Constants {
     public static final String TITLE= "title";
     public static final String DATE_KEY= "Date";
     public static final String CONTENT_RETIRED = "CONTENT_RETIRED";
-    public static final String RETIRED_DATE = "retiredDate";
+    public static final String PROFILE_DETAILS_PERSONAL_DETAILS_MAIL = "profileDetails.personalDetails.primaryEmail";
 
     private Constants() {
     }

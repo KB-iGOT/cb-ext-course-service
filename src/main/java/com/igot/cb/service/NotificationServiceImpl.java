@@ -523,7 +523,7 @@ public class NotificationServiceImpl implements NotificationService {
             Map<String, Object> mailRequestMap = new HashMap<>();
             mailRequestMap.put(Constants.SUBJECT, Constants.RETIREMENT_SCHEDULED_SUBJECT.replace(Constants.COURSE_NAME_TAG, contentName));
             mailRequestMap.put(Constants.PARAMS, params);
-//            emails.add("ruksanafeb2020@gmail.com");
+
             mailRequestMap.put(Constants.BCC_IDS, emails);
             mailRequestMap.put(Constants.USER_ID, requestedBy);
             sendInAppNotification(subCategory, Constants.ALERT, userIds, message);

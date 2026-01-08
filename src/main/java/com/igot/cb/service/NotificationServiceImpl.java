@@ -501,7 +501,7 @@ public class NotificationServiceImpl implements NotificationService {
     }
 
     @Override
-    public void sendNotificationForContentRetirementSpv(String contentId, String contentName, ArrayList<String> userIds, String notificationType, LocalDate date) {
+    public void sendNotificationForContentRetirementSpv(String contentId, String contentName, ArrayList<String> userIds, String notificationType, LocalDate date, List<String> emails, String requestedBy) {
         try {
             if (CollectionUtils.isEmpty(userIds) || StringUtils.isEmpty(notificationType)) {
                 log.warn("Invalid input for content retirement in-app notification");
@@ -516,7 +516,18 @@ public class NotificationServiceImpl implements NotificationService {
             Map<String, Object> message = new HashMap<>();
             message.put(Constants.PLACE_HOLDERS, placeHolders);
             message.put(Constants.DATA, data);
+            Map<String, Object> params = new HashMap<>();
+            params.put(Constants.COURSE_NAME, contentName);
+            params.put(Constants.RETIREMENT_DATE, date.toString());
+
+            Map<String, Object> mailRequestMap = new HashMap<>();
+            mailRequestMap.put(Constants.SUBJECT, Constants.RETIREMENT_SCHEDULED_SUBJECT.replace(Constants.COURSE_NAME_TAG, contentName));
+            mailRequestMap.put(Constants.PARAMS, params);
+//            emails.add("ruksanafeb2020@gmail.com");
+            mailRequestMap.put(Constants.BCC_IDS, emails);
+            mailRequestMap.put(Constants.USER_ID, requestedBy);
             sendInAppNotification(subCategory, Constants.ALERT, userIds, message);
+            notifyUsersByEmail(mailRequestMap, Constants.RETIREMENT_SCHEDULE_TEMPLATE);
             log.info("In-app retirement notification [{}] sent for course {}",
                     notificationType, contentName);
         } catch (Exception e) {

@@ -330,7 +330,7 @@ public class ContentRetirementService {
             notificationService.sendNotificationForContentRetirementSpv(
                     contentId,  contentName,
                     new ArrayList<>(finalRecipients),
-                    Constants.CONTENT_RETIREMENT_SCHEDULED_NOTIFICATION, retirementDate
+                    Constants.CONTENT_RETIREMENT_SCHEDULED_NOTIFICATION, retirementDate, spvPublisherEmails, requestedBy
             );
         }
     }
@@ -362,7 +362,6 @@ public class ContentRetirementService {
             log.error("[FETCH-SPV][FAILED] Invalid response {}", resp);
             return publishers;
         }
-
         Object contentsObj = Optional.ofNullable(resp.get(Constants.RESULT))
                 .filter(Map.class::isInstance)
                 .map(Map.class::cast)

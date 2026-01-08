@@ -18,5 +18,5 @@ public interface NotificationService {
 
     void sendNotificationForContentRetirement(String contentId, String contentName, LocalDate retirementDate, List<String> userId, String notificationType);
 
-    void sendNotificationForContentRetirementSpv(String contentId, String contentName, ArrayList<String> strings, String notificationType, LocalDate date);
+    void sendNotificationForContentRetirementSpv(String contentId, String contentName, ArrayList<String> strings, String notificationType, LocalDate date, List<String> emails, String requestedBy);
 }

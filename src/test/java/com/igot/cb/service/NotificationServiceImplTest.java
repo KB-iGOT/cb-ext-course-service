@@ -392,12 +392,19 @@ class NotificationServiceImplTest {
         LocalDate date = LocalDate.now();
 
         // Act
+        List<String> emails = List.of(
+                "rkspvpublisher@yopmail.com",
+                "tarento.spv.publisher@yopmail.com"
+        );
+        String requestedBy = "91c9351f-803b-44d0-92a1-31f033bf3cc5";
         spyService.sendNotificationForContentRetirementSpv(
                 "do_123",
                 "Sample Course",
-                users,
+                new ArrayList<>(users),
                 Constants.CONTENT_RETIREMENT_SCHEDULED_NOTIFICATION,
-                date
+                LocalDate.now(),
+                emails,
+                requestedBy
         );
 
         // Assert
@@ -424,12 +431,18 @@ class NotificationServiceImplTest {
         NotificationServiceImpl spyService = spy(notificationService);
 
         // Act
+        List<String> emails = List.of(
+                "rkspvpublisher@yopmail.com",
+                "tarento.spv.publisher@yopmail.com"
+        );
+        String requestedBy = "91c9351f-803b-44d0-92a1-31f033bf3cc5";
         spyService.sendNotificationForContentRetirementSpv(
                 "do_124",
                 "Course X",
                 new ArrayList<>(),
                 Constants.CONTENT_RETIREMENT_SCHEDULED_NOTIFICATION,
-                LocalDate.now()
+                LocalDate.now(),
+                emails, requestedBy
         );
 
         // Assert
@@ -446,14 +459,19 @@ class NotificationServiceImplTest {
                 .sendInAppNotification(any(), any(), any(), any());
 
         ArrayList<String> users = new ArrayList<>(List.of("user1"));
-
+        List<String> emails = List.of(
+                "rkspvpublisher@yopmail.com",
+                "tarento.spv.publisher@yopmail.com"
+        );
+        String requestedBy = "91c9351f-803b-44d0-92a1-31f033bf3cc5";
         assertDoesNotThrow(() ->
                 spyService.sendNotificationForContentRetirementSpv(
                         "do_500",
                         "Crash Course",
                         users,
                         Constants.CONTENT_RETIREMENT_SCHEDULED_NOTIFICATION,
-                        LocalDate.now()
+                        LocalDate.now(),
+                        emails, requestedBy
                 )
         );
     }

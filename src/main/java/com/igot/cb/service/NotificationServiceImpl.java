@@ -474,15 +474,16 @@ public class NotificationServiceImpl implements NotificationService {
                 placeHolders.put(Constants.RETIREMENT_DATE, retirementDate.toString());
                 subCategory = Constants.APPROVED_CONTENT_RETIREMENT;
             } else if (Constants.REMINDER_NOTIFICATION_SEVEN_DAY.equals(notificationType)) {
-                placeHolders.put(Constants.REMINDER_TYPE, "7 Days Before");
                 placeHolders.put(Constants.RETIREMENT_DATE, retirementDate.toString());
                 subCategory = Constants.SEVEN_DAYS_BEFORE_CONTENT_RETIREMENT;
             } else if (Constants.REMINDER_NOTIFICATION_ONE_DAY.equals(notificationType)) {
-                placeHolders.put(Constants.REMINDER_TYPE, "1 Day Before");
                 placeHolders.put(Constants.RETIREMENT_DATE, retirementDate.toString());
                 subCategory = Constants.ONE_DAYS_BEFORE_CONTENT_RETIREMENT;
-            } else {
+            } else if (Constants.CONTENT_RETIRED.equals(notificationType)) {
                 subCategory = Constants.CONTENT_RETIRED;
+            } else {
+                log.warn("Unknown notification type received: {}", notificationType);
+                return;
             }
 
             Map<String, Object> data = new HashMap<>();

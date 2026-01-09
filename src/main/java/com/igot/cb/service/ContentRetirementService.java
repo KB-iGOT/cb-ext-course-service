@@ -137,23 +137,30 @@ public class ContentRetirementService {
 
         log.info("Running content retirement notification job for {}", today);
 
-        Map<String, Object> properties = Map.of(
-                Constants.STATUS, Constants.APPROVED
-        );
+        List<Map<String, Object>> retirementRequests = new ArrayList<>();
 
-        List<Map<String, Object>> retirementRequests =
-                cassandraOperation.getRecordsByProperties(
-                        Constants.KEYSPACE_SUNBIRD_COURSE,
-                        Constants.CONTENT_RETIREMENT_REQUEST_TABLE,
-                        properties,
-                        Arrays.asList(
-                                Constants.CONTENT_ID_KEY,
-                                Constants.APPROVED_AT,
-                                Constants.RETIREMENT_DATE_NOTIFICATION
-                        ),
-                        null
-                );
+        for (String status : List.of(Constants.APPROVED, Constants.RETIRED)) {
 
+            Map<String, Object> properties = Map.of(Constants.STATUS, status);
+
+            List<Map<String, Object>> records =
+                    cassandraOperation.getRecordsByProperties(
+                            Constants.KEYSPACE_SUNBIRD_COURSE,
+                            Constants.CONTENT_RETIREMENT_REQUEST_TABLE,
+                            properties,
+                            List.of(
+                                    Constants.CONTENT_ID_KEY,
+                                    Constants.APPROVED_AT,
+                                    Constants.RETIREMENT_DATE_NOTIFICATION,
+                                    Constants.STATUS
+                            ),
+                            null
+                    );
+
+            if (!CollectionUtils.isEmpty(records)) {
+                retirementRequests.addAll(records);
+            }
+        }
         if (CollectionUtils.isEmpty(retirementRequests)) {
             log.info("No approved retirement requests found");
         }
@@ -161,6 +168,7 @@ public class ContentRetirementService {
         for (Map<String, Object> record : retirementRequests) {
 
             String contentId = (String) record.get(Constants.CONTENT_ID);
+            Object status = record.get(Constants.STATUS);
             Instant approvedInstant =
                     (Instant) record.get(Constants.APPROVED_AT);
 
@@ -171,12 +179,19 @@ public class ContentRetirementService {
 
             String notificationType = null;
 
-            if (approvedDate != null && approvedDate.equals(today)) {
-                notificationType = Constants.CONTENT_RETIREMENT_APPROVED_NOTIFICATION;
-            } else if (retirementDate != null && retirementDate.equals(today.plusDays(1))) {
-                notificationType = Constants.REMINDER_NOTIFICATION_ONE_DAY;
-            } else if (retirementDate != null && retirementDate.equals(today.plusDays(7))) {
-                notificationType = Constants.REMINDER_NOTIFICATION_SEVEN_DAY;
+            if (Constants.APPROVED.equals(status)) {
+                if (approvedDate != null && approvedDate.equals(today)) {
+                    notificationType = Constants.CONTENT_RETIREMENT_APPROVED_NOTIFICATION;
+                } else if (retirementDate != null && retirementDate.equals(today.plusDays(1))) {
+                    notificationType = Constants.REMINDER_NOTIFICATION_ONE_DAY;
+                } else if (retirementDate != null && retirementDate.equals(today.plusDays(7))) {
+                    notificationType = Constants.REMINDER_NOTIFICATION_SEVEN_DAY;
+                }
+            }else if (Constants.RETIRED.equals(status))
+            {
+                if (retirementDate != null && retirementDate.equals(today)) {
+                    notificationType = Constants.CONTENT_RETIRED;
+                }
             }
 
             if (!StringUtils.hasText(notificationType)) {

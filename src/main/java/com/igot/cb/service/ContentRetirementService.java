@@ -113,6 +113,9 @@ public class ContentRetirementService {
                 result.put(Constants.RETIRED, true);
                 result.put(Constants.MESSAGE, "Content retired successfully");
 
+                LocalDate retirementDate = (LocalDate) retirementRecord.get(Constants.RETIREMENT_DATE);
+                validateAndSendInAppLearerNotification(contentId, Constants.CONTENT_RETIRED, retirementDate);
+
             } else {
                 log.warn("Retirement API returned empty response for {}", contentId);
 
@@ -184,88 +187,8 @@ public class ContentRetirementService {
             }
 
             log.info("Triggering {} notification for content {}", notificationType, contentId);
+            validateAndSendInAppLearerNotification(contentId, notificationType, retirementDate);
 
-            Map<String, Object> content =
-                    contentService.readContent(contentId, Arrays.asList("name", "batches"));
-
-            List<Map<String, Object>> batches =
-                    (List<Map<String, Object>>) content.get("batches");
-
-            if (CollectionUtils.isEmpty(batches)) {
-                log.info("No batches found for content {}", contentId);
-                continue;
-            }
-
-            for (Map<String, Object> batch : batches) {
-
-                String batchId = (String) batch.get(Constants.BATCH_ID);
-
-                List<Map<String, Object>> batchUsers =
-                        cassandraOperation.getRecordsByProperties(
-                                Constants.KEYSPACE_SUNBIRD_COURSE,
-                                Constants.ENROLLMENT_BATCH_LOOKUP,
-                                Map.of(Constants.BATCH_ID, batchId),
-                                Arrays.asList(Constants.USER_ID),
-                                null
-                        );
-
-                if (CollectionUtils.isEmpty(batchUsers)) {
-                    continue;
-                }
-
-                for (Map<String, Object> batchUser : batchUsers) {
-
-                    String userId = (String) batchUser.get(Constants.USER_ID);
-                    Map<String, Object> enrolmentProperties = Map.of(
-                            Constants.USER_ID, userId,
-                            Constants.COURSE_ID, contentId,
-                            Constants.BATCH_ID, batchId
-                    );
-
-                    List<Map<String, Object>> enrolment =
-                            cassandraOperation.getRecordsByProperties(
-                                    Constants.KEYSPACE_SUNBIRD_COURSE,
-                                    Constants.USER_ENROLMENTS_V2_TABLE,
-                                    enrolmentProperties,
-                                    null,
-                                    null
-                            );
-
-                    if (CollectionUtils.isEmpty(enrolment)) {
-                        continue;
-                    }
-
-                    List<Map<String, Object>> eligibleEnrolments =
-                            enrolment.stream()
-                                    .filter(Objects::nonNull)
-                                    .filter(e -> {
-                                        Object statusObj = e.get(Constants.STATUS);
-                                        Object activeObj = e.get(Constants.ACTIVE);
-                                        Object certificates = e.get(Constants.ISSUED_CERTIFICATES);
-
-                                        return statusObj instanceof Integer
-                                                && activeObj instanceof Boolean
-                                                && !Objects.equals(statusObj, 2)
-                                                && (certificates == null || ((List<?>) certificates).isEmpty())
-                                                && Boolean.TRUE.equals(activeObj);
-                                    })
-                                    .toList();
-
-
-                    if (CollectionUtils.isEmpty(eligibleEnrolments)) {
-                        continue;
-                    }
-                    String courseName = (String) content.get(Constants.NAME);
-                    notificationService.sendNotificationForContentRetirement(
-                            contentId,
-                            courseName,
-                            retirementDate,
-                            List.of(userId),
-                            notificationType
-                    );
-
-                }
-            }
         }
     }
 
@@ -399,5 +322,92 @@ public class ContentRetirementService {
         return publishers;
     }
 
+    private void validateAndSendInAppLearerNotification(String contentId, String notificationType, LocalDate retirementDate) {
+        try {
+            Map<String, Object> content =
+                    contentService.readContent(contentId, Arrays.asList("name", "batches"));
+
+            List<Map<String, Object>> batches =
+                    (List<Map<String, Object>>) content.get("batches");
+
+            if (CollectionUtils.isEmpty(batches)) {
+                log.info("No batches found for content {}", contentId);
+                return;
+            }
+
+            for (Map<String, Object> batch : batches) {
+
+                String batchId = (String) batch.get(Constants.BATCH_ID);
+
+                List<Map<String, Object>> batchUsers =
+                        cassandraOperation.getRecordsByProperties(
+                                Constants.KEYSPACE_SUNBIRD_COURSE,
+                                Constants.ENROLLMENT_BATCH_LOOKUP,
+                                Map.of(Constants.BATCH_ID, batchId),
+                                Arrays.asList(Constants.USER_ID),
+                                null
+                        );
+
+                if (CollectionUtils.isEmpty(batchUsers)) {
+                    continue;
+                }
+
+                for (Map<String, Object> batchUser : batchUsers) {
+
+                    String userId = (String) batchUser.get(Constants.USER_ID);
+                    Map<String, Object> enrolmentProperties = Map.of(
+                            Constants.USER_ID, userId,
+                            Constants.COURSE_ID, contentId,
+                            Constants.BATCH_ID, batchId
+                    );
+
+                    List<Map<String, Object>> enrolment =
+                            cassandraOperation.getRecordsByProperties(
+                                    Constants.KEYSPACE_SUNBIRD_COURSE,
+                                    Constants.USER_ENROLMENTS_V2_TABLE,
+                                    enrolmentProperties,
+                                    null,
+                                    null
+                            );
+
+                    if (CollectionUtils.isEmpty(enrolment)) {
+                        continue;
+                    }
+
+                    List<Map<String, Object>> eligibleEnrolments =
+                            enrolment.stream()
+                                    .filter(Objects::nonNull)
+                                    .filter(e -> {
+                                        Object statusObj = e.get(Constants.STATUS);
+                                        Object activeObj = e.get(Constants.ACTIVE);
+                                        Object certificates = e.get(Constants.ISSUED_CERTIFICATES);
+
+                                        return statusObj instanceof Integer
+                                                && activeObj instanceof Boolean
+                                                && !Objects.equals(statusObj, 2)
+                                                && (certificates == null || ((List<?>) certificates).isEmpty())
+                                                && Boolean.TRUE.equals(activeObj);
+                                    })
+                                    .toList();
+
+
+                    if (CollectionUtils.isEmpty(eligibleEnrolments)) {
+                        continue;
+                    }
+                    String courseName = (String) content.get(Constants.NAME);
+                    notificationService.sendNotificationForContentRetirement(
+                            contentId,
+                            courseName,
+                            retirementDate,
+                            List.of(userId),
+                            notificationType
+                    );
+
+                }
+            }
+        } catch (Exception e) {
+            log.error("Error while sending in-app notification for content retirement", e);
+        }
+    }
 }
 

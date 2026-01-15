@@ -195,14 +195,16 @@ public class ContentRetirementService {
     public void sendContentRetirementNotificationsToSpv() {
         LocalDate today = LocalDate.now();
         log.info("Running content retirement notification job for spv admins {}", today);
+        Map<String, Object> propertiesMap = new HashMap<>();
+        propertiesMap.put("created_date", today);
         List<Map<String, Object>> retirementRequests =
                 cassandraOperation.getRecordsByProperties(
                         Constants.KEYSPACE_SUNBIRD_COURSE,
-                        Constants.CONTENT_RETIREMENT_REQUEST_TABLE,
-                        null,
+                        Constants.CONTENT_RETIREMENT_CREATED_DATE_VIEW,
+                        propertiesMap,
                         Arrays.asList(
                                 Constants.CONTENT_ID_KEY,
-                                Constants.CREATED_AT_FIELD,
+                                Constants.CREATED_DATE,
                                 Constants.USER_ID_RAISED_FIELD,
                                 Constants.RETIREMENT_DATE_KEY
                         ),
@@ -228,7 +230,7 @@ public class ContentRetirementService {
         Set<String> finalRecipients = new HashSet<>(spvPublisherUserIds);
         for (Map<String, Object> record : retirementRequests) {
             String contentId = (String) record.get(Constants.CONTENT_ID);
-            Object createdObj = record.get(Constants.CREATED_AT_FIELD);
+            Object createdObj = record.get(Constants.CREATED_DATE);
             LocalDate createdDate = null;
             if (createdObj instanceof Instant instant) {
                 createdDate = instant.atZone(ZoneId.systemDefault()).toLocalDate();

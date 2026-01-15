@@ -528,6 +528,11 @@ public class Constants {
     public static final String RETIREMENT_SCHEDULED_SUBJECT = "Retirement Scheduled for #courseName";
     public static final String COURSE_NAME_TAG = "#courseName";
     public static final String RETIREMENT_SCHEDULE_TEMPLATE = "contentretirementSchedule";
+    public static final String LEARNING_PATHWAY = "Learning Pathway";
+    public static final String TABLE_USER_ROLES = "user_roles";
+    public static final String ROLE = "role";
+    public static final String BATCHES = "batches";
+    public static final String SPV_PUBLISHER = "SPV_PUBLISHER";
 
     private Constants() {
     }

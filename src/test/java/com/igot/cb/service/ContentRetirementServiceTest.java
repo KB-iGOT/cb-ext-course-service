@@ -156,7 +156,7 @@ class ContentRetirementServiceTest {
         ApiResponse response = contentRetirementService.processDueRetirements();
 
         List<Map<String, Object>> contentList = (List<Map<String, Object>>) response.getResult().get(Constants.CONTENT);
-        assertEquals(2, contentList.size()); // Only content1 and content2 should be processed
+        assertEquals(2, contentList.size());
         
         verify(contentService).retireContent("content1");
         verify(contentService).retireContent("content2");
@@ -375,7 +375,7 @@ class ContentRetirementServiceTest {
 
         Map<String, Object> retirementRecord = new HashMap<>();
         retirementRecord.put(Constants.CONTENT_ID, "content4");
-        retirementRecord.put(Constants.STATUS, Constants.APPROVED); // ✅ REQUIRED
+        retirementRecord.put(Constants.STATUS, Constants.APPROVED);
         retirementRecord.put(Constants.RETIREMENT_DATE, today.plusDays(7));
 
         // Retirement-date table
@@ -503,7 +503,7 @@ class ContentRetirementServiceTest {
 
         Map<String, Object> record = new HashMap<>();
         record.put(Constants.CONTENT_ID, "do_123");
-        record.put(Constants.CREATED_DATE, today); // ✅ FIX
+        record.put(Constants.CREATED_DATE, today); 
         record.put(Constants.USER_ID_RAISED_FIELD, "requester-1");
         record.put(Constants.RETIREMENT_DATE, today.plusDays(5));
 
@@ -530,7 +530,7 @@ class ContentRetirementServiceTest {
 
         Map<String, Object> record = new HashMap<>();
         record.put(Constants.CONTENT_ID, "do_124");
-        record.put(Constants.CREATED_DATE, today); // ✅ FIX
+        record.put(Constants.CREATED_DATE, today); 
         record.put(Constants.RETIREMENT_DATE, today.plusDays(7));
         // NOTE: no USER_ID_RAISED_FIELD on purpose
 
@@ -547,7 +547,7 @@ class ContentRetirementServiceTest {
                 eq(Constants.CONTENT_RETIREMENT_SCHEDULED_NOTIFICATION),
                 eq(today.plusDays(7)),
                 argThat(emails -> emails.contains("spv-1@test.com")),
-                isNull()   // requester is null → correct expectation
+                isNull()   
         );
     }
 
@@ -572,7 +572,7 @@ class ContentRetirementServiceTest {
     void sendContentRetirementNotificationsToSpv_RetirementDateInstant_ShouldConvert() {
         Map<String, Object> record = new HashMap<>();
         record.put(Constants.CONTENT_ID, "do_126");
-        record.put(Constants.CREATED_DATE, Instant.now()); // ✅ FIX + Instant
+        record.put(Constants.CREATED_DATE, Instant.now()); 
         record.put(Constants.USER_ID_RAISED_FIELD, "user-x");
         record.put(Constants.RETIREMENT_DATE, LocalDate.now().plusDays(10));
 
@@ -588,7 +588,7 @@ class ContentRetirementServiceTest {
                 eq("Course Z"),
                 argThat(list -> list.contains("spv")),
                 eq(Constants.CONTENT_RETIREMENT_SCHEDULED_NOTIFICATION),
-                any(LocalDate.class),        // ← converted from Instant
+                any(LocalDate.class),        
                 argThat(emails -> emails.contains("spv@test.com")),
                 eq("user-x")
         );

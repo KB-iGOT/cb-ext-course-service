@@ -528,6 +528,11 @@ public class Constants {
     public static final String RETIREMENT_SCHEDULED_SUBJECT = "Retirement Scheduled for #courseName";
     public static final String COURSE_NAME_TAG = "#courseName";
     public static final String RETIREMENT_SCHEDULE_TEMPLATE = "contentretirementSchedule";
+    public static final String CONTENT_RETIREMENT_BY_RETIREMENT_DATE_TABLE = "content_retirement_by_retirement_date";
+    public static final String CONTENT_RETIREMENT_BY_CREATED_DATE_TABLE = "content_retirement_by_created_date";
+    public static final String CREATED_DATE = "created_date";
+    public static final String CONTENT_RETIREMENT_BY_APPROVED_DATE_TABLE = "content_retirement_by_approved_date";
+    public static final String APPROVED_DATE = "approved_date";
 
     private Constants() {
     }

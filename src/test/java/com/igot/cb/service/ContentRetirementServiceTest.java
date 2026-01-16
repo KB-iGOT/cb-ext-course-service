@@ -156,7 +156,7 @@ class ContentRetirementServiceTest {
         ApiResponse response = contentRetirementService.processDueRetirements();
 
         List<Map<String, Object>> contentList = (List<Map<String, Object>>) response.getResult().get(Constants.CONTENT);
-        assertEquals(2, contentList.size()); // Only content1 and content2 should be processed
+        assertEquals(2, contentList.size());
         
         verify(contentService).retireContent("content1");
         verify(contentService).retireContent("content2");
@@ -172,12 +172,14 @@ class ContentRetirementServiceTest {
 
         verify(cassandraOperation).getRecordsByProperties(
                 eq(Constants.KEYSPACE_SUNBIRD_COURSE),
-                eq(Constants.CONTENT_RETIREMENT_REQUEST_TABLE),
-                argThat(map -> Constants.APPROVED.equals(map.get(Constants.STATUS))),
-                argThat(fields -> fields.contains(Constants.CONTENT_ID_KEY) && 
+                eq(Constants.CONTENT_RETIREMENT_BY_RETIREMENT_DATE_TABLE),
+                argThat(map -> map.containsKey(Constants.RETIREMENT_DATE_KEY)),
+                argThat(fields ->
+                        fields.contains(Constants.CONTENT_ID_KEY) &&
                                 fields.contains(Constants.REQUEST_ID_KEY) &&
                                 fields.contains(Constants.RETIREMENT_DATE_KEY) &&
-                                fields.contains(Constants.STATUS)),
+                                fields.contains(Constants.STATUS)
+                ),
                 isNull()
         );
     }
@@ -205,17 +207,57 @@ class ContentRetirementServiceTest {
     @Test
     void sendContentRetirementNotifications_ApprovedToday_ShouldSendApprovedNotification() {
         LocalDate today = LocalDate.now();
-        Map<String, Object> retirementRecord = Map.of(
-                Constants.CONTENT_ID, "content1",
-                Constants.APPROVED_AT, Instant.now(),
-                Constants.RETIREMENT_DATE, today.plusDays(10)
-        );
-        mockHappyPath(retirementRecord);
+
+        Map<String, Object> record = new HashMap<>();
+        record.put(Constants.CONTENT_ID, "content1");
+        record.put(Constants.STATUS, Constants.APPROVED);
+        record.put(Constants.APPROVED_DATE, today);
+        record.put(Constants.RETIREMENT_DATE, today.plusDays(10));
+
+        // Approved-date lookup
+        when(cassandraOperation.getRecordsByProperties(
+                eq(Constants.KEYSPACE_SUNBIRD_COURSE),
+                eq(Constants.CONTENT_RETIREMENT_BY_APPROVED_DATE_TABLE),
+                any(), any(), any()
+        )).thenReturn(List.of(record));
+
+        // Retirement-date lookup (not used here, but called)
+        when(cassandraOperation.getRecordsByProperties(
+                eq(Constants.KEYSPACE_SUNBIRD_COURSE),
+                eq(Constants.CONTENT_RETIREMENT_BY_RETIREMENT_DATE_TABLE),
+                any(), any(), any()
+        )).thenReturn(Collections.emptyList());
+
+        // REQUIRED: content with batches
+        when(contentService.readContent(eq("content1"), any()))
+                .thenReturn(Map.of(
+                        Constants.NAME, "Test Course",
+                        "batches", List.of(Map.of(Constants.BATCH_ID, "batch1"))
+                ));
+
+        //REQUIRED: batch users
+        when(cassandraOperation.getRecordsByProperties(
+                eq(Constants.KEYSPACE_SUNBIRD_COURSE),
+                eq(Constants.ENROLLMENT_BATCH_LOOKUP),
+                any(), any(), any()
+        )).thenReturn(List.of(Map.of(Constants.USER_ID, "user1")));
+
+        //REQUIRED: eligible enrolment
+        when(cassandraOperation.getRecordsByProperties(
+                eq(Constants.KEYSPACE_SUNBIRD_COURSE),
+                eq(Constants.USER_ENROLMENTS_V2_TABLE),
+                any(), any(), any()
+        )).thenReturn(List.of(Map.of(
+                Constants.STATUS, 1,
+                Constants.ACTIVE, true,
+                Constants.ISSUED_CERTIFICATES, Collections.emptyList()
+        )));
+
         contentRetirementService.sendContentRetirementNotifications();
         verify(notificationService).sendNotificationForContentRetirement(
                 eq("content1"),
                 eq("Test Course"),
-                any(),
+                eq(today.plusDays(10)),
                 eq(List.of("user1")),
                 eq(Constants.CONTENT_RETIREMENT_APPROVED_NOTIFICATION)
         );
@@ -224,17 +266,51 @@ class ContentRetirementServiceTest {
     @Test
     void sendContentRetirementNotifications_SevenDaysBefore_ShouldSendSevenDayReminder() {
         LocalDate today = LocalDate.now();
-        Map<String, Object> retirementRecord = Map.of(
-                Constants.CONTENT_ID, "content2",
-                Constants.APPROVED_AT, Instant.now().minusSeconds(86400),
-                Constants.RETIREMENT_DATE, today.plusDays(7)
-        );
-        mockHappyPath(retirementRecord);
+
+        Map<String, Object> record = new HashMap<>();
+        record.put(Constants.CONTENT_ID, "content2");
+        record.put(Constants.STATUS, Constants.APPROVED);
+        record.put(Constants.RETIREMENT_DATE, today.plusDays(7));
+
+        when(cassandraOperation.getRecordsByProperties(
+                eq(Constants.KEYSPACE_SUNBIRD_COURSE),
+                eq(Constants.CONTENT_RETIREMENT_BY_RETIREMENT_DATE_TABLE),
+                any(), any(), any()
+        )).thenReturn(List.of(record));
+
+        when(cassandraOperation.getRecordsByProperties(
+                eq(Constants.KEYSPACE_SUNBIRD_COURSE),
+                eq(Constants.CONTENT_RETIREMENT_BY_APPROVED_DATE_TABLE),
+                any(), any(), any()
+        )).thenReturn(Collections.emptyList());
+
+        when(contentService.readContent(eq("content2"), any()))
+                .thenReturn(Map.of(
+                        Constants.NAME, "Test Course",
+                        "batches", List.of(Map.of(Constants.BATCH_ID, "batch1"))
+                ));
+
+        when(cassandraOperation.getRecordsByProperties(
+                eq(Constants.KEYSPACE_SUNBIRD_COURSE),
+                eq(Constants.ENROLLMENT_BATCH_LOOKUP),
+                any(), any(), any()
+        )).thenReturn(List.of(Map.of(Constants.USER_ID, "user1")));
+
+        when(cassandraOperation.getRecordsByProperties(
+                eq(Constants.KEYSPACE_SUNBIRD_COURSE),
+                eq(Constants.USER_ENROLMENTS_V2_TABLE),
+                any(), any(), any()
+        )).thenReturn(List.of(Map.of(
+                Constants.STATUS, 1,
+                Constants.ACTIVE, true,
+                Constants.ISSUED_CERTIFICATES, Collections.emptyList()
+        )));
+
         contentRetirementService.sendContentRetirementNotifications();
         verify(notificationService).sendNotificationForContentRetirement(
                 eq("content2"),
                 eq("Test Course"),
-                any(),
+                eq(today.plusDays(7)),
                 eq(List.of("user1")),
                 eq(Constants.REMINDER_NOTIFICATION_SEVEN_DAY)
         );
@@ -243,17 +319,51 @@ class ContentRetirementServiceTest {
     @Test
     void sendContentRetirementNotifications_OneDayBefore_ShouldSendOneDayReminder() {
         LocalDate today = LocalDate.now();
-        Map<String, Object> retirementRecord = Map.of(
-                Constants.CONTENT_ID, "content3",
-                Constants.APPROVED_AT, Instant.now().minusSeconds(86400),
-                Constants.RETIREMENT_DATE, today.plusDays(1)
-        );
-        mockHappyPath(retirementRecord);
+
+        Map<String, Object> record = new HashMap<>();
+        record.put(Constants.CONTENT_ID, "content3");
+        record.put(Constants.STATUS, Constants.APPROVED);
+        record.put(Constants.RETIREMENT_DATE, today.plusDays(1));
+
+        when(cassandraOperation.getRecordsByProperties(
+                eq(Constants.KEYSPACE_SUNBIRD_COURSE),
+                eq(Constants.CONTENT_RETIREMENT_BY_RETIREMENT_DATE_TABLE),
+                any(), any(), any()
+        )).thenReturn(List.of(record));
+
+        when(cassandraOperation.getRecordsByProperties(
+                eq(Constants.KEYSPACE_SUNBIRD_COURSE),
+                eq(Constants.CONTENT_RETIREMENT_BY_APPROVED_DATE_TABLE),
+                any(), any(), any()
+        )).thenReturn(Collections.emptyList());
+
+        when(contentService.readContent(eq("content3"), any()))
+                .thenReturn(Map.of(
+                        Constants.NAME, "Test Course",
+                        "batches", List.of(Map.of(Constants.BATCH_ID, "batch1"))
+                ));
+
+        when(cassandraOperation.getRecordsByProperties(
+                eq(Constants.KEYSPACE_SUNBIRD_COURSE),
+                eq(Constants.ENROLLMENT_BATCH_LOOKUP),
+                any(), any(), any()
+        )).thenReturn(List.of(Map.of(Constants.USER_ID, "user1")));
+
+        when(cassandraOperation.getRecordsByProperties(
+                eq(Constants.KEYSPACE_SUNBIRD_COURSE),
+                eq(Constants.USER_ENROLMENTS_V2_TABLE),
+                any(), any(), any()
+        )).thenReturn(List.of(Map.of(
+                Constants.STATUS, 1,
+                Constants.ACTIVE, true,
+                Constants.ISSUED_CERTIFICATES, Collections.emptyList()
+        )));
+
         contentRetirementService.sendContentRetirementNotifications();
         verify(notificationService).sendNotificationForContentRetirement(
                 eq("content3"),
                 eq("Test Course"),
-                any(),
+                eq(today.plusDays(1)),
                 eq(List.of("user1")),
                 eq(Constants.REMINDER_NOTIFICATION_ONE_DAY)
         );
@@ -263,15 +373,26 @@ class ContentRetirementServiceTest {
     void sendContentRetirementNotifications_NoEligibleEnrolment_ShouldNotNotify() {
         LocalDate today = LocalDate.now();
 
-        Map<String, Object> retirementRecord = Map.of(
-                Constants.CONTENT_ID, "content4",
-                Constants.APPROVED_AT, Instant.now(),
-                Constants.RETIREMENT_DATE, today.plusDays(7)
-        );
+        Map<String, Object> retirementRecord = new HashMap<>();
+        retirementRecord.put(Constants.CONTENT_ID, "content4");
+        retirementRecord.put(Constants.STATUS, Constants.APPROVED);
+        retirementRecord.put(Constants.RETIREMENT_DATE, today.plusDays(7));
 
-        when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), any()))
-                .thenReturn(List.of(retirementRecord));
+        // Retirement-date table
+        when(cassandraOperation.getRecordsByProperties(
+                eq(Constants.KEYSPACE_SUNBIRD_COURSE),
+                eq(Constants.CONTENT_RETIREMENT_BY_RETIREMENT_DATE_TABLE),
+                any(), any(), any()
+        )).thenReturn(List.of(retirementRecord));
 
+        // Approved-date table
+        when(cassandraOperation.getRecordsByProperties(
+                eq(Constants.KEYSPACE_SUNBIRD_COURSE),
+                eq(Constants.CONTENT_RETIREMENT_BY_APPROVED_DATE_TABLE),
+                any(), any(), any()
+        )).thenReturn(Collections.emptyList());
+
+        // Content has batches
         when(contentService.readContent(any(), any()))
                 .thenReturn(Map.of(
                         Constants.NAME, "Test Course",
@@ -289,7 +410,7 @@ class ContentRetirementServiceTest {
                 eq(Constants.USER_ENROLMENTS_V2_TABLE),
                 any(), any(), any()))
                 .thenReturn(List.of(Map.of(
-                        Constants.STATUS, 2,
+                        Constants.STATUS, 2,              // completed
                         Constants.ACTIVE, true,
                         Constants.ISSUED_CERTIFICATES, List.of("cert")
                 )));
@@ -379,12 +500,13 @@ class ContentRetirementServiceTest {
     @Test
     void sendContentRetirementNotificationsToSpv_ValidRequest_ShouldNotify() {
         LocalDate today = LocalDate.now();
-        Map<String, Object> record = Map.of(
-                Constants.CONTENT_ID, "do_123",
-                Constants.CREATED_AT_FIELD, today,
-                Constants.USER_ID_RAISED_FIELD, "requester-1",
-                Constants.RETIREMENT_DATE, today.plusDays(5)
-        );
+
+        Map<String, Object> record = new HashMap<>();
+        record.put(Constants.CONTENT_ID, "do_123");
+        record.put(Constants.CREATED_DATE, today); 
+        record.put(Constants.USER_ID_RAISED_FIELD, "requester-1");
+        record.put(Constants.RETIREMENT_DATE, today.plusDays(5));
+
         when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), any()))
                 .thenReturn(List.of(record));
         when(contentService.readContent(eq("do_123"), any()))
@@ -394,10 +516,7 @@ class ContentRetirementServiceTest {
         verify(notificationService).sendNotificationForContentRetirementSpv(
                 eq("do_123"),
                 eq("Sample Course"),
-                argThat(list ->
-                        list.contains("spv-1") &&
-                                list.contains("spv-2")
-                ),
+                argThat(list -> list.contains("spv-1") && list.contains("spv-2")),
                 eq(Constants.CONTENT_RETIREMENT_SCHEDULED_NOTIFICATION),
                 eq(today.plusDays(5)),
                 argThat(emails -> emails.contains("spv-1@test.com")),
@@ -408,11 +527,13 @@ class ContentRetirementServiceTest {
     @Test
     void sendContentRetirementNotificationsToSpv_NoRequester_ShouldNotifyOnlySpv() {
         LocalDate today = LocalDate.now();
-        Map<String, Object> record = Map.of(
-                Constants.CONTENT_ID, "do_124",
-                Constants.CREATED_AT_FIELD, today,
-                Constants.RETIREMENT_DATE, today.plusDays(7)
-        );
+
+        Map<String, Object> record = new HashMap<>();
+        record.put(Constants.CONTENT_ID, "do_124");
+        record.put(Constants.CREATED_DATE, today); 
+        record.put(Constants.RETIREMENT_DATE, today.plusDays(7));
+        // NOTE: no USER_ID_RAISED_FIELD on purpose
+
         when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), any()))
                 .thenReturn(List.of(record));
         when(contentService.readContent(eq("do_124"), any()))
@@ -423,10 +544,10 @@ class ContentRetirementServiceTest {
                 eq("do_124"),
                 eq("Course X"),
                 argThat(list -> list.contains("spv-1")),
-                any(),
-                any(),
-                anyList(),
-                isNull()
+                eq(Constants.CONTENT_RETIREMENT_SCHEDULED_NOTIFICATION),
+                eq(today.plusDays(7)),
+                argThat(emails -> emails.contains("spv-1@test.com")),
+                isNull()   
         );
     }
 
@@ -449,24 +570,27 @@ class ContentRetirementServiceTest {
 
     @Test
     void sendContentRetirementNotificationsToSpv_RetirementDateInstant_ShouldConvert() {
-        Map<String, Object> record = Map.of(
-                Constants.CONTENT_ID, "do_126",
-                Constants.CREATED_AT_FIELD, Instant.now(),
-                Constants.USER_ID_RAISED_FIELD, "user-x",
-                Constants.RETIREMENT_DATE, LocalDate.now().plusDays(10)
-        );
+        Map<String, Object> record = new HashMap<>();
+        record.put(Constants.CONTENT_ID, "do_126");
+        record.put(Constants.CREATED_DATE, Instant.now()); 
+        record.put(Constants.USER_ID_RAISED_FIELD, "user-x");
+        record.put(Constants.RETIREMENT_DATE, LocalDate.now().plusDays(10));
+
         when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), any()))
                 .thenReturn(List.of(record));
         when(contentService.readContent(any(), any()))
                 .thenReturn(Map.of("name", "Course Z"));
         mockSpvUsers(List.of("spv"));
-        Map<String, Object> spvUser = Map.of(
-                "userId", "spv",
-                "email", "spv@test.com"
-        );
+
         contentRetirementService.sendContentRetirementNotificationsToSpv();
         verify(notificationService).sendNotificationForContentRetirementSpv(
-                any(), any(), any(), any(), any(LocalDate.class), anyList(), any()
+                eq("do_126"),
+                eq("Course Z"),
+                argThat(list -> list.contains("spv")),
+                eq(Constants.CONTENT_RETIREMENT_SCHEDULED_NOTIFICATION),
+                any(LocalDate.class),        
+                argThat(emails -> emails.contains("spv@test.com")),
+                eq("user-x")
         );
     }
 

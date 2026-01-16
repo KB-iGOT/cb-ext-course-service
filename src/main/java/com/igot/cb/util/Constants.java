@@ -534,6 +534,12 @@ public class Constants {
     public static final String BATCHES = "batches";
     public static final String SPV_PUBLISHER = "SPV_PUBLISHER";
 
+    public static final String CONTENT_RETIREMENT_BY_RETIREMENT_DATE_TABLE = "content_retirement_by_retirement_date";
+    public static final String CONTENT_RETIREMENT_BY_CREATED_DATE_TABLE = "content_retirement_by_created_date";
+    public static final String CREATED_DATE = "created_date";
+    public static final String CONTENT_RETIREMENT_BY_APPROVED_DATE_TABLE = "content_retirement_by_approved_date";
+    public static final String APPROVED_DATE = "approved_date";
+
     private Constants() {
     }
 }

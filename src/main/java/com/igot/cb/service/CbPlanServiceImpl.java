@@ -927,6 +927,10 @@ public class CbPlanServiceImpl {
             updatedRequest.put(Constants.ROOT_ORG_IDS_IN_CONTEXT_DATA,
                     dataInDraftObject.get(Constants.ROOT_ORG_IDS_IN_CONTEXT_DATA));
         }
+        if (dataInDraftObject.containsKey(Constants.CONTENT_LIST)) {
+            updatedRequest.put(Constants.CONTENT_LIST,
+                    dataInDraftObject.get(Constants.CONTENT_LIST));
+        }
         updatedRequest.put(Constants.COMMENT, incomingRequest.get(Constants.COMMENT));
 
         return updatedRequest;

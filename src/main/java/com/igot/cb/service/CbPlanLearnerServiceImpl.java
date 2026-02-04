@@ -587,37 +587,50 @@ public class CbPlanLearnerServiceImpl {
     public void removeDuplicateCoursesAcrossPlans(List<Map<String, Object>> resultMap) {
         Set<String> seenAparCourses = new HashSet<>();
         Set<String> seenNonAparCourses = new HashSet<>();
-        for (Map<String, Object> plan : resultMap) {
-            boolean isApar = Boolean.TRUE.equals(plan.get(Constants.IS_APAR));
-            List<Map<String, Object>> contentList =
-                    (List<Map<String, Object>>) plan.get(Constants.CONTENT_LIST);
-            if (contentList.isEmpty() || contentList.equals(null)) {
-                continue;
-            }
-            Iterator<Map<String, Object>> iterator = contentList.iterator();
-            while (iterator.hasNext()) {
-                Map<String, Object> course = iterator.next();
-                String identifier = (String) course.get(Constants.IDENTIFIER);
 
-                if (identifier.isEmpty() || identifier.equals(null)) {
-                    continue;
-                }
-                if (isApar) {
-                    // If APAR plan already has this course, remove duplicate
-                    if (!seenAparCourses.add(identifier)) {
-                        iterator.remove();
-                    }
-                } else {
-                    // Non-APAR: remove if already seen in APAR or Non-APAR
-                    if (seenAparCourses.contains(identifier) ||
-                            !seenNonAparCourses.add(identifier)) {
-                        iterator.remove();
-                    }
-                }
-            }
-        }
+        resultMap.forEach(plan ->
+                removeDuplicatesFromPlan(plan, seenAparCourses, seenNonAparCourses)
+        );
     }
 
+    private void removeDuplicatesFromPlan(Map<String, Object> plan,
+                                          Set<String> seenAparCourses,
+                                          Set<String> seenNonAparCourses) {
+        List<Map<String, Object>> contentList = getContentList(plan);
+        if (contentList == null || contentList.isEmpty()) {
+            return;
+        }
+
+        boolean isApar = Boolean.TRUE.equals(plan.get(Constants.IS_APAR));
+
+        contentList.removeIf(course ->
+                shouldRemoveCourse(course, isApar, seenAparCourses, seenNonAparCourses)
+        );
+    }
+
+    private boolean shouldRemoveCourse(Map<String, Object> course,
+                                       boolean isApar,
+                                       Set<String> seenAparCourses,
+                                       Set<String> seenNonAparCourses) {
+        String identifier = extractIdentifier(course);
+        if (identifier == null) {
+            return false;
+        }
+
+        return isApar
+                ? !seenAparCourses.add(identifier)
+                : seenAparCourses.contains(identifier) || !seenNonAparCourses.add(identifier);
+    }
+
+    private String extractIdentifier(Map<String, Object> course) {
+        String identifier = (String) course.get(Constants.IDENTIFIER);
+        return (identifier == null || identifier.isEmpty()) ? null : identifier;
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> getContentList(Map<String, Object> plan) {
+        return (List<Map<String, Object>>) plan.get(Constants.CONTENT_LIST);
+    }
 }
 
 

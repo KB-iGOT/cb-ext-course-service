@@ -597,7 +597,7 @@ public class CbPlanLearnerServiceImpl {
                                           Set<String> seenAparCourses,
                                           Set<String> seenNonAparCourses) {
         List<Map<String, Object>> contentList = getContentList(plan);
-        if (contentList == null || contentList.isEmpty()) {
+        if (contentList.equals(null) || contentList.isEmpty()) {
             return;
         }
 
@@ -613,7 +613,7 @@ public class CbPlanLearnerServiceImpl {
                                        Set<String> seenAparCourses,
                                        Set<String> seenNonAparCourses) {
         String identifier = extractIdentifier(course);
-        if (identifier == null) {
+        if (identifier.equals(null)) {
             return false;
         }
 
@@ -624,7 +624,7 @@ public class CbPlanLearnerServiceImpl {
 
     private String extractIdentifier(Map<String, Object> course) {
         String identifier = (String) course.get(Constants.IDENTIFIER);
-        return (identifier == null || identifier.isEmpty()) ? null : identifier;
+        return (identifier.equals(null) || identifier.isEmpty()) ? null : identifier;
     }
 
     @SuppressWarnings("unchecked")

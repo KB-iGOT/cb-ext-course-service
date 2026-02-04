@@ -142,8 +142,10 @@ public class CbPlanLearnerServiceImpl {
             //Step 4: Process all CB Plans
             List<Map<String, Object>> resultMap = new ArrayList<>();
             processActiveCbPlans(activeCbPlans, userOrgId, userId, userProfile, isCacheEnabled, resultMap);
+            //Step5: Remove duplicate courses across plans
+            removeDuplicateCoursesAcrossPlans(resultMap);
 
-            //Step 5: Prepare response
+            //Step 6: Prepare response
             logger.info("Number of CB Plans available for user {} is {}", userId, resultMap.size());
             response.getResult().put(Constants.COUNT, resultMap.size());
             response.getResult().put(Constants.CONTENT, resultMap);
@@ -168,7 +170,6 @@ public class CbPlanLearnerServiceImpl {
         Map<String, Object> courseDetailsMap = new HashMap<>();
         List<String> plansToCache = new ArrayList<>();
         Map<String, String> coursePlanMappings = new HashMap<>();
-        Set<String> globalSeen = new HashSet<>();
         List<String> aparCourseIds = activeCbPlans.stream()
                 .filter(Objects::nonNull)
                 .filter(plan -> Boolean.parseBoolean(String.valueOf(plan.get(Constants.IS_APAR))))
@@ -226,11 +227,7 @@ public class CbPlanLearnerServiceImpl {
                     log.warn("Skipping course with invalid or blank identifier in plan {}", cbPlan.get(Constants.PLAN_ID));
                     continue;
                 }
-                if (globalSeen.contains(id)) continue;
-                if (!isApar && aparCourseIds.contains(id)) continue;
-
                 filteredList.add(c);
-                globalSeen.add(id);
             }
             cbPlanDetails.put(Constants.CONTENT_LIST, filteredList);
             resultMap.add(cbPlanDetails);
@@ -585,6 +582,40 @@ public class CbPlanLearnerServiceImpl {
             response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
         }
         return response;
+    }
+
+    public void removeDuplicateCoursesAcrossPlans(List<Map<String, Object>> resultMap) {
+        Set<String> seenAparCourses = new HashSet<>();
+        Set<String> seenNonAparCourses = new HashSet<>();
+        for (Map<String, Object> plan : resultMap) {
+            boolean isApar = Boolean.TRUE.equals(plan.get(Constants.IS_APAR));
+            List<Map<String, Object>> contentList =
+                    (List<Map<String, Object>>) plan.get(Constants.CONTENT_LIST);
+            if (contentList.isEmpty() || contentList.equals(null)) {
+                continue;
+            }
+            Iterator<Map<String, Object>> iterator = contentList.iterator();
+            while (iterator.hasNext()) {
+                Map<String, Object> course = iterator.next();
+                String identifier = (String) course.get(Constants.IDENTIFIER);
+
+                if (identifier.isEmpty() || identifier.equals(null)) {
+                    continue;
+                }
+                if (isApar) {
+                    // If APAR plan already has this course, remove duplicate
+                    if (!seenAparCourses.add(identifier)) {
+                        iterator.remove();
+                    }
+                } else {
+                    // Non-APAR: remove if already seen in APAR or Non-APAR
+                    if (seenAparCourses.contains(identifier) ||
+                            !seenNonAparCourses.add(identifier)) {
+                        iterator.remove();
+                    }
+                }
+            }
+        }
     }
 
 }

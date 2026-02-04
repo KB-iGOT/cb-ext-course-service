@@ -592,12 +592,11 @@ public class CbPlanLearnerServiceImpl {
                 removeDuplicatesFromPlan(plan, seenAparCourses, seenNonAparCourses)
         );
     }
-
     private void removeDuplicatesFromPlan(Map<String, Object> plan,
                                           Set<String> seenAparCourses,
                                           Set<String> seenNonAparCourses) {
         List<Map<String, Object>> contentList = getContentList(plan);
-        if (contentList.equals(null) || contentList.isEmpty()) {
+        if (CollectionUtils.isEmpty(contentList)) {
             return;
         }
 
@@ -607,13 +606,12 @@ public class CbPlanLearnerServiceImpl {
                 shouldRemoveCourse(course, isApar, seenAparCourses, seenNonAparCourses)
         );
     }
-
     private boolean shouldRemoveCourse(Map<String, Object> course,
                                        boolean isApar,
                                        Set<String> seenAparCourses,
                                        Set<String> seenNonAparCourses) {
         String identifier = extractIdentifier(course);
-        if (identifier.equals(null)) {
+        if (StringUtils.isEmpty(identifier)) {
             return false;
         }
 
@@ -621,12 +619,10 @@ public class CbPlanLearnerServiceImpl {
                 ? !seenAparCourses.add(identifier)
                 : seenAparCourses.contains(identifier) || !seenNonAparCourses.add(identifier);
     }
-
     private String extractIdentifier(Map<String, Object> course) {
         String identifier = (String) course.get(Constants.IDENTIFIER);
-        return (identifier.equals(null) || identifier.isEmpty()) ? null : identifier;
+        return StringUtils.isBlank(identifier) ? null : identifier;
     }
-
     @SuppressWarnings("unchecked")
     private List<Map<String, Object>> getContentList(Map<String, Object> plan) {
         return (List<Map<String, Object>>) plan.get(Constants.CONTENT_LIST);

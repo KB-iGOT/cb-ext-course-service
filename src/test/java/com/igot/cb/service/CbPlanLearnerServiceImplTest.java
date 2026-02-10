@@ -388,7 +388,7 @@ class CbPlanLearnerServiceImplTest {
         method.setAccessible(true);
         method.invoke(service, "user123", "org123", userProfile);
 
-        assertEquals("CustomValue", userProfile.get("customText"));
+        assertEquals("CustomValue", userProfile.get("customtext"));
         assertEquals("Java", userProfile.get("skill"));
     }
 

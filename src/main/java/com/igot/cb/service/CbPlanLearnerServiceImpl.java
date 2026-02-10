@@ -518,12 +518,12 @@ public class CbPlanLearnerServiceImpl {
                                 for (Map<String, Object> customFields : customFieldValuesList) {
                                     String type = (String) customFields.get(Constants.TYPE);
                                     if (Constants.TEXT.equalsIgnoreCase(type)) {
-                                        userProfile.put((String) customFields.get(Constants.ATTRIBUTE_NAME), (String) customFields.get(Constants.VALUE));
+                                        userProfile.put(((String) customFields.get(Constants.ATTRIBUTE_NAME)).toLowerCase(), (String) customFields.get(Constants.VALUE));
                                     } else if (Constants.MASTER_LIST.equalsIgnoreCase(type)) {
                                         List<Map<String, Object>> valuesList = (List<Map<String, Object>>) customFields.get(Constants.VALUES);
                                         if (CollectionUtils.isNotEmpty(valuesList)) {
                                             for (Map<String, Object> valueMap : valuesList) {
-                                                userProfile.put((String) valueMap.get(Constants.ATTRIBUTE_NAME), (String) valueMap.get(Constants.VALUE));
+                                                userProfile.put(((String) valueMap.get(Constants.ATTRIBUTE_NAME)).toLowerCase(), (String) valueMap.get(Constants.VALUE));
                                             }
                                         }
                                     }

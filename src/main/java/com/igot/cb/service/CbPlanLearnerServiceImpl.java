@@ -142,8 +142,10 @@ public class CbPlanLearnerServiceImpl {
             //Step 4: Process all CB Plans
             List<Map<String, Object>> resultMap = new ArrayList<>();
             processActiveCbPlans(activeCbPlans, userOrgId, userId, userProfile, isCacheEnabled, resultMap);
+            //Step5: Remove duplicate courses across plans
+            removeDuplicateCoursesAcrossPlans(resultMap);
 
-            //Step 5: Prepare response
+            //Step 6: Prepare response
             logger.info("Number of CB Plans available for user {} is {}", userId, resultMap.size());
             response.getResult().put(Constants.COUNT, resultMap.size());
             response.getResult().put(Constants.CONTENT, resultMap);
@@ -168,7 +170,6 @@ public class CbPlanLearnerServiceImpl {
         Map<String, Object> courseDetailsMap = new HashMap<>();
         List<String> plansToCache = new ArrayList<>();
         Map<String, String> coursePlanMappings = new HashMap<>();
-        Set<String> globalSeen = new HashSet<>();
         List<String> aparCourseIds = activeCbPlans.stream()
                 .filter(Objects::nonNull)
                 .filter(plan -> Boolean.parseBoolean(String.valueOf(plan.get(Constants.IS_APAR))))
@@ -226,11 +227,7 @@ public class CbPlanLearnerServiceImpl {
                     log.warn("Skipping course with invalid or blank identifier in plan {}", cbPlan.get(Constants.PLAN_ID));
                     continue;
                 }
-                if (globalSeen.contains(id)) continue;
-                if (!isApar && aparCourseIds.contains(id)) continue;
-
                 filteredList.add(c);
-                globalSeen.add(id);
             }
             cbPlanDetails.put(Constants.CONTENT_LIST, filteredList);
             resultMap.add(cbPlanDetails);
@@ -521,12 +518,12 @@ public class CbPlanLearnerServiceImpl {
                                 for (Map<String, Object> customFields : customFieldValuesList) {
                                     String type = (String) customFields.get(Constants.TYPE);
                                     if (Constants.TEXT.equalsIgnoreCase(type)) {
-                                        userProfile.put((String) customFields.get(Constants.ATTRIBUTE_NAME), (String) customFields.get(Constants.VALUE));
+                                        userProfile.put(((String) customFields.get(Constants.ATTRIBUTE_NAME)).toLowerCase(), (String) customFields.get(Constants.VALUE));
                                     } else if (Constants.MASTER_LIST.equalsIgnoreCase(type)) {
                                         List<Map<String, Object>> valuesList = (List<Map<String, Object>>) customFields.get(Constants.VALUES);
                                         if (CollectionUtils.isNotEmpty(valuesList)) {
                                             for (Map<String, Object> valueMap : valuesList) {
-                                                userProfile.put((String) valueMap.get(Constants.ATTRIBUTE_NAME), (String) valueMap.get(Constants.VALUE));
+                                                userProfile.put(((String) valueMap.get(Constants.ATTRIBUTE_NAME)).toLowerCase(), (String) valueMap.get(Constants.VALUE));
                                             }
                                         }
                                     }
@@ -587,6 +584,49 @@ public class CbPlanLearnerServiceImpl {
         return response;
     }
 
+    public void removeDuplicateCoursesAcrossPlans(List<Map<String, Object>> resultMap) {
+        Set<String> seenAparCourses = new HashSet<>();
+        Set<String> seenNonAparCourses = new HashSet<>();
+
+        resultMap.forEach(plan ->
+                removeDuplicatesFromPlan(plan, seenAparCourses, seenNonAparCourses)
+        );
+    }
+    private void removeDuplicatesFromPlan(Map<String, Object> plan,
+                                          Set<String> seenAparCourses,
+                                          Set<String> seenNonAparCourses) {
+        List<Map<String, Object>> contentList = getContentList(plan);
+        if (CollectionUtils.isEmpty(contentList)) {
+            return;
+        }
+
+        boolean isApar = Boolean.TRUE.equals(plan.get(Constants.IS_APAR));
+
+        contentList.removeIf(course ->
+                shouldRemoveCourse(course, isApar, seenAparCourses, seenNonAparCourses)
+        );
+    }
+    private boolean shouldRemoveCourse(Map<String, Object> course,
+                                       boolean isApar,
+                                       Set<String> seenAparCourses,
+                                       Set<String> seenNonAparCourses) {
+        String identifier = extractIdentifier(course);
+        if (StringUtils.isEmpty(identifier)) {
+            return false;
+        }
+
+        return isApar
+                ? !seenAparCourses.add(identifier)
+                : seenAparCourses.contains(identifier) || !seenNonAparCourses.add(identifier);
+    }
+    private String extractIdentifier(Map<String, Object> course) {
+        String identifier = (String) course.get(Constants.IDENTIFIER);
+        return StringUtils.isBlank(identifier) ? null : identifier;
+    }
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> getContentList(Map<String, Object> plan) {
+        return (List<Map<String, Object>>) plan.get(Constants.CONTENT_LIST);
+    }
 }
 
 

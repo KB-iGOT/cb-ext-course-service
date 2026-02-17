@@ -42,7 +42,7 @@ public class ContentRetirementService {
         log.info("Running content retirement job for date <= {}", today);
 
         Map<String, Object> propertiesMap = new HashMap<>();
-        propertiesMap.put(Constants.STATUS, Constants.APPROVED);
+        propertiesMap.put(Constants.RETIREMENT_DATE_KEY, today);
 
         List<String> fields = Arrays.asList(
                 Constants.CONTENT_ID_KEY,
@@ -54,7 +54,7 @@ public class ContentRetirementService {
         List<Map<String, Object>> records =
                 cassandraOperation.getRecordsByProperties(
                         Constants.KEYSPACE_SUNBIRD_COURSE,
-                        Constants.CONTENT_RETIREMENT_REQUEST_TABLE,
+                        Constants.CONTENT_RETIREMENT_BY_RETIREMENT_DATE_TABLE,
                         propertiesMap,
                         fields,
                         null
@@ -67,7 +67,15 @@ public class ContentRetirementService {
         }
         List<Map<String, Object>> responseList = new ArrayList<>();
         for (Map<String, Object> retirementRecord : records) {
+            String status = (String) retirementRecord.get(Constants.STATUS);
 
+            if (!Constants.APPROVED.equalsIgnoreCase(status == null ? "" : status)) {
+                log.debug("Skipping retirement for content {} due to status {}",
+                        retirementRecord.get(Constants.CONTENT_ID_KEY),
+                        status
+                );
+                continue;
+            }
             LocalDate retirementDate = (LocalDate) retirementRecord.get(Constants.RETIREMENT_DATE);
 
             if (retirementDate != null && !retirementDate.isAfter(today)) {
@@ -140,43 +148,56 @@ public class ContentRetirementService {
 
         log.info("Running content retirement notification job for {}", today);
 
-        Map<String, Object> properties = Map.of(
-                Constants.STATUS, Constants.APPROVED
-        );
+        Map<String, Object> retirementDateFilter =  new HashMap<>();
+        retirementDateFilter.put(Constants.RETIREMENT_DATE_KEY, today);
 
-        List<Map<String, Object>> retirementRequests =
+        Map<String, Object> approvedDateFilter =  new HashMap<>();
+        approvedDateFilter.put(Constants.APPROVED_DATE, today);
+
+        List<Map<String, Object>> retirementRequestsByRetirementDate =
                 cassandraOperation.getRecordsByProperties(
                         Constants.KEYSPACE_SUNBIRD_COURSE,
-                        Constants.CONTENT_RETIREMENT_REQUEST_TABLE,
-                        properties,
+                        Constants.CONTENT_RETIREMENT_BY_RETIREMENT_DATE_TABLE,
+                        retirementDateFilter,
                         Arrays.asList(
                                 Constants.CONTENT_ID_KEY,
-                                Constants.APPROVED_AT,
-                                Constants.RETIREMENT_DATE_NOTIFICATION
+                                Constants.APPROVED_DATE,
+                                Constants.RETIREMENT_DATE_NOTIFICATION,
+                                Constants.STATUS
+                        ),
+                        null
+                );
+        List<Map<String, Object>> retirementRequestsByApproveDate =
+                cassandraOperation.getRecordsByProperties(
+                        Constants.KEYSPACE_SUNBIRD_COURSE,
+                        Constants.CONTENT_RETIREMENT_BY_APPROVED_DATE_TABLE,
+                        approvedDateFilter,
+                        Arrays.asList(
+                                Constants.CONTENT_ID_KEY,
+                                Constants.APPROVED_DATE,
+                                Constants.RETIREMENT_DATE_NOTIFICATION,
+                                Constants.STATUS
                         ),
                         null
                 );
 
-        if (CollectionUtils.isEmpty(retirementRequests)) {
-            log.info("No approved retirement requests found");
+        sendApprovedRetirementNotifications(retirementRequestsByApproveDate, today);
+        if (CollectionUtils.isEmpty(retirementRequestsByRetirementDate)) {
+            log.info("No approved retirement requests found by retire_date");
         }
 
-        for (Map<String, Object> record : retirementRequests) {
+        for (Map<String, Object> record : retirementRequestsByRetirementDate) {
+            String status = (String) record.get(Constants.STATUS);
+            if (!Constants.APPROVED.equalsIgnoreCase(status == null ? "" : status)) {
+                log.debug("Skipping retirement notification for content {} as status {}", record.get(Constants.CONTENT_ID_KEY), status);
+                continue;
+            }
 
             String contentId = (String) record.get(Constants.CONTENT_ID);
-            Instant approvedInstant =
-                    (Instant) record.get(Constants.APPROVED_AT);
-
-            LocalDate approvedDate = approvedInstant != null
-                    ? approvedInstant.atZone(ZoneId.systemDefault()).toLocalDate()
-                    : null;
             LocalDate retirementDate = (LocalDate) record.get(Constants.RETIREMENT_DATE);
 
             String notificationType = null;
-
-            if (approvedDate != null && approvedDate.equals(today)) {
-                notificationType = Constants.CONTENT_RETIREMENT_APPROVED_NOTIFICATION;
-            } else if (retirementDate != null && retirementDate.equals(today.plusDays(1))) {
+            if (retirementDate != null && retirementDate.equals(today.plusDays(1))) {
                 notificationType = Constants.REMINDER_NOTIFICATION_ONE_DAY;
             } else if (retirementDate != null && retirementDate.equals(today.plusDays(7))) {
                 notificationType = Constants.REMINDER_NOTIFICATION_SEVEN_DAY;
@@ -195,13 +216,15 @@ public class ContentRetirementService {
     public void sendContentRetirementNotificationsToSpv() {
         LocalDate today = LocalDate.now();
         log.info("Running content retirement notification job for spv admins {}", today);
-        Map<String, Object> propertiesMap = new HashMap<>();
-        propertiesMap.put("created_date", today);
+
+        Map<String, Object> properties =  new HashMap<>();
+        properties.put(Constants.CREATED_DATE , today);
+
         List<Map<String, Object>> retirementRequests =
                 cassandraOperation.getRecordsByProperties(
                         Constants.KEYSPACE_SUNBIRD_COURSE,
-                        Constants.CONTENT_RETIREMENT_CREATED_DATE_VIEW,
-                        propertiesMap,
+                        Constants.CONTENT_RETIREMENT_BY_CREATED_DATE_TABLE,
+                        properties,
                         Arrays.asList(
                                 Constants.CONTENT_ID_KEY,
                                 Constants.CREATED_DATE,
@@ -411,5 +434,38 @@ public class ContentRetirementService {
             log.error("Error while sending in-app notification for content retirement", e);
         }
     }
+
+    private void sendApprovedRetirementNotifications(List<Map<String, Object>> retirementRequestsByApproveDate, LocalDate today) {
+
+        if (CollectionUtils.isEmpty(retirementRequestsByApproveDate)) {
+            log.info("No retirement requests found for approved notification");
+            return;
+        }
+        for (Map<String, Object> records : retirementRequestsByApproveDate) {
+            String status = (String) records.get(Constants.STATUS);
+            if (!Constants.APPROVED.equalsIgnoreCase(status == null ? "" : status)) {
+                log.debug(
+                        "Skipping approved notification for content {} due to status {}",
+                        records.get(Constants.CONTENT_ID_KEY),
+                        status
+                );
+                continue;
+            }
+            String contentId = (String) records.get(Constants.CONTENT_ID);
+            LocalDate approvedDate = (LocalDate) records.get(Constants.APPROVED_DATE);
+
+            LocalDate retirementDate = (LocalDate) records.get(Constants.RETIREMENT_DATE);
+            if (approvedDate != null && approvedDate.equals(today)) {
+
+                log.info("Triggering APPROVED retirement notification for content {}", contentId);
+                validateAndSendInAppLearerNotification(
+                        contentId,
+                        Constants.CONTENT_RETIREMENT_APPROVED_NOTIFICATION,
+                        retirementDate
+                );
+            }
+        }
+    }
+
 }
 

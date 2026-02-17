@@ -225,8 +225,6 @@ public class UserAndOrgServiceImpl {
             } else {
                 log.warn("ID-Map does not contain value for User: {}, Key: {}, RawValue: {}, EncodedValue: {}",
                         userProfile.get(Constants.USER), entry.getKey(), rawValue, encodedValue);
-                userProfileBitMap.clear();
-                return;
             }
         }
     }

@@ -539,6 +539,10 @@ public class Constants {
     public static final String CREATED_DATE = "created_date";
     public static final String CONTENT_RETIREMENT_BY_APPROVED_DATE_TABLE = "content_retirement_by_approved_date";
     public static final String APPROVED_DATE = "approved_date";
+    public static final String COURSE_CATEGORY_COMPREHENSIVE_ASSESSMENT_PROGRAM = "Comprehensive Assessment Program";
+    public static final String CHILD_NODES = "childNodes";
+    public static final String LEAF_NODES = "leafNodes";
+    public static final String COURSE_UNITS = "courseUnits";
 
     private Constants() {
     }

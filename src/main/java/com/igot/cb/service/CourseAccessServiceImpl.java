@@ -302,14 +302,12 @@ public class CourseAccessServiceImpl {
                             contentDetails.get(Constants.LEAF_NODES) instanceof List) {
                         List<String> childNodes = (List<String>) contentDetails.get(Constants.CHILD_NODES);
                         List<String> leafNodes = (List<String>) contentDetails.get(Constants.LEAF_NODES);
-                        List<String> courseUnits = new ArrayList<>();
-                        for (String node : childNodes) {
-                            if (!leafNodes.contains(node)) {
-                                courseUnits.add(node);
-                            }
-                        }
+                        Set<String> leafSet = new HashSet<>(leafNodes);
+                        List<String> courseUnits = childNodes.stream()
+                                .filter(child -> !leafSet.contains(child))
+                                .collect(Collectors.toList());
                         contentDetails.put(Constants.COURSE_UNITS, courseUnits);
-                    }
+}
                     // --- End custom logic for courseUnits ---
                     userCourses.add(contentDetails);
                 }

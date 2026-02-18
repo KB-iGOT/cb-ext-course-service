@@ -348,20 +348,14 @@ public class CourseAccessServiceImpl {
             return compositeSearchRes;
         }
         log.info("Total count {} exceeds search limit {}. Fetching remaining pages...", totalCount, searchLimit);
-        int expectedSize = Math.min(totalCount, totalCount);
-        List<Map<String, Object>> allContent = new ArrayList<>(expectedSize);
+        List<Map<String, Object>> allContent = new ArrayList<>(totalCount);
         List<Map<String, Object>> initialContent = (List<Map<String, Object>>) result.get(Constants.CONTENT);
         if (initialContent != null) {
             allContent.addAll(initialContent);
         }
         int currentOffset = searchLimit;
-        int totalPages = (totalCount + searchLimit - 1) / searchLimit; // Calculate total pages needed
         while (currentOffset < totalCount) {
-            log.debug("Fetching page with offset: {} ({}/{})", currentOffset,
-                    (currentOffset / searchLimit) + 1, totalPages);
-
             req.put(Constants.OFFSET, currentOffset);
-
             Map<String, Object> nextPageRes = outboundRequestHandlerService.fetchResultUsingPost(
                     sbSearchServiceHost + sbCompositeV4Search, reqBody, null);
 

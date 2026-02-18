@@ -54,4 +54,12 @@ public class AccessSettingsController {
     ApiResponse response = accessSettingMigrationService.migrateAccessSettingRules();
     return new ResponseEntity<>(response, response.getResponseCode());
   }
+
+  //create and update API for admin (merges userGroups with identical criteria)
+  @PutMapping("/admin/v1/upsert")
+  public ResponseEntity<ApiResponse> upsertAdmin(@RequestBody Map<String, Object> userGroupDetails,
+                                                 @RequestHeader(Constants.X_AUTH_TOKEN) String authToken) {
+    ApiResponse response = accessSettingsService.adminUpsert(userGroupDetails, authToken);
+    return new ResponseEntity<>(response, response.getResponseCode());
+  }
 }

@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import com.igot.cb.util.UserGroupUtils;
 import org.apache.commons.lang.StringUtils;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -186,5 +187,56 @@ public class AccessSettingsServiceImpl {
       }
     }
     return payload;
+  }
+
+  // Admin upsert: merges userGroups with identical criteria before assigning UUIDs
+  public ApiResponse adminUpsert(Map<String, Object> userGroupDetails, String authToken) {
+    log.info("AccessSettingsService::upsertAdmin:inside");
+    ApiResponse response = ApiResponse.createDefaultResponse(Constants.ACCESS_SETTINGS_CREATE_API);
+    if (userGroupDetails == null || userGroupDetails.isEmpty()) {
+      log.error("User group details are null or empty");
+      setFailedResponse(response, "User group details cannot be null or empty");
+      return response;
+    }
+    try {
+      // Validate userGroups: no criteria key or value should be empty
+      Object accessControlObj = userGroupDetails.get(Constants.ACCESS_CONTROL);
+      if (accessControlObj instanceof Map) {
+        Map<String, Object> accessControl = (Map<String, Object>) accessControlObj;
+        Object userGroupsObj = accessControl.get(Constants.USER_GROUPS);
+        if (userGroupsObj instanceof List) {
+          List<Map<String, Object>> userGroups = (List<Map<String, Object>>) userGroupsObj;
+          String validationError = UserGroupUtils.validateUserGroupsNoEmptyCriteria(userGroups);
+          if (validationError != null) {
+            setFailedResponse(response, validationError);
+            return response;
+          }
+        }
+      }
+      Map<String, Object> createPayloadWithUuid = createUserGroupIds(userGroupDetails);
+      Map<String, Object> accessRuleData = new HashMap<>();
+      accessRuleData.put(Constants.CONTEXT_ID, userGroupDetails.get(Constants.CONTENT_ID));
+      accessRuleData.put(Constants.CONTEXT_DATA, objectMapper.writeValueAsString(createPayloadWithUuid));
+      accessRuleData.put(Constants.IS_ARCHIVED, false);
+      if (accessSettingMigrationService.processAccessSettingRule(accessRuleData)) {
+        cassandraOperation.insertRecord(Constants.KEYSPACE_SUNBIRD_COURSE,
+                Constants.ACCESS_SETTINGS_RULES_TABLE_V2, accessRuleData);
+        response.getResult().put(Constants.MSG, Constants.CREATED_RULES);
+        Map<String, Object> payload = new HashMap<>();
+        payload.put(Constants.ACCESS_CONTROL, createPayloadWithUuid.get(Constants.ACCESS_CONTROL));
+        response.getResult().putAll(payload);
+        return response;
+      } else {
+        log.error("Failed to process access setting rule");
+        setFailedResponse(response, "Failed to process access setting rule to id-map",
+                HttpStatus.INTERNAL_SERVER_ERROR);
+        return response;
+      }
+    } catch (Exception e) {
+      log.error("Error while upserting access settings", e);
+      setFailedResponse(response, "Failed to create access settings: " + e.getMessage(),
+              HttpStatus.INTERNAL_SERVER_ERROR);
+      return response;
+    }
   }
 }

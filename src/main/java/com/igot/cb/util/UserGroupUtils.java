@@ -38,11 +38,11 @@ public class UserGroupUtils {
                         if (valueList.isEmpty()) {
                             return "Criteria value list must not be empty";
                         }
-                        for (Object value1 : valueList) {
-                            if (value1 == null) {
+                        for (Object eachValue : valueList) {
+                            if (eachValue == null) {
                                 return "Criteria value list must not contain null values";
                             }
-                            if (value1 instanceof String && ((String) value1).trim().isEmpty()) {
+                            if (eachValue instanceof String && ((String) eachValue).trim().isEmpty()) {
                                 return "Criteria value list must not contain empty or blank values";
                             }
                             // Boolean true/false are both valid, only null is invalid (already checked)

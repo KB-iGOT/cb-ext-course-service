@@ -15,6 +15,7 @@ public class UserGroupUtils {
      * Validates that no criteria key or value is empty in the userGroups list.
      * If criteriaValue is a list, ensures no element is null, empty, or blank.
      * Returns null if valid, or an error message if invalid.
+     * Handles String and Boolean types for value. Boolean must be true or false (not null).
      */
     @SuppressWarnings("unchecked")
     public static String validateUserGroupsNoEmptyCriteria(List<Map<String, Object>> userGroups) {
@@ -25,20 +26,30 @@ public class UserGroupUtils {
                 for (Map<String, Object> criteria : criteriaList) {
                     Object key = criteria.get(Constants.CRITERIA_KEY);
                     Object value = criteria.get(Constants.CRITERIA_VALUE);
-                    // Use trim() to ensure whitespace-only strings are also caught
-                    if (key == null || key.toString().trim().isEmpty() || value == null || (value instanceof String && ((String)value).trim().isEmpty())) {
+                    if (key == null || key.toString().trim().isEmpty() || value == null) {
                         return "Criteria key and value must not be empty";
                     }
-                    if (value instanceof List) {
+                    if (value instanceof String) {
+                        if (((String) value).trim().isEmpty()) {
+                            return "Criteria key and value must not be empty";
+                        }
+                    } else if (value instanceof List) {
                         List<?> valueList = (List<?>) value;
                         if (valueList.isEmpty()) {
                             return "Criteria value list must not be empty";
                         }
-                        for (Object v : valueList) {
-                            if (v == null || (v instanceof String && ((String) v).trim().isEmpty())) {
+                        for (Object value1 : valueList) {
+                            if (value1 == null) {
+                                return "Criteria value list must not contain null values";
+                            }
+                            if (value1 instanceof String && ((String) value1).trim().isEmpty()) {
                                 return "Criteria value list must not contain empty or blank values";
                             }
+                            // Boolean true/false are both valid, only null is invalid (already checked)
                         }
+                    } else if (!(value instanceof Boolean)) {
+                        // Only String, List, or Boolean are allowed
+                        return "Criteria value must be a String, Boolean, or List";
                     }
                 }
             }

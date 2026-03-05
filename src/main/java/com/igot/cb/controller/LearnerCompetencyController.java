@@ -24,7 +24,7 @@ public class LearnerCompetencyController {
      * @param authToken The authentication token (from x-authenticated-user-token header)
      * @return ResponseEntity containing the competency data or Send Kafka event message
      */
-    @GetMapping("/learner/v1/competency")
+    @GetMapping("/learner/v1/competency/read")
     public ResponseEntity<Object> getLearnerCompetency(
             @RequestHeader(value = Constants.X_AUTH_TOKEN, required = true) String authToken) {
 

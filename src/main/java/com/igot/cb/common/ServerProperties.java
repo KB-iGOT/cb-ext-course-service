@@ -21,4 +21,7 @@ public class ServerProperties {
 
     @Value("${vod.stream.url.prefix}")
     private String vodStreamUrlPrefix;
+
+    @Value("${kafka.topic.competency-acquired}")
+    private String competencyAcquiredTopicName;
 }

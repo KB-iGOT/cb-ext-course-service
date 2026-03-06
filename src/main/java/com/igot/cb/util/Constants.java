@@ -540,6 +540,14 @@ public class Constants {
     public static final String CONTENT_RETIREMENT_BY_APPROVED_DATE_TABLE = "content_retirement_by_approved_date";
     public static final String APPROVED_DATE = "approved_date";
 
+    // Competency Service Constants
+    public static final String USER_COMPETENCY_MAPPING_TABLE = "user_competency_mapping";
+    public static final String COMPETENCY_ACQUIRED_EVENT = "COMPETENCY_ACQUIRED";
+    public static final String E_DATA = "edata";
+    public static final String EVENT_TYPE = "eventType";
+    public static final String API_FETCH_USER_COMPETENCY = "api.fetch.user.competency";
+    public static final String IS_FIRST_TIME_USER = "isFirstTimeUser";
+
     private Constants() {
     }
 }

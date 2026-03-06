@@ -547,6 +547,7 @@ public class Constants {
     public static final String EVENT_TYPE = "eventType";
     public static final String API_FETCH_USER_COMPETENCY = "api.fetch.user.competency";
     public static final String IS_FIRST_TIME_USER = "isFirstTimeUser";
+    public static final String COMPETENCIES = "competencies";
 
     private Constants() {
     }

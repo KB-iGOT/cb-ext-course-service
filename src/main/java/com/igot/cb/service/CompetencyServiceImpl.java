@@ -10,12 +10,12 @@ import com.igot.cb.util.ProjectUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
-import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.http.HttpStatus;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -57,13 +57,13 @@ public class CompetencyServiceImpl implements CompetencyService {
                 return response;
             }
             log.debug("Starting competency fetch for userId: {}", userId);
-            Map<String, Object> userCompetencyData = fetchUserCompetencyMapping(userId);
+            List<Map<String, Object>> userCompetencyData = fetchUserCompetencyMapping(userId);
 
-            if (MapUtils.isNotEmpty(userCompetencyData)) {
+            if (CollectionUtils.isNotEmpty(userCompetencyData)) {
                 log.info("Competency data already present for userId: {}", userId);
                 response.setResponseCode(HttpStatus.OK);
                 response.getParams().setStatus(Constants.SUCCESS);
-                response.setResult(userCompetencyData);
+                response.setResult(Map.of(Constants.COMPETENCIES, userCompetencyData));
                 return response;
             }
 
@@ -72,7 +72,7 @@ public class CompetencyServiceImpl implements CompetencyService {
             // Prepare response with empty object when no data found
             response.setResponseCode(HttpStatus.OK);
             response.getParams().setStatus(Constants.SUCCESS);
-            response.setResult(new HashMap<>());
+            response.setResult(Map.of(Constants.COMPETENCIES, new ArrayList<>()));
         } catch (Exception e) {
             log.error("Error fetching competency for ", e);
             response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
@@ -94,7 +94,7 @@ public class CompetencyServiceImpl implements CompetencyService {
      * @param userId The user ID
      * @return Map containing user competency data, or empty map if not found
      */
-    private Map<String, Object> fetchUserCompetencyMapping(String userId) {
+    private List<Map<String, Object>> fetchUserCompetencyMapping(String userId) {
         log.debug("Fetching user competency mapping for userId: {}", userId);
 
         Map<String, Object> propertyMap = new HashMap<>();
@@ -105,15 +105,15 @@ public class CompetencyServiceImpl implements CompetencyService {
                 Constants.USER_COMPETENCY_MAPPING_TABLE,
                 propertyMap,
                 null,
-                1
+                null
         );
 
         if (CollectionUtils.isNotEmpty(records)) {
-            return records.get(0);
+            return records;
         }
 
         log.warn("User competency mapping not found for userId: {}", userId);
-        return new HashMap<>();
+        return new ArrayList<>();
     }
 
     private void publishFirstTimeCompetencyEvent(String userId) {

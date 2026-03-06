@@ -9,12 +9,12 @@ import com.igot.cb.util.Constants;
 import com.igot.cb.util.ProjectUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.http.HttpStatus;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
-import org.springframework.util.CollectionUtils;
 
 import java.util.HashMap;
 import java.util.List;
@@ -51,6 +51,9 @@ public class CompetencyServiceImpl implements CompetencyService {
         try {
             String userId = accessTokenValidator.fetchUserIdFromAccessToken(authToken, response);
             if (StringUtils.isBlank(userId)) {
+                response.getParams().setErrMsg("User ID not found in token");
+                response.getParams().setStatus(Constants.FAILED);
+                response.setResponseCode(HttpStatus.BAD_REQUEST);
                 return response;
             }
             log.debug("Starting competency fetch for userId: {}", userId);
@@ -105,7 +108,7 @@ public class CompetencyServiceImpl implements CompetencyService {
                 1
         );
 
-        if (!CollectionUtils.isEmpty(records)) {
+        if (CollectionUtils.isNotEmpty(records)) {
             return records.get(0);
         }
 

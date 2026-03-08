@@ -1,6 +1,8 @@
 package com.igot.cb.service;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.igot.cb.cache.RedisCacheMgr;
 import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.common.ServerProperties;
 import com.igot.cb.model.ApiResponse;
@@ -31,6 +33,7 @@ public class CompetencyServiceImpl implements CompetencyService {
     private final ObjectMapper objectMapper;
     private final AccessTokenValidator accessTokenValidator;
     private final ServerProperties serverProperties;
+    private final RedisCacheMgr redisCacheMgr;
 
 
     /**
@@ -56,10 +59,24 @@ public class CompetencyServiceImpl implements CompetencyService {
                 response.setResponseCode(HttpStatus.BAD_REQUEST);
                 return response;
             }
-            log.debug("Starting competency fetch for userId: {}", userId);
+            String redisKey = Constants.USER_COMPETENCY_REDIS_KEY_PREFIX + userId;
+            int cacheTtl = serverProperties.getUserCompetencyCacheTtlSeconds();
+
+            // check Redis cache first
+            String cachedData = redisCacheMgr.getFromCache(redisKey, cacheTtl);
+            if (StringUtils.isNotEmpty(cachedData)) {
+                log.debug("Returning competency data from cache for userId: {}", userId);
+                List<Map<String, Object>> cachedList = objectMapper.readValue(
+                        cachedData, new TypeReference<List<Map<String, Object>>>() {});
+                response.setResponseCode(HttpStatus.OK);
+                response.getParams().setStatus(Constants.SUCCESS);
+                response.setResult(Map.of(Constants.COMPETENCIES, cachedList));
+                return response;
+            }
             List<Map<String, Object>> userCompetencyData = fetchUserCompetencyMapping(userId);
 
             if (CollectionUtils.isNotEmpty(userCompetencyData)) {
+                redisCacheMgr.putInCache(redisKey, objectMapper.writeValueAsString(userCompetencyData), cacheTtl);
                 log.info("Competency data already present for userId: {}", userId);
                 response.setResponseCode(HttpStatus.OK);
                 response.getParams().setStatus(Constants.SUCCESS);

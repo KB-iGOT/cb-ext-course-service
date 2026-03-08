@@ -548,6 +548,7 @@ public class Constants {
     public static final String API_FETCH_USER_COMPETENCY = "api.fetch.user.competency";
     public static final String IS_FIRST_TIME_USER = "isFirstTimeUser";
     public static final String COMPETENCIES = "competencies";
+    public static final String USER_COMPETENCY_REDIS_KEY_PREFIX = "user_competency_";
 
     private Constants() {
     }

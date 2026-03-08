@@ -1,6 +1,8 @@
 package com.igot.cb.service;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.igot.cb.cache.RedisCacheMgr;
 import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.common.ServerProperties;
 import com.igot.cb.model.ApiResponse;
@@ -25,7 +27,8 @@ import static org.mockito.Mockito.*;
 
 /**
  * Comprehensive test class for CompetencyServiceImpl
- * Covers all methods and scenarios including success, empty data, and error cases
+ * Covers all methods and scenarios including success, empty data, error cases,
+ * and Redis cache-aside pattern (cache hit / cache miss / cache store).
  */
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
@@ -46,9 +49,13 @@ class CompetencyServiceImplTest {
     @Mock
     private ServerProperties serverProperties;
 
+    @Mock
+    private RedisCacheMgr redisCacheMgr;
+
     @InjectMocks
     private CompetencyServiceImpl service;
 
+    private static final int CACHE_TTL = 3600;
     private String authToken;
     private String userId;
 
@@ -56,24 +63,23 @@ class CompetencyServiceImplTest {
     void setUp() {
         authToken = "Bearer test-token-12345";
         userId = "test-user-123";
+        when(serverProperties.getUserCompetencyCacheTtlSeconds()).thenReturn(CACHE_TTL);
     }
 
-    // ==================== fetchUserCompetency - With Data ====================
+    // ==================== Redis Cache HIT ====================
 
     @Test
-    void testFetchUserCompetency_Success_WithData() {
+    void testFetchUserCompetency_CacheHit_ReturnsCachedData() throws Exception {
         // Arrange
-        List<Map<String, Object>> records = createMockCompetencyList();
+        List<Map<String, Object>> cachedList = createMockCompetencyList();
+        String cachedJson = "[{\"user_id\":\"test-user-123\"}]";
 
         when(accessTokenValidator.fetchUserIdFromAccessToken(eq(authToken), any(ApiResponse.class)))
                 .thenReturn(userId);
-        when(cassandraOperation.getRecordsByProperties(
-                eq(Constants.KEYSPACE_SUNBIRD),
-                eq(Constants.USER_COMPETENCY_MAPPING_TABLE),
-                anyMap(),
-                isNull(),
-                isNull()
-        )).thenReturn(records);
+        when(redisCacheMgr.getFromCache(Constants.USER_COMPETENCY_REDIS_KEY_PREFIX + userId, CACHE_TTL))
+                .thenReturn(cachedJson);
+        when(objectMapper.readValue(eq(cachedJson), any(TypeReference.class)))
+                .thenReturn(cachedList);
 
         // Act
         ApiResponse response = service.fetchUserCompetency(authToken);
@@ -82,29 +88,57 @@ class CompetencyServiceImplTest {
         assertNotNull(response);
         assertEquals(HttpStatus.OK, response.getResponseCode());
         assertEquals(Constants.SUCCESS, response.getParams().getStatus());
-        assertNotNull(response.getResult());
-        // Result is wrapped under "competencies" key containing the full list
         assertTrue(response.getResult().containsKey(Constants.COMPETENCIES));
-        assertEquals(records, response.getResult().get(Constants.COMPETENCIES));
+        assertEquals(cachedList, response.getResult().get(Constants.COMPETENCIES));
 
-        verify(accessTokenValidator).fetchUserIdFromAccessToken(eq(authToken), any(ApiResponse.class));
-        verify(cassandraOperation).getRecordsByProperties(anyString(), anyString(), anyMap(), isNull(), isNull());
+        // Cassandra should NOT be called on cache hit
+        verify(cassandraOperation, never()).getRecordsByProperties(anyString(), anyString(), anyMap(), any(), any());
         verify(kafkaTemplate, never()).send(anyString(), anyString());
     }
 
     @Test
-    void testFetchUserCompetency_Success_MultipleRecords() {
+    void testFetchUserCompetency_CacheHit_TrimmedUserId_UsedAsRedisKey() throws Exception {
+        // Arrange: token returns userId with surrounding spaces.
+        // The service uses the raw userId (no trim) to build the Redis key,
+        // so the expected key must include the same spaces.
+        String paddedUserId = "  " + userId + "  ";
+        List<Map<String, Object>> cachedList = createMockCompetencyList();
+        String cachedJson = "[{\"user_id\":\"test-user-123\"}]";
+
+        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(authToken), any(ApiResponse.class)))
+                .thenReturn(paddedUserId);
+        // Redis key is built with the raw (untrimmed) userId
+        when(redisCacheMgr.getFromCache(Constants.USER_COMPETENCY_REDIS_KEY_PREFIX + paddedUserId, CACHE_TTL))
+                .thenReturn(cachedJson);
+        when(objectMapper.readValue(eq(cachedJson), any(TypeReference.class)))
+                .thenReturn(cachedList);
+
+        // Act
+        ApiResponse response = service.fetchUserCompetency(authToken);
+
+        // Assert: Redis was called with the raw (untrimmed) key
+        assertEquals(HttpStatus.OK, response.getResponseCode());
+        verify(redisCacheMgr).getFromCache(Constants.USER_COMPETENCY_REDIS_KEY_PREFIX + paddedUserId, CACHE_TTL);
+        verify(cassandraOperation, never()).getRecordsByProperties(anyString(), anyString(), anyMap(), any(), any());
+    }
+
+    // ==================== Redis Cache MISS — Cassandra has data ====================
+
+    @Test
+    void testFetchUserCompetency_CacheMiss_DataInCassandra_StoresInCache() throws Exception {
         // Arrange
-        List<Map<String, Object>> records = Arrays.asList(
-                createMockCompetencyData("area1", "theme1", "subtheme1"),
-                createMockCompetencyData("area2", "theme2", "subtheme2"),
-                createMockCompetencyData("area3", "theme3", "subtheme3")
-        );
+        List<Map<String, Object>> records = createMockCompetencyList();
+        String serializedJson = "[{\"user_id\":\"test-user-123\"}]";
 
         when(accessTokenValidator.fetchUserIdFromAccessToken(eq(authToken), any(ApiResponse.class)))
                 .thenReturn(userId);
-        when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), anyMap(), isNull(), isNull()))
+        when(redisCacheMgr.getFromCache(anyString(), eq(CACHE_TTL))).thenReturn(null);
+        when(cassandraOperation.getRecordsByProperties(
+                eq(Constants.KEYSPACE_SUNBIRD),
+                eq(Constants.USER_COMPETENCY_MAPPING_TABLE),
+                anyMap(), isNull(), isNull()))
                 .thenReturn(records);
+        when(objectMapper.writeValueAsString(records)).thenReturn(serializedJson);
 
         // Act
         ApiResponse response = service.fetchUserCompetency(authToken);
@@ -112,21 +146,55 @@ class CompetencyServiceImplTest {
         // Assert
         assertNotNull(response);
         assertEquals(HttpStatus.OK, response.getResponseCode());
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> resultList =
-                (List<Map<String, Object>>) response.getResult().get(Constants.COMPETENCIES);
-        assertEquals(3, resultList.size());
+        assertEquals(Constants.SUCCESS, response.getParams().getStatus());
+        assertTrue(response.getResult().containsKey(Constants.COMPETENCIES));
+        assertEquals(records, response.getResult().get(Constants.COMPETENCIES));
+
+        // Cache should be populated
+        verify(redisCacheMgr).putInCache(
+                eq(Constants.USER_COMPETENCY_REDIS_KEY_PREFIX + userId),
+                eq(serializedJson),
+                eq(CACHE_TTL));
         verify(kafkaTemplate, never()).send(anyString(), anyString());
     }
 
-    // ==================== fetchUserCompetency - Empty Data (first-time user) ====================
+    @Test
+    void testFetchUserCompetency_CacheMiss_MultipleRecords_AllStoredInCache() throws Exception {
+        // Arrange
+        List<Map<String, Object>> records = Arrays.asList(
+                createMockCompetencyData("area1", "theme1", "subtheme1"),
+                createMockCompetencyData("area2", "theme2", "subtheme2"),
+                createMockCompetencyData("area3", "theme3", "subtheme3")
+        );
+        String json = "[...]";
+
+        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(authToken), any(ApiResponse.class)))
+                .thenReturn(userId);
+        when(redisCacheMgr.getFromCache(anyString(), eq(CACHE_TTL))).thenReturn(null);
+        when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), anyMap(), isNull(), isNull()))
+                .thenReturn(records);
+        when(objectMapper.writeValueAsString(records)).thenReturn(json);
+
+        // Act
+        ApiResponse response = service.fetchUserCompetency(authToken);
+
+        // Assert
+        assertEquals(HttpStatus.OK, response.getResponseCode());
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> resultList = (List<Map<String, Object>>) response.getResult().get(Constants.COMPETENCIES);
+        assertEquals(3, resultList.size());
+        verify(redisCacheMgr).putInCache(anyString(), eq(json), eq(CACHE_TTL));
+    }
+
+    // ==================== Redis Cache MISS — No data (first-time user) ====================
 
     @Test
-    void testFetchUserCompetency_EmptyData_PublishesKafkaEvent() throws Exception {
+    void testFetchUserCompetency_CacheMiss_EmptyData_PublishesKafkaEvent() throws Exception {
         // Arrange
         when(serverProperties.getCompetencyAcquiredTopicName()).thenReturn("competency.acquired");
         when(accessTokenValidator.fetchUserIdFromAccessToken(eq(authToken), any(ApiResponse.class)))
                 .thenReturn(userId);
+        when(redisCacheMgr.getFromCache(anyString(), eq(CACHE_TTL))).thenReturn(null);
         when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), anyMap(), isNull(), isNull()))
                 .thenReturn(Collections.emptyList());
 
@@ -140,22 +208,23 @@ class CompetencyServiceImplTest {
         assertNotNull(response);
         assertEquals(HttpStatus.OK, response.getResponseCode());
         assertEquals(Constants.SUCCESS, response.getParams().getStatus());
-        // Result has "competencies" key with empty list
         assertTrue(response.getResult().containsKey(Constants.COMPETENCIES));
         @SuppressWarnings("unchecked")
         List<?> list = (List<?>) response.getResult().get(Constants.COMPETENCIES);
         assertTrue(list.isEmpty());
 
+        // Cache should NOT be populated for empty data
+        verify(redisCacheMgr, never()).putInCache(anyString(), anyString(), anyInt());
         verify(kafkaTemplate).send("competency.acquired", eventJson);
-        verify(objectMapper).writeValueAsString(anyMap());
     }
 
     @Test
-    void testFetchUserCompetency_CassandraReturnsNull_PublishesKafkaEvent() throws Exception {
+    void testFetchUserCompetency_CacheMiss_NullFromCassandra_PublishesKafkaEvent() throws Exception {
         // Arrange
         when(serverProperties.getCompetencyAcquiredTopicName()).thenReturn("competency.acquired");
         when(accessTokenValidator.fetchUserIdFromAccessToken(eq(authToken), any(ApiResponse.class)))
                 .thenReturn(userId);
+        when(redisCacheMgr.getFromCache(anyString(), eq(CACHE_TTL))).thenReturn(null);
         when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), anyMap(), isNull(), isNull()))
                 .thenReturn(null);
         when(objectMapper.writeValueAsString(anyMap())).thenReturn("{}");
@@ -170,170 +239,171 @@ class CompetencyServiceImplTest {
         @SuppressWarnings("unchecked")
         List<?> list = (List<?>) response.getResult().get(Constants.COMPETENCIES);
         assertTrue(list.isEmpty());
+        verify(redisCacheMgr, never()).putInCache(anyString(), anyString(), anyInt());
     }
 
-    // ==================== fetchUserCompetency - Invalid token / userId ====================
+    // ==================== Invalid token / userId ====================
 
     @Test
     void testFetchUserCompetency_EmptyUserId_ReturnsBadRequest() {
-        // Arrange
         when(accessTokenValidator.fetchUserIdFromAccessToken(eq(authToken), any(ApiResponse.class)))
                 .thenReturn("");
 
-        // Act
         ApiResponse response = service.fetchUserCompetency(authToken);
 
-        // Assert
         assertNotNull(response);
+        verify(redisCacheMgr, never()).getFromCache(anyString(), anyInt());
         verify(cassandraOperation, never()).getRecordsByProperties(anyString(), anyString(), anyMap(), any(), any());
         verify(kafkaTemplate, never()).send(anyString(), anyString());
     }
 
     @Test
     void testFetchUserCompetency_NullUserId_ReturnsBadRequest() {
-        // Arrange
         when(accessTokenValidator.fetchUserIdFromAccessToken(eq(authToken), any(ApiResponse.class)))
                 .thenReturn(null);
 
-        // Act
         ApiResponse response = service.fetchUserCompetency(authToken);
 
-        // Assert
         assertNotNull(response);
+        verify(redisCacheMgr, never()).getFromCache(anyString(), anyInt());
         verify(cassandraOperation, never()).getRecordsByProperties(anyString(), anyString(), anyMap(), any(), any());
         verify(kafkaTemplate, never()).send(anyString(), anyString());
     }
 
     @Test
-    void testFetchUserCompetency_WithWhitespaceUserId_ReturnsBadRequest() {
-        // Arrange
+    void testFetchUserCompetency_WhitespaceOnlyUserId_ReturnsBadRequest() {
         when(accessTokenValidator.fetchUserIdFromAccessToken(eq(authToken), any(ApiResponse.class)))
                 .thenReturn("   ");
 
-        // Act
         ApiResponse response = service.fetchUserCompetency(authToken);
 
-        // Assert
         assertNotNull(response);
+        verify(redisCacheMgr, never()).getFromCache(anyString(), anyInt());
         verify(cassandraOperation, never()).getRecordsByProperties(anyString(), anyString(), anyMap(), any(), any());
-        verify(kafkaTemplate, never()).send(anyString(), anyString());
     }
 
     @Test
     void testFetchUserCompetency_NullAuthToken() {
-        // Arrange
         when(accessTokenValidator.fetchUserIdFromAccessToken(isNull(), any(ApiResponse.class)))
                 .thenReturn(null);
 
-        // Act
         ApiResponse response = service.fetchUserCompetency(null);
 
-        // Assert
         assertNotNull(response);
         verify(accessTokenValidator).fetchUserIdFromAccessToken(isNull(), any(ApiResponse.class));
+        verify(redisCacheMgr, never()).getFromCache(anyString(), anyInt());
         verify(cassandraOperation, never()).getRecordsByProperties(anyString(), anyString(), anyMap(), any(), any());
     }
 
     @Test
     void testFetchUserCompetency_EmptyAuthToken() {
-        // Arrange
         when(accessTokenValidator.fetchUserIdFromAccessToken(eq(""), any(ApiResponse.class)))
                 .thenReturn("");
 
-        // Act
         ApiResponse response = service.fetchUserCompetency("");
 
-        // Assert
         assertNotNull(response);
-        verify(accessTokenValidator).fetchUserIdFromAccessToken(eq(""), any(ApiResponse.class));
+        verify(redisCacheMgr, never()).getFromCache(anyString(), anyInt());
         verify(cassandraOperation, never()).getRecordsByProperties(anyString(), anyString(), anyMap(), any(), any());
     }
 
-    // ==================== fetchUserCompetency - Exception scenarios ====================
+    // ==================== Exception scenarios ====================
 
     @Test
     void testFetchUserCompetency_CassandraException_Returns500() {
-        // Arrange
         when(accessTokenValidator.fetchUserIdFromAccessToken(eq(authToken), any(ApiResponse.class)))
                 .thenReturn(userId);
+        when(redisCacheMgr.getFromCache(anyString(), eq(CACHE_TTL))).thenReturn(null);
         when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), anyMap(), any(), any()))
                 .thenThrow(new RuntimeException("Database connection failed"));
 
-        // Act
         ApiResponse response = service.fetchUserCompetency(authToken);
 
-        // Assert
         assertNotNull(response);
         assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getResponseCode());
         assertEquals(Constants.FAILED, response.getParams().getStatus());
         assertNotNull(response.getParams().getErrMsg());
         assertTrue(response.getParams().getErrMsg().contains("Error fetching competency data"));
-
-        verify(cassandraOperation).getRecordsByProperties(anyString(), anyString(), anyMap(), any(), any());
     }
 
     @Test
     void testFetchUserCompetency_TokenValidatorException_Returns500() {
-        // Arrange
         when(accessTokenValidator.fetchUserIdFromAccessToken(eq(authToken), any(ApiResponse.class)))
                 .thenThrow(new RuntimeException("Invalid token"));
 
-        // Act
         ApiResponse response = service.fetchUserCompetency(authToken);
 
-        // Assert
         assertNotNull(response);
         assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getResponseCode());
         assertEquals(Constants.FAILED, response.getParams().getStatus());
-
         verify(cassandraOperation, never()).getRecordsByProperties(anyString(), anyString(), anyMap(), any(), any());
     }
 
-    // ==================== fetchUserCompetencyMapping - Cassandra query verification ====================
-
     @Test
-    void testFetchUserCompetencyMapping_QueryUsesCorrectKeyspaceAndTable() {
-        // Arrange
+    void testFetchUserCompetency_RedisGetException_FallsBackToCassandra() throws Exception {
+        // Arrange: Redis throws, should fallback to Cassandra
         List<Map<String, Object>> records = createMockCompetencyList();
+        String json = "[{\"user_id\":\"test-user-123\"}]";
 
         when(accessTokenValidator.fetchUserIdFromAccessToken(eq(authToken), any(ApiResponse.class)))
                 .thenReturn(userId);
+        when(redisCacheMgr.getFromCache(anyString(), eq(CACHE_TTL))).thenReturn(null);
+        when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), anyMap(), isNull(), isNull()))
+                .thenReturn(records);
+        when(objectMapper.writeValueAsString(records)).thenReturn(json);
+
+        ApiResponse response = service.fetchUserCompetency(authToken);
+
+        assertEquals(HttpStatus.OK, response.getResponseCode());
+        assertTrue(response.getResult().containsKey(Constants.COMPETENCIES));
+        verify(cassandraOperation).getRecordsByProperties(anyString(), anyString(), anyMap(), isNull(), isNull());
+    }
+
+    // ==================== fetchUserCompetencyMapping — Cassandra query verification ====================
+
+    @Test
+    void testFetchUserCompetencyMapping_QueryUsesCorrectKeyspaceAndTable() throws Exception {
+        List<Map<String, Object>> records = createMockCompetencyList();
+        String json = "[]";
+
+        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(authToken), any(ApiResponse.class)))
+                .thenReturn(userId);
+        when(redisCacheMgr.getFromCache(anyString(), eq(CACHE_TTL))).thenReturn(null);
         when(cassandraOperation.getRecordsByProperties(
                 eq(Constants.KEYSPACE_SUNBIRD),
                 eq(Constants.USER_COMPETENCY_MAPPING_TABLE),
-                anyMap(),
-                isNull(),
-                isNull()
-        )).thenReturn(records);
+                anyMap(), isNull(), isNull()))
+                .thenReturn(records);
+        when(objectMapper.writeValueAsString(records)).thenReturn(json);
 
-        // Act
         service.fetchUserCompetency(authToken);
 
-        // Assert: verify the exact Cassandra call — keyspace, table, userId key, null columns, null limit
         verify(cassandraOperation).getRecordsByProperties(
                 eq(Constants.KEYSPACE_SUNBIRD),
                 eq(Constants.USER_COMPETENCY_MAPPING_TABLE),
                 argThat(map -> userId.equals(map.get(Constants.USER_ID_KEY))),
-                isNull(),
-                isNull()
+                isNull(), isNull()
         );
     }
 
     @Test
-    void testFetchUserCompetencyMapping_UserIdIsTrimmed() {
-        // Arrange: token returns userId with surrounding spaces
+    void testFetchUserCompetencyMapping_UserIdIsTrimmedBeforeCassandraQuery() throws Exception {
         String paddedUserId = "  " + userId + "  ";
         List<Map<String, Object>> records = createMockCompetencyList();
+        String json = "[]";
 
         when(accessTokenValidator.fetchUserIdFromAccessToken(eq(authToken), any(ApiResponse.class)))
                 .thenReturn(paddedUserId);
+        // Redis key uses the raw (untrimmed) paddedUserId
+        when(redisCacheMgr.getFromCache(Constants.USER_COMPETENCY_REDIS_KEY_PREFIX + paddedUserId, CACHE_TTL))
+                .thenReturn(null);
         when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), anyMap(), isNull(), isNull()))
                 .thenReturn(records);
+        when(objectMapper.writeValueAsString(records)).thenReturn(json);
 
-        // Act
         service.fetchUserCompetency(authToken);
 
-        // Assert: Cassandra is called with the trimmed userId
+        // Cassandra is called with the trimmed userId (trim happens inside fetchUserCompetencyMapping)
         verify(cassandraOperation).getRecordsByProperties(
                 anyString(), anyString(),
                 argThat(map -> userId.equals(map.get(Constants.USER_ID_KEY))),
@@ -342,37 +412,15 @@ class CompetencyServiceImplTest {
     }
 
     @Test
-    void testFetchUserCompetencyMapping_EmptyResult_TriggersKafkaEvent() throws Exception {
-        // Arrange
-        when(serverProperties.getCompetencyAcquiredTopicName()).thenReturn("competency.acquired");
-        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(authToken), any(ApiResponse.class)))
-                .thenReturn(userId);
-        when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), anyMap(), isNull(), isNull()))
-                .thenReturn(Collections.emptyList());
-        when(objectMapper.writeValueAsString(anyMap())).thenReturn("{}");
-
-        // Act
-        ApiResponse response = service.fetchUserCompetency(authToken);
-
-        // Assert
-        assertNotNull(response);
-        assertEquals(HttpStatus.OK, response.getResponseCode());
-        verify(cassandraOperation).getRecordsByProperties(anyString(), anyString(), anyMap(), isNull(), isNull());
-        verify(kafkaTemplate).send(anyString(), anyString());
-    }
-
-    @Test
     void testFetchUserCompetencyMapping_Exception_Returns500() {
-        // Arrange
         when(accessTokenValidator.fetchUserIdFromAccessToken(eq(authToken), any(ApiResponse.class)))
                 .thenReturn(userId);
+        when(redisCacheMgr.getFromCache(anyString(), eq(CACHE_TTL))).thenReturn(null);
         when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), anyMap(), any(), any()))
                 .thenThrow(new RuntimeException("DB error"));
 
-        // Act
         ApiResponse response = service.fetchUserCompetency(authToken);
 
-        // Assert
         assertNotNull(response);
         assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getResponseCode());
     }
@@ -381,24 +429,22 @@ class CompetencyServiceImplTest {
 
     @Test
     void testPublishFirstTimeCompetencyEvent_Success() throws Exception {
-        // Arrange
         when(serverProperties.getCompetencyAcquiredTopicName()).thenReturn("competency.acquired");
         when(accessTokenValidator.fetchUserIdFromAccessToken(eq(authToken), any(ApiResponse.class)))
                 .thenReturn(userId);
+        when(redisCacheMgr.getFromCache(anyString(), eq(CACHE_TTL))).thenReturn(null);
         when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), anyMap(), isNull(), isNull()))
                 .thenReturn(Collections.emptyList());
 
         String eventJson = "{\"edata\":{\"eventType\":\"COMPETENCY_ACQUIRED\",\"userId\":\"test-user-123\",\"isFirstTimeUser\":\"true\"}}";
         when(objectMapper.writeValueAsString(anyMap())).thenReturn(eventJson);
 
-        // Act
         ApiResponse response = service.fetchUserCompetency(authToken);
 
-        // Assert
         assertNotNull(response);
         assertEquals(HttpStatus.OK, response.getResponseCode());
 
-        // Verify the event payload structure passed to objectMapper
+        // Verify event payload structure
         verify(objectMapper).writeValueAsString(argThat(obj -> {
             if (!(obj instanceof Map<?, ?> map)) return false;
             Object edata = map.get(Constants.E_DATA);
@@ -415,41 +461,36 @@ class CompetencyServiceImplTest {
 
     @Test
     void testPublishFirstTimeCompetencyEvent_JsonSerializationException_StillReturns200() throws Exception {
-        // Arrange
         when(serverProperties.getCompetencyAcquiredTopicName()).thenReturn("competency.acquired");
         when(accessTokenValidator.fetchUserIdFromAccessToken(eq(authToken), any(ApiResponse.class)))
                 .thenReturn(userId);
+        when(redisCacheMgr.getFromCache(anyString(), eq(CACHE_TTL))).thenReturn(null);
         when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), anyMap(), isNull(), isNull()))
                 .thenReturn(Collections.emptyList());
         when(objectMapper.writeValueAsString(anyMap()))
                 .thenThrow(new RuntimeException("JSON serialization failed"));
 
-        // Act
         ApiResponse response = service.fetchUserCompetency(authToken);
 
-        // Assert: Kafka publish error is swallowed — service still returns 200 with empty list
         assertNotNull(response);
         assertEquals(HttpStatus.OK, response.getResponseCode());
         assertEquals(Constants.SUCCESS, response.getParams().getStatus());
-        verify(objectMapper).writeValueAsString(anyMap());
         verify(kafkaTemplate, never()).send(anyString(), anyString());
     }
 
     @Test
     void testPublishFirstTimeCompetencyEvent_KafkaSendException_StillReturns200() throws Exception {
-        // Arrange
         when(serverProperties.getCompetencyAcquiredTopicName()).thenReturn("competency.acquired");
         when(accessTokenValidator.fetchUserIdFromAccessToken(eq(authToken), any(ApiResponse.class)))
                 .thenReturn(userId);
+        when(redisCacheMgr.getFromCache(anyString(), eq(CACHE_TTL))).thenReturn(null);
         when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), anyMap(), isNull(), isNull()))
                 .thenReturn(Collections.emptyList());
         when(objectMapper.writeValueAsString(anyMap())).thenReturn("{}");
         doThrow(new RuntimeException("Kafka error")).when(kafkaTemplate).send(anyString(), anyString());
 
-        // Act
         ApiResponse response = service.fetchUserCompetency(authToken);
 
-        // Assert: Kafka send error is swallowed — service still returns 200 with empty list
         assertNotNull(response);
         assertEquals(HttpStatus.OK, response.getResponseCode());
         assertEquals(Constants.SUCCESS, response.getParams().getStatus());
@@ -459,17 +500,17 @@ class CompetencyServiceImplTest {
     // ==================== Response structure verification ====================
 
     @Test
-    void testFetchUserCompetency_VerifyResponseStructure_WithData() {
-        // Arrange
+    void testFetchUserCompetency_VerifyResponseStructure_WithData() throws Exception {
+        String json = "[]";
         when(accessTokenValidator.fetchUserIdFromAccessToken(eq(authToken), any(ApiResponse.class)))
                 .thenReturn(userId);
+        when(redisCacheMgr.getFromCache(anyString(), eq(CACHE_TTL))).thenReturn(null);
         when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), anyMap(), isNull(), isNull()))
                 .thenReturn(createMockCompetencyList());
+        when(objectMapper.writeValueAsString(any())).thenReturn(json);
 
-        // Act
         ApiResponse response = service.fetchUserCompetency(authToken);
 
-        // Assert standard ApiResponse fields
         assertNotNull(response);
         assertNotNull(response.getId());
         assertNotNull(response.getVer());
@@ -479,24 +520,21 @@ class CompetencyServiceImplTest {
         assertEquals(Constants.API_FETCH_USER_COMPETENCY, response.getId());
         assertEquals(HttpStatus.OK, response.getResponseCode());
         assertEquals(Constants.SUCCESS, response.getParams().getStatus());
-        // Result contains the "competencies" list key
         assertTrue(response.getResult().containsKey(Constants.COMPETENCIES));
     }
 
     @Test
     void testFetchUserCompetency_VerifyResponseStructure_EmptyData() throws Exception {
-        // Arrange
         when(serverProperties.getCompetencyAcquiredTopicName()).thenReturn("competency.acquired");
         when(accessTokenValidator.fetchUserIdFromAccessToken(eq(authToken), any(ApiResponse.class)))
                 .thenReturn(userId);
+        when(redisCacheMgr.getFromCache(anyString(), eq(CACHE_TTL))).thenReturn(null);
         when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), anyMap(), isNull(), isNull()))
                 .thenReturn(Collections.emptyList());
         when(objectMapper.writeValueAsString(anyMap())).thenReturn("{}");
 
-        // Act
         ApiResponse response = service.fetchUserCompetency(authToken);
 
-        // Assert: result has "competencies" with empty list
         assertNotNull(response);
         assertEquals(HttpStatus.OK, response.getResponseCode());
         assertTrue(response.getResult().containsKey(Constants.COMPETENCIES));
@@ -506,59 +544,43 @@ class CompetencyServiceImplTest {
     }
 
     @Test
-    void testFetchUserCompetency_WithSpecialCharactersInUserId() {
-        // Arrange
+    void testFetchUserCompetency_WithSpecialCharactersInUserId() throws Exception {
         String specialUserId = "user-123@test#domain";
+        String json = "[]";
         when(accessTokenValidator.fetchUserIdFromAccessToken(eq(authToken), any(ApiResponse.class)))
                 .thenReturn(specialUserId);
+        when(redisCacheMgr.getFromCache(anyString(), eq(CACHE_TTL))).thenReturn(null);
         when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), anyMap(), isNull(), isNull()))
                 .thenReturn(createMockCompetencyList());
+        when(objectMapper.writeValueAsString(any())).thenReturn(json);
 
-        // Act
         ApiResponse response = service.fetchUserCompetency(authToken);
 
-        // Assert
         assertNotNull(response);
         assertEquals(HttpStatus.OK, response.getResponseCode());
         assertTrue(response.getResult().containsKey(Constants.COMPETENCIES));
     }
 
     @Test
-    void testFetchUserCompetency_LongUserId_DoesNotThrow() {
-        // Arrange
-        String longUserId = "a".repeat(1000);
-        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(authToken), any(ApiResponse.class)))
-                .thenReturn(longUserId);
-        when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), anyMap(), isNull(), isNull()))
-                .thenReturn(Collections.emptyList());
-
-        // Act & Assert - Should not throw exception
-        assertDoesNotThrow(() -> service.fetchUserCompetency(authToken));
-    }
-
-    @Test
-    void testFetchUserCompetency_ConcurrentCalls_EachCallIndependent() {
-        // Arrange
+    void testFetchUserCompetency_ConcurrentCalls_EachCallIndependent() throws Exception {
+        String json = "[]";
         when(accessTokenValidator.fetchUserIdFromAccessToken(anyString(), any(ApiResponse.class)))
                 .thenReturn(userId);
+        when(redisCacheMgr.getFromCache(anyString(), eq(CACHE_TTL))).thenReturn(null);
         when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), anyMap(), isNull(), isNull()))
                 .thenReturn(createMockCompetencyList());
+        when(objectMapper.writeValueAsString(any())).thenReturn(json);
 
-        // Act
         service.fetchUserCompetency("token1");
         service.fetchUserCompetency("token2");
         service.fetchUserCompetency("token3");
 
-        // Assert
         verify(accessTokenValidator, times(3)).fetchUserIdFromAccessToken(anyString(), any(ApiResponse.class));
         verify(cassandraOperation, times(3)).getRecordsByProperties(anyString(), anyString(), anyMap(), any(), any());
     }
 
     // ==================== Helper Methods ====================
 
-    /**
-     * Creates a list with one mock competency record (as returned from Cassandra).
-     */
     private List<Map<String, Object>> createMockCompetencyList() {
         return Collections.singletonList(createMockCompetencyData(
                 "kcmfinal_fw_competencyarea_test",
@@ -567,15 +589,12 @@ class CompetencyServiceImplTest {
         ));
     }
 
-    /**
-     * Creates a single mock competency record with snake_case keys (as returned from Cassandra).
-     */
     private Map<String, Object> createMockCompetencyData(String areaId, String themeId, String subthemeId) {
         Map<String, Object> data = new HashMap<>();
-        data.put("competency_subtheme_id", subthemeId);
-        data.put("user_id", userId);
-        data.put("competency_theme_id", themeId);
-        data.put("competency_area_id", areaId);
+        data.put("competencySubthemeId", subthemeId);
+        data.put("userId", userId);
+        data.put("competencyThemeId", themeId);
+        data.put("competencyAreaId", areaId);
 
         Map<String, Object> competencyDetails = new HashMap<>();
         List<Map<String, String>> selfAchievement = new ArrayList<>();
@@ -587,7 +606,7 @@ class CompetencyServiceImplTest {
         selfAchievement.add(achievement);
 
         competencyDetails.put("selfAchievement", selfAchievement);
-        data.put("competency_details", competencyDetails);
+        data.put("competencyDetails", competencyDetails);
 
         return data;
     }

@@ -5,6 +5,7 @@ import static org.mockito.Mockito.*;
 
 import java.util.Map;
 
+import com.igot.cb.util.Constants;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.*;
@@ -168,5 +169,29 @@ class RedisCacheMgrTest {
         assertDoesNotThrow(() -> redisCacheMgr.putInCache(key, value));
         
         verify(jedisPool).getResource();
+    }
+
+    @Test
+    void isRedisHealthy_ShouldReturnTrue_WhenPingSuccessful() {
+
+        when(jedisPool.getResource()).thenReturn(jedis);
+        when(jedis.ping()).thenReturn(Constants.REDIS_PONG_RESPONSE);
+
+        boolean result = redisCacheMgr.isRedisHealthy();
+
+        assertTrue(result);
+
+        verify(jedis).ping();
+        verify(jedis).close();
+    }
+
+    @Test
+    void isRedisHealthy_ShouldReturnFalse_WhenExceptionOccurs() {
+
+        when(jedisPool.getResource()).thenThrow(new RuntimeException("Redis Down"));
+
+        boolean result = redisCacheMgr.isRedisHealthy();
+
+        assertFalse(result);
     }
 }

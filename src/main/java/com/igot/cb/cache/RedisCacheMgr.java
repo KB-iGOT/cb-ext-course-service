@@ -4,6 +4,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
+import com.igot.cb.util.Constants;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -139,6 +140,15 @@ public class RedisCacheMgr {
         } catch (Exception e) {
             log.error("Failed to read data from Redis: ", e);
             return null;
+        }
+    }
+
+    public boolean isRedisHealthy() {
+        try (Jedis jedis = jedisPool.getResource()) {
+            return Constants.REDIS_PONG_RESPONSE.equalsIgnoreCase(jedis.ping());
+        } catch (Exception e) {
+            log.error("Redis health check failed", e);
+            return false;
         }
     }
 

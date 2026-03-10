@@ -544,6 +544,17 @@ public class Constants {
     public static final String LEAF_NODES = "leafNodes";
     public static final String COURSE_UNITS = "courseUnits";
 
+    //Health Check
+    public static final String API_HEALTH_CHECK = "api.health.check";
+    public static final String HEALTHY = "healthy";
+    public static final String CHECKS = "checks";
+    public static final String CASSANDRA_DB = "cassandra db";
+    public static final String TABLE_SYSTEM_SETTINGS = "system_settings";
+
+    // Redis
+    public static final String REDIS_CACHE = "redis cache";
+    public static final String REDIS_PONG_RESPONSE = "PONG";
+
     private Constants() {
     }
 }

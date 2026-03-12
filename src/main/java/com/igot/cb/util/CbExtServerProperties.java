@@ -75,4 +75,22 @@ public class CbExtServerProperties {
 
     @Value("${promotional.content.cache.max.query.size}")
     private int promotionalContentCacheMaxQuerySize;
+
+    @Value("${external.training.bulkupload.table}")
+    private String externalTrainingBulkUploadTable;
+
+    @Value("${external.training.user.bulk.upload.topic}")
+    private String externalTrainingBulkUploadTopic;
+
+    @Value("${external.training.user.bulk.upload.topic.group}")
+    private String externalTrainingBulkUploadTopicGroup;
+
+    @Value("${external.training.user.bulk.upload.container.name}")
+    private String externalTrainingBulkUploadContainerName;
+
+    @Value("${bulk.upload.csv.delimiter}")
+    private char bulkUploadCsvDelimiter;
+
+    @Value("${external.training.enrolment.table.name}")
+    private String externalTrainingEnrolmentsTableName;
 }

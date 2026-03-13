@@ -4,12 +4,15 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.model.ApiResponse;
 import com.igot.cb.service.ExternalTrainingService;
+import com.igot.cb.service.UserAndOrgServiceImpl;
 import com.igot.cb.storage.service.StorageService;
+import com.igot.cb.user.UserUtilityService;
 import com.igot.cb.util.AccessTokenValidator;
 import com.igot.cb.util.CbExtServerProperties;
 import com.igot.cb.util.Constants;
 import com.igot.cb.util.ProjectUtil;
 import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections.MapUtils;
 import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.lang.StringUtils;
 import org.slf4j.Logger;
@@ -23,6 +26,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.util.ObjectUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.File;
@@ -56,12 +60,27 @@ public class ExternalTrainingServiceImpl implements ExternalTrainingService {
     @Autowired
     private ObjectMapper mapper;
 
+    @Autowired
+    private UserAndOrgServiceImpl userAndOrgService;
+
+    @Autowired
+    private UserUtilityService userUtilityService;
+
     @Override
-    public ApiResponse externalTrainingUserBulkUpload(MultipartFile mFile, String eventId, String batchId) {
+    public ApiResponse externalTrainingUserBulkUpload(MultipartFile mFile, String eventId, String batchId, String authToken) {
         ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_EXTERNAL_TRAINING_USER_BULK_UPLOAD);
         try {
 
-            String userOrgId = "";
+            String userId = accessTokenValidator.fetchUserIdFromAccessToken(authToken, response);
+            if (StringUtils.isBlank(userId)) {
+                return response;
+            }
+
+            String userOrgId = getRootOrgFromUser(userId, response);
+            if (Constants.FAILED.equalsIgnoreCase(response.getParams().getStatus())) {
+                return response;
+            }
+
             String errMsg = validateEventDetailsAndCSVFile(eventId, batchId, mFile);
             if (StringUtils.isNotEmpty(errMsg)) {
                 setErrorData(response, errMsg);
@@ -204,9 +223,19 @@ public class ExternalTrainingServiceImpl implements ExternalTrainingService {
     }
 
     @Override
-    public ApiResponse externalTrainingUserBulkUploadStatus(String eventId, String batchId) {
+    public ApiResponse externalTrainingUserBulkUploadStatus(String eventId, String batchId, String authToken) {
         ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_EXTERNAL_TRAINING_USER_BULK_UPLOAD_STATUS);
         try {
+            String userId = accessTokenValidator.fetchUserIdFromAccessToken(authToken, response);
+            if (StringUtils.isBlank(userId)) {
+                return response;
+            }
+
+            String userOrgId = getRootOrgFromUser(userId, response);
+            if (Constants.FAILED.equalsIgnoreCase(response.getParams().getStatus())) {
+                return response;
+            }
+
             Map<String, Object> propertyMap = new HashMap<>();
             if (StringUtils.isNotEmpty(eventId)) {
                 propertyMap.put(Constants.CONTEXT_ID_CAMEL, eventId);
@@ -225,8 +254,14 @@ public class ExternalTrainingServiceImpl implements ExternalTrainingService {
     }
 
     @Override
-    public ResponseEntity<Resource> downloadFile(String fileName) {
+    public ResponseEntity<Resource> downloadFile(String fileName, String authToken) {
         try {
+            ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_EXTERNAL_TRAINING_USER_BULK_UPLOAD_STATUS);
+            String userId = accessTokenValidator.fetchUserIdFromAccessToken(authToken, response);
+            if (StringUtils.isBlank(userId)) {
+                return response;
+            }
+
             storageService.downloadFile(fileName, serverConfig.getExternalTrainingBulkUploadContainerName());
             Path tmpPath = Paths.get(Constants.LOCAL_BASE_PATH + fileName);
             ByteArrayResource resource = new ByteArrayResource(Files.readAllBytes(tmpPath));
@@ -249,5 +284,31 @@ public class ExternalTrainingServiceImpl implements ExternalTrainingService {
             } catch (Exception e1) {
             }
         }
+
+    }
+
+    private String getRootOrgFromUser(String userId, ApiResponse response) {
+        String rootOrgId = null;
+        Map<String, Object> userMap = userAndOrgService.readUserProfileFromDB(userId,
+                Arrays.asList(Constants.ID, Constants.ROOT_ORG_ID));
+        if (MapUtils.isEmpty(userMap)) {
+            response.getParams().setStatus(Constants.FAILED);
+            response.getParams()
+                    .setErrMsg("Failed to read user details from DB. UserId: " + userId);
+            response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
+            return rootOrgId;
+        }
+        rootOrgId = (String) userMap.get(Constants.ROOT_ORG_ID);
+
+        return rootOrgId;
+    }
+
+    private ResponseEntity<Resource> createErrorResponse(String message, HttpStatus status) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.add(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE);
+
+        return ResponseEntity.status(status)
+                .headers(headers)
+                .body(new ByteArrayResource(message.getBytes()));
     }
 }

@@ -218,7 +218,6 @@ public class ExternalTrainingBulkUploadConsumer {
      */
     private Map<String, String> processRecord(CSVRecord record, int expectedFieldCount, String eventId, String batchId, Map<String, String> emailUserIdMap, Map<String, Object> eventDetails) throws IOException {
         Map<String, String> updatedRecord = new LinkedHashMap<>(record.toMap());
-        long etsForEvent = ((Date) eventDetails.get(Constants.END_DATE)).getTime() - 10 * 1000;
         if (record.size() > expectedFieldCount) {
             markRecordAsFailed(updatedRecord, "Number of fields in the record exceeds expected number. Please check your data.");
             return updatedRecord;
@@ -568,5 +567,11 @@ public class ExternalTrainingBulkUploadConsumer {
             return null;
         }
     }
+
+    private void generateCertEventAndTriggerToKafka(){
+
+    }
+
+    private void generateCompetency
 
 }

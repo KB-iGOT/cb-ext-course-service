@@ -41,7 +41,7 @@ public class StorageServiceImpl implements StorageService {
 
 	@Override
 	public ApiResponse uploadFile(MultipartFile mFile, String cloudFolderName) throws IOException {
-		return uploadFile(mFile, cloudFolderName, serverProperties.getCloudContainerName());
+		return uploadFile((File) mFile, cloudFolderName, serverProperties.getCloudContainerName());
 	}
 
 	@Override
@@ -59,7 +59,7 @@ public class StorageServiceImpl implements StorageService {
 		} catch (Exception e) {
 			logger.error("Failed to upload file. Exception: ", e);
 			response.getParams().setStatus(Constants.FAILED);
-			response.getParams().setErrmsg("Failed to upload file. Exception: " + e.getMessage());
+			response.getParams().setErrMsg("Failed to upload file. Exception: " + e.getMessage());
 			response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
 			return response;
 		} finally {
@@ -89,7 +89,7 @@ public class StorageServiceImpl implements StorageService {
 		} catch (Exception e) {
 			logger.error("Failed to download the file: " + fileName + ", Exception: ", e);
 			response.getParams().setStatus(Constants.FAILED);
-			response.getParams().setErrmsg("Failed to download the file. Exception: " + e.getMessage());
+			response.getParams().setErrMsg("Failed to download the file. Exception: " + e.getMessage());
 			response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
 			return response;
 		}

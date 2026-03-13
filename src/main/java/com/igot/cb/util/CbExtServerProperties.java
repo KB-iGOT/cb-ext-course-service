@@ -93,4 +93,20 @@ public class CbExtServerProperties {
 
     @Value("${external.training.enrolment.table.name}")
     private String externalTrainingEnrolmentsTableName;
+
+    @Value("${cloud.container.name}")
+    private String cloudContainerName;
+
+    @Value("${cloud.storage.type.name}")
+    private String cloudStorageTypeName;
+
+    @Value("${cloud.storage.key}")
+    private String cloudStorageKey;
+
+    @Value("${cloud.storage.secret}")
+    private String cloudStorageSecret;
+
+    @Value("${cloud.storage.endpoint}")
+    private String cloudStorageEndpoint;
+
 }

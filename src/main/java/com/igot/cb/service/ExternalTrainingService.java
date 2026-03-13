@@ -7,7 +7,9 @@ import org.springframework.web.multipart.MultipartFile;
 
 public interface ExternalTrainingService {
 
-    public ApiResponse externalTrainingUserBulkUpload(MultipartFile multipartFile, String eventId, String batchId);
-    public ApiResponse externalTrainingUserBulkUploadStatus(String eventId, String batchId);
-    public ResponseEntity<Resource> downloadFile(String fileName);
+    public ApiResponse externalTrainingUserBulkUpload(MultipartFile multipartFile, String eventId, String batchId, String authToken);
+
+    public ApiResponse externalTrainingUserBulkUploadStatus(String eventId, String batchId, String authToken);
+
+    public ResponseEntity<Resource> downloadFile(String fileName, String authToken);
 }

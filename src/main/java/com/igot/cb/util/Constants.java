@@ -567,6 +567,8 @@ public class Constants {
     public static final String LRC_PROGRESS_DETAILS_COLUMN="lrc_progressdetails";
     public static final String START_DATE = "startDate";
     public static final String UPDATE_ON = "updatedOn";
+    public static final String START_TIME_KEY = "startTime";
+    public static final String END_TIME_KEY = "endTime";
     private Constants() {
     }
 }

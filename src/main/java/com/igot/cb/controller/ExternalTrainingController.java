@@ -2,6 +2,7 @@ package com.igot.cb.controller;
 
 import com.igot.cb.model.ApiResponse;
 import com.igot.cb.service.ExternalTrainingService;
+import com.igot.cb.util.Constants;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -17,21 +18,21 @@ public class ExternalTrainingController {
     @Autowired
     ExternalTrainingService externalTrainingService;
 
-    @PostMapping("/bulkUpload")
-    public ResponseEntity<?> externalTrainingUserBulkUpload(@RequestParam("file") MultipartFile multipartFile, @RequestParam(value = "eventId") String eventId, @RequestParam("batchId") String batchId) throws IOException {
-        ApiResponse uploadResponse = externalTrainingService.externalTrainingUserBulkUpload(multipartFile, eventId, batchId);
+    @PostMapping("/bulkUpload/{eventId}/{batchId}")
+    public ResponseEntity<?> externalTrainingUserBulkUpload(@RequestParam("file") MultipartFile multipartFile, @PathVariable(value = "eventId") String eventId, @PathVariable("batchId") String batchId, @RequestHeader(Constants.X_AUTH_TOKEN) String authToken) throws IOException {
+        ApiResponse uploadResponse = externalTrainingService.externalTrainingUserBulkUpload(multipartFile, eventId, batchId, authToken);
         return new ResponseEntity<>(uploadResponse, uploadResponse.getResponseCode());
 
     }
     @GetMapping("/bulkUpload/status")
-    public ResponseEntity<?> externalTrainingUserBulkUploadStatus(@RequestParam("eventId") String eventId, @RequestParam("batchId") String batchId) {
-        ApiResponse response = externalTrainingService.externalTrainingUserBulkUploadStatus(eventId, batchId);
+    public ResponseEntity<?> externalTrainingUserBulkUploadStatus(@RequestParam("eventId") String eventId, @RequestParam("batchId") String batchId, @RequestHeader(Constants.X_AUTH_TOKEN) String authToken) {
+        ApiResponse response = externalTrainingService.externalTrainingUserBulkUploadStatus(eventId, batchId, authToken);
         return new ResponseEntity<>(response, response.getResponseCode());
     }
 
     @GetMapping("/bulkUpload/download/{fileName}")
-    public ResponseEntity<?> downloadFile(@PathVariable("fileName") String fileName) {
-        return externalTrainingService.downloadFile(fileName);
+    public ResponseEntity<?> downloadFile(@PathVariable("fileName") String fileName, @RequestHeader(Constants.X_AUTH_TOKEN) String authToken) {
+        return externalTrainingService.downloadFile(fileName, authToken);
     }
 
 }

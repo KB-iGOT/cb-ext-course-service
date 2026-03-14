@@ -76,7 +76,7 @@ public class CbExtServerProperties {
     @Value("${promotional.content.cache.max.query.size}")
     private int promotionalContentCacheMaxQuerySize;
 
-    @Value("${external.training.bulkupload.table}")
+    @Value("${external.training.bulk.upload.table}")
     private String externalTrainingBulkUploadTable;
 
     @Value("${external.training.user.bulk.upload.topic}")
@@ -108,5 +108,14 @@ public class CbExtServerProperties {
 
     @Value("${cloud.storage.endpoint}")
     private String cloudStorageEndpoint;
+
+    @Value("${user.competency.mapping.event.topic}")
+    private String userCompetencyMappingEventTopic;
+
+    @Value("${user.issue.certificate.for.event.topic}")
+    private String userIssueCertificateForEventTopic;
+
+    @Value("${external.training.enrolment.batchlookup.table.name}")
+    private String externalTrainingEnrolmentBatchLookupTableName;
 
 }

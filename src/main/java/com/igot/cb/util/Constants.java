@@ -569,6 +569,7 @@ public class Constants {
     public static final String UPDATE_ON = "updatedOn";
     public static final String START_TIME_KEY = "startTime";
     public static final String END_TIME_KEY = "endTime";
+    public static final String END_DATE_CAMEL = "endDate";
     private Constants() {
     }
 }

@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.model.ApiResponse;
 import com.igot.cb.service.OutboundRequestHandlerServiceImpl;
+import com.igot.cb.service.impl.ExternalTrainingCertificateServiceImpl;
 import com.igot.cb.storage.service.StorageService;
 import com.igot.cb.util.CbExtServerProperties;
 import com.igot.cb.util.Constants;
@@ -23,19 +24,19 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.stereotype.Service;
 
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.sql.Timestamp;
 import java.text.SimpleDateFormat;
-import java.time.LocalDateTime;
-import java.time.OffsetTime;
-import java.time.ZoneId;
-import java.time.ZonedDateTime;
+import java.time.*;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 
+@Service
 public class ExternalTrainingBulkUploadConsumer {
 
     private final Logger logger = LoggerFactory.getLogger(ExternalTrainingBulkUploadConsumer.class);
@@ -54,6 +55,11 @@ public class ExternalTrainingBulkUploadConsumer {
     @Autowired
     OutboundRequestHandlerServiceImpl outboundRequestHandlerService;
 
+    @Autowired
+    private KafkaTemplate kafkaTemplate;
+
+    @Autowired
+    private ExternalTrainingCertificateServiceImpl externalTrainingCertificateService;
 
     @KafkaListener(topics = "${external.training.user.bulk.upload.topic}", groupId = "${external.training.user.bulk.upload.topic.group}")
     public void processExternalTrainingBulkUploadMessage(ConsumerRecord<String, String> data) {
@@ -70,10 +76,10 @@ public class ExternalTrainingBulkUploadConsumer {
                     }
                 });
             } else {
-                logger.error("Error in Public User Event Bulk Onboard Consumer: Invalid Kafka Msg");
+                logger.error("Error in External Training Bulk Upload Consumer: Invalid Kafka Msg");
             }
         } catch (Exception e) {
-            logger.error(String.format("Error in Public User Event Bulk Onboard Consumer: Error Msg :%s", e.getMessage()), e);
+            logger.error(String.format("Error in External Training Bulk Upload Consumer: Error Msg :%s", e.getMessage()), e);
         }
     }
 
@@ -87,7 +93,7 @@ public class ExternalTrainingBulkUploadConsumer {
 
         List<String> errList = validateReceivedKafkaMessage(inputDataMap);
         if (errList.isEmpty()) {
-            updateUserBulkUploadStatus(inputDataMap.get(Constants.CONTEXT_ID_CAMEL),
+            updateUserBulkUploadStatus(inputDataMap.get(Constants.ORD_ID), inputDataMap.get(Constants.CONTEXT_ID_CAMEL), inputDataMap.get(Constants.BATCH_ID),
                     inputDataMap.get(Constants.IDENTIFIER), Constants.STATUS_IN_PROGRESS_UPPERCASE, 0, 0, 0);
             String fileName = inputDataMap.get(Constants.FILE_NAME);
             logger.info("fileName {} ", fileName);
@@ -98,13 +104,13 @@ public class ExternalTrainingBulkUploadConsumer {
         }
         long endTime = System.currentTimeMillis();
         long totalTime = endTime - startTime;
-        logger.info("Total time taken to process public user event bulkonboard : " + totalTime);
+        logger.info("Total time taken to process External Training Bulk Upload : " + totalTime);
 
     }
 
     private void processExternalTrainingBulkUpload(Map<String, String> inputData) throws IOException {
         String orgId = inputData.get(Constants.ORD_ID);
-        String eventId = inputData.get(Constants.EVENT_ID);
+        String eventId = inputData.get(Constants.CONTEXT_ID_KEY);
         String batchId = inputData.get(Constants.BATCH_ID);
         String status = "";
 
@@ -218,6 +224,7 @@ public class ExternalTrainingBulkUploadConsumer {
      */
     private Map<String, String> processRecord(CSVRecord record, int expectedFieldCount, String eventId, String batchId, Map<String, String> emailUserIdMap, Map<String, Object> eventDetails) throws IOException {
         Map<String, String> updatedRecord = new LinkedHashMap<>(record.toMap());
+        long etsForEvent = ((Date) eventDetails.get(Constants.END_DATE_CAMEL)).getTime();
         if (record.size() > expectedFieldCount) {
             markRecordAsFailed(updatedRecord, "Number of fields in the record exceeds expected number. Please check your data.");
             return updatedRecord;
@@ -236,6 +243,7 @@ public class ExternalTrainingBulkUploadConsumer {
         }
 
         Map<String, Object> enrollmentRecord = isEventEnrolmentExist(userId, eventId, batchId);
+        double completionPercentage = 100.0;
         if (MapUtils.isNotEmpty(enrollmentRecord)) {
             markRecordAsFailed(updatedRecord, "User enrolled in the batch");
             return updatedRecord;
@@ -248,6 +256,8 @@ public class ExternalTrainingBulkUploadConsumer {
             return updatedRecord;
         }
         //trigger event for cert generation and competency passbook
+        externalTrainingCertificateService.generateCertificateEventAndPushToKafka(userId, eventId, batchId, completionPercentage, etsForEvent, false);
+        generateCompetencyEventAndTriggerToKafka(userId, eventId, batchId);
         logger.info("Successfully enrolled user: userId = {}, email = {}", userId, email);
 
         return updatedRecord;
@@ -292,7 +302,7 @@ public class ExternalTrainingBulkUploadConsumer {
      * Updates the bulk onboarding status.
      */
     private void updateStatus(Map<String, String> inputData, String status, int totalRecordsCount, int processedCount, int failedCount) {
-        updateUserBulkUploadStatus(inputData.get(Constants.CONTEXT_ID_CAMEL), inputData.get(Constants.IDENTIFIER), status, totalRecordsCount, processedCount, failedCount);
+        updateUserBulkUploadStatus(inputData.get(Constants.ORD_ID), inputData.get(Constants.CONTEXT_ID_CAMEL), inputData.get(Constants.BATCH_ID), inputData.get(Constants.IDENTIFIER), status, totalRecordsCount, processedCount, failedCount);
     }
 
 
@@ -355,26 +365,46 @@ public class ExternalTrainingBulkUploadConsumer {
         int defaultStatus = 2;
         int defaultProgress = 100;
         float defaultCompletionPercentage = 100;
-
-        Map<String, Object> request = new HashMap<>();
-        request.put(Constants.USER_ID, userId);
-        request.put(Constants.CONTEXT_ID_CAMEL, eventId);
-        request.put(Constants.BATCH_ID, batchId);
-        request.put(Constants.ACTIVE, true);
-        request.put(Constants.STATUS, defaultStatus);
-        request.put(Constants.PROGRESS, defaultProgress);
-        request.put(Constants.COMPLETION_PERCENTAGE, defaultCompletionPercentage);
-        request.put(Constants.ENROLLED_DATE_KEY_LOWER, eventDetails.get(Constants.START_DATE));
-        request.put(Constants.DATE_TIME, eventDetails.get(Constants.START_DATE));
-        request.put(Constants.COMPLETED_ON, eventDetails.get(Constants.END_DATE));
-        request.put(Constants.LRC_PROGRESS_DETAILS_COLUMN, prepareLrcProgressDetails(eventDetails));
-
-        logger.info("Attempting to enroll user: userId = {}, eventId = {}, batchId = {}", userId, eventId, batchId);
-
         ApiResponse response;
         try {
+            Object startObj = eventDetails.get(Constants.START_DATE);
+            Object endObj = eventDetails.get(Constants.END_DATE_CAMEL);
 
+            Instant startDate = null;
+            Instant endDate = null;
+            if (startObj instanceof Instant) {
+                startDate = (Instant) startObj;
+            } else if (startObj instanceof Date) {
+                startDate = ((Date) startObj).toInstant();
+            }
+
+            if (endObj instanceof Instant) {
+                endDate = (Instant) endObj;
+            } else if (endObj instanceof Date) {
+                endDate = ((Date) endObj).toInstant();
+            }
+
+            Map<String, Object> request = new HashMap<>();
+            request.put(Constants.USER_ID, userId);
+            request.put(Constants.CONTEXT_ID_CAMEL, eventId);
+            request.put(Constants.BATCH_ID, batchId);
+            request.put(Constants.ACTIVE, true);
+            request.put(Constants.STATUS, defaultStatus);
+            request.put(Constants.PROGRESS, defaultProgress);
+            request.put(Constants.COMPLETION_PERCENTAGE, defaultCompletionPercentage);
+            request.put(Constants.ENROLLED_DATE_KEY_LOWER, startDate);
+            request.put(Constants.DATE_TIME, startDate);
+            request.put(Constants.COMPLETED_ON, endDate);
+            request.put(Constants.LRC_PROGRESS_DETAILS_COLUMN, prepareLrcProgressDetails(eventDetails));
+
+            logger.info("Attempting to enroll user: userId = {}, eventId = {}, batchId = {}", userId, eventId, batchId);
             response = (ApiResponse) cassandraOperation.insertRecord(Constants.KEYSPACE_SUNBIRD_COURSE, serverProperties.getExternalTrainingEnrolmentsTableName(), request);
+
+            Map<String, Object> batchLookupInsertRequest = new HashMap<>();
+            batchLookupInsertRequest.put(Constants.USER_ID, userId);
+            batchLookupInsertRequest.put(Constants.BATCH_ID, batchId);
+            batchLookupInsertRequest.put(Constants.ACTIVE, true);
+            ApiResponse batchLookupInsertResponse = (ApiResponse) cassandraOperation.insertRecord(Constants.KEYSPACE_SUNBIRD_COURSE, serverProperties.getExternalTrainingEnrolmentBatchLookupTableName(), batchLookupInsertRequest);
 
         } catch (Exception e) {
             logger.error("Exception while enrolling user: userId = {}, eventId = {}, batchId = {}", userId, eventId, batchId, e);
@@ -389,10 +419,9 @@ public class ExternalTrainingBulkUploadConsumer {
 
         Map<String, Object> compositeKey = new HashMap<>();
         compositeKey.put(Constants.USER_ID, userId);
-        compositeKey.put(Constants.CONTEXT_ID_CAMEL, eventId);
-        compositeKey.put(Constants.BATCH_ID, batchId);
+        compositeKey.put(Constants.CONTEXT_ID_KEY, eventId);
 
-        List<Map<String, Object>> enrolmentRecords = cassandraOperation.getRecordsByProperties(Constants.KEYSPACE_SUNBIRD, serverProperties.getExternalTrainingBulkUploadTable(), compositeKey, null, null);
+        List<Map<String, Object>> enrolmentRecords = cassandraOperation.getRecordsByProperties(Constants.KEYSPACE_SUNBIRD_COURSE, serverProperties.getExternalTrainingEnrolmentsTableName(), compositeKey, null, null);
         if (CollectionUtils.isEmpty(enrolmentRecords)) {
             return null;
         }
@@ -402,7 +431,7 @@ public class ExternalTrainingBulkUploadConsumer {
     private List<String> validateReceivedKafkaMessage(Map<String, String> inputDataMap) {
         StringBuffer str = new StringBuffer();
         List<String> errList = new ArrayList<>();
-        if (StringUtils.isEmpty(inputDataMap.get(Constants.EVENT_ID))) {
+        if (StringUtils.isEmpty(inputDataMap.get(Constants.CONTEXT_ID_KEY))) {
             errList.add("Event ID is not present");
         }
         if (StringUtils.isEmpty(inputDataMap.get(Constants.BATCH_ID))) {
@@ -427,11 +456,13 @@ public class ExternalTrainingBulkUploadConsumer {
         return Constants.SUCCESS;
     }
 
-    public void updateUserBulkUploadStatus(String contextId, String identifier, String status, int totalRecordsCount,
-                                               int successfulRecordsCount, int failedRecordsCount) {
+    public void updateUserBulkUploadStatus(String orgId, String contextId, String batchId, String identifier, String status, int totalRecordsCount,
+                                           int successfulRecordsCount, int failedRecordsCount) {
         try {
             Map<String, Object> compositeKeys = new HashMap<>();
+            compositeKeys.put(Constants.ORD_ID, orgId);
             compositeKeys.put(Constants.CONTEXT_ID_CAMEL, contextId);
+            compositeKeys.put(Constants.BATCH_ID, batchId);
             compositeKeys.put(Constants.IDENTIFIER, identifier);
             Map<String, Object> fieldsToBeUpdated = new HashMap<>();
             if (!status.isEmpty()) {
@@ -446,7 +477,7 @@ public class ExternalTrainingBulkUploadConsumer {
             if (failedRecordsCount >= 0) {
                 fieldsToBeUpdated.put(Constants.FAILED_RECORDS_COUNT, failedRecordsCount);
             }
-            fieldsToBeUpdated.put(Constants.UPDATE_ON, new Timestamp(System.currentTimeMillis()));
+            fieldsToBeUpdated.put(Constants.UPDATE_ON, Instant.now());
             cassandraOperation.updateRecord(Constants.KEYSPACE_SUNBIRD, serverProperties.getExternalTrainingBulkUploadTable(),
                     fieldsToBeUpdated, compositeKeys);
         } catch (Exception e) {
@@ -463,20 +494,38 @@ public class ExternalTrainingBulkUploadConsumer {
             List<Map<String, Object>> eventBatchDetails = cassandraOperation.getRecordsByProperties(Constants.KEYSPACE_SUNBIRD_COURSE, Constants.EVENT_BATCH_TABLE_NAME, propertiesMap, null, null);
             if (CollectionUtils.isNotEmpty(eventBatchDetails)) {
                 Map<String, Object> eventBatch = eventBatchDetails.get(0);
+                Object startObj = eventBatch.get("start_date");
+                Object endObj = eventBatch.get("end_date");
+
+                Date startDate = null;
+                Date endDate = null;
+
+                if (startObj instanceof Date) {
+                    startDate = (Date) startObj;
+                } else if (startObj instanceof Instant) {
+                    startDate = Date.from((Instant) startObj);
+                }
+
+                if (endObj instanceof Date) {
+                    endDate = (Date) endObj;
+                } else if (endObj instanceof Instant) {
+                    endDate = Date.from((Instant) endObj);
+                }
                 String batchAttributesStr = (String) eventBatch.get(Constants.BATCH_ATTRIBUTES_COLUMN);
                 Map<String, Object> batchAttributes = objectMapper.readValue(batchAttributesStr, new TypeReference<Map<String, Object>>() {
                 });
-                eventDetails.put(Constants.START_DATE, convertToUTC(prepareEventDateTime((Date) eventBatch.get(Constants.START_DATE_COLUMN), (String) batchAttributes.get(Constants.START_TIME_KEY))));
-                eventDetails.put(Constants.END_DATE, convertToUTC(prepareEventDateTime((Date) eventBatch.get(Constants.END_DATE_COLUMN), (String) batchAttributes.get(Constants.END_TIME_KEY))));
+                eventDetails.put(Constants.START_DATE, startDate);
+                eventDetails.put(Constants.END_DATE_CAMEL, endDate);
 
                 Object durationObj = batchAttributes.get(Constants.DURATION);
                 long durationInSec = 0;
                 if (durationObj instanceof Integer) {
-                    durationInSec = ((Integer) durationObj).longValue() * 60;
+                    durationInSec = ((Integer) durationObj).longValue();
                 } else if (durationObj instanceof Long) {
-                    durationInSec = ((Long) durationObj) * 60;
+                    durationInSec = ((Long) durationObj);
                 }
                 eventDetails.put(Constants.DURATION, durationInSec);
+
             } else {
                 logger.warn("No event batch details found for eventId: {} and batchId: {}", eventId, batchId);
             }
@@ -521,38 +570,6 @@ public class ExternalTrainingBulkUploadConsumer {
         return objectMapper.writeValueAsString(result);
     }
 
-    private Map<String, Object> updateEventEnrollment(String userId, String eventId, String batchId, Map<String, Object> eventDetails) throws JsonProcessingException {
-        int defaultStatus = 2;
-        int defaultProgress = 100;
-        float defaultCompletionPercentage = 100;
-
-        Map<String, Object> compositeKey = new HashMap<>();
-        compositeKey.put(Constants.USER_ID_KEY, userId);
-        compositeKey.put(Constants.CONTENT_ID_KEY, eventId);
-        compositeKey.put(Constants.CONTEXT_ID_CAMEL, eventId);
-        compositeKey.put(Constants.BATCH_ID, batchId);
-
-        Map<String, Object> updateAttributes = new HashMap<>();
-        updateAttributes.put(Constants.STATUS, defaultStatus);
-        updateAttributes.put(Constants.ACTIVE, true);
-        updateAttributes.put(Constants.PROGRESS, defaultProgress);
-        updateAttributes.put(Constants.COMPLETION_PERCENTAGE, defaultCompletionPercentage);
-        updateAttributes.put(Constants.ENROLLED_DATE_KEY_LOWER, eventDetails.get(Constants.START_DATE));
-        updateAttributes.put(Constants.DATE_TIME, eventDetails.get(Constants.START_DATE));
-        updateAttributes.put(Constants.COMPLETED_ON, eventDetails.get(Constants.END_DATE));
-        updateAttributes.put(Constants.LRC_PROGRESS_DETAILS_COLUMN, prepareLrcProgressDetails(eventDetails));
-
-        Map<String, Object> response = new HashMap<>();
-        try {
-            response.putAll(cassandraOperation.updateRecord(Constants.KEYSPACE_SUNBIRD_COURSE, serverProperties.getExternalTrainingEnrolmentsTableName(), updateAttributes, compositeKey));
-        } catch (Exception e) {
-            logger.error("Exception while updating enrollment for user: userId = {}, eventId = {}, batchId = {}", userId, eventId, batchId, e);
-            response.put(Constants.RESPONSE, Constants.FAILED);
-        }
-
-        return response;
-    }
-
     private Date convertToUTC(Date date) {
         if (date == null) return null;
         SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS");
@@ -568,10 +585,25 @@ public class ExternalTrainingBulkUploadConsumer {
         }
     }
 
-    private void generateCertEventAndTriggerToKafka(){
+    public void generateCompetencyEventAndTriggerToKafka(String userId, String contentId, String batchId) {
 
+        try {
+            Map<String, Object> edata = new HashMap<>();
+            edata.put("eventType", "COMPETENCY_ACQUIRED");
+            edata.put("userId", userId);
+            edata.put("contentId", contentId);
+            edata.put("batchId", batchId);
+            edata.put("contextType", "externalTraining");
+
+            Map<String, Object> event = new HashMap<>();
+            event.put("edata", edata);
+
+            ObjectMapper objectMapper = new ObjectMapper();
+            kafkaTemplate.send(serverProperties.getUserCompetencyMappingEventTopic(), userId, objectMapper.writeValueAsString(event));
+
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to generate competency event", e);
+        }
     }
-
-    private void generateCompetency
 
 }

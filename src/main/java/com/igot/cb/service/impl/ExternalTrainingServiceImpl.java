@@ -26,15 +26,14 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
-import org.springframework.util.ObjectUtils;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.sql.Timestamp;
+import java.time.Instant;
 import java.util.*;
 
 @Service
@@ -100,11 +99,14 @@ public class ExternalTrainingServiceImpl implements ExternalTrainingService {
             }
 
             Map<String, Object> uploadedFile = new HashMap<>();
+            uploadedFile.put(Constants.ORD_ID, userOrgId);
             uploadedFile.put(Constants.CONTEXT_ID_CAMEL, eventId);
+            uploadedFile.put(Constants.BATCH_ID, batchId);
             uploadedFile.put(Constants.IDENTIFIER, UUID.randomUUID().toString());
             uploadedFile.put(Constants.FILE_NAME, uploadResponse.getResult().get(Constants.NAME));
             uploadedFile.put(Constants.FILE_PATH, uploadResponse.getResult().get(Constants.URL));
-            uploadedFile.put(Constants.CREATED_ON, new Timestamp(System.currentTimeMillis()));
+            uploadedFile.put(Constants.CREATED_BY, userId);
+            uploadedFile.put(Constants.CREATED_ON, Instant.now());
             uploadedFile.put(Constants.STATUS, Constants.STATUS_IN_PROGRESS_UPPERCASE);
 
             ApiResponse insertResponse = (ApiResponse) cassandraOperation.insertRecord(Constants.KEYSPACE_SUNBIRD,
@@ -115,9 +117,6 @@ public class ExternalTrainingServiceImpl implements ExternalTrainingService {
                 return response;
             }
 
-            uploadedFile.put(Constants.ORD_ID, userOrgId);
-            uploadedFile.put(Constants.EVENT_ID, eventId);
-            uploadedFile.put(Constants.BATCH_ID, batchId);
             kafkaTemplate.send(serverConfig.getExternalTrainingBulkUploadTopic(), mapper.writeValueAsString(uploadedFile));
 
             response.getParams().setStatus(Constants.SUCCESS);
@@ -139,9 +138,9 @@ public class ExternalTrainingServiceImpl implements ExternalTrainingService {
     private boolean isFileExistForProcessing(String orgId, String eventId, String batchId) {
         Map<String, Object> bulkUploadPrimaryKey = new HashMap<String, Object>();
         bulkUploadPrimaryKey.put(Constants.ORD_ID, orgId);
-        bulkUploadPrimaryKey.put(Constants.EVENT_ID, eventId);
+        bulkUploadPrimaryKey.put(Constants.CONTEXT_ID_KEY, eventId);
         bulkUploadPrimaryKey.put(Constants.BATCH_ID, batchId);
-        List<String> fields = Arrays.asList(Constants.ORG_ID, Constants.EVENT_ID, Constants.BATCH_ID, Constants.STATUS);
+        List<String> fields = Arrays.asList(Constants.ORG_ID, Constants.CONTEXT_ID_KEY, Constants.BATCH_ID, Constants.STATUS);
 
         List<Map<String, Object>> bulkUploadMdoList = cassandraOperation.getRecordsByProperties(
                 Constants.KEYSPACE_SUNBIRD, serverConfig.getExternalTrainingBulkUploadTable(), bulkUploadPrimaryKey, fields, null);
@@ -238,7 +237,9 @@ public class ExternalTrainingServiceImpl implements ExternalTrainingService {
 
             Map<String, Object> propertyMap = new HashMap<>();
             if (StringUtils.isNotEmpty(eventId)) {
+                propertyMap.put(Constants.ORD_ID, userOrgId);
                 propertyMap.put(Constants.CONTEXT_ID_CAMEL, eventId);
+                propertyMap.put(Constants.BATCH_ID, batchId);
             }
             List<Map<String, Object>> bulkUploadList = cassandraOperation.getRecordsByProperties(Constants.KEYSPACE_SUNBIRD,
                     serverConfig.getExternalTrainingBulkUploadTable(), propertyMap, null, null);
@@ -254,12 +255,12 @@ public class ExternalTrainingServiceImpl implements ExternalTrainingService {
     }
 
     @Override
-    public ResponseEntity<Resource> downloadFile(String fileName, String authToken) {
+    public ResponseEntity<?> downloadFile(String fileName, String authToken) {
         try {
             ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_EXTERNAL_TRAINING_USER_BULK_UPLOAD_STATUS);
             String userId = accessTokenValidator.fetchUserIdFromAccessToken(authToken, response);
             if (StringUtils.isBlank(userId)) {
-                return response;
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(response);
             }
 
             storageService.downloadFile(fileName, serverConfig.getExternalTrainingBulkUploadContainerName());
@@ -273,16 +274,8 @@ public class ExternalTrainingServiceImpl implements ExternalTrainingService {
                     .contentType(MediaType.parseMediaType(MediaType.MULTIPART_FORM_DATA_VALUE))
                     .body(resource);
         } catch (IOException e) {
-            logger.error("Failed to read the downloaded file: " + fileName + ", Exception: ", e);
+            logger.error("Failed to read the downloaded file: {}, Exception: ", fileName, e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
-        } finally {
-            try {
-                File file = new File(Constants.LOCAL_BASE_PATH + fileName);
-                if (file.exists()) {
-                    file.delete();
-                }
-            } catch (Exception e1) {
-            }
         }
 
     }

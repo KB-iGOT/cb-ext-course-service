@@ -11,26 +11,26 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 
 @RestController
-@RequestMapping("/externalTraining/v1")
+@RequestMapping("/externaltraining/v1")
 public class ExternalTrainingController {
 
 
     @Autowired
     ExternalTrainingService externalTrainingService;
 
-    @PostMapping("/bulkUpload/{eventId}/{batchId}")
+    @PostMapping("/bulkupload/{eventId}/{batchId}")
     public ResponseEntity<?> externalTrainingUserBulkUpload(@RequestParam("file") MultipartFile multipartFile, @PathVariable(value = "eventId") String eventId, @PathVariable("batchId") String batchId, @RequestHeader(Constants.X_AUTH_TOKEN) String authToken) throws IOException {
         ApiResponse uploadResponse = externalTrainingService.externalTrainingUserBulkUpload(multipartFile, eventId, batchId, authToken);
         return new ResponseEntity<>(uploadResponse, uploadResponse.getResponseCode());
 
     }
-    @GetMapping("/bulkUpload/status")
+    @GetMapping("/bulkupload/status")
     public ResponseEntity<?> externalTrainingUserBulkUploadStatus(@RequestParam("eventId") String eventId, @RequestParam("batchId") String batchId, @RequestHeader(Constants.X_AUTH_TOKEN) String authToken) {
         ApiResponse response = externalTrainingService.externalTrainingUserBulkUploadStatus(eventId, batchId, authToken);
         return new ResponseEntity<>(response, response.getResponseCode());
     }
 
-    @GetMapping("/bulkUpload/download/{fileName}")
+    @GetMapping("/bulkupload/download/{fileName}")
     public ResponseEntity<?> downloadFile(@PathVariable("fileName") String fileName, @RequestHeader(Constants.X_AUTH_TOKEN) String authToken) {
         return externalTrainingService.downloadFile(fileName, authToken);
     }

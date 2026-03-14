@@ -540,6 +540,36 @@ public class Constants {
     public static final String CONTENT_RETIREMENT_BY_APPROVED_DATE_TABLE = "content_retirement_by_approved_date";
     public static final String APPROVED_DATE = "approved_date";
 
+    public static final String API_EXTERNAL_TRAINING_USER_BULK_UPLOAD = "api.externaltraining.user.bulkupload";
+    public static final String API_EXTERNAL_TRAINING_USER_BULK_UPLOAD_STATUS = "api.externaltraining.user.bulkupload.status";
+    public static final String API_FILE_UPLOAD = "api.file.upload";
+    public static final String API_FILE_DOWNLOAD = "api.file.download";
+    public static final String FILE_NAME = "fileName";
+    public static final String FILE_PATH = "filePath";
+    public static final String CONTEXT_ID_CAMEL = "contextId";
+    public static final String INITIATED = "INITIATED";
+    public static final String EVENT_ID = "eventId";
+    public static final String EVENT_BATCH_TABLE = "event_batch";
+    public static final String TOTAL_RECORDS = "totalRecords";
+    public static final String SUCCESSFUL_RECORDS_COUNT = "successfulRecordsCount";
+    public static final String FAILED_RECORDS_COUNT = "failedRecordsCount";
+    public static final String SUCCESSFUL_UPPERCASE = "SUCCESSFUL";
+    public static final String FAILED_UPPERCASE = "FAILED";
+    public static final String STATUS_IN_PROGRESS_UPPERCASE = "IN-PROGRESS";
+    public static final String LOCAL_BASE_PATH= "/tmp/";
+    public static final String ENROLLED_DATE_KEY_LOWER = "enrolled_date";
+    public static final String DATE_TIME = "dateTime";
+    public static final String EVENT_BATCH_TABLE_NAME = "event_batch";
+    public static final String COMPLETED_ON ="completedOn";
+    public static final String START_DATE_COLUMN = "start_date";
+    public static final String END_DATE_COLUMN = "end_date";
+    public static final String BATCH_ATTRIBUTES_COLUMN="batch_attributes";
+    public static final String LRC_PROGRESS_DETAILS_COLUMN="lrc_progressdetails";
+    public static final String START_DATE = "startDate";
+    public static final String UPDATE_ON = "updatedOn";
+    public static final String START_TIME_KEY = "startTime";
+    public static final String END_TIME_KEY = "endTime";
+    public static final String END_DATE_CAMEL = "endDate";
     // Competency Service Constants
     public static final String USER_COMPETENCY_MAPPING_TABLE = "user_competency_mapping";
     public static final String COMPETENCY_ACQUIRED_EVENT = "COMPETENCY_ACQUIRED";

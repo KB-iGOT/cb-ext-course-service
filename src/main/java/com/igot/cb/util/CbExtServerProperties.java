@@ -75,4 +75,47 @@ public class CbExtServerProperties {
 
     @Value("${promotional.content.cache.max.query.size}")
     private int promotionalContentCacheMaxQuerySize;
+
+    @Value("${external.training.bulk.upload.table}")
+    private String externalTrainingBulkUploadTable;
+
+    @Value("${external.training.user.bulk.upload.topic}")
+    private String externalTrainingBulkUploadTopic;
+
+    @Value("${external.training.user.bulk.upload.topic.group}")
+    private String externalTrainingBulkUploadTopicGroup;
+
+    @Value("${external.training.user.bulk.upload.container.name}")
+    private String externalTrainingBulkUploadContainerName;
+
+    @Value("${bulk.upload.csv.delimiter}")
+    private char bulkUploadCsvDelimiter;
+
+    @Value("${external.training.enrolment.table.name}")
+    private String externalTrainingEnrolmentsTableName;
+
+    @Value("${cloud.container.name}")
+    private String cloudContainerName;
+
+    @Value("${cloud.storage.type.name}")
+    private String cloudStorageTypeName;
+
+    @Value("${cloud.storage.key}")
+    private String cloudStorageKey;
+
+    @Value("${cloud.storage.secret}")
+    private String cloudStorageSecret;
+
+    @Value("${cloud.storage.endpoint}")
+    private String cloudStorageEndpoint;
+
+    @Value("${user.competency.mapping.event.topic}")
+    private String userCompetencyMappingEventTopic;
+
+    @Value("${user.issue.certificate.for.event.topic}")
+    private String userIssueCertificateForEventTopic;
+
+    @Value("${external.training.enrolment.batchlookup.table.name}")
+    private String externalTrainingEnrolmentBatchLookupTableName;
+
 }

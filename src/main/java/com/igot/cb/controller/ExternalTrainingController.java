@@ -35,4 +35,9 @@ public class ExternalTrainingController {
         return externalTrainingService.downloadFile(fileName, authToken);
     }
 
+    @GetMapping("/bulkupload/sample")
+    public ResponseEntity<?> downloadBulkUploadSampleFile() {
+        return externalTrainingService.downloadBulkUploadSampleFile();
+    }
+
 }

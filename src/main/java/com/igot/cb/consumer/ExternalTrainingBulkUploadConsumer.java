@@ -519,10 +519,8 @@ public class ExternalTrainingBulkUploadConsumer {
 
                 Object durationObj = batchAttributes.get(Constants.DURATION);
                 long durationInSec = 0;
-                if (durationObj instanceof Integer) {
-                    durationInSec = ((Integer) durationObj).longValue();
-                } else if (durationObj instanceof Long) {
-                    durationInSec = ((Long) durationObj);
+                if (durationObj instanceof Number) {
+                    durationInSec = ((Number) durationObj).longValue() * 60;
                 }
                 eventDetails.put(Constants.DURATION, durationInSec);
 

@@ -118,4 +118,7 @@ public class CbExtServerProperties {
     @Value("${external.training.enrolment.batchlookup.table.name}")
     private String externalTrainingEnrolmentBatchLookupTableName;
 
+    @Value("${external.training.user.bulk.upload.sample.file.name}")
+    private String externalTrainingUserBulkUploadSampleFileName;
+
 }

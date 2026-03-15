@@ -32,7 +32,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.*;
 
@@ -303,5 +302,31 @@ public class ExternalTrainingServiceImpl implements ExternalTrainingService {
         return ResponseEntity.status(status)
                 .headers(headers)
                 .body(new ByteArrayResource(message.getBytes()));
+    }
+
+    @Override
+    public ResponseEntity<Resource> downloadBulkUploadSampleFile() {
+        String fileName = serverConfig.getExternalTrainingUserBulkUploadSampleFileName();
+        Path filePath = Paths.get(Constants.LOCAL_BASE_PATH, fileName);
+        try {
+            storageService.downloadFile(fileName, serverConfig.getExternalTrainingBulkUploadContainerName());
+            byte[] fileBytes = Files.readAllBytes(filePath);
+            ByteArrayResource resource = new ByteArrayResource(fileBytes);
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + fileName + "\"")
+                    .contentLength(fileBytes.length)
+                    .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                    .body(resource);
+
+        } catch (IOException e) {
+            logger.error("Failed to read downloaded file: {}", fileName, e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        } finally {
+            try {
+                Files.deleteIfExists(filePath);
+            } catch (IOException ex) {
+                logger.warn("Failed to delete temp file: {}", filePath);
+            }
+        }
     }
 }

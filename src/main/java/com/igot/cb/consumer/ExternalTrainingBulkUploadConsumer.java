@@ -255,9 +255,8 @@ public class ExternalTrainingBulkUploadConsumer {
             markRecordAsFailed(updatedRecord, "Failed to enroll");
             return updatedRecord;
         }
-        //trigger event for cert generation and competency passbook
+        //trigger event for cert generation
         externalTrainingCertificateService.generateCertificateEventAndPushToKafka(userId, eventId, batchId, completionPercentage, etsForEvent, false);
-        generateCompetencyEventAndTriggerToKafka(userId, eventId, batchId);
         logger.info("Successfully enrolled user: userId = {}, email = {}", userId, email);
 
         return updatedRecord;
@@ -582,26 +581,4 @@ public class ExternalTrainingBulkUploadConsumer {
             return null;
         }
     }
-
-    public void generateCompetencyEventAndTriggerToKafka(String userId, String contentId, String batchId) {
-
-        try {
-            Map<String, Object> edata = new HashMap<>();
-            edata.put("eventType", "COMPETENCY_ACQUIRED");
-            edata.put("userId", userId);
-            edata.put("contentId", contentId);
-            edata.put("batchId", batchId);
-            edata.put("contextType", "externalTraining");
-
-            Map<String, Object> event = new HashMap<>();
-            event.put("edata", edata);
-
-            ObjectMapper objectMapper = new ObjectMapper();
-            kafkaTemplate.send(serverProperties.getUserCompetencyMappingEventTopic(), userId, objectMapper.writeValueAsString(event));
-
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to generate competency event", e);
-        }
-    }
-
 }

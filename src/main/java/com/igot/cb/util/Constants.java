@@ -570,6 +570,16 @@ public class Constants {
     public static final String START_TIME_KEY = "startTime";
     public static final String END_TIME_KEY = "endTime";
     public static final String END_DATE_CAMEL = "endDate";
+    // Competency Service Constants
+    public static final String USER_COMPETENCY_MAPPING_TABLE = "user_competency_mapping";
+    public static final String COMPETENCY_ACQUIRED_EVENT = "COMPETENCY_ACQUIRED";
+    public static final String E_DATA = "edata";
+    public static final String EVENT_TYPE = "eventType";
+    public static final String API_FETCH_USER_COMPETENCY = "api.fetch.user.competency";
+    public static final String IS_FIRST_TIME_USER = "isFirstTimeUser";
+    public static final String COMPETENCIES = "competencies";
+    public static final String USER_COMPETENCY_REDIS_KEY_PREFIX = "user_competency_";
+
     private Constants() {
     }
 }

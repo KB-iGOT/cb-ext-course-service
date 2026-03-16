@@ -219,4 +219,26 @@ public class ContentInfoServiceImpl {
         }
         return Collections.emptyMap();
     }
+
+    public Map<String, Object> readEvent(String eventId) {
+        log.info("Reading event with ID: {}", eventId);
+        try {
+            StringBuilder url = new StringBuilder();
+            url.append(propertiesCache.getProperty(Constants.CONTENT_SERVICE_HOST))
+                    .append(propertiesCache.getProperty(Constants.EVENT_READ_END_POINT)).append("/" + eventId);
+            Map<String, Object> response = (Map<String, Object>) outboundRequestHandlerService
+                    .fetchResult(url.toString());
+            if (MapUtils.isNotEmpty(response) && response.containsKey(Constants.RESULT)) {
+                Map<String, Object> result = (Map<String, Object>) response.get(Constants.RESULT);
+                Map<String, Object> event = (Map<String, Object>) result.get(Constants.EVENT);
+                if (MapUtils.isNotEmpty(event)) {
+                    return event;
+                }
+            }
+            return Collections.emptyMap();
+        } catch (Exception e) {
+            log.error("Failed to parse external content info. Exception: " + e.getMessage(), e);
+        }
+        return Collections.emptyMap();
+    }
 }

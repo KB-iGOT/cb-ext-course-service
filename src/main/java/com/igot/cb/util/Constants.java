@@ -579,6 +579,13 @@ public class Constants {
     public static final String IS_FIRST_TIME_USER = "isFirstTimeUser";
     public static final String COMPETENCIES = "competencies";
     public static final String USER_COMPETENCY_REDIS_KEY_PREFIX = "user_competency_";
+    public static final String EVENT_READ_END_POINT = "event.read.endpoint";
+    public static final String EVENT = "event";
+    public static final String EVENT_NAME = "eventName";
+    public static final String CERT_TEMPLATE = "certTemplate";
+    public static final String TEMPLATE_ID = "templateId";
+    public static final String SOURCE_NAME = "sourceName";
+    public static final String ISSUED_DATE = "issuedDate";
 
     private Constants() {
     }

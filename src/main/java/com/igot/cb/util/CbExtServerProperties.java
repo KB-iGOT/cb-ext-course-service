@@ -121,4 +121,10 @@ public class CbExtServerProperties {
     @Value("${external.training.user.bulk.upload.sample.file.name}")
     private String externalTrainingUserBulkUploadSampleFileName;
 
+    @Value("${external.training.default.poster.image}")
+    private String externalTrainingDefaultPosterImage;
+
+    @Value("${domain.host}")
+    private String domainHost;
+
 }

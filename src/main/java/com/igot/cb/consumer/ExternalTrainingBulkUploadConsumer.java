@@ -5,6 +5,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.model.ApiResponse;
+import com.igot.cb.service.ContentInfoServiceImpl;
 import com.igot.cb.service.OutboundRequestHandlerServiceImpl;
 import com.igot.cb.service.impl.ExternalTrainingCertificateServiceImpl;
 import com.igot.cb.storage.service.StorageService;
@@ -17,6 +18,7 @@ import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVParser;
 import org.apache.commons.csv.CSVPrinter;
 import org.apache.commons.csv.CSVRecord;
+import org.apache.commons.lang3.ObjectUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.slf4j.Logger;
@@ -60,6 +62,9 @@ public class ExternalTrainingBulkUploadConsumer {
 
     @Autowired
     private ExternalTrainingCertificateServiceImpl externalTrainingCertificateService;
+
+    @Autowired
+    private ContentInfoServiceImpl contentInfoService;
 
     @KafkaListener(topics = "${external.training.user.bulk.upload.topic}", groupId = "${external.training.user.bulk.upload.topic.group}")
     public void processExternalTrainingBulkUploadMessage(ConsumerRecord<String, String> data) {
@@ -117,7 +122,7 @@ public class ExternalTrainingBulkUploadConsumer {
         int totalRecordsCount = 0;
         int processedCount = 0;
         int failedCount = 0;
-        Map<String, String> emailUserIdMap = new HashMap<>();
+        Map<String, Object> emailUserIdMap = new HashMap<>();
         Map<String, Object> eventDetails = new HashMap<>();
         String columnName = "Email";
 
@@ -176,7 +181,7 @@ public class ExternalTrainingBulkUploadConsumer {
         updateStatus(inputData, status, totalRecordsCount, processedCount, failedCount);
     }
 
-    private void getUserIdList(CSVParser csvParser, String columnName, Map<String, String> emailUserIdMap) throws IOException {
+    private void getUserIdList(CSVParser csvParser, String columnName, Map<String, Object> emailUserMap) throws IOException {
         if (csvParser == null) {
             throw new IllegalArgumentException("Invalid input: CSV parser must not be null or empty.");
         }
@@ -200,7 +205,7 @@ public class ExternalTrainingBulkUploadConsumer {
             logger.debug("Fetched {} email addresses from CSV.", emailList.size());
 
             if (!emailList.isEmpty()) {
-                emailUserIdMap.putAll(getUserId(Constants.EMAIL, emailList));
+                emailUserMap.putAll(getUserInfo(Constants.EMAIL, emailList));
                 logger.debug("User IDs successfully retrieved for the email list.");
             } else {
                 logger.warn("No valid email addresses found in the CSV.");
@@ -222,9 +227,8 @@ public class ExternalTrainingBulkUploadConsumer {
     /**
      * Processes a single CSV record. Returns the updated record with status and error details.
      */
-    private Map<String, String> processRecord(CSVRecord record, int expectedFieldCount, String eventId, String batchId, Map<String, String> emailUserIdMap, Map<String, Object> eventDetails) throws IOException {
+    private Map<String, String> processRecord(CSVRecord record, int expectedFieldCount, String eventId, String batchId, Map<String, Object> emailUserMap, Map<String, Object> eventDetails) throws JsonProcessingException {
         Map<String, String> updatedRecord = new LinkedHashMap<>(record.toMap());
-        long etsForEvent = ((Date) eventDetails.get(Constants.END_DATE_CAMEL)).getTime();
         if (record.size() > expectedFieldCount) {
             markRecordAsFailed(updatedRecord, "Number of fields in the record exceeds expected number. Please check your data.");
             return updatedRecord;
@@ -236,14 +240,14 @@ public class ExternalTrainingBulkUploadConsumer {
             return updatedRecord;
         }
 
-        String userId = emailUserIdMap.get(email);
-        if (StringUtils.isEmpty(userId)) {
+        Object userInfoObj = emailUserMap.get(email);
+        if (ObjectUtils.isEmpty(userInfoObj)) {
             markRecordAsFailed(updatedRecord, "User does not exist");
             return updatedRecord;
         }
-
+        Map<String, Object> userInfo = (Map<String, Object>) userInfoObj;
+        String userId = userInfo.get(Constants.USER_ID).toString();
         Map<String, Object> enrollmentRecord = isEventEnrolmentExist(userId, eventId, batchId);
-        double completionPercentage = 100.0;
         if (MapUtils.isNotEmpty(enrollmentRecord)) {
             markRecordAsFailed(updatedRecord, "User enrolled in the batch");
             return updatedRecord;
@@ -256,7 +260,7 @@ public class ExternalTrainingBulkUploadConsumer {
             return updatedRecord;
         }
         //trigger event for cert generation
-        externalTrainingCertificateService.generateCertificateEventAndPushToKafka(userId, eventId, batchId, completionPercentage, etsForEvent, false);
+        externalTrainingCertificateService.generateCertificateEventAndPushToKafka(userInfo, eventDetails);
         logger.info("Successfully enrolled user: userId = {}, email = {}", userId, email);
 
         return updatedRecord;
@@ -305,13 +309,13 @@ public class ExternalTrainingBulkUploadConsumer {
     }
 
 
-    private Map<String, String> getUserId(String key, List<String> values) {
+    private Map<String, Object> getUserInfo(String key, List<String> values) {
         int batchSize = 100;
         Map<String, Object> requestBody = new HashMap<>();
         List<Map<String, Object>> contentList = new ArrayList<>();
         Map<String, Object> reqMap = new HashMap<>();
 
-        Map<String, String> emailUserIdMap = new HashMap<>();
+        Map<String, Object> emailUserMap = new HashMap<>();
 
         String url = serverProperties.getSbUrl() + serverProperties.getUserSearchEndPoint();
         HashMap<String, String> headersValue = new HashMap<>();
@@ -335,19 +339,22 @@ public class ExternalTrainingBulkUploadConsumer {
                         Map<String, Object> responseObj = (Map<String, Object>) map.get(Constants.RESPONSE);
                         contentList = (List<Map<String, Object>>) responseObj.get(Constants.CONTENT);
                         if (contentList != null) {
-                            contentList.stream()
-                                    .forEach(e -> {
-                                        Map<String, Object> profileDetails = (Map<String, Object>) e.get(Constants.PROFILE_DETAILS);
-                                        if (profileDetails != null) {
-                                            Map<String, Object> personalDetails = (Map<String, Object>) profileDetails.get(Constants.PERSONAL_DETAILS);
-                                            if (personalDetails != null) {
-                                                emailUserIdMap.put(
-                                                        ((String) personalDetails.get(Constants.PRIMARY_EMAIL)).toLowerCase().trim(),
-                                                        (String) e.get(Constants.IDENTIFIER)
-                                                );
-                                            }
+                            contentList.forEach(e -> {
+                                Map<String, Object> profileDetails = (Map<String, Object>) e.get(Constants.PROFILE_DETAILS);
+                                Map<String, Object> userInfo = new HashMap<>();
+                                userInfo.put(Constants.ROOT_ORG_ID, e.get(Constants.ROOT_ORG_ID));
+                                userInfo.put(Constants.FIRSTNAME, e.get(Constants.FIRSTNAME));
+                                userInfo.put(Constants.USER_ID, e.get(Constants.USER_ID));
+                                if (profileDetails != null) {
+                                    Map<String, Object> personalDetails = (Map<String, Object>) profileDetails.get(Constants.PERSONAL_DETAILS);
+                                    if (personalDetails != null) {
+                                        String primaryEmail = (String) personalDetails.get(Constants.PRIMARY_EMAIL);
+                                        if (primaryEmail != null && !primaryEmail.trim().isEmpty()) {
+                                            emailUserMap.put(primaryEmail.toLowerCase().trim(), userInfo);
                                         }
-                                    });
+                                    }
+                                }
+                            });
 
                         }
                     }
@@ -356,7 +363,7 @@ public class ExternalTrainingBulkUploadConsumer {
                 logger.error("Error while fetching user details of list of users ", e);
             }
         }
-        return emailUserIdMap;
+        return emailUserMap;
     }
 
     private ApiResponse enrollUser(String userId, String eventId, String batchId, Map<String, Object> eventDetails) throws JsonProcessingException {
@@ -486,6 +493,9 @@ public class ExternalTrainingBulkUploadConsumer {
 
     private void getEventDetails(String eventId, String batchId, Map<String, Object> eventDetails) {
         logger.debug("Fetching event batch details for eventId: {} and batchId: {}", eventId, batchId);
+        eventDetails.put(Constants.EVENT_ID, eventId);
+        eventDetails.put(Constants.BATCH_ID, batchId);
+
         Map<String, Object> propertiesMap = new HashMap<>();
         propertiesMap.put(Constants.EVENT_ID, eventId);
         propertiesMap.put(Constants.BATCH_ID, batchId);
@@ -523,6 +533,20 @@ public class ExternalTrainingBulkUploadConsumer {
                 }
                 eventDetails.put(Constants.DURATION, durationInSec);
 
+                Map<String, Object> readResponse = contentInfoService.readEvent(eventId);
+                if (MapUtils.isNotEmpty(readResponse)) {
+                    eventDetails.put(Constants.EVENT_NAME, readResponse.get(Constants.NAME));
+                    eventDetails.put(Constants.CERT_TEMPLATE, readResponse.get(Constants.CERT_TEMPLATE));
+                    eventDetails.put(Constants.TEMPLATE_ID, readResponse.get(Constants.TEMPLATE_ID));
+                    eventDetails.put(Constants.SOURCE_NAME, readResponse.get(Constants.SOURCE_NAME));
+
+                    SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
+                    sdf.setTimeZone(TimeZone.getTimeZone("UTC"));
+                    String issuedDate = sdf.format(endDate);
+                    eventDetails.put(Constants.ISSUED_DATE, issuedDate);
+                    long etsForEvent = ((Date) eventDetails.get(Constants.END_DATE_CAMEL)).getTime();
+                    eventDetails.put("ets", etsForEvent);
+                }
             } else {
                 logger.warn("No event batch details found for eventId: {} and batchId: {}", eventId, batchId);
             }

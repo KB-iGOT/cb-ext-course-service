@@ -130,6 +130,10 @@ public class UserAndOrgServiceImpl {
                 userList.get(0).put(Constants.PROFILE_DETAILS,  userList.get(0).get(Constants.PROFILE_DETAILS_LOWERCASE));
                 setUserProfile(userProfile, userList.get(0));
             }
+            // Add isOnCentralDeputation as false if not present
+            if (!userProfile.containsKey(Constants.CENTRAL_DEPUTATION)) {
+                userProfile.put(Constants.CENTRAL_DEPUTATION, "false");
+            }
             getUserBitMap(userProfile, userProfileBitMap);
             log.info("User profile fetched for userId: {}, converted bit map profile: {}", userId,
                     mapper.writeValueAsString(userProfileBitMap));
@@ -178,7 +182,9 @@ public class UserAndOrgServiceImpl {
                     putIfNotNullOrEmpty(userProfile, Constants.BATCH, String.valueOf(cadreDetails.get(Constants.CADRE_BATCH)));
                 }
                 if (cadreDetails.containsKey(Constants.CENTRAL_DEPUTATION)) {
-                    putIfNotNullOrEmpty(userProfile, Constants.CENTRAL_DEPUTATION, String.valueOf( cadreDetails.get(Constants.CENTRAL_DEPUTATION)));
+                    putIfNotNullOrEmpty(userProfile, Constants.CENTRAL_DEPUTATION, String.valueOf(cadreDetails.get(Constants.CENTRAL_DEPUTATION)));
+                } else {
+                    userProfile.put(Constants.CENTRAL_DEPUTATION, "false");
                 }
             }
             checkUserTaggedUnderRozgarMela(userProfile, profileDetails);

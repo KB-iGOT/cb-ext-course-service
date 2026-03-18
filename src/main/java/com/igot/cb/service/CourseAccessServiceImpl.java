@@ -76,6 +76,9 @@ public class CourseAccessServiceImpl {
     @Value("${cios.search.offset:0}")
     private int ciosSearchOffset;
 
+    @Value("${access.course.cache.ttl.seconds:600}")
+    private Integer accessCacheTtlSecods;
+
     private final Map<String, List<String>> courseCategoryCache = new ConcurrentHashMap<>();
     private final Map<String, Long> cacheTimestamps = new ConcurrentHashMap<>();
 
@@ -313,7 +316,7 @@ public class CourseAccessServiceImpl {
                 }
             }
             log.info("AccessSettingRule evaluation: UserId: {} | Courses retrieved: {}", userId, userCourses.size());
-            redisCacheMgr.putInCache(Constants.ACCESS_KEY+Constants.UNDERSCORE+courseCategory+Constants.UNDERSCORE+userId, mapper.writeValueAsString(userCourses));
+            redisCacheMgr.putInCache(redisKey, mapper.writeValueAsString(userCourses));
             response.getResult().put(Constants.CONTENT, userCourses);
         } catch (Exception e) {
             log.error("Error occurred while evaluating access setting rules: {}", e.getMessage(), e);
@@ -379,14 +382,16 @@ public class CourseAccessServiceImpl {
 
     private List<String> getCoursesFromCacheOrService(String courseCategory) {
         try {
-            List<String> cachedCourses = courseCategoryCache.get(courseCategory);
-            Long lastUpdated = cacheTimestamps.get(courseCategory);
-            boolean isCacheValid = lastUpdated != null &&
-                    (System.currentTimeMillis() - lastUpdated) < cacheTtlMs;
-
-            if (isCacheValid && cachedCourses != null) {
-                log.info("Cache hit for category: {}", courseCategory);
-                return cachedCourses;
+            String redisKey = "access_settings_enabled_" + courseCategory;
+            String cachedData = redisCacheMgr.getFromCache(redisKey);
+            if (StringUtils.hasText(cachedData)) {
+                try {
+                    List<String> cachedCourses = mapper.readValue(cachedData, new TypeReference<List<String>>() {});
+                    log.info("Redis cache hit for category: {}", courseCategory);
+                    return cachedCourses;
+                } catch (Exception e) {
+                    log.error("Failed to parse cached course list from Redis for category {}: {}", courseCategory, e.getMessage(), e);
+                }
             }
 
             log.info("Cache miss or expired for category: {}, fetching from service", courseCategory);
@@ -409,9 +414,8 @@ public class CourseAccessServiceImpl {
                     log.error("Error extracting identifiers for category {}: {}", courseCategory, e.getMessage(), e);
                 }
                 if (!identifiers.isEmpty()) {
-                    courseCategoryCache.put("access_settings_enabled_"+courseCategory, identifiers);
-                    cacheTimestamps.put(courseCategory, System.currentTimeMillis());
-                    log.info("Cached {} course identifiers for category {}", identifiers.size(), courseCategory);
+                    redisCacheMgr.putInCache(redisKey, mapper.writeValueAsString(identifiers), accessCacheTtlSecods);
+                    log.info("Cached {} course identifiers for category {} in Redis", identifiers.size(), courseCategory);
                     return identifiers;
                 } else {
                     log.warn("No course identifiers found for category {}", courseCategory);

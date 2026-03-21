@@ -127,4 +127,7 @@ public class CbExtServerProperties {
     @Value("${domain.host}")
     private String domainHost;
 
+    @Value("${external.training.batch.size}")
+    private int externalTrainingBatchSize;
+
 }

@@ -4,6 +4,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.igot.cb.util.CbExtServerProperties;
 import com.igot.cb.util.Constants;
+import org.apache.commons.collections4.MapUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
@@ -31,19 +33,18 @@ public class ExternalTrainingCertificateServiceImpl {
     public String generateCertificateEvent(Map<String, Object> userDetailsMap, Map<String, Object> eventDetailsMap) throws JsonProcessingException {
 
         Map<String, Object> event = new HashMap<>();
-
         double eventCompletionPercentage = 100.0;
-        String userId = userDetailsMap.get(Constants.USER_ID).toString();
-        String batchId = eventDetailsMap.get(Constants.BATCH_ID).toString();
-        String eventId = eventDetailsMap.get(Constants.EVENT_ID).toString();
-        String issuedDate = eventDetailsMap.get(Constants.ISSUED_DATE).toString();
-        String recipientName = userDetailsMap.get(Constants.FIRSTNAME).toString();
-        String orgId = userDetailsMap.get(Constants.ROOT_ORG_ID).toString();
+        String userId = getRequiredString(userDetailsMap, Constants.USER_ID);
+        String batchId = getRequiredString(eventDetailsMap, Constants.BATCH_ID);
+        String eventId = getRequiredString(eventDetailsMap, Constants.EVENT_ID);
+        String issuedDate = getRequiredString(eventDetailsMap, Constants.ISSUED_DATE);
+        String recipientName = getRequiredString(userDetailsMap, Constants.FIRSTNAME);
+        String orgId = getRequiredString(userDetailsMap, Constants.ROOT_ORG_ID);
         String baseUrl = serverProperties.getDomainHost();
-        String certTemplate = eventDetailsMap.get(Constants.CERT_TEMPLATE).toString();
-        String templateId = eventDetailsMap.get(Constants.TEMPLATE_ID).toString();
-        String providerName = eventDetailsMap.get(Constants.SOURCE_NAME).toString();
-        String eventName = eventDetailsMap.get(Constants.EVENT_NAME).toString();
+        String certTemplate = getRequiredString(eventDetailsMap, Constants.CERT_TEMPLATE);
+        String templateId = getRequiredString(eventDetailsMap, Constants.CERT_TEMPLATE_ID);
+        String providerName = getRequiredString(eventDetailsMap, Constants.SOURCE_NAME);
+        String eventName = getRequiredString(eventDetailsMap, Constants.EVENT_NAME);
         // Actor
         Map<String, Object> actor = new HashMap<>();
         actor.put("id", "Certificate Generator");
@@ -133,5 +134,20 @@ public class ExternalTrainingCertificateServiceImpl {
         event.put("object", object);
 
         return mapper.writeValueAsString(event);
+    }
+
+    private String getRequiredString(Map<String, Object> map, String key) {
+        if (MapUtils.isEmpty(map)) {
+            throw new IllegalArgumentException("Input map is null or empty");
+        }
+        Object value = map.get(key);
+        if (Objects.isNull(value)) {
+            throw new IllegalArgumentException("Missing required field: " + key);
+        }
+        String str = StringUtils.trimToEmpty(value.toString());
+        if (StringUtils.isBlank(str)) {
+            throw new IllegalArgumentException("Empty value for field: " + key);
+        }
+        return str;
     }
 }

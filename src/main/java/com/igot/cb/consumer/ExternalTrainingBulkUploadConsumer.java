@@ -31,10 +31,8 @@ import org.springframework.stereotype.Service;
 
 import java.io.*;
 import java.nio.charset.StandardCharsets;
-import java.sql.Timestamp;
 import java.text.SimpleDateFormat;
 import java.time.*;
-import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 
@@ -148,7 +146,6 @@ public class ExternalTrainingBulkUploadConsumer {
 
             int expectedFieldCount = headers.size() - 2; // Exclude "Status" and "Error Details"
 
-
             getUserIdList(csvParser, columnName, emailUserIdMap);
             getEventDetails(eventId, batchId, eventDetails);
 
@@ -172,7 +169,7 @@ public class ExternalTrainingBulkUploadConsumer {
             writeUpdatedCSV(file, headers, updatedRecords);
             status = finalizeStatus(totalRecordsCount, processedCount, failedCount, file);
 
-        } catch (IOException e) {
+        } catch (Exception e) {
             logger.error("Error processing file: ", e);
             status = Constants.FAILED_UPPERCASE;
             updateStatus(inputData, status, totalRecordsCount, processedCount, failedCount);
@@ -227,41 +224,62 @@ public class ExternalTrainingBulkUploadConsumer {
     /**
      * Processes a single CSV record. Returns the updated record with status and error details.
      */
-    private Map<String, String> processRecord(CSVRecord record, int expectedFieldCount, String eventId, String batchId, Map<String, Object> emailUserMap, Map<String, Object> eventDetails) throws JsonProcessingException {
+    private Map<String, String> processRecord(CSVRecord record, int expectedFieldCount, String eventId, String batchId, Map<String, Object> emailUserMap, Map<String, Object> eventDetails) {
         Map<String, String> updatedRecord = new LinkedHashMap<>(record.toMap());
-        if (record.size() > expectedFieldCount) {
-            markRecordAsFailed(updatedRecord, "Number of fields in the record exceeds expected number. Please check your data.");
-            return updatedRecord;
-        }
+        try {
+            if (record.size() > expectedFieldCount) {
+                markRecordAsFailed(updatedRecord, "Number of fields in the record exceeds expected number. Please check your data.");
+                return updatedRecord;
+            }
 
-        String email = record.get("Email");
-        if (StringUtils.isBlank(email)) {
-            markRecordAsFailed(updatedRecord, "Empty email");
-            return updatedRecord;
-        }
+            String email = record.get("Email");
+            if (StringUtils.isBlank(email)) {
+                markRecordAsFailed(updatedRecord, "Empty email");
+                return updatedRecord;
+            }
 
-        Object userInfoObj = emailUserMap.get(email);
-        if (ObjectUtils.isEmpty(userInfoObj)) {
-            markRecordAsFailed(updatedRecord, "User does not exist");
-            return updatedRecord;
-        }
-        Map<String, Object> userInfo = (Map<String, Object>) userInfoObj;
-        String userId = userInfo.get(Constants.USER_ID).toString();
-        Map<String, Object> enrollmentRecord = isEventEnrolmentExist(userId, eventId, batchId);
-        if (MapUtils.isNotEmpty(enrollmentRecord)) {
-            markRecordAsFailed(updatedRecord, "User enrolled in the batch");
-            return updatedRecord;
-        }
+            Object userInfoObj = emailUserMap.get(email);
+            if (ObjectUtils.isEmpty(userInfoObj)) {
+                markRecordAsFailed(updatedRecord, "User does not exist");
+                return updatedRecord;
+            }
 
-        //If enrollment is not there
-        ApiResponse enrollmentResponse = enrollUser(userId, eventId, batchId, eventDetails);
-        if (!Constants.SUCCESS.equalsIgnoreCase((String) enrollmentResponse.get(Constants.RESPONSE))) {
-            markRecordAsFailed(updatedRecord, "Failed to enroll");
-            return updatedRecord;
+            Map<String, Object> userInfo = (Map<String, Object>) userInfoObj;
+            // Validate userInfo
+            validateNotNullOrEmpty(userInfo);
+            String userId = userInfo.get(Constants.USER_ID).toString();
+
+            Map<String, Object> enrollmentRecord = isEventEnrolmentExist(userId, eventId, batchId);
+            if (MapUtils.isNotEmpty(enrollmentRecord)) {
+                markRecordAsFailed(updatedRecord, "User enrolled in the batch");
+                return updatedRecord;
+            }
+
+            // Enroll user
+            ApiResponse enrollmentResponse = enrollUser(userId, eventId, batchId, eventDetails);
+            if (!Constants.SUCCESS.equalsIgnoreCase((String) enrollmentResponse.get(Constants.RESPONSE))) {
+                markRecordAsFailed(updatedRecord, "Failed to enroll");
+                return updatedRecord;
+            }
+            // Trigger certificate event
+            externalTrainingCertificateService.generateCertificateEventAndPushToKafka(userInfo, eventDetails);
+
+            logger.info("Successfully enrolled user: userId = {}, email = {}", userId, email);
+
+        } catch (IllegalArgumentException e) {
+            // Validation errors
+            logger.warn("Validation failed for record: {}, error: {}", record, e.getMessage());
+            markRecordAsFailed(updatedRecord, e.getMessage());
+
+        } catch (JsonProcessingException e) {
+            logger.error("JSON processing error for record: {}", record, e);
+            markRecordAsFailed(updatedRecord, "Error processing JSON data");
+
+        } catch (Exception e) {
+            // Catch-all to avoid breaking batch processing
+            logger.error("Unexpected error while processing record: {}", record, e);
+            markRecordAsFailed(updatedRecord, "Internal error while processing record");
         }
-        //trigger event for cert generation
-        externalTrainingCertificateService.generateCertificateEventAndPushToKafka(userInfo, eventDetails);
-        logger.info("Successfully enrolled user: userId = {}, email = {}", userId, email);
 
         return updatedRecord;
     }
@@ -537,7 +555,7 @@ public class ExternalTrainingBulkUploadConsumer {
                 if (MapUtils.isNotEmpty(readResponse)) {
                     eventDetails.put(Constants.EVENT_NAME, readResponse.get(Constants.NAME));
                     eventDetails.put(Constants.CERT_TEMPLATE, readResponse.get(Constants.CERT_TEMPLATE));
-                    eventDetails.put(Constants.TEMPLATE_ID, readResponse.get(Constants.TEMPLATE_ID));
+                    eventDetails.put(Constants.CERT_TEMPLATE_ID, readResponse.get(Constants.CERT_TEMPLATE_ID));
                     eventDetails.put(Constants.SOURCE_NAME, readResponse.get(Constants.SOURCE_NAME));
 
                     SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
@@ -546,63 +564,43 @@ public class ExternalTrainingBulkUploadConsumer {
                     eventDetails.put(Constants.ISSUED_DATE, issuedDate);
                     long etsForEvent = ((Date) eventDetails.get(Constants.END_DATE_CAMEL)).getTime();
                     eventDetails.put("ets", etsForEvent);
+                } else {
+                    throw new RuntimeException("Unable to fetch event details: readResponse is empty");
                 }
+                validateNotNullOrEmpty(eventDetails);
             } else {
                 logger.warn("No event batch details found for eventId: {} and batchId: {}", eventId, batchId);
             }
         } catch (Exception e) {
             logger.error("Error while fetching event batch details for eventId: {} and batchId: {}", eventId, batchId, e);
-            throw new RuntimeException("Unable to fetch event details", e);
+            throw new RuntimeException("Unable to fetch event details: " + e.getMessage(), e);
         }
     }
 
-    private Date prepareEventDateTime(Date date, String time) {
-        if (date == null || time == null || time.isEmpty()) {
-            throw new IllegalArgumentException("Date and time must not be null or empty.");
+    private void validateNotNullOrEmpty(Map<String, Object> data) {
+        if (MapUtils.isEmpty(data)) {
+            throw new IllegalArgumentException("Input data map is null or empty");
         }
-        LocalDateTime localDateTime = date.toInstant().atZone(ZoneId.systemDefault()).toLocalDateTime();
-        DateTimeFormatter timeFormatter = DateTimeFormatter.ofPattern("HH:mm:ssXXXXX");
-        OffsetTime timePart;
-
-        try {
-            timePart = OffsetTime.parse(time, timeFormatter);
-        } catch (Exception e) {
-            throw new IllegalArgumentException("Invalid time format: " + time, e);
+        for (Map.Entry<String, Object> entry : data.entrySet()) {
+            String key = entry.getKey();
+            Object value = entry.getValue();
+            if (Objects.isNull(value)) {
+                throw new IllegalArgumentException("Value for key '" + key + "' is null");
+            }
+            if (value instanceof String && StringUtils.isBlank((String) value)) {
+                throw new IllegalArgumentException("Value for key '" + key + "' is empty");
+            }
         }
-        ZonedDateTime combinedDateTime = localDateTime.atZone(ZoneId.systemDefault())
-                .withHour(timePart.getHour())
-                .withMinute(timePart.getMinute())
-                .withSecond(timePart.getSecond())
-                .withNano(timePart.getNano())
-                .withZoneSameInstant(timePart.getOffset());
-
-        Timestamp resultTimestamp = Timestamp.from(combinedDateTime.toInstant());
-        return new Date(resultTimestamp.getTime()); // Convert Timestamp to Date
     }
 
     private String prepareLrcProgressDetails(Map<String, Object> eventDetails) throws JsonProcessingException {
         Map<String, Object> result = new HashMap<>();
         result.put("max_size", eventDetails.get(Constants.DURATION));
-        result.put("duration", eventDetails.get(Constants.DURATION));
+        result.put(Constants.DURATION, eventDetails.get(Constants.DURATION));
         result.put("mimeType", "application/html");
         result.put("stateMetaData", eventDetails.get(Constants.DURATION));
-        result.put("current", Arrays.asList(0));
+        result.put("current", List.of(0));
 
         return objectMapper.writeValueAsString(result);
-    }
-
-    private Date convertToUTC(Date date) {
-        if (date == null) return null;
-        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS");
-        sdf.setTimeZone(TimeZone.getTimeZone("UTC"));
-
-        try {
-            // Format the date as UTC and parse it back to a Date
-            String utcDateString = sdf.format(date);
-            return sdf.parse(utcDateString); // Return as Date
-        } catch (Exception e) {
-            e.printStackTrace();
-            return null;
-        }
     }
 }

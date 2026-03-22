@@ -587,7 +587,7 @@ public class Constants {
     public static final String EVENT = "event";
     public static final String EVENT_NAME = "eventName";
     public static final String CERT_TEMPLATE = "certTemplate";
-    public static final String TEMPLATE_ID = "templateId";
+    public static final String CERT_TEMPLATE_ID = "certTemplateId";
     public static final String SOURCE_NAME = "sourceName";
     public static final String ISSUED_DATE = "issuedDate";
 

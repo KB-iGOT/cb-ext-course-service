@@ -28,7 +28,10 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -199,25 +202,39 @@ public class ExternalTrainingServiceImpl implements ExternalTrainingService {
     }
 
     public String validateCsvFile(MultipartFile file) {
-        String errMsg = "";
-        // Check if the file is not null and not empty
+
+        // 1. File null / empty check
         if (Objects.isNull(file) || file.isEmpty()) {
-            errMsg = "File is empty or not provided.";
-            return errMsg;
+            return "File is empty or not provided.";
         }
-        // Extract the file name and extension
+        // 2. File name validation
         String fileName = file.getOriginalFilename();
-        if (Objects.isNull(fileName)) {
-            errMsg = "File name is invalid.";
-            return errMsg;
+        if (StringUtils.isBlank(fileName)) {
+            return "File name is invalid.";
         }
-        // Validate the extension
+        // 3. Extension validation
         String extension = FilenameUtils.getExtension(fileName);
         if (!"csv".equalsIgnoreCase(extension)) {
-            errMsg = "Invalid file type. Only CSV files are allowed.";
-            return errMsg;
+            return "Invalid file type. Only CSV files are allowed.";
         }
-        return errMsg;
+        // 4. Row count validation
+        int externalTrainingBatchSize = serverConfig.getExternalTrainingBatchSize();
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(file.getInputStream(), StandardCharsets.UTF_8))) {
+            int rowCount = 0;
+            while (reader.readLine() != null) {
+                rowCount++;
+                if (rowCount > externalTrainingBatchSize) {
+                    return "CSV file should not contain more than 200 rows.";
+                }
+            }
+            // Optional: check if file has only header
+            if (rowCount <= 1) {
+                return "CSV file contains no data rows.";
+            }
+        } catch (Exception e) {
+            return "Error while reading CSV file.";
+        }
+        return ""; // valid file
     }
 
     @Override

@@ -480,12 +480,16 @@ class CourseAccessServiceImplTest {
         when(mockAccessTokenValidator.fetchUserIdFromAccessToken(eq(authToken), any(ApiResponse.class)))
                 .thenReturn(userId);
         Map<String, Object> request = Map.of(Constants.COURSE_CATEGORY, "cat1");
-        when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
+        // Simulate Redis cache miss for the user-course assignment
+        when(redisCacheMgr.getFromCache(startsWith(Constants.ACCESS_KEY + "_cat1_" + userId))).thenReturn(null);
+        // Simulate Redis cache miss for course category list (fix key)
+        when(redisCacheMgr.getFromCache("access_settings_enabled_cat1")).thenReturn(null);
         when(outboundRequestHandlerService.fetchResultUsingPost(anyString(), anyMap(), isNull()))
                 .thenReturn(Map.of(Constants.RESULT,
                         Map.of(Constants.CONTENT,
                                 List.of(Map.of(Constants.IDENTIFIER, "C1")))));
         ReflectionTestUtils.setField(courseAccessService, "cacheTtlMs", 99999999L);
+        ReflectionTestUtils.setField(courseAccessService, "accessCacheTtlSecods", 600); // Set TTL to avoid NPE
         BitSet bit = new BitSet();
         bit.set(1);
         Map<String,Object> accessControl = Map.of(
@@ -556,15 +560,15 @@ class CourseAccessServiceImplTest {
 
     @Test
     void testGetCoursesFromCacheOrService_CacheHit() {
-        ReflectionTestUtils.setField(courseAccessService, "courseCategoryCache",
-                new HashMap<>(Map.of("cat", List.of("C1","C2"))));
-        ReflectionTestUtils.setField(courseAccessService, "cacheTimestamps",
-                new HashMap<>(Map.of("cat", System.currentTimeMillis())));
-        ReflectionTestUtils.setField(courseAccessService, "cacheTtlMs", 99999999L);
+        // Simulate Redis cache hit for the course category
+        when(redisCacheMgr.getFromCache("access_settings_enabled_cat"))
+            .thenReturn("[\"C1\",\"C2\"]");
         List<String> result = ReflectionTestUtils.invokeMethod(courseAccessService,
                 "getCoursesFromCacheOrService", "cat");
         assertNotNull(result);
         assertEquals(2, result.size());
+        assertTrue(result.contains("C1"));
+        assertTrue(result.contains("C2"));
     }
     @Test
     void testGetCoursesFromCacheOrService_Exception() {
@@ -704,3 +708,4 @@ class CourseAccessServiceImplTest {
     }
 
 }
+

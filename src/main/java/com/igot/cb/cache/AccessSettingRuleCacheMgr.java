@@ -234,9 +234,9 @@ public class AccessSettingRuleCacheMgr {
                 // Try to parse as Map first (since Redis stores the full object as JSON)
                 ObjectMapper mapper = new ObjectMapper();
                 Map<String, Object> ruleMap = mapper.readValue(cachedData, new TypeReference<Map<String, Object>>() {});
-                String contextIdVal = (String) ruleMap.getOrDefault("contextId", ruleMap.get("contextIdKey"));
-                String contextIdTypeVal = (String) ruleMap.getOrDefault("contextIdType", ruleMap.get("contextIdTypeKey"));
-                Object contextDataObj = ruleMap.get("contextData");
+                String contextIdVal = (String) ruleMap.getOrDefault(Constants.CONTEXT_ID_KEY, ruleMap.get(Constants.CONTEXT_ID_KEY));
+                String contextIdTypeVal = (String) ruleMap.getOrDefault(Constants.CONTEXT_ID_TYPE, ruleMap.get(Constants.CONTEXT_ID_TYPE));
+                Object contextDataObj = ruleMap.get(Constants.CONTEXT_DATA_KEY);
                 String contextDataStr;
                 if (contextDataObj instanceof String) {
                     contextDataStr = (String) contextDataObj;
@@ -246,10 +246,8 @@ public class AccessSettingRuleCacheMgr {
                     contextDataStr = "{}";
                 }
                 boolean isArchived = false;
-                if (ruleMap.containsKey("isArchived")) {
-                    isArchived = Boolean.TRUE.equals(ruleMap.get("isArchived"));
-                } else if (ruleMap.containsKey("archived")) {
-                    isArchived = Boolean.TRUE.equals(ruleMap.get("archived"));
+                if (ruleMap.containsKey(Constants.IS_ARCHIVED)) {
+                    isArchived = Boolean.TRUE.equals(ruleMap.get(Constants.IS_ARCHIVED));
                 }
                 CachedAccessSettingRule cachedRule = new CachedAccessSettingRule(
                         contextIdVal, contextIdTypeVal, contextDataStr, isArchived);
@@ -281,7 +279,7 @@ public class AccessSettingRuleCacheMgr {
                     (String) ruleMap.get(Constants.CONTEXT_ID_KEY),
                     (String) ruleMap.get(Constants.CONTEXT_ID_TYPE),
                     (String) ruleMap.get(Constants.CONTEXT_DATA_KEY),
-                    false
+                    (Boolean) ruleMap.get(Constants.IS_ARCHIVED_KEY)
             );
             try {
                 // Store in Redis for future requests

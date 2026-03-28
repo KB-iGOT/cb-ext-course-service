@@ -70,7 +70,7 @@ public class AccessSettingsServiceImpl {
         // Redis cache logic
         String contextId = String.valueOf(userGroupDetails.get(Constants.CONTENT_ID));
         String contextIdType = userGroupDetails.getOrDefault(Constants.CONTEXT_ID_TYPE, accessRuleData.getOrDefault(Constants.CONTEXT_ID_TYPE, "")).toString();
-        String contextDataStr = objectMapper.writeValueAsString(createPayloadWithUuid);
+        String contextDataStr = (String) accessRuleData.get(Constants.CONTEXT_DATA_KEY);
         CachedAccessSettingRule loadedRule = new CachedAccessSettingRule(
             contextId,
             contextIdType,
@@ -79,7 +79,7 @@ public class AccessSettingsServiceImpl {
         );
         String redisKey = contextId + "|" + contextIdType;
         String json = objectMapper.writeValueAsString(loadedRule);
-        redisCacheMgr.putInCache(redisKey, json, 3600); // TTL 1 hour, adjust as needed
+        redisCacheMgr.putInCache(redisKey, json, ttlMinutes); // TTL 1 hour, adjust as needed
         response.getResult().put(Constants.MSG, Constants.CREATED_RULES);
         // Remove all other keys, and put a single object after message
         Map<String, Object> payload = new HashMap<>();

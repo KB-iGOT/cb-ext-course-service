@@ -217,19 +217,19 @@ public class CourseAccessServiceImpl {
             }
             for (Map<String, Object> criteria : criteriaList) {
                 String criteriaKey = criteria.get(Constants.CRITERIA_KEY).toString().toLowerCase();
-                Object valueObj = criteria.get(Constants.CRITERIA_VALUE);
+                Object value = criteria.get(Constants.CRITERIA_VALUE);
                 BitSet criteriaValue;
-                if (valueObj instanceof BitSet) {
-                    criteriaValue = (BitSet) valueObj;
-                } else if (valueObj instanceof List) {
+                if (value instanceof BitSet) {
+                    criteriaValue = (BitSet) value;
+                } else if (value instanceof List) {
                     criteriaValue = new BitSet();
-                    List<?> list = (List<?>) valueObj;
-                    for (Object o : list) {
-                        if (o instanceof Number) {
-                            criteriaValue.set(((Number) o).intValue());
-                        } else if (o instanceof String) {
+                    List<?> list = (List<?>) value;
+                    for (Object obj : list) {
+                        if (obj instanceof Number) {
+                            criteriaValue.set(((Number) obj).intValue());
+                        } else if (obj instanceof String) {
                             try {
-                                criteriaValue.set(Integer.parseInt((String) o));
+                                criteriaValue.set(Integer.parseInt((String) obj));
                             } catch (NumberFormatException e) {
                                 // Optionally log or handle error
                             }

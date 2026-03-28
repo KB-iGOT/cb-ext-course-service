@@ -13,6 +13,7 @@ import com.igot.cb.cassandra.CassandraOperation;
 import jakarta.annotation.PostConstruct;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections.MapUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -229,7 +230,7 @@ public class AccessSettingRuleCacheMgr {
         String cacheKey = courseId + "|" + contextId;
         // Use Redis for caching instead of in-memory cache
         String cachedData = redisCacheMgr.getFromCache(cacheKey);
-        if (cachedData != null) {
+        if (StringUtils.isNotBlank(cachedData)) {
             try {
                 // Try to parse as Map first (since Redis stores the full object as JSON)
                 ObjectMapper mapper = new ObjectMapper();

@@ -217,7 +217,27 @@ public class CourseAccessServiceImpl {
             }
             for (Map<String, Object> criteria : criteriaList) {
                 String criteriaKey = criteria.get(Constants.CRITERIA_KEY).toString().toLowerCase();
-                BitSet criteriaValue = (BitSet) criteria.get(Constants.CRITERIA_VALUE);
+                Object valueObj = criteria.get(Constants.CRITERIA_VALUE);
+                BitSet criteriaValue;
+                if (valueObj instanceof BitSet) {
+                    criteriaValue = (BitSet) valueObj;
+                } else if (valueObj instanceof List) {
+                    criteriaValue = new BitSet();
+                    List<?> list = (List<?>) valueObj;
+                    for (Object o : list) {
+                        if (o instanceof Number) {
+                            criteriaValue.set(((Number) o).intValue());
+                        } else if (o instanceof String) {
+                            try {
+                                criteriaValue.set(Integer.parseInt((String) o));
+                            } catch (NumberFormatException e) {
+                                // Optionally log or handle error
+                            }
+                        }
+                    }
+                } else {
+                    criteriaValue = new BitSet(); // or handle as error
+                }
                 Integer userCriteriaValue = userProfile.get(criteriaKey);
                 if (userCriteriaValue == null || !criteriaValue.get(userCriteriaValue)) {
                     log.info("User profile does not contain criteria key: {} in userGroup: {}", criteriaKey,

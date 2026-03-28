@@ -231,7 +231,28 @@ public class AccessSettingRuleCacheMgr {
         String cachedData = redisCacheMgr.getFromCache(cacheKey);
         if (cachedData != null) {
             try {
-                CachedAccessSettingRule cachedRule = new CachedAccessSettingRule(cachedData);
+                // Try to parse as Map first (since Redis stores the full object as JSON)
+                ObjectMapper mapper = new ObjectMapper();
+                Map<String, Object> ruleMap = mapper.readValue(cachedData, new TypeReference<Map<String, Object>>() {});
+                String contextIdVal = (String) ruleMap.getOrDefault("contextId", ruleMap.get("contextIdKey"));
+                String contextIdTypeVal = (String) ruleMap.getOrDefault("contextIdType", ruleMap.get("contextIdTypeKey"));
+                Object contextDataObj = ruleMap.get("contextData");
+                String contextDataStr;
+                if (contextDataObj instanceof String) {
+                    contextDataStr = (String) contextDataObj;
+                } else if (contextDataObj != null) {
+                    contextDataStr = mapper.writeValueAsString(contextDataObj);
+                } else {
+                    contextDataStr = "{}";
+                }
+                boolean isArchived = false;
+                if (ruleMap.containsKey("isArchived")) {
+                    isArchived = Boolean.TRUE.equals(ruleMap.get("isArchived"));
+                } else if (ruleMap.containsKey("archived")) {
+                    isArchived = Boolean.TRUE.equals(ruleMap.get("archived"));
+                }
+                CachedAccessSettingRule cachedRule = new CachedAccessSettingRule(
+                        contextIdVal, contextIdTypeVal, contextDataStr, isArchived);
                 log.debug("Cache hit for rule key: {} from Redis", cacheKey);
                 return cachedRule;
             } catch (Exception e) {

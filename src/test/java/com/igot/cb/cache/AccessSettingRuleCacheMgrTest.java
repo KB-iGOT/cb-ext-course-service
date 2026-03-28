@@ -244,24 +244,7 @@ class AccessSettingRuleCacheMgrTest {
         Map<String, Object> recordMap = Map.of(
                 "contextId", "do_123",
                 "contextIdType", "Course",
-                "contextData", """
-                    {
-                      "accessControlId": {
-                        "userGroups": [
-                          {
-                            "userGroupId": "group-123",
-                            "userGroupName": "Test Group",
-                            "userGroupCriteriaList": [
-                              {
-                                "criteriaKey": "designation",
-                                "criteriaValue": ["invalid", "2"]
-                              }
-                            ]
-                          }
-                        ]
-                      }
-                    }
-                    """
+                "contextData", "{\"accessControlId\": {\"userGroups\": [{\"userGroupId\": \"group-123\", \"userGroupName\": \"Test Group\", \"userGroupCriteriaList\": [{\"criteriaKey\": \"designation\", \"criteriaValue\": [\"invalid\", \"2\"]}]}]}}"
         );
         when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), isNull(), isNull(), isNull()))
                 .thenReturn(List.of(recordMap));
@@ -286,24 +269,28 @@ class AccessSettingRuleCacheMgrTest {
 
     @Test
     void testGetOrLoadAccessSettingRule_cacheHit() {
-        // Use reflection to insert an entry into the Caffeine cache
-        CachedAccessSettingRule rule = new CachedAccessSettingRule("do_123", "Course", "{}", false);
+        // Prepare a rule and its JSON representation
+        String contextId = "do_123";
+        String contextIdType = "Course";
+        String contextDataStr = "{\"foo\":\"bar\"}";
+        boolean isArchived = false;
+        CachedAccessSettingRule rule = new CachedAccessSettingRule(contextId, contextIdType, contextDataStr, isArchived);
 
-        try {
-            Field field = AccessSettingRuleCacheMgr.class.getDeclaredField("accessSettingsCache");
-            field.setAccessible(true);
-            Cache<String, CachedAccessSettingRule> cache =
-                (Cache<String, CachedAccessSettingRule>) field.get(cacheMgr);
-            cache.put("do_123|Course", rule);
-        } catch (Exception e) {
-            fail("Reflection failed: " + e.getMessage());
-        }
+        // Mock Redis to return the JSON for this rule
+        String cacheKey = contextId + "|" + contextIdType;
+        when(redisCacheMgr.getFromCache(cacheKey)).thenReturn(
+            String.format("{\"contextId\":\"%s\",\"contextIdType\":\"%s\",\"contextData\":%s,\"isArchived\":%s}",
+                contextId, contextIdType, contextDataStr, isArchived)
+        );
 
-        CachedAccessSettingRule result = cacheMgr.getOrLoadAccessSettingRule("do_123", "Course");
+        CachedAccessSettingRule result = cacheMgr.getOrLoadAccessSettingRule(contextId, contextIdType);
 
         assertNotNull(result);
-        assertEquals("do_123", result.getContextId());
-        assertEquals("Course", result.getContextIdType());
+        assertEquals(contextId, result.getContextId());
+        assertEquals(contextIdType, result.getContextIdType());
+        assertEquals(isArchived, result.isArchived());
+        assertNotNull(result.getContextData());
+        assertEquals("bar", result.getContextData().get("foo"));
         verifyNoInteractions(cassandraOperation);
     }
 

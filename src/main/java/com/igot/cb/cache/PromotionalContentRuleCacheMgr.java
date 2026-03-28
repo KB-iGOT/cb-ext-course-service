@@ -11,6 +11,8 @@ import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -25,69 +27,80 @@ public class PromotionalContentRuleCacheMgr {
 
     private final CassandraOperation cassandraOperation;
     private final CbExtServerProperties properties;
-    Map<String, CachedAccessSettingRule> cacheMap = new ConcurrentHashMap<>();
+    private final RedisCacheMgr redisCacheMgr;
+    private final ObjectMapper objectMapper = new ObjectMapper();
+    private static final String REDIS_KEY = "promotional_content_rules";
     @Value("${promotional.content.rules.cache.expiry.ms}")
     private Integer promotionalContentRulesCacheExpiryMs;
     /**
      * Constructs the cache manager with required dependencies.
      */
+
     public PromotionalContentRuleCacheMgr(CassandraOperation cassandraOperation,
-                                          CbExtServerProperties properties) {
+                                          CbExtServerProperties properties,
+                                          RedisCacheMgr redisCacheMgr) {
         this.cassandraOperation = cassandraOperation;
         this.properties = properties;
+        this.redisCacheMgr = redisCacheMgr;
     }
 
     /**
-     * Retrieves all cached access rules.
-     * Returns values from indexed cache (O(1) per rule lookup).
-     * Automatically reloads from database when cache is empty or expired.
-     *
+     * Retrieves all cached access rules from Redis. If Redis is empty, loads from Cassandra and updates Redis.
      * @return collection of cached rules, empty collection if none available
      */
     public Collection<CachedAccessSettingRule> getAccessSettingRules() {
-        Collection<CachedAccessSettingRule> cachedRules = cacheMap.values();
-        if (CollectionUtils.isEmpty(cachedRules)) {
-            log.info("Cache is empty (size: {}), loading from database", cacheMap.size());
-            loadAccessSettingRules();
-            cachedRules = cacheMap.values();
-            log.info("After reload, cache contains {} rules", cachedRules.size());
-            return cachedRules;
-        }
-        for (CachedAccessSettingRule rule : cachedRules) {
-            if (rule == null) {
-                log.warn("Found null cached rule entry, triggering reload");
-                loadAccessSettingRules();
-                return cacheMap.values();
-            }
-            try {
-                if (rule.isExpired(promotionalContentRulesCacheExpiryMs)) {
-                    log.info("Found expired rule (key={}), reloading cache", rule.getCacheKey());
-                    loadAccessSettingRules();
-                    return cacheMap.values();
+        try {
+            String redisData = redisCacheMgr.getFromCache(REDIS_KEY);
+            if (StringUtils.isNotBlank(redisData)) {
+                // Deserialize as Map<String, Map<String, Object>>
+                Map<String, Map<String, Object>> redisMap = objectMapper.readValue(
+                        redisData, new TypeReference<Map<String, Map<String, Object>>>() {});
+                Map<String, CachedAccessSettingRule> result = new HashMap<>();
+                for (Map.Entry<String, Map<String, Object>> entry : redisMap.entrySet()) {
+                    Map<String, Object> value = entry.getValue();
+                    String contextId = (String) value.getOrDefault("contextId", value.get("contextid"));
+                    String contextIdType = (String) value.getOrDefault("contextIdType", value.get("contextidtype"));
+                    Object contextDataObj = value.getOrDefault("contextData", value.get("contextdata"));
+                    String contextDataStr;
+                    if (contextDataObj instanceof String) {
+                        contextDataStr = (String) contextDataObj;
+                    } else {
+                        contextDataStr = objectMapper.writeValueAsString(contextDataObj);
+                    }
+                    boolean isArchived = false;
+                    if (value.containsKey("isArchived")) {
+                        isArchived = Boolean.TRUE.equals(value.get("isArchived"));
+                    } else if (value.containsKey("isarchived")) {
+                        isArchived = Boolean.TRUE.equals(value.get("isarchived"));
+                    } else if (value.containsKey("archived")) {
+                        isArchived = Boolean.TRUE.equals(value.get("archived"));
+                    }
+                    CachedAccessSettingRule rule = new CachedAccessSettingRule(contextId, contextIdType, contextDataStr, isArchived);
+                    result.put(entry.getKey(), rule);
                 }
-            } catch (Exception e) {
-                log.warn("Error checking expiry for rule {}: {}. Triggering reload.", rule.getCacheKey(), e.getMessage());
-                loadAccessSettingRules();
-                return cacheMap.values();
+                log.info("Loaded {} promotional content rules from Redis cache", result.size());
+                return result.values();
+            } else {
+                log.info("Redis cache is empty, loading from Cassandra");
+                Map<String, CachedAccessSettingRule> loaded = loadAccessSettingRulesFromCassandraAndUpdateRedis();
+                return loaded.values();
             }
+        } catch (Exception e) {
+            log.error("Failed to load promotional content rules from Redis. Error: {}", e.getMessage(), e);
+            Map<String, CachedAccessSettingRule> loaded = loadAccessSettingRulesFromCassandraAndUpdateRedis();
+            return loaded.values();
         }
-        return cachedRules;
     }
 
     /**
-     * Loads access rules from Cassandra into indexed cache.
-     * Filters out archived records at database level.
-     * Implements pagination to fetch all records in batches for better performance.
-     * Uses configurable batch size for each query and max query size as upper limit.
-     * Optimized with Java 17 parallel streams for multi-core CPU utilization.
+     * Loads access rules from Cassandra, updates Redis, and returns the loaded rules.
      */
-    private void loadAccessSettingRules() {
+    private Map<String, CachedAccessSettingRule> loadAccessSettingRulesFromCassandraAndUpdateRedis() {
         int batchSize = properties.getPromotionalContentCacheBatchSize();
         int maxQuerySize = properties.getPromotionalContentCacheMaxQuerySize();
-
         log.info("Loading access setting rules from database - Batch size: {}, Max query size: {}",
                 batchSize, maxQuerySize);
-        cacheMap.clear();
+        Map<String, CachedAccessSettingRule> loadedMap = new HashMap<>();
         try {
             List<Map<String, Object>> allRecords = new ArrayList<>();
             int totalFetched = 0;
@@ -109,7 +122,6 @@ public class PromotionalContentRuleCacheMgr {
                     totalFetched += pageRecords.size();
                     log.info("Fetched {} records on page {}, total so far: {}",
                             pageRecords.size(), pageNumber, totalFetched);
-
                     if (pageRecords.size() < batchSize) {
                         log.info("Received fewer records than batch size. Pagination complete.");
                         hasMoreRecords = false;
@@ -127,7 +139,7 @@ public class PromotionalContentRuleCacheMgr {
             }
             if (allRecords.isEmpty()) {
                 log.warn("No access setting rules found in database");
-                return;
+                return loadedMap;
             }
             log.info("Total records fetched: {}, processing with parallel streams...", allRecords.size());
             allRecords.parallelStream()
@@ -142,14 +154,23 @@ public class PromotionalContentRuleCacheMgr {
                             false))
                     .forEach(rule -> {
                         processAndCacheRule(rule);
-                        cacheMap.put(rule.getCacheKey(), rule);
+                        loadedMap.put(rule.getCacheKey(), rule);
                     });
-            long totalProcessed = cacheMap.size();
-            log.info("Promotional Content rules loaded into cache successfully. Total rules loaded: {}",
+            long totalProcessed = loadedMap.size();
+            log.info("Promotional Content rules loaded from Cassandra. Total rules loaded: {}",
                     totalProcessed);
+            // After loading from Cassandra, update Redis
+            try {
+                String json = objectMapper.writeValueAsString(loadedMap);
+                redisCacheMgr.putInCache(REDIS_KEY, json, promotionalContentRulesCacheExpiryMs / 1000);
+                log.info("Promotional content rules updated in Redis cache");
+            } catch (Exception e) {
+                log.warn("Failed to update promotional content rules in Redis: {}", e.getMessage());
+            }
         } catch (Exception e) {
-            log.error("Failed to load Promotional Content rules into Cache. Exception: ", e);
+            log.error("Failed to load Promotional Content rules from Cassandra. Exception: ", e);
         }
+        return loadedMap;
     }
 
     /**

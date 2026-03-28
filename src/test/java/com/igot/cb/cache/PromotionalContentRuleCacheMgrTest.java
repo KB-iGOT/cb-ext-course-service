@@ -5,6 +5,7 @@ import static org.mockito.Mockito.*;
 
 import java.util.*;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.model.CachedAccessSettingRule;
 import com.igot.cb.util.CbExtServerProperties;
@@ -25,6 +26,9 @@ class PromotionalContentRuleCacheMgrTest {
     @Mock
     private CbExtServerProperties properties;
 
+    @Mock
+    private RedisCacheMgr redisCacheMgr;
+
     private PromotionalContentRuleCacheMgr cacheMgr;
 
     @BeforeEach
@@ -33,12 +37,14 @@ class PromotionalContentRuleCacheMgrTest {
         lenient().when(properties.isPromotionalContentCacheWarmingEnabled()).thenReturn(false);
         lenient().when(properties.getPromotionalContentCacheBatchSize()).thenReturn(500);
         lenient().when(properties.getPromotionalContentCacheMaxQuerySize()).thenReturn(5000);
-        cacheMgr = new PromotionalContentRuleCacheMgr(cassandraOperation, properties);
+        cacheMgr = new PromotionalContentRuleCacheMgr(cassandraOperation, properties, redisCacheMgr);
         ReflectionTestUtils.setField(cacheMgr, "promotionalContentRulesCacheExpiryMs", 3600000);
     }
 
     @Test
     void testGetAccessSettingRules_EmptyCache_LoadsFromCassandra() {
+        // Redis miss, Cassandra returns data
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
         List<Map<String, Object>> cassandraRecords = createCassandraRecords(3);
         when(cassandraOperation.getRecordsByProperties(
                 Constants.KEYSPACE_SUNBIRD_COURSE,
@@ -52,6 +58,7 @@ class PromotionalContentRuleCacheMgrTest {
 
     @Test
     void testGetAccessSettingRules_ReturnsEmptyCollection_WhenNoDataAvailable() {
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
         when(cassandraOperation.getRecordsByProperties(
                 anyString(), anyString(), any(), any(), anyInt()
         )).thenReturn(List.of());
@@ -61,14 +68,30 @@ class PromotionalContentRuleCacheMgrTest {
     }
 
     @Test
-    void testGetAccessSettingRules_ReturnsCachedData_OnSubsequentCalls() {
+    void testGetAccessSettingRules_ReturnsCachedData_OnSubsequentCalls() throws Exception {
+        // Prepare a rule and its JSON
         List<Map<String, Object>> cassandraRecords = createCassandraRecords(2);
-        when(cassandraOperation.getRecordsByProperties(
-                anyString(), anyString(), any(), any(), anyInt()
-        )).thenReturn(cassandraRecords);
+        Map<String, Map<String, Object>> ruleMap = new HashMap<>();
+        ObjectMapper mapper = new ObjectMapper();
+        for (Map<String, Object> rec : cassandraRecords) {
+            Map<String, Object> ruleJson = new HashMap<>();
+            ruleJson.put("contextId", rec.get("contextId"));
+            ruleJson.put("contextIdType", rec.get("contextIdType"));
+            // contextData must be a JSON string for the constructor, but in Redis it's stored as a Map
+            Object contextData = rec.get("contextData");
+            if (contextData instanceof String) {
+                // Try to parse it to Map for Redis simulation
+                contextData = mapper.readValue((String) contextData, Map.class);
+            }
+            ruleJson.put("contextData", contextData);
+            ruleJson.put("isArchived", false); // Use the correct key as per POJO
+            ruleMap.put(rec.get("contextId") + "|" + rec.get("contextIdType"), ruleJson);
+        }
+        String json = new ObjectMapper().writeValueAsString(ruleMap);
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn(json);
         Collection<CachedAccessSettingRule> result1 = cacheMgr.getAccessSettingRules();
         assertEquals(2, result1.size());
-        reset(cassandraOperation);
+        // On subsequent call, should still return from Redis
         Collection<CachedAccessSettingRule> result2 = cacheMgr.getAccessSettingRules();
         assertEquals(2, result2.size());
         verify(cassandraOperation, never()).getRecordsByProperties(
@@ -78,6 +101,7 @@ class PromotionalContentRuleCacheMgrTest {
 
     @Test
     void testLoadAccessSettingRules_HandlesException() {
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
         when(cassandraOperation.getRecordsByProperties(
                 anyString(), anyString(), any(), any(), anyInt()
         )).thenThrow(new RuntimeException("Database error"));
@@ -88,6 +112,7 @@ class PromotionalContentRuleCacheMgrTest {
 
     @Test
     void testProcessAndCacheRule_WithValidContextData() {
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
         List<Map<String, Object>> cassandraRecords = List.of(
                 createCassandraRecordWithFullData("do_test_123", "Course")
         );
@@ -114,6 +139,7 @@ class PromotionalContentRuleCacheMgrTest {
 
     @Test
     void testProcessCriteria_WithNonIntegerValues() {
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
         String contextData = "{\"accessControlId\":{\"version\":1,\"userGroups\":[{\"userGroupId\":\"group-1\",\"userGroupName\":\"Group 1\",\"userGroupCriteriaList\":[{\"criteriaKey\":\"designation\",\"criteriaValue\":[\"1\",\"invalid\",\"3\",\"not-a-number\",\"5\"]}]}]}}";
         Map<String, Object> nonIntegerRecord = createCassandraRecord("do_non_integer", "Course", contextData);
         when(cassandraOperation.getRecordsByProperties(
@@ -137,7 +163,8 @@ class PromotionalContentRuleCacheMgrTest {
 
     @Test
     void testProcessContextData_WithNoAccessControl() {
-        Map<String, Object> noAccessControlRecord = createCassandraRecord("do_no_access", "Course", "{}");
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
+        Map<String, Object> noAccessControlRecord = createCassandraRecord("do_no_access", "Course", "{}" );
         when(cassandraOperation.getRecordsByProperties(
                 anyString(), anyString(), any(), any(), anyInt()
         )).thenReturn(List.of(noAccessControlRecord));
@@ -183,17 +210,38 @@ class PromotionalContentRuleCacheMgrTest {
         return records;
     }
 
-    private Map<String, Object> createCassandraRecord(String contextId, String contextIdType, String contextData) {
+    private Map<String, Object> createCassandraRecord(String contextId, String contextIdType, Object contextData) {
         Map<String, Object> createCassandraRecord = new HashMap<>();
         createCassandraRecord.put("contextId", contextId);
         createCassandraRecord.put("contextIdType", contextIdType);
-        createCassandraRecord.put("contextData", contextData);
+        // Always store as JSON string for contextData
+        if (contextData instanceof String) {
+            createCassandraRecord.put("contextData", contextData);
+        } else {
+            try {
+                createCassandraRecord.put("contextData", new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(contextData));
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        }
         createCassandraRecord.put("isArchived", false);
         return createCassandraRecord;
     }
 
     private Map<String, Object> createCassandraRecordWithFullData(String contextId, String contextIdType) {
-        String contextData = "{\"accessControlId\":{\"version\":1,\"userGroups\":[{\"userGroupId\":\"group-1\",\"userGroupName\":\"Group 1\",\"userGroupCriteriaList\":[{\"criteriaKey\":\"designation\",\"criteriaValue\":[\"1\",\"2\",\"3\"]}]}]}}";
+        // Use a nested map for contextData
+        Map<String, Object> criteria = new HashMap<>();
+        criteria.put("criteriaKey", "designation");
+        criteria.put("criteriaValue", Arrays.asList("1", "2", "3"));
+        Map<String, Object> userGroup = new HashMap<>();
+        userGroup.put("userGroupId", "group-1");
+        userGroup.put("userGroupName", "Group 1");
+        userGroup.put("userGroupCriteriaList", List.of(criteria));
+        Map<String, Object> accessControlId = new HashMap<>();
+        accessControlId.put("version", 1);
+        accessControlId.put("userGroups", List.of(userGroup));
+        Map<String, Object> contextData = new HashMap<>();
+        contextData.put("accessControlId", accessControlId);
         return createCassandraRecord(contextId, contextIdType, contextData);
     }
 }

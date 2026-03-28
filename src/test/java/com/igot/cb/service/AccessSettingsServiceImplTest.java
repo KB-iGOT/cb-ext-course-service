@@ -1,5 +1,6 @@
 package com.igot.cb.service;
 
+import com.igot.cb.cache.RedisCacheMgr;
 import com.igot.cb.util.Constants;
 import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.model.ApiResponse;
@@ -37,9 +38,12 @@ class AccessSettingsServiceImplTest {
   @Mock
   private AccessSettingMigrationServiceImpl accessSettingMigrationService;
 
+  @Mock
+  private RedisCacheMgr redisCacheMgr;
+
   @BeforeEach
   void setUp() {
-    service = new AccessSettingsServiceImpl(cassandraOperation, payloadValidation, accessSettingMigrationService);
+    service = new AccessSettingsServiceImpl(cassandraOperation, payloadValidation, accessSettingMigrationService, redisCacheMgr);
   }
 
   @Test

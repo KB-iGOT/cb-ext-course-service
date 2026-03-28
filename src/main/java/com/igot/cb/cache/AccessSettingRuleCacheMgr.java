@@ -5,6 +5,8 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.igot.cb.cassandra.CassandraOperation;
@@ -30,8 +32,6 @@ public class AccessSettingRuleCacheMgr {
     private final CassandraOperation cassandraOperation;
     private Map<String, CachedAccessSettingRule> cachedAccessSettingRules = new ConcurrentHashMap<>();
 
-    private Cache<String, CachedAccessSettingRule> accessSettingsCache;
-
 
     private final long LOCAL_CACHE_TTL = 3600000;
 
@@ -42,10 +42,6 @@ public class AccessSettingRuleCacheMgr {
 
     @PostConstruct
     public void initCache() {
-        accessSettingsCache = Caffeine.newBuilder()
-                .maximumSize(1000)
-                .expireAfterWrite(Duration.ofMinutes(ttlMinutes))
-                .build();
     }
 
 
@@ -231,10 +227,16 @@ public class AccessSettingRuleCacheMgr {
 
     public CachedAccessSettingRule getOrLoadAccessSettingRule(String courseId, String contextId) {
         String cacheKey = courseId + "|" + contextId;
-        CachedAccessSettingRule cachedRule = accessSettingsCache.getIfPresent(cacheKey);
-        if (cachedRule != null) {
-            log.debug("Cache hit for rule key: {}", cacheKey);
-            return cachedRule;
+        // Use Redis for caching instead of in-memory cache
+        String cachedData = redisCacheMgr.getFromCache(cacheKey);
+        if (cachedData != null) {
+            try {
+                CachedAccessSettingRule cachedRule = new CachedAccessSettingRule(cachedData);
+                log.debug("Cache hit for rule key: {} from Redis", cacheKey);
+                return cachedRule;
+            } catch (Exception e) {
+                log.error("Failed to parse cached rule from Redis for key {}: {}", cacheKey, e.getMessage(), e);
+            }
         }
         log.info("Cache miss for rule key: {}, loading from Cassandra...", cacheKey);
         try {
@@ -253,22 +255,20 @@ public class AccessSettingRuleCacheMgr {
                 log.warn("No access setting rule found in Cassandra for key: {}", cacheKey);
                 return null;
             }
-            Map<String, Object> r = records.get(0);
+            Map<String, Object> ruleMap = records.get(0);
             CachedAccessSettingRule loadedRule = new CachedAccessSettingRule(
-                    (String) r.get(Constants.CONTEXT_ID_KEY),
-                    (String) r.get(Constants.CONTEXT_ID_TYPE),
-                    (String) r.get(Constants.CONTEXT_DATA_KEY),
+                    (String) ruleMap.get(Constants.CONTEXT_ID_KEY),
+                    (String) ruleMap.get(Constants.CONTEXT_ID_TYPE),
+                    (String) ruleMap.get(Constants.CONTEXT_DATA_KEY),
                     false
             );
             try {
-                Map<String, Object> contextData = loadedRule.getContextData();
-                if (MapUtils.isNotEmpty(contextData)) {
-                    processContextData(cacheKey, contextData);
-                }
-                accessSettingsCache.put(cacheKey, loadedRule);
-                log.info("Loaded and cached rule for key: {}", cacheKey);
+                // Store in Redis for future requests
+                String json = new ObjectMapper().writeValueAsString(ruleMap);
+                redisCacheMgr.putInCache(cacheKey, json, ttlMinutes); // TTL 1 hour, adjust as needed
+                log.info("Loaded and cached rule for key: {} in Redis", cacheKey);
             } catch (Exception e) {
-                log.error("Error processing rule {}: {}", cacheKey, e.getMessage(), e);
+                log.error("Error serializing rule {}: {}", cacheKey, e.getMessage(), e);
             }
             return loadedRule;
         } catch (Exception e) {

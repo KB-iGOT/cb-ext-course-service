@@ -6,8 +6,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import com.igot.cb.cache.RedisCacheMgr;
+import com.igot.cb.model.CachedAccessSettingRule;
 import com.igot.cb.util.UserGroupUtils;
 import org.apache.commons.lang.StringUtils;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
@@ -29,13 +32,18 @@ public class AccessSettingsServiceImpl {
   private final CassandraOperation cassandraOperation;
   private final AccessSettingMigrationServiceImpl accessSettingMigrationService;
   private final ObjectMapper objectMapper = new ObjectMapper();
+  private final RedisCacheMgr redisCacheMgr;
 
   public AccessSettingsServiceImpl(CassandraOperation cassandraOperation, PayloadValidation payloadValidation,
-      AccessSettingMigrationServiceImpl accessSettingMigrationService) {
+      AccessSettingMigrationServiceImpl accessSettingMigrationService, RedisCacheMgr redisCacheMgr) {
     this.cassandraOperation = cassandraOperation;
     this.payloadValidation = payloadValidation;
     this.accessSettingMigrationService = accessSettingMigrationService;
+    this.redisCacheMgr = redisCacheMgr;
   }
+
+  @Value("${access.rule.ttl.minutes}")
+  private int ttlMinutes;
 
   public ApiResponse upsert(Map<String, Object> userGroupDetails, String authToken) {
     log.info("AccessSettingsService::create:inside");
@@ -59,6 +67,19 @@ public class AccessSettingsServiceImpl {
       if (accessSettingMigrationService.processAccessSettingRule(accessRuleData)) {
         cassandraOperation.insertRecord(Constants.KEYSPACE_SUNBIRD_COURSE,
             Constants.ACCESS_SETTINGS_RULES_TABLE_V2, accessRuleData);
+        // Redis cache logic
+        String contextId = String.valueOf(userGroupDetails.get(Constants.CONTENT_ID));
+        String contextIdType = String.valueOf(userGroupDetails.getOrDefault(Constants.CONTEXT_ID_TYPE, "Course"));
+        String contextDataStr = objectMapper.writeValueAsString(createPayloadWithUuid);
+        CachedAccessSettingRule loadedRule = new CachedAccessSettingRule(
+            contextId,
+            contextIdType,
+            contextDataStr,
+            false
+        );
+        String redisKey = contextId + "|" + contextIdType;
+        String json = objectMapper.writeValueAsString(loadedRule);
+        redisCacheMgr.putInCache(redisKey, json, 3600); // TTL 1 hour, adjust as needed
         response.getResult().put(Constants.MSG, Constants.CREATED_RULES);
         // Remove all other keys, and put a single object after message
         Map<String, Object> payload = new HashMap<>();

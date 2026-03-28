@@ -299,7 +299,10 @@ class AccessSettingRuleCacheMgrTest {
         Map<String, Object> cassRecord = new HashMap<>();
         cassRecord.put(Constants.CONTEXT_ID_KEY, "do_123");
         cassRecord.put(Constants.CONTEXT_ID_TYPE, "Course");
+        // contextData should be a JSON string, to match what the service expects
         cassRecord.put(Constants.CONTEXT_DATA_KEY, "{\"sample\":true}");
+        // Add isArchived field to match what the service expects
+        cassRecord.put("isArchived", false);
         when(cassandraOperation.getRecordsByProperties(
                 anyString(), anyString(), any(), any(), any()))
                 .thenReturn(List.of(cassRecord));

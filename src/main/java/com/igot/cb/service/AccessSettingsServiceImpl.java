@@ -69,7 +69,7 @@ public class AccessSettingsServiceImpl {
             Constants.ACCESS_SETTINGS_RULES_TABLE_V2, accessRuleData);
         // Redis cache logic
         String contextId = String.valueOf(userGroupDetails.get(Constants.CONTENT_ID));
-        String contextIdType = String.valueOf(userGroupDetails.getOrDefault(Constants.CONTEXT_ID_TYPE, "Course"));
+        String contextIdType = userGroupDetails.getOrDefault(Constants.CONTEXT_ID_TYPE, accessRuleData.getOrDefault(Constants.CONTEXT_ID_TYPE, "")).toString();
         String contextDataStr = objectMapper.writeValueAsString(createPayloadWithUuid);
         CachedAccessSettingRule loadedRule = new CachedAccessSettingRule(
             contextId,

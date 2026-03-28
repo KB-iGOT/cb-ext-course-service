@@ -14,6 +14,8 @@ import org.apache.commons.collections.CollectionUtils;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.igot.cb.cassandra.CassandraOperation;
@@ -35,29 +37,50 @@ public class CbPlanCacheMgr {
     @Value("${cb.plan.caffine.cache.max.size:5000}")
     private int maxCacheSize;
 
+    @Value("${cbplan.client.cache.ttl.seconds:3600}")
+    private int clientCacheTtlSeconds;
+
     private final CassandraOperation cassandraOperation;
-    private Cache<String, List<Map<String, Object>>> cbPlanCache;
+    private final RedisCacheMgr redisCacheMgr;
+    private final ObjectMapper objectMapper = new ObjectMapper();
+    // Store only active plan IDs in cache, not full plan objects
+    private Cache<String, List<String>> cbPlanIdCache;
+
+    public CbPlanCacheMgr(CassandraOperation cassandraOperation, RedisCacheMgr redisCacheMgr) {
+        this.cassandraOperation = cassandraOperation;
+        this.redisCacheMgr = redisCacheMgr;
+    }
 
     @PostConstruct
     public void initCache() {
-        this.cbPlanCache = Caffeine.newBuilder()
+        this.cbPlanIdCache = Caffeine.newBuilder()
                 .maximumSize(maxCacheSize)
                 .expireAfterWrite(Duration.ofMinutes(ttlMinutes))
                 .build();
     }
-    
-    public CbPlanCacheMgr(CassandraOperation cassandraOperation) {
-        this.cassandraOperation = cassandraOperation;
-    }
 
-    private List<Map<String, Object>> getCbPlanForAll() {
-        String redisCacheKey = "all-lookup";
-        List<Map<String, Object>> allCbPlanList = cbPlanCache.getIfPresent(redisCacheKey);
-        if (allCbPlanList == null) {
-            log.info("No CB Plans for all orgs in Cache, reading from Cassandra");
+    /**
+     * Fetches only active plan IDs for all orgs and caches them.
+     */
+    private List<String> getActivePlanIdsForAll() {
+        String cacheKey = "all-lookup";
+        // Use the same key for Redis and Caffeine
+        List<String> planIds = null;
+        String cached = redisCacheMgr.getFromCache(cacheKey);
+        if (cached != null) {
+            try {
+                planIds = objectMapper.readValue(cached, new TypeReference<List<String>>() {});
+                log.info("Cache hit for all orgs in Redis: Found {} plan IDs", planIds.size());
+            } catch (Exception e) {
+                log.warn("Failed to parse plan IDs from Redis for all orgs: {}", e.getMessage());
+            }
+        }
+        if (CollectionUtils.isEmpty(planIds)) {
+            planIds = null;
+            log.info("No CB Plan IDs for all orgs in Redis, reading from Cassandra");
             Map<String, Object> propertiesMap = new HashMap<>();
             propertiesMap.put(Constants.PLAN_YEAR, "ALL");
-            allCbPlanList = cassandraOperation.getRecordsByProperties(
+            List<Map<String, Object>> allCbPlanList = cassandraOperation.getRecordsByProperties(
                     Constants.KEYSPACE_SUNBIRD,
                     Constants.TABLE_CB_PLAN_V2_LOOKUP_BY_ALL_ORG,
                     propertiesMap,
@@ -66,86 +89,145 @@ public class CbPlanCacheMgr {
             if (allCbPlanList == null) {
                 allCbPlanList = new ArrayList<>();
             }
-            allCbPlanList = allCbPlanList.stream()
-                    .filter(plan -> Boolean.TRUE.equals(plan.get(Constants.IS_ACTIVE))).collect(Collectors.toList());
-            cbPlanCache.put(redisCacheKey, allCbPlanList);
-        } else {
-            log.info("Cache hit for all orgs: Found {} records", allCbPlanList.size());
-        }
-        return allCbPlanList;
-    }
-
-    private List<Map<String, Object>> getCbPlanForOrgId(String orgId) {
-        String redisCacheKey = orgId + "-lookup";
-        List<Map<String, Object>> cbPlanList = cbPlanCache.getIfPresent(redisCacheKey);
-        
-        if (cbPlanList == null) {
-            log.info("No CB Plans for orgId in Cache: {}, reading from Cassandra", orgId);
-            Map<String, Object> propertiesMap = new HashMap<>();
-            propertiesMap.put(Constants.ORG_ID, orgId);
-            cbPlanList = cassandraOperation.getRecordsByProperties(
-                    Constants.KEYSPACE_SUNBIRD,
-                    Constants.TABLE_CB_PLAN_V2_LOOKUP_BY_ORG,
-                    propertiesMap,
-                    new ArrayList<>(),
-                    null);
-            if (cbPlanList == null) {
-                cbPlanList = new ArrayList<>();
+            planIds = allCbPlanList.stream()
+                    .filter(plan -> Boolean.TRUE.equals(plan.get(Constants.IS_ACTIVE)))
+                    .map(plan -> (String) plan.get(Constants.PLAN_ID))
+                    .collect(Collectors.toList());
+            // Cache in Redis for all orgs
+            try {
+                redisCacheMgr.putInCache(cacheKey, objectMapper.writeValueAsString(planIds), clientCacheTtlSeconds);
+            } catch (Exception e) {
+                log.warn("Failed to cache plan IDs in Redis for all orgs: {}", e.getMessage());
             }
-            cbPlanList = cbPlanList.stream()
-                    .filter(plan -> Boolean.TRUE.equals(plan.get(Constants.IS_ACTIVE))).collect(Collectors.toList());
-            cbPlanCache.put(redisCacheKey, cbPlanList);
-            cbPlanList.addAll(getCbPlanForAll());
+            // Optionally update Caffeine for legacy/local fallback
+            cbPlanIdCache.put(cacheKey, planIds);
         } else {
-            log.info("Cache hit for orgId: {}, Found {} records", orgId, cbPlanList.size());
+            log.info("Cache hit for all orgs: Found {} plan IDs", planIds.size());
         }
-
-        return cbPlanList;
+        return planIds;
     }
 
+    /**
+     * Fetches only active plan IDs for a specific org and caches them in Redis and Caffeine.
+     */
+    private List<String> getActivePlanIdsForOrgId(String orgId) {
+        String redisKey = "cbplan_ids_" + orgId;
+        // Try Redis first
+        String cached = redisCacheMgr.getFromCache(redisKey);
+        if (cached != null) {
+            try {
+                List<String> planIds = objectMapper.readValue(cached, new TypeReference<List<String>>() {});
+                // Only use Redis, do not update local Caffeine cache
+                return planIds;
+            } catch (Exception e) {
+                log.warn("Failed to parse plan IDs from Redis for orgId {}: {}", orgId, e.getMessage());
+            }
+        }
+        // Fallback to Cassandra
+        log.info("No CB Plan IDs for orgId in Redis: {}, reading from Cassandra", orgId);
+        Map<String, Object> propertiesMap = new HashMap<>();
+        propertiesMap.put(Constants.ORG_ID, orgId);
+        // Batchwise fetch using planIds list, similar to getCbPlansByPlanIdsInBatch
+        List<String> allPlanIds = new ArrayList<>();
+        List<String> orgPlanIds = new ArrayList<>();
+        // First, fetch all plan IDs for the org in one go (using offset/limit if needed)
+        // (Assume propertiesMap is set up with orgId)
+        List<Map<String, Object>> allLookupRows = new ArrayList<>();
+        int fetchBatchSize = planBatchSize;
+        int offset = 0;
+        boolean moreRecords = true;
+        while (moreRecords) {
+            Map<String, Object> batchProps = new HashMap<>(propertiesMap);
+            batchProps.put("offset", offset);
+            batchProps.put("limit", fetchBatchSize);
+            List<Map<String, Object>> cbPlanList = cassandraOperation.getRecordsByProperties(
+                Constants.KEYSPACE_SUNBIRD,
+                Constants.TABLE_CB_PLAN_V2_LOOKUP_BY_ORG,
+                batchProps,
+                new ArrayList<>(),
+                null);
+            if (cbPlanList == null || cbPlanList.isEmpty()) {
+                moreRecords = false;
+            } else {
+                allLookupRows.addAll(cbPlanList);
+                offset += fetchBatchSize;
+                if (cbPlanList.size() < fetchBatchSize) {
+                    moreRecords = false;
+                }
+            }
+        }
+        // Now, collect all plan IDs from the lookup rows
+        orgPlanIds = allLookupRows.stream()
+            .filter(plan -> Boolean.TRUE.equals(plan.get(Constants.IS_ACTIVE)))
+            .map(plan -> (String) plan.get(Constants.PLAN_ID))
+            .collect(Collectors.toList());
+        // Add 'all' org plans as well
+        allPlanIds.addAll(orgPlanIds);
+        allPlanIds.addAll(getActivePlanIdsForAll());
+        // Cache in Redis only
+        try {
+            redisCacheMgr.putInCache(redisKey, objectMapper.writeValueAsString(allPlanIds), clientCacheTtlSeconds);
+        } catch (Exception e) {
+            log.warn("Failed to cache plan IDs in Redis for orgId {}: {}", orgId, e.getMessage());
+        }
+        // Do not update Caffeine cache
+        return allPlanIds;
+    }
+
+    /**
+     * Public API: Returns full plan details for org, using only plan IDs from cache, fetching details in batch from Cassandra.
+     */
     public List<Map<String, Object>> getCbPlanForAllAndOrgId(String orgId, AtomicBoolean isCacheEnabled) {
-        List<Map<String, Object>> activeCbPlans = cbPlanCache.getIfPresent(orgId);
-        if (CollectionUtils.isNotEmpty(activeCbPlans)) {
-            log.info("Cache hit for orgId: {}, Found {} active CB Plans", orgId, activeCbPlans.size());
-            isCacheEnabled.set(true);
-            return activeCbPlans;
+        // Try Redis first for org-specific plan IDs
+        List<String> planIds = null;
+        String redisKey = "cbplan_ids_" + orgId;
+        String cached = redisCacheMgr.getFromCache(redisKey);
+        if (cached != null) {
+            try {
+                planIds = objectMapper.readValue(cached, new TypeReference<List<String>>() {});
+                log.info("Cache hit for orgId: {}, Found {} active CB Plan IDs in Redis", orgId, planIds.size());
+                isCacheEnabled.set(true);
+            } catch (Exception e) {
+                log.warn("Failed to parse plan IDs from Redis for orgId {}: {}", orgId, e.getMessage());
+            }
         }
-        List<Map<String, Object>> cbPlanList = getCbPlanForOrgId(orgId);
+        if (CollectionUtils.isEmpty(planIds)) {
+            planIds = getActivePlanIdsForOrgId(orgId);
+            if (planIds.isEmpty()) {
+                log.info("No CB Plan IDs found for orgId: {}", orgId);
+                return new ArrayList<>();
+            }
+        }
+        // Fetch plan details in batch using only plan IDs (primary keys)
+        List<Map<String, Object>> cbPlanList = getCbPlansByPlanIdsInBatch(planIds);
         if (cbPlanList.isEmpty()) {
-            log.info("No CB Plans found for orgId: {}", orgId);
-            cbPlanList = new ArrayList<>();
-            cbPlanCache.put(orgId, cbPlanList);
-            return cbPlanList;
+            log.info("No CB Plans found for orgId: {} after batch fetch", orgId);
+            return new ArrayList<>();
         }
-        cbPlanList  = cbPlanList.stream()
+        cbPlanList = cbPlanList.stream()
                 .filter(m -> m.get(Constants.END_DATE_REQUEST) != null)
                 .sorted(Comparator.comparing(
                         m -> (Instant) m.get(Constants.END_DATE_REQUEST),
                         Comparator.reverseOrder()
                 ))
                 .collect(Collectors.toList());
-        List<String> planIds = cbPlanList.stream()
-                    .map(plan -> (String) plan.get(Constants.PLAN_ID)).collect(Collectors.toList());
-        Map<String, Object> propertiesMap = new HashMap<>();
-        propertiesMap.put(Constants.PLAN_ID, planIds);
-        List<Map<String, Object>> existingCbPlans = cassandraOperation.getRecordsByProperties(
-                Constants.KEYSPACE_SUNBIRD,
-                Constants.TABLE_CB_PLAN_V2,
-                propertiesMap,
-                new ArrayList<>(),
-                null);
-        if (existingCbPlans == null) {
-            log.error("Failed to read cassandra for cb plan, for PlanIds: {}", planIds);
-            return new ArrayList<>();
-        }
-
-        activeCbPlans = existingCbPlans.stream()
-                .filter(plan -> Constants.LIVE.equalsIgnoreCase((String) plan.get(Constants.STATUS))).collect(Collectors.toList());
-        //TODO - Need to remove draftData (if available) and also contextData.accessControl
-        log.info("Found {} CB Plans for orgId: {}, active count: {}", existingCbPlans.size(), orgId, activeCbPlans.size());
-        cbPlanCache.put(orgId, activeCbPlans);
-        isCacheEnabled.set(true);
+        // Only return LIVE plans
+        List<Map<String, Object>> activeCbPlans = cbPlanList.stream()
+                .filter(plan -> Constants.LIVE.equalsIgnoreCase((String) plan.get(Constants.STATUS)))
+                .collect(Collectors.toList());
+        log.info("Found {} CB Plans for orgId: {}, active count: {}", cbPlanList.size(), orgId, activeCbPlans.size());
         return activeCbPlans;
+    }
+
+    /**
+     * Public API: Returns plan IDs and TTL for org, for client-side caching.
+     */
+    public Map<String, Object> getPlanIdsAndTtlForOrg(String orgId) {
+        List<String> planIds = getActivePlanIdsForOrgId(orgId);
+        Map<String, Object> result = new HashMap<>();
+        result.put("planIds", planIds);
+        result.put("cacheTtlSeconds", clientCacheTtlSeconds);
+        return result;
     }
 
     public List<Map<String, Object>> getCbPlansByPlanIdsInBatch(List<String> planIds) {

@@ -3,10 +3,13 @@ package com.igot.cb.cache;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.util.Constants;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.MockitoAnnotations;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -23,17 +26,28 @@ class CbPlanCacheMgrTest {
 
     @Mock
     private CassandraOperation cassandraOperation;
+    @Mock
+    private RedisCacheMgr redisCacheMgr;
 
     private CbPlanCacheMgr cbPlanCacheMgr;
+    private AutoCloseable mocks;
 
     @BeforeEach
     void setUp() {
-        cbPlanCacheMgr = new CbPlanCacheMgr(cassandraOperation);
-        // Set the cache TTL and batch size for testing
+        mocks = MockitoAnnotations.openMocks(this);
+        cbPlanCacheMgr = new CbPlanCacheMgr(cassandraOperation, redisCacheMgr);
         ReflectionTestUtils.setField(cbPlanCacheMgr, "ttlMinutes", 60);
         ReflectionTestUtils.setField(cbPlanCacheMgr, "planBatchSize", 5);
         ReflectionTestUtils.setField(cbPlanCacheMgr, "maxCacheSize", 5000);
+        ReflectionTestUtils.setField(cbPlanCacheMgr, "clientCacheTtlSeconds", 3600);
         cbPlanCacheMgr.initCache();
+    }
+
+    @AfterEach
+    void tearDown() throws Exception {
+        if (mocks != null) {
+            mocks.close();
+        }
     }
 
     @Test
@@ -41,13 +55,15 @@ class CbPlanCacheMgrTest {
         // Arrange
         String orgId = "org123";
         AtomicBoolean isCacheEnabled = new AtomicBoolean(false);
-
-        List<Map<String, Object>> cachedPlans = createMockCbPlans(2, Constants.LIVE);
-
-        // Pre-populate cache using reflection
-        Cache<String, List<Map<String, Object>>> cache = (Cache<String, List<Map<String, Object>>>) ReflectionTestUtils
-                .getField(cbPlanCacheMgr, "cbPlanCache");
-        cache.put(orgId, cachedPlans);
+        List<String> planIds = Arrays.asList("plan1", "plan2");
+        // Simulate Redis cache hit
+        when(redisCacheMgr.getFromCache("cbplan_ids_" + orgId)).thenReturn("[\"plan1\",\"plan2\"]");
+        List<Map<String, Object>> cbPlans = createMockCbPlans(2, Constants.LIVE);
+        when(cassandraOperation.getRecordsByProperties(
+                eq(Constants.KEYSPACE_SUNBIRD),
+                eq(Constants.TABLE_CB_PLAN_V2),
+                anyMap(), anyList(), any()))
+                .thenReturn(cbPlans);
 
         // Act
         List<Map<String, Object>> result = cbPlanCacheMgr.getCbPlanForAllAndOrgId(orgId, isCacheEnabled);
@@ -55,7 +71,11 @@ class CbPlanCacheMgrTest {
         // Assert
         assertNotNull(result);
         assertEquals(2, result.size());
-        verify(cassandraOperation, never()).getRecordsByProperties(anyString(), anyString(), anyMap(), anyList(), any());
+        verify(redisCacheMgr, times(1)).getFromCache("cbplan_ids_" + orgId);
+        verify(cassandraOperation, times(1)).getRecordsByProperties(
+                eq(Constants.KEYSPACE_SUNBIRD),
+                eq(Constants.TABLE_CB_PLAN_V2),
+                anyMap(), anyList(), any());
     }
 
     @Test
@@ -101,7 +121,7 @@ class CbPlanCacheMgrTest {
         // Assert
         assertNotNull(result);
         assertEquals(5, result.size());
-        assertTrue(isCacheEnabled.get());
+        assertFalse(isCacheEnabled.get());
 
         // Verify all plans are LIVE
         result.forEach(plan -> assertEquals(Constants.LIVE, plan.get(Constants.STATUS)));
@@ -450,7 +470,7 @@ class CbPlanCacheMgrTest {
 
         assertNotNull(result);
         assertEquals(2, result.size());
-        assertTrue(isCacheEnabled.get());
+        assertFalse(isCacheEnabled.get());
         result.forEach(plan -> assertEquals(Constants.LIVE, plan.get(Constants.STATUS)));
     }
 

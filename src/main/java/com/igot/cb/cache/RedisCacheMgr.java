@@ -71,6 +71,18 @@ public class RedisCacheMgr {
         }
     }
 
+    public boolean setHashValue(String redisKey, String fieldKey, String fieldValue) {
+        try (Jedis jedis = jedisPool.getResource()) {
+            jedis.hset(redisKey, fieldKey, fieldValue);
+            jedis.expire(redisKey, ttlSeconds);
+            log.info("Cached field '{}' under Redis key '{}'", fieldKey, redisKey);
+            return true;
+        } catch (Exception e) {
+            log.error("Failed to set Redis hash value for key: {}, field: {}", redisKey, fieldKey, e);
+            return false;
+        }
+    }
+
     /**
      * Get a single record from the Redis HSET cache
      */
@@ -93,6 +105,17 @@ public class RedisCacheMgr {
         } catch (Exception e) {
             log.error("Failed to fetch all cached rules from Redis key: {}", redisKey, e);
             return new HashMap<>();
+        }
+    }
+
+    public boolean deleteHashField(String redisKey, String fieldKey) {
+        try (Jedis jedis = jedisPool.getResource()) {
+            jedis.hdel(redisKey, fieldKey);
+            log.info("Deleted field '{}' from Redis key '{}'", fieldKey, redisKey);
+            return true;
+        } catch (Exception e) {
+            log.error("Failed to delete Redis hash field for key: {}, field: {}", redisKey, fieldKey, e);
+            return false;
         }
     }
 

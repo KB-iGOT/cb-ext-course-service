@@ -4,6 +4,7 @@ import com.igot.cb.model.ApiResponse;
 
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 /**
  * @author Mahesh RV
@@ -24,6 +25,15 @@ public interface CassandraOperation {
 
     public List<Map<String, Object>> getRecordsByProperties(String keyspaceName, String tableName,
                                                                             Map<String, Object> propertyMap, List<String> fields, Integer limit);
+
+    int forEachRecordByPropertiesPaged(
+            String keyspaceName,
+            String tableName,
+            Map<String, Object> propertyMap,
+            List<String> fields,
+            int pageSize,
+            int maxRecords,
+            Consumer<Map<String, Object>> recordConsumer);
 
     public Map<String, Object> updateRecord(String keyspaceName, String tableName,
         Map<String, Object> updateAttributes,

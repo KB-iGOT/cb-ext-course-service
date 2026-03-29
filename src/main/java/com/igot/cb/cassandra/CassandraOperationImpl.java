@@ -21,7 +21,9 @@ import org.apache.commons.collections.MapUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
+import java.nio.ByteBuffer;
 import java.util.*;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 
@@ -239,6 +241,46 @@ public class CassandraOperationImpl implements CassandraOperation {
             response.put(Constants.ERROR_MESSAGE, errMsg);
         }
         return response;
+    }
+
+    @Override
+    public int forEachRecordByPropertiesPaged(String keyspaceName, String tableName,
+                                              Map<String, Object> propertyMap, List<String> fields,
+                                              int pageSize, int maxRecords,
+                                              Consumer<Map<String, Object>> recordConsumer) {
+        int processedCount = 0;
+        try {
+            Select selectQuery = processQuery(keyspaceName, tableName, propertyMap, fields);
+            PagingState pagingState = null;
+            boolean hasMore = true;
+
+            while (hasMore && processedCount < maxRecords) {
+                var statementBuilder = SimpleStatement.builder(selectQuery.toString())
+                        .setPageSize(pageSize);
+                if (pagingState != null) {
+                    statementBuilder.setPagingState(ByteBuffer.wrap(pagingState.toBytes()));
+                }
+                ResultSet results = connectionManager.getSession(keyspaceName).execute(statementBuilder.build());
+                List<Map<String, Object>> pageRecords = CassandraUtil.createResponse(results);
+                if (CollectionUtils.isEmpty(pageRecords)) {
+                    break;
+                }
+
+                for (Map<String, Object> record : pageRecords) {
+                    if (processedCount >= maxRecords) {
+                        break;
+                    }
+                    recordConsumer.accept(record);
+                    processedCount++;
+                }
+
+                pagingState = results.getExecutionInfo().getSafePagingState();
+                hasMore = pagingState != null;
+            }
+        } catch (Exception e) {
+            log.error("Error streaming paged records from {}: {}", tableName, e.getMessage(), e);
+        }
+        return processedCount;
     }
 
 }

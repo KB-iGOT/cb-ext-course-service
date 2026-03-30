@@ -5,6 +5,7 @@ import static org.mockito.Mockito.*;
 
 import java.util.*;
 import java.lang.reflect.Field;
+import java.util.function.Consumer;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.igot.cb.cassandra.CassandraOperation;
@@ -117,8 +118,7 @@ class AccessSettingRuleCacheMgrTest {
                     }
                     """
         );
-        when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), isNull(), isNull(), isNull()))
-                .thenReturn(List.of(recordMap));
+        mockForEachAccessRules(List.of(recordMap));
 
         var result = cacheMgr.getAccessSettingRules();
 
@@ -130,8 +130,6 @@ class AccessSettingRuleCacheMgrTest {
     @Test
     void testGetAccessSettingRules_returnsEmpty_whenBothSourcesEmpty() {
         when(redisCacheMgr.getAllCachedAccessRules(redisKey)).thenReturn(Map.of());
-        when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), isNull(), isNull(), isNull()))
-                .thenReturn(List.of());
 
         var result = cacheMgr.getAccessSettingRules();
         assertTrue(result.isEmpty());
@@ -167,8 +165,9 @@ class AccessSettingRuleCacheMgrTest {
     @Test
     void testGetAccessSettingRules_cassandraException() {
         when(redisCacheMgr.getAllCachedAccessRules(redisKey)).thenReturn(Map.of());
-        when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), isNull(), isNull(), isNull()))
-                .thenThrow(new RuntimeException("Database error"));
+        doThrow(new RuntimeException("Database error"))
+                .when(cassandraOperation)
+                .forEachRecordByProperties(anyString(), anyString(), isNull(), isNull(), any(), isNull(), any());
 
         var result = cacheMgr.getAccessSettingRules();
         
@@ -184,8 +183,7 @@ class AccessSettingRuleCacheMgrTest {
                 "contextIdType", "Course",
                 "contextData", "{}"
         );
-        when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), isNull(), isNull(), isNull()))
-                .thenReturn(List.of(recordMap));
+        mockForEachAccessRules(List.of(recordMap));
 
         var result = cacheMgr.getAccessSettingRules();
         
@@ -201,8 +199,7 @@ class AccessSettingRuleCacheMgrTest {
                 "contextIdType", "Course",
                 "contextData", "{\"accessControlId\": {}}"
         );
-        when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), isNull(), isNull(), isNull()))
-                .thenReturn(List.of(recordMap));
+        mockForEachAccessRules(List.of(recordMap));
 
         var result = cacheMgr.getAccessSettingRules();
         
@@ -229,8 +226,7 @@ class AccessSettingRuleCacheMgrTest {
                     }
                     """
         );
-        when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), isNull(), isNull(), isNull()))
-                .thenReturn(List.of(recordMap));
+        mockForEachAccessRules(List.of(recordMap));
 
         var result = cacheMgr.getAccessSettingRules();
         
@@ -263,8 +259,7 @@ class AccessSettingRuleCacheMgrTest {
                     }
                     """
         );
-        when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), isNull(), isNull(), isNull()))
-                .thenReturn(List.of(recordMap));
+        mockForEachAccessRules(List.of(recordMap));
 
         var result = cacheMgr.getAccessSettingRules();
         
@@ -363,6 +358,23 @@ class AccessSettingRuleCacheMgrTest {
                 cacheMgr.getOrLoadAccessSettingRule("do_500", "Course");
 
         assertNull(result);
+    }
+
+    @SuppressWarnings("unchecked")
+    private void mockForEachAccessRules(List<Map<String, Object>> records) {
+        doAnswer(invocation -> {
+            Consumer<Map<String, Object>> consumer = invocation.getArgument(6);
+            records.forEach(consumer);
+            return null;
+        }).when(cassandraOperation).forEachRecordByProperties(
+                eq(Constants.KEYSPACE_SUNBIRD_COURSE),
+                eq(Constants.ACCESS_SETTINGS_RULES_TABLE_V2),
+                isNull(),
+                isNull(),
+                any(),
+                isNull(),
+                any()
+        );
     }
 
 }

@@ -22,6 +22,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 
@@ -239,6 +240,34 @@ public class CassandraOperationImpl implements CassandraOperation {
             response.put(Constants.ERROR_MESSAGE, errMsg);
         }
         return response;
+    }
+
+    @Override
+    public void forEachRecordByProperties(String keyspaceName, String tableName,
+                                          Map<String, Object> propertyMap, List<String> fields,
+                                          Integer pageSize, Integer maxRows,
+                                          Consumer<Map<String, Object>> rowConsumer) {
+        try {
+            Select selectQuery = processQuery(keyspaceName, tableName, propertyMap, fields);
+            SimpleStatementBuilder statementBuilder = SimpleStatement.builder(selectQuery.build());
+            if (pageSize != null && pageSize > 0) {
+                statementBuilder.setPageSize(pageSize);
+            }
+            ResultSet results = connectionManager.getSession(keyspaceName).execute(statementBuilder.build());
+            Map<String, String> columnsMapping = CassandraUtil.fetchColumnsMapping(results);
+            int rowsProcessed = 0;
+            for (Row row : results) {
+                if (maxRows != null && maxRows > 0 && rowsProcessed >= maxRows) {
+                    break;
+                }
+                Map<String, Object> rowMap = new HashMap<>();
+                columnsMapping.forEach((key, value) -> rowMap.put(key, row.getObject(value)));
+                rowConsumer.accept(rowMap);
+                rowsProcessed++;
+            }
+        } catch (Exception e) {
+            log.error("Error iterating records from {}: {}", tableName, e.getMessage(), e);
+        }
     }
 
 }

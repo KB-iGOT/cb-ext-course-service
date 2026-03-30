@@ -3,6 +3,7 @@ package com.igot.cb.cache;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 import com.github.benmanes.caffeine.cache.Cache;
@@ -40,10 +41,16 @@ public class AccessSettingRuleCacheMgr {
     @Value("${access.rule.ttl.minutes}")
     private int ttlMinutes;
 
+    @Value("${access.setting.rules.caffine.cache.max.size:5000}")
+    private int maxCacheSize;
+
+    @Value("${access.settings.cache.batch.size:500}")
+    private int accessSettingsCacheBatchSize;
+
     @PostConstruct
     public void initCache() {
         accessSettingsCache = Caffeine.newBuilder()
-                .maximumSize(1000)
+                .maximumSize(maxCacheSize)
                 .expireAfterWrite(Duration.ofMinutes(ttlMinutes))
                 .build();
     }
@@ -109,41 +116,39 @@ public class AccessSettingRuleCacheMgr {
                                 Map.Entry::getKey,
                                 entry -> new CachedAccessSettingRule(entry.getValue())));
             } else {
-                List<Map<String, Object>> accessSettingRuleMapList = cassandraOperation.getRecordsByProperties(
-                        Constants.KEYSPACE_SUNBIRD_COURSE, Constants.ACCESS_SETTINGS_RULES_TABLE_V2, null,
-                        null, null);
-                cachedAccessSettingRules = accessSettingRuleMapList.stream()
-                        .map(record -> new CachedAccessSettingRule(
-                                (String) record.get("contextId"),
-                                (String) record.get("contextIdType"),
-                                (String) record.get("contextData"),
-                                false))
-                        .collect(Collectors.toMap(
-                                CachedAccessSettingRule::getCacheKey,
-                                rule -> rule));
-                // Cache the rules in Redis
-                for (CachedAccessSettingRule rule : cachedAccessSettingRules.values()) {
-
-                    try {
-
-                        Map<String, Object> contextData = rule.getContextData();
-                        if (contextData == null) {
-                            log.warn("No contextData found for rule: {}", rule.getCacheKey());
-                            continue;
-                        }
-
-                        // Call the new method for processing
-                        processContextData(rule.getCacheKey(), contextData);
-                        cachedAccessSettingRules.put(rule.getCacheKey(), rule);
-
-                        // Finally, push the raw contextData to Redis
-                        redisCacheMgr.setAccessSettingRuleCache(ACCESS_SETTINGS_CACHE_KEY, rule.getCacheKey(),
-                                contextData);
-
-                    } catch (Exception e) {
-                        log.error("Error processing rule {}", rule.getCacheKey(), e);
-                    }
-                }
+                cachedAccessSettingRules = new ConcurrentHashMap<>();
+                AtomicInteger processedCount = new AtomicInteger();
+                cassandraOperation.forEachRecordByProperties(
+                        Constants.KEYSPACE_SUNBIRD_COURSE,
+                        Constants.ACCESS_SETTINGS_RULES_TABLE_V2,
+                        null,
+                        null,
+                        accessSettingsCacheBatchSize,
+                        null,
+                        record -> {
+                            try {
+                                CachedAccessSettingRule rule = new CachedAccessSettingRule(
+                                        (String) record.get("contextId"),
+                                        (String) record.get("contextIdType"),
+                                        (String) record.get("contextData"),
+                                        Boolean.TRUE.equals(record.get("isArchived")));
+                                Map<String, Object> contextData = rule.getContextData();
+                                if (contextData == null) {
+                                    log.warn("No contextData found for rule: {}", rule.getCacheKey());
+                                    return;
+                                }
+                                processContextData(rule.getCacheKey(), contextData);
+                                cachedAccessSettingRules.put(rule.getCacheKey(), rule);
+                                redisCacheMgr.setAccessSettingRuleCache(
+                                        ACCESS_SETTINGS_CACHE_KEY,
+                                        rule.getCacheKey(),
+                                        contextData);
+                                processedCount.incrementAndGet();
+                            } catch (Exception e) {
+                                log.error("Error processing access setting rule record: {}", record, e);
+                            }
+                        });
+                log.info("Processed {} access setting rules from Cassandra in paged mode", processedCount.get());
             }
             log.info("Access setting rules loaded into cache successfully. Number of rules loaded: {}",
                     cachedAccessSettingRules.size());

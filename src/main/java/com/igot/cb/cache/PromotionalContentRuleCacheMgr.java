@@ -13,6 +13,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Cache manager for promotional content access rules.
@@ -76,10 +77,9 @@ public class PromotionalContentRuleCacheMgr {
 
     /**
      * Loads access rules from Cassandra into indexed cache.
-     * Filters out archived records at database level.
-     * Implements pagination to fetch all records in batches for better performance.
-     * Uses configurable batch size for each query and max query size as upper limit.
-     * Optimized with Java 17 parallel streams for multi-core CPU utilization.
+     * Uses Cassandra driver paging to fetch rows in batches.
+     * Applies configurable max query size as an upper bound for rows processed.
+     * Filters out archived records during row processing.
      */
     private void loadAccessSettingRules() {
         int batchSize = properties.getPromotionalContentCacheBatchSize();
@@ -89,64 +89,42 @@ public class PromotionalContentRuleCacheMgr {
                 batchSize, maxQuerySize);
         cacheMap.clear();
         try {
-            List<Map<String, Object>> allRecords = new ArrayList<>();
-            int totalFetched = 0;
-            int pageNumber = 1;
-            boolean hasMoreRecords = true;
-            while (hasMoreRecords && totalFetched < maxQuerySize) {
-                log.info("Fetching page {} with batch size {}", pageNumber, batchSize);
-                List<Map<String, Object>> pageRecords = cassandraOperation.getRecordsByProperties(
-                        Constants.KEYSPACE_SUNBIRD_COURSE,
-                        Constants.PROMOTIONAL_CONTENT_RULES,
-                        null,
-                        null,
-                        batchSize);
-                if (CollectionUtils.isEmpty(pageRecords)) {
-                    log.info("No more records found on page {}", pageNumber);
-                    hasMoreRecords = false;
-                } else {
-                    allRecords.addAll(pageRecords);
-                    totalFetched += pageRecords.size();
-                    log.info("Fetched {} records on page {}, total so far: {}",
-                            pageRecords.size(), pageNumber, totalFetched);
+            AtomicInteger scannedCount = new AtomicInteger();
+            AtomicInteger archivedCount = new AtomicInteger();
 
-                    if (pageRecords.size() < batchSize) {
-                        log.info("Received fewer records than batch size. Pagination complete.");
-                        hasMoreRecords = false;
-                    } else {
-                        pageNumber++;
-                        hasMoreRecords = false;
-                        log.warn("Cassandra query returned full batch size. There may be more records, " +
-                                "but pagination token is not supported. Consider increasing batch size.");
-                    }
-                }
-            }
-            if (totalFetched >= maxQuerySize) {
-                log.warn("Reached maximum query size limit of {}. There may be more records in the database. " +
-                        "Consider increasing promotional.content.cache.max.query.size", maxQuerySize);
-            }
-            if (allRecords.isEmpty()) {
-                log.warn("No access setting rules found in database");
-                return;
-            }
-            log.info("Total records fetched: {}, processing with parallel streams...", allRecords.size());
-            allRecords.parallelStream()
-                    .filter(rec -> {
-                        Boolean isArchived = (Boolean) rec.get(Constants.IS_ARCHIVED_KEY);
-                        return !isArchived;
-                    })
-                    .map(rec -> new CachedAccessSettingRule(
-                            (String) rec.get("contextId"),
-                            (String) rec.get("contextIdType"),
-                            (String) rec.get("contextData"),
-                            false))
-                    .forEach(rule -> {
+            cassandraOperation.forEachRecordByProperties(
+                    Constants.KEYSPACE_SUNBIRD_COURSE,
+                    Constants.PROMOTIONAL_CONTENT_RULES,
+                    null,
+                    null,
+                    batchSize,
+                    maxQuerySize,
+                    rec -> {
+                        scannedCount.incrementAndGet();
+                        if (Boolean.TRUE.equals(rec.get(Constants.IS_ARCHIVED_KEY))) {
+                            archivedCount.incrementAndGet();
+                            return;
+                        }
+                        CachedAccessSettingRule rule = new CachedAccessSettingRule(
+                                (String) rec.get("contextId"),
+                                (String) rec.get("contextIdType"),
+                                (String) rec.get("contextData"),
+                                false);
                         processAndCacheRule(rule);
                         cacheMap.put(rule.getCacheKey(), rule);
                     });
+
+            if (scannedCount.get() == 0) {
+                log.warn("No access setting rules found in database");
+                return;
+            }
+            if (maxQuerySize > 0 && scannedCount.get() >= maxQuerySize) {
+                log.warn("Reached maximum query size limit of {} while loading promotional rules", maxQuerySize);
+            }
             long totalProcessed = cacheMap.size();
             log.info("Promotional Content rules loaded into cache successfully. Total rules loaded: {}",
                     totalProcessed);
+            log.info("Total scanned: {}, archived skipped: {}", scannedCount.get(), archivedCount.get());
         } catch (Exception e) {
             log.error("Failed to load Promotional Content rules into Cache. Exception: ", e);
         }

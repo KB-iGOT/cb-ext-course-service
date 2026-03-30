@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import java.util.*;
+import java.util.function.Consumer;
 
 import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.model.CachedAccessSettingRule;
@@ -40,11 +41,7 @@ class PromotionalContentRuleCacheMgrTest {
     @Test
     void testGetAccessSettingRules_EmptyCache_LoadsFromCassandra() {
         List<Map<String, Object>> cassandraRecords = createCassandraRecords(3);
-        when(cassandraOperation.getRecordsByProperties(
-                Constants.KEYSPACE_SUNBIRD_COURSE,
-                Constants.PROMOTIONAL_CONTENT_RULES,
-                null, null, 500
-        )).thenReturn(cassandraRecords);
+        mockForEachPromoRules(cassandraRecords);
         Collection<CachedAccessSettingRule> result = cacheMgr.getAccessSettingRules();
         assertNotNull(result);
         assertEquals(3, result.size());
@@ -52,9 +49,6 @@ class PromotionalContentRuleCacheMgrTest {
 
     @Test
     void testGetAccessSettingRules_ReturnsEmptyCollection_WhenNoDataAvailable() {
-        when(cassandraOperation.getRecordsByProperties(
-                anyString(), anyString(), any(), any(), anyInt()
-        )).thenReturn(List.of());
         Collection<CachedAccessSettingRule> result = cacheMgr.getAccessSettingRules();
         assertNotNull(result);
         assertTrue(result.isEmpty());
@@ -63,24 +57,22 @@ class PromotionalContentRuleCacheMgrTest {
     @Test
     void testGetAccessSettingRules_ReturnsCachedData_OnSubsequentCalls() {
         List<Map<String, Object>> cassandraRecords = createCassandraRecords(2);
-        when(cassandraOperation.getRecordsByProperties(
-                anyString(), anyString(), any(), any(), anyInt()
-        )).thenReturn(cassandraRecords);
+        mockForEachPromoRules(cassandraRecords);
         Collection<CachedAccessSettingRule> result1 = cacheMgr.getAccessSettingRules();
         assertEquals(2, result1.size());
         reset(cassandraOperation);
         Collection<CachedAccessSettingRule> result2 = cacheMgr.getAccessSettingRules();
         assertEquals(2, result2.size());
-        verify(cassandraOperation, never()).getRecordsByProperties(
-                anyString(), anyString(), any(), any(), anyInt()
+        verify(cassandraOperation, never()).forEachRecordByProperties(
+                anyString(), anyString(), any(), any(), any(), any(), any()
         );
     }
 
     @Test
     void testLoadAccessSettingRules_HandlesException() {
-        when(cassandraOperation.getRecordsByProperties(
-                anyString(), anyString(), any(), any(), anyInt()
-        )).thenThrow(new RuntimeException("Database error"));
+        doThrow(new RuntimeException("Database error"))
+                .when(cassandraOperation)
+                .forEachRecordByProperties(anyString(), anyString(), any(), any(), any(), any(), any());
         Collection<CachedAccessSettingRule> result = cacheMgr.getAccessSettingRules();
         assertNotNull(result);
         assertTrue(result.isEmpty());
@@ -91,9 +83,7 @@ class PromotionalContentRuleCacheMgrTest {
         List<Map<String, Object>> cassandraRecords = List.of(
                 createCassandraRecordWithFullData("do_test_123", "Course")
         );
-        when(cassandraOperation.getRecordsByProperties(
-                anyString(), anyString(), any(), any(), anyInt()
-        )).thenReturn(cassandraRecords);
+        mockForEachPromoRules(cassandraRecords);
         Collection<CachedAccessSettingRule> result = cacheMgr.getAccessSettingRules();
         assertEquals(1, result.size());
         CachedAccessSettingRule rule = result.iterator().next();
@@ -116,9 +106,7 @@ class PromotionalContentRuleCacheMgrTest {
     void testProcessCriteria_WithNonIntegerValues() {
         String contextData = "{\"accessControlId\":{\"version\":1,\"userGroups\":[{\"userGroupId\":\"group-1\",\"userGroupName\":\"Group 1\",\"userGroupCriteriaList\":[{\"criteriaKey\":\"designation\",\"criteriaValue\":[\"1\",\"invalid\",\"3\",\"not-a-number\",\"5\"]}]}]}}";
         Map<String, Object> nonIntegerRecord = createCassandraRecord("do_non_integer", "Course", contextData);
-        when(cassandraOperation.getRecordsByProperties(
-                anyString(), anyString(), any(), any(), anyInt()
-        )).thenReturn(List.of(nonIntegerRecord));
+        mockForEachPromoRules(List.of(nonIntegerRecord));
         Collection<CachedAccessSettingRule> result = cacheMgr.getAccessSettingRules();
         assertEquals(1, result.size());
         CachedAccessSettingRule rule = result.iterator().next();
@@ -138,9 +126,7 @@ class PromotionalContentRuleCacheMgrTest {
     @Test
     void testProcessContextData_WithNoAccessControl() {
         Map<String, Object> noAccessControlRecord = createCassandraRecord("do_no_access", "Course", "{}");
-        when(cassandraOperation.getRecordsByProperties(
-                anyString(), anyString(), any(), any(), anyInt()
-        )).thenReturn(List.of(noAccessControlRecord));
+        mockForEachPromoRules(List.of(noAccessControlRecord));
         Collection<CachedAccessSettingRule> result = cacheMgr.getAccessSettingRules();
         assertEquals(1, result.size());
     }
@@ -195,5 +181,22 @@ class PromotionalContentRuleCacheMgrTest {
     private Map<String, Object> createCassandraRecordWithFullData(String contextId, String contextIdType) {
         String contextData = "{\"accessControlId\":{\"version\":1,\"userGroups\":[{\"userGroupId\":\"group-1\",\"userGroupName\":\"Group 1\",\"userGroupCriteriaList\":[{\"criteriaKey\":\"designation\",\"criteriaValue\":[\"1\",\"2\",\"3\"]}]}]}}";
         return createCassandraRecord(contextId, contextIdType, contextData);
+    }
+
+    @SuppressWarnings("unchecked")
+    private void mockForEachPromoRules(List<Map<String, Object>> records) {
+        doAnswer(invocation -> {
+            Consumer<Map<String, Object>> consumer = invocation.getArgument(6);
+            records.forEach(consumer);
+            return null;
+        }).when(cassandraOperation).forEachRecordByProperties(
+                eq(Constants.KEYSPACE_SUNBIRD_COURSE),
+                eq(Constants.PROMOTIONAL_CONTENT_RULES),
+                isNull(),
+                isNull(),
+                any(),
+                any(),
+                any()
+        );
     }
 }

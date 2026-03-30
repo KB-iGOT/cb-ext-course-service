@@ -525,8 +525,9 @@ public class CourseAccessServiceImpl {
 
     private List<String> getCoursesFromCacheOrServiceForExternalCourse(String partnerId) {
         try {
-            List<String> cachedCourses = courseCategoryCache.get(partnerId);
-            Long lastUpdated = cacheTimestamps.get(partnerId);
+            String cacheKey = "access_settings_enabled_" + partnerId;
+            List<String> cachedCourses = courseCategoryCache.get(cacheKey);
+            Long lastUpdated = cacheTimestamps.get(cacheKey);
             boolean isCacheValid = lastUpdated != null &&
                     (System.currentTimeMillis() - lastUpdated) < cacheTtlMs;
 
@@ -538,8 +539,8 @@ public class CourseAccessServiceImpl {
             log.info("Cache miss or expired for category: {}, fetching from service", partnerId);
             List<String> fetchedCourses = fetchAccessSettingsEnabledCoursesForExternalCourses(partnerId);
             if (!fetchedCourses.isEmpty()) {
-                courseCategoryCache.put("access_settings_enabled_" + partnerId, fetchedCourses);
-                cacheTimestamps.put(partnerId, System.currentTimeMillis());
+                courseCategoryCache.put(cacheKey, fetchedCourses);
+                cacheTimestamps.put(cacheKey, System.currentTimeMillis());
                 log.info("Cached {} course identifiers for partnerId {}", fetchedCourses.size(), partnerId);
                 return fetchedCourses;
             } else {

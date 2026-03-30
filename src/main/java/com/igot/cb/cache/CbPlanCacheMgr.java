@@ -37,10 +37,15 @@ public class CbPlanCacheMgr {
 
     private final CassandraOperation cassandraOperation;
     private Cache<String, List<Map<String, Object>>> cbPlanCache;
+    private Cache<String, Map<String, Object>> planIdCache;
 
     @PostConstruct
     public void initCache() {
         this.cbPlanCache = Caffeine.newBuilder()
+                .maximumSize(maxCacheSize)
+                .expireAfterWrite(Duration.ofMinutes(ttlMinutes))
+                .build();
+        this.planIdCache = Caffeine.newBuilder()
                 .maximumSize(maxCacheSize)
                 .expireAfterWrite(Duration.ofMinutes(ttlMinutes))
                 .build();
@@ -141,6 +146,13 @@ public class CbPlanCacheMgr {
 
         activeCbPlans = existingCbPlans.stream()
                 .filter(plan -> Constants.LIVE.equalsIgnoreCase((String) plan.get(Constants.STATUS))).collect(Collectors.toList());
+        // Prime the planIdCache
+        for (Map<String, Object> plan : existingCbPlans) {
+            String id = (String) plan.get(Constants.PLAN_ID);
+            if (id != null) {
+                planIdCache.put(id, plan);
+            }
+        }
         //TODO - Need to remove draftData (if available) and also contextData.accessControl
         log.info("Found {} CB Plans for orgId: {}, active count: {}", existingCbPlans.size(), orgId, activeCbPlans.size());
         cbPlanCache.put(orgId, activeCbPlans);
@@ -156,12 +168,26 @@ public class CbPlanCacheMgr {
             return allCbPlans;
         }
 
-        log.info("Fetching CB Plan details for {} plan IDs in batches of 5", planIds.size());
+        List<String> missingPlanIds = new ArrayList<>();
+        for (String planId : planIds) {
+            Map<String, Object> cachedPlan = planIdCache.getIfPresent(planId);
+            if (cachedPlan != null) {
+                allCbPlans.add(cachedPlan);
+            } else {
+                missingPlanIds.add(planId);
+            }
+        }
 
-        // Process in batches of 5
+        if (missingPlanIds.isEmpty()) {
+            log.info("Full cache hit for {} plan IDs", planIds.size());
+            return allCbPlans;
+        }
 
-        for (int i = 0; i < planIds.size(); i += planBatchSize) {
-            List<String> batch = planIds.subList(i, Math.min(i + planBatchSize, planIds.size()));
+        log.info("Fetching CB Plan details for {} missing plan IDs from Cassandra in batches of {}", missingPlanIds.size(), planBatchSize);
+
+        // Process in batches
+        for (int i = 0; i < missingPlanIds.size(); i += planBatchSize) {
+            List<String> batch = missingPlanIds.subList(i, Math.min(i + planBatchSize, missingPlanIds.size()));
 
             Map<String, Object> propertiesMap = new HashMap<>();
             propertiesMap.put(Constants.PLAN_ID, batch);
@@ -177,6 +203,12 @@ public class CbPlanCacheMgr {
 
                 if (CollectionUtils.isNotEmpty(batchResult)) {
                     allCbPlans.addAll(batchResult);
+                    for (Map<String, Object> plan : batchResult) {
+                        String id = (String) plan.get(Constants.PLAN_ID);
+                        if (id != null) {
+                            planIdCache.put(id, plan);
+                        }
+                    }
                     log.info("Fetched {} records for plan IDs batch: {}", batchResult.size(), batch);
                 } else {
                     log.warn("No records found for plan IDs batch: {}", batch);

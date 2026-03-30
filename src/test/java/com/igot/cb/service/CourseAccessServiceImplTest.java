@@ -654,9 +654,9 @@ class CourseAccessServiceImplTest {
         Map<String, Object> request = Map.of(Constants.PARTNER_ID, "partner1");
         when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
         ReflectionTestUtils.setField(courseAccessService, "courseCategoryCache",
-                new HashMap<>(Map.of("partner1", List.of("C1"))));
+                new HashMap<>(Map.of("access_settings_enabled_partner1", List.of("C1"))));
         ReflectionTestUtils.setField(courseAccessService, "cacheTimestamps",
-                new HashMap<>(Map.of("partner1", System.currentTimeMillis())));
+                new HashMap<>(Map.of("access_settings_enabled_partner1", System.currentTimeMillis())));
         ReflectionTestUtils.setField(courseAccessService, "cacheTtlMs", 99999999L);
         BitSet bit = new BitSet();
         bit.set(1);
@@ -688,10 +688,11 @@ class CourseAccessServiceImplTest {
     @Test
     void testGetCoursesFromCacheOrServiceForExternalCourse_CacheHit_viaReflection() throws Exception {
         String partnerId = "partnerCache";
+        String cacheKey = "access_settings_enabled_" + partnerId;
         Map<String, List<String>> partnerCache = new HashMap<>();
-        partnerCache.put(partnerId, List.of("E1", "E2"));
+        partnerCache.put(cacheKey, List.of("E1", "E2"));
         Map<String, Long> timestamps = new HashMap<>();
-        timestamps.put(partnerId, System.currentTimeMillis());
+        timestamps.put(cacheKey, System.currentTimeMillis());
 
         ReflectionTestUtils.setField(courseAccessService, "courseCategoryCache", partnerCache);
         ReflectionTestUtils.setField(courseAccessService, "cacheTimestamps", timestamps);

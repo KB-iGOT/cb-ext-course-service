@@ -65,7 +65,7 @@ public class AccessTokenValidator {
             if (isValid) {
                 Map<String, Object> tokenBody =
                         mapper.readValue(new String(decodeFromBase64(body)), Map.class);
-                boolean isExp = isExpired((Integer) tokenBody.get("exp"));
+                boolean isExp = isExpired((Long) tokenBody.get("exp"));
                 if (isExp) {
                     throw new Exception("Expired auth token is received.");
                 }
@@ -123,7 +123,7 @@ public class AccessTokenValidator {
         return true;
     }
 
-    private boolean isExpired(Integer expiration) {
+    private boolean isExpired(long expiration) {
         return (Time.currentTime() > expiration);
     }
 

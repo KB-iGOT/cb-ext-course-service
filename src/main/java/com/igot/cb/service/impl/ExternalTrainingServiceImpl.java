@@ -217,24 +217,32 @@ public class ExternalTrainingServiceImpl implements ExternalTrainingService {
         if (!"csv".equalsIgnoreCase(extension)) {
             return "Invalid file type. Only CSV files are allowed.";
         }
-        // 4. Row count validation
         int externalTrainingBatchSize = serverConfig.getExternalTrainingBatchSize();
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(file.getInputStream(), StandardCharsets.UTF_8))) {
-            int rowCount = 0;
+            String header = reader.readLine();
+            if (header == null) {
+                return "CSV header is missing. Expected header: Email";
+            }
+            // 4. Header validation
+            if (!"Email".equalsIgnoreCase(header.trim())) {
+                return "Invalid CSV header. Expected header: Email";
+            }
+            // 5. Row count validation
+            int dataRowCount = 0;
             while (reader.readLine() != null) {
-                rowCount++;
-                if (rowCount > externalTrainingBatchSize) {
-                    return "CSV file should not contain more than 200 rows.";
+                dataRowCount++;
+                if (dataRowCount > externalTrainingBatchSize) {
+                    return "CSV file should not contain more than " + externalTrainingBatchSize + " rows.";
                 }
             }
-            // Optional: check if file has only header
-            if (rowCount <= 1) {
+            // 6. check if file has only header
+            if (dataRowCount == 0) {
                 return "CSV file contains no data rows.";
             }
         } catch (Exception e) {
             return "Error while reading CSV file.";
         }
-        return ""; // valid file
+        return "";
     }
 
     @Override

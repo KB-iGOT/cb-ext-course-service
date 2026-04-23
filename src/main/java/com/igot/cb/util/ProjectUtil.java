@@ -3,6 +3,8 @@ package com.igot.cb.util;
 import java.sql.Timestamp;
 import java.util.Date;
 import java.util.UUID;
+import java.util.regex.Pattern;
+
 import org.joda.time.DateTime;
 import org.springframework.http.HttpStatus;
 
@@ -47,5 +49,15 @@ public class ProjectUtil {
         response.getParams().setStatus(Constants.FAILED);
         response.setResponseCode(httpStatus);
         response.getParams().setErrMsg(errorMessage);
+    }
+
+    public static Boolean validateEmailPattern(String email) {
+        String emailRegex = "^[a-zA-Z0-9_+&*-]+(?:\\." + "[a-zA-Z0-9_+&*-]+)*@" + "(?:[a-zA-Z0-9-]+\\.)+[a-z"
+                + "A-Z]{2,7}$";
+        Pattern pat = Pattern.compile(emailRegex);
+        if (pat.matcher(email).matches()) {
+            return Boolean.TRUE;
+        }
+        return Boolean.FALSE;
     }
 }

@@ -237,7 +237,10 @@ public class ExternalTrainingBulkUploadConsumer {
                 markRecordAsFailed(updatedRecord, "Empty email");
                 return updatedRecord;
             }
-
+            if (!ProjectUtil.validateEmailPattern(email)) {
+                markRecordAsFailed(updatedRecord, "Invalid Email Id");
+                return updatedRecord;
+            }
             Object userInfoObj = emailUserMap.get(email);
             if (ObjectUtils.isEmpty(userInfoObj)) {
                 markRecordAsFailed(updatedRecord, "User does not exist");

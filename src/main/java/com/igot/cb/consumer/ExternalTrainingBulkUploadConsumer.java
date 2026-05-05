@@ -65,8 +65,12 @@ public class ExternalTrainingBulkUploadConsumer {
     @Autowired
     private ContentInfoServiceImpl contentInfoService;
 
+    private final NotificationService notificationService;
+
     @Autowired
-    private NotificationService notificationService;
+    public ExternalTrainingBulkUploadConsumer(NotificationService notificationService) {
+        this.notificationService = notificationService;
+    }
 
     @KafkaListener(topics = "${external.training.user.bulk.upload.topic}", groupId = "${external.training.user.bulk.upload.topic.group}")
     public void processExternalTrainingBulkUploadMessage(ConsumerRecord<String, String> data) {
@@ -157,16 +161,23 @@ public class ExternalTrainingBulkUploadConsumer {
                     new BufferedReader(new InputStreamReader(new FileInputStream(file), StandardCharsets.UTF_8)),
                     CSVFormat.newFormat(serverProperties.getBulkUploadCsvDelimiter()).withFirstRecordAsHeader()
             )) {
+                List<String> notificationUserIds = new ArrayList<>();
                 for (CSVRecord record : csvParser2.getRecords()) {
                     totalRecordsCount++;
 
-                    Map<String, String> updatedRecord = processRecord(record, expectedFieldCount, eventId, batchId, emailUserIdMap, eventDetails);
+                    Map<String, String> updatedRecord = processRecord(record, expectedFieldCount, eventId, batchId, emailUserIdMap, eventDetails, notificationUserIds);
                     updatedRecords.add(updatedRecord);
                     if ("FAILED".equalsIgnoreCase(updatedRecord.get("Status"))) {
                         failedCount++;
                     } else {
                         processedCount++;
                     }
+                }
+
+                // Send notification for all users at once after processing
+                if (!notificationUserIds.isEmpty()) {
+                    String trainingName = eventDetails.getOrDefault(Constants.EVENT_NAME, "").toString();
+                    notificationService.sendNotificationForExternalTraining(eventId, trainingName, notificationUserIds, Constants.EXTERNAL_TRAINING);
                 }
             }
 
@@ -228,7 +239,7 @@ public class ExternalTrainingBulkUploadConsumer {
     /**
      * Processes a single CSV record. Returns the updated record with status and error details.
      */
-    private Map<String, String> processRecord(CSVRecord record, int expectedFieldCount, String eventId, String batchId, Map<String, Object> emailUserMap, Map<String, Object> eventDetails) {
+    private Map<String, String> processRecord(CSVRecord record, int expectedFieldCount, String eventId, String batchId, Map<String, Object> emailUserMap, Map<String, Object> eventDetails, List<String> notificationUserIds) {
         Map<String, String> updatedRecord = new LinkedHashMap<>(record.toMap());
         try {
             if (record.size() > expectedFieldCount) {
@@ -271,10 +282,8 @@ public class ExternalTrainingBulkUploadConsumer {
             // Trigger certificate event
             externalTrainingCertificateService.generateCertificateEventAndPushToKafka(userInfo, eventDetails);
 
-            // Send notification for external training
-            String trainingName = eventDetails.getOrDefault(Constants.EVENT_NAME, "").toString();
-            List<String> userIds = Collections.singletonList(userInfo.get(Constants.USER_ID).toString());
-            notificationService.sendNotificationForExternalTraining(eventId, trainingName, userIds, Constants.EXTERNAL_TRAINING);
+            // Accumulate userId for notification
+            notificationUserIds.add(userId);
 
             logger.info("Successfully enrolled user: userId = {}, email = {}", userId, email);
 
@@ -334,8 +343,8 @@ public class ExternalTrainingBulkUploadConsumer {
     /**
      * Updates the bulk onboarding status.
      */
-    private void updateStatus(Map<String, String> inputData, String status, int totalRecordsCount, int processedCount, int failedCount) {
-        updateUserBulkUploadStatus(inputData.get(Constants.ORD_ID), inputData.get(Constants.CONTEXT_ID_CAMEL), inputData.get(Constants.BATCH_ID), inputData.get(Constants.IDENTIFIER), status, totalRecordsCount, processedCount, failedCount);
+    private void updateStatus(Map<String, String> inputData, String status, int totalRecordsCount, int successfulRecordsCount, int failedRecordsCount) {
+        updateUserBulkUploadStatus(inputData.get(Constants.ORD_ID), inputData.get(Constants.CONTEXT_ID_CAMEL), inputData.get(Constants.BATCH_ID), inputData.get(Constants.IDENTIFIER), status, totalRecordsCount, successfulRecordsCount, failedRecordsCount);
     }
 
 

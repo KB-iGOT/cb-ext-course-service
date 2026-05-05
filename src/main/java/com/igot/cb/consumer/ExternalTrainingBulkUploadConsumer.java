@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.model.ApiResponse;
 import com.igot.cb.service.ContentInfoServiceImpl;
+import com.igot.cb.service.NotificationService;
 import com.igot.cb.service.OutboundRequestHandlerServiceImpl;
 import com.igot.cb.service.impl.ExternalTrainingCertificateServiceImpl;
 import com.igot.cb.storage.service.StorageService;
@@ -63,6 +64,9 @@ public class ExternalTrainingBulkUploadConsumer {
 
     @Autowired
     private ContentInfoServiceImpl contentInfoService;
+
+    @Autowired
+    private NotificationService notificationService;
 
     @KafkaListener(topics = "${external.training.user.bulk.upload.topic}", groupId = "${external.training.user.bulk.upload.topic.group}")
     public void processExternalTrainingBulkUploadMessage(ConsumerRecord<String, String> data) {
@@ -266,6 +270,11 @@ public class ExternalTrainingBulkUploadConsumer {
             }
             // Trigger certificate event
             externalTrainingCertificateService.generateCertificateEventAndPushToKafka(userInfo, eventDetails);
+
+            // Send notification for external training
+            String trainingName = eventDetails.getOrDefault(Constants.EVENT_NAME, "").toString();
+            List<String> userIds = Collections.singletonList(userInfo.get(Constants.USER_ID).toString());
+            notificationService.sendNotificationForExternalTraining(eventId, trainingName, userIds, Constants.EXTERNAL_TRAINING);
 
             logger.info("Successfully enrolled user: userId = {}, email = {}", userId, email);
 

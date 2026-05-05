@@ -590,6 +590,7 @@ public class Constants {
     public static final String CERT_TEMPLATE_ID = "certTemplateId";
     public static final String SOURCE_NAME = "sourceName";
     public static final String ISSUED_DATE = "issuedDate";
+    public static final String EXTERNAL_TRAINING = "EXTERNAL_TRAINING";
 
     private Constants() {
     }

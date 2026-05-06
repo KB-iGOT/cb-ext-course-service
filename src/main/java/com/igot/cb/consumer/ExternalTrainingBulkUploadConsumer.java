@@ -343,8 +343,8 @@ public class ExternalTrainingBulkUploadConsumer {
     /**
      * Updates the bulk onboarding status.
      */
-    private void updateStatus(Map<String, String> inputData, String status, int totalRecordsCount, int successfulRecordsCount, int failedRecordsCount) {
-        updateUserBulkUploadStatus(inputData.get(Constants.ORD_ID), inputData.get(Constants.CONTEXT_ID_CAMEL), inputData.get(Constants.BATCH_ID), inputData.get(Constants.IDENTIFIER), status, totalRecordsCount, successfulRecordsCount, failedRecordsCount);
+    private void updateStatus(Map<String, String> inputData, String status, int totalRecordsCount, int processedCount, int failedCount) {
+        updateUserBulkUploadStatus(inputData.get(Constants.ORD_ID), inputData.get(Constants.CONTEXT_ID_CAMEL), inputData.get(Constants.BATCH_ID), inputData.get(Constants.IDENTIFIER), status, totalRecordsCount, processedCount, failedCount);
     }
 
 

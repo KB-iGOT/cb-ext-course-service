@@ -544,7 +544,7 @@ public class NotificationServiceImpl implements NotificationService {
             }
             String subCategory = notificationType;
             Map<String, String> placeHolders = new HashMap<>();
-            placeHolders.put(Constants.TITLE, trainingName);
+            placeHolders.put(Constants.COURSE_NAME, trainingName);
             Map<String, Object> data = new HashMap<>();
             data.put(Constants.ID, trainingId);
             Map<String, Object> message = new HashMap<>();

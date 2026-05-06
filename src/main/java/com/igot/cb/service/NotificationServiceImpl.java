@@ -550,9 +550,6 @@ public class NotificationServiceImpl implements NotificationService {
             Map<String, Object> message = new HashMap<>();
             message.put(Constants.PLACE_HOLDERS, placeHolders);
             message.put(Constants.DATA, data);
-            Map<String, Object> params = new HashMap<>();
-            params.put(Constants.COURSE_NAME, trainingName);
-
             sendInAppNotification(subCategory, Constants.ALERT, userIds, message);
             log.info("In-app retirement notification [{}] sent for course {}",
                     notificationType, trainingName);

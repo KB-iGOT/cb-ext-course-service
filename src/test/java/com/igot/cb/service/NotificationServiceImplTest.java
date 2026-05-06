@@ -476,5 +476,80 @@ class NotificationServiceImplTest {
         );
     }
 
+    @Test
+    void sendNotificationForExternalTraining_emptyUsers_shouldReturn() {
+        NotificationServiceImpl spyService = spy(notificationService);
+
+        spyService.sendNotificationForExternalTraining(
+                "train1",
+                "Training A",
+                Collections.emptyList(),
+                "TYPE1"
+        );
+
+        verify(spyService, never()).sendInAppNotification(any(), any(), any(), any());
+    }
+
+    @Test
+    void sendNotificationForExternalTraining_emptyType_shouldReturn() {
+        NotificationServiceImpl spyService = spy(notificationService);
+
+        spyService.sendNotificationForExternalTraining(
+                "train1",
+                "Training A",
+                List.of("user1"),
+                ""
+        );
+
+        verify(spyService, never()).sendInAppNotification(any(), any(), any(), any());
+    }
+
+    @Test
+    void sendNotificationForExternalTraining_validInput_shouldSendNotification() {
+        NotificationServiceImpl spyService = spy(notificationService);
+
+        List<String> users = List.of("user1", "user2");
+
+        spyService.sendNotificationForExternalTraining(
+                "train123",
+                "Spring Boot Training",
+                users,
+                "EXTERNAL_TRAINING"
+        );
+
+        verify(spyService).sendInAppNotification(
+                eq("EXTERNAL_TRAINING"),
+                eq(Constants.ALERT),
+                eq(users),
+                argThat(message -> {
+                    Map<String, String> placeholders =
+                            (Map<String, String>) message.get(Constants.PLACE_HOLDERS);
+                    Map<String, Object> data =
+                            (Map<String, Object>) message.get(Constants.DATA);
+
+                    return "Spring Boot Training".equals(placeholders.get(Constants.TITLE))
+                            && "train123".equals(data.get(Constants.ID));
+                })
+        );
+    }
+
+    @Test
+    void sendNotificationForExternalTraining_exceptionThrown_shouldBeCaught() {
+        NotificationServiceImpl spyService = spy(notificationService);
+
+        doThrow(new RuntimeException("Boom"))
+                .when(spyService)
+                .sendInAppNotification(any(), any(), any(), any());
+
+        assertDoesNotThrow(() ->
+                spyService.sendNotificationForExternalTraining(
+                        "train999",
+                        "Crash Training",
+                        List.of("user1"),
+                        "TYPE1"
+                )
+        );
+    }
+
 
 }

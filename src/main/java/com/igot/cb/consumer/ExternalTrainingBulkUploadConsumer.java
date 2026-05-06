@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.model.ApiResponse;
 import com.igot.cb.service.ContentInfoServiceImpl;
+import com.igot.cb.service.NotificationService;
 import com.igot.cb.service.OutboundRequestHandlerServiceImpl;
 import com.igot.cb.service.impl.ExternalTrainingCertificateServiceImpl;
 import com.igot.cb.storage.service.StorageService;
@@ -63,6 +64,13 @@ public class ExternalTrainingBulkUploadConsumer {
 
     @Autowired
     private ContentInfoServiceImpl contentInfoService;
+
+    private final NotificationService notificationService;
+
+    @Autowired
+    public ExternalTrainingBulkUploadConsumer(NotificationService notificationService) {
+        this.notificationService = notificationService;
+    }
 
     @KafkaListener(topics = "${external.training.user.bulk.upload.topic}", groupId = "${external.training.user.bulk.upload.topic.group}")
     public void processExternalTrainingBulkUploadMessage(ConsumerRecord<String, String> data) {
@@ -153,16 +161,23 @@ public class ExternalTrainingBulkUploadConsumer {
                     new BufferedReader(new InputStreamReader(new FileInputStream(file), StandardCharsets.UTF_8)),
                     CSVFormat.newFormat(serverProperties.getBulkUploadCsvDelimiter()).withFirstRecordAsHeader()
             )) {
+                List<String> notificationUserIds = new ArrayList<>();
                 for (CSVRecord record : csvParser2.getRecords()) {
                     totalRecordsCount++;
 
-                    Map<String, String> updatedRecord = processRecord(record, expectedFieldCount, eventId, batchId, emailUserIdMap, eventDetails);
+                    Map<String, String> updatedRecord = processRecord(record, expectedFieldCount, eventId, batchId, emailUserIdMap, eventDetails, notificationUserIds);
                     updatedRecords.add(updatedRecord);
                     if ("FAILED".equalsIgnoreCase(updatedRecord.get("Status"))) {
                         failedCount++;
                     } else {
                         processedCount++;
                     }
+                }
+
+                // Send notification for all users at once after processing
+                if (!notificationUserIds.isEmpty()) {
+                    String trainingName = eventDetails.getOrDefault(Constants.EVENT_NAME, "").toString();
+                    notificationService.sendNotificationForExternalTraining(eventId, trainingName, notificationUserIds, Constants.EXTERNAL_TRAINING);
                 }
             }
 
@@ -224,7 +239,7 @@ public class ExternalTrainingBulkUploadConsumer {
     /**
      * Processes a single CSV record. Returns the updated record with status and error details.
      */
-    private Map<String, String> processRecord(CSVRecord record, int expectedFieldCount, String eventId, String batchId, Map<String, Object> emailUserMap, Map<String, Object> eventDetails) {
+    private Map<String, String> processRecord(CSVRecord record, int expectedFieldCount, String eventId, String batchId, Map<String, Object> emailUserMap, Map<String, Object> eventDetails, List<String> notificationUserIds) {
         Map<String, String> updatedRecord = new LinkedHashMap<>(record.toMap());
         try {
             if (record.size() > expectedFieldCount) {
@@ -266,6 +281,9 @@ public class ExternalTrainingBulkUploadConsumer {
             }
             // Trigger certificate event
             externalTrainingCertificateService.generateCertificateEventAndPushToKafka(userInfo, eventDetails);
+
+            // Accumulate userId for notification
+            notificationUserIds.add(userId);
 
             logger.info("Successfully enrolled user: userId = {}, email = {}", userId, email);
 

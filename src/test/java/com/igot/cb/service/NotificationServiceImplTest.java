@@ -527,7 +527,7 @@ class NotificationServiceImplTest {
                     Map<String, Object> data =
                             (Map<String, Object>) message.get(Constants.DATA);
 
-                    return "Spring Boot Training".equals(placeholders.get(Constants.TITLE))
+                    return "Spring Boot Training".equals(placeholders.get(Constants.COURSE_NAME))
                             && "train123".equals(data.get(Constants.ID));
                 })
         );

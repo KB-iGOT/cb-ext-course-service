@@ -240,11 +240,17 @@ public class CourseAccessServiceImpl {
     public ApiResponse getAssignedCoursesForUser(Map<String, Object> request, String authToken) {
         log.info("CourseAccessServiceImpl::getAssignedCoursesForUser:inside");
         ApiResponse response = ApiResponse.createDefaultResponse("api.courseAccess.getCoursesForUser");
+        String userId = accessTokenValidator.fetchUserIdFromAccessToken(authToken, response);
+        if (userId == null) {
+            return response;
+        }
+        return getAssignedCoursesForUserByAdmin(userId, request, authToken);
+    }
+
+    public ApiResponse getAssignedCoursesForUserByAdmin(String userId, Map<String, Object> request, String authToken) {
+        log.info("CourseAccessServiceImpl::getAssignedCoursesForUserByAdmin:inside");
+        ApiResponse response = ApiResponse.createDefaultResponse("api.courseAccess.getCoursesForUser");
         try {
-            String userId = accessTokenValidator.fetchUserIdFromAccessToken(authToken, response);
-            if (userId == null) {
-                return response;
-            }
             // Validate the request payload
             if (MapUtils.isEmpty(request)) {
                 String errMsg = "Request body is null or empty";

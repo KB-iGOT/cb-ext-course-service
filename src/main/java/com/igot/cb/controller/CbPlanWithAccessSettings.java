@@ -113,4 +113,13 @@ public class CbPlanWithAccessSettings {
         ApiResponse response = cbPlanLearnerService.getCBPlanCourseListForUser(userId,userOrgId);
         return new ResponseEntity<>(response, response.getResponseCode());
     }
+
+    @GetMapping("/admin/user/list/{userId}")
+    public ResponseEntity<ApiResponse> getCBPlanListForUserByAdmin(
+            @PathVariable("userId") String userId,
+            @RequestHeader(Constants.X_AUTH_USER_ORG_ID)String userOrgId) throws Exception {
+
+        ApiResponse response = cbPlanLearnerService.getCBPlanListForUser(userOrgId, userId, true);
+        return new ResponseEntity<>(response, response.getResponseCode());
+    }
 }

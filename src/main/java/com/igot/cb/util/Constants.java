@@ -591,6 +591,10 @@ public class Constants {
     public static final String SOURCE_NAME = "sourceName";
     public static final String ISSUED_DATE = "issuedDate";
     public static final String EXTERNAL_TRAINING = "EXTERNAL_TRAINING";
+    public static final String COURSE_METRICS_KEY_PREFIX = "course_metrics:";
+    public static final String API_CONTENT_HEALTH_REPORT = "api.content.health.report";
+    public static final String API_CONTENT_HEALTH_SUMMARY = "api.content.health.summary";
+    public static final String DROP_OFF_RATE = "dropoff_rate";
 
     private Constants() {
     }

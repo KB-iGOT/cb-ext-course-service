@@ -1,9 +1,11 @@
 package com.igot.cb.config;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import com.igot.cb.common.ServerProperties;
 import com.igot.cb.util.Constants;
 import com.igot.cb.util.PropertiesCache;
 
@@ -21,6 +23,9 @@ import redis.clients.jedis.JedisPoolConfig;
 public class RedisConfig {
 
     private final PropertiesCache propertiesCache;
+    
+    @Autowired
+    private ServerProperties serverProperties;
 
     /**
      * Constructor for RedisConfig.
@@ -43,6 +48,21 @@ public class RedisConfig {
         JedisPoolConfig poolConfig = buildPoolConfig();
         return new JedisPool(poolConfig, propertiesCache.getProperty(Constants.REDIS_HOST),
                 Integer.parseInt(propertiesCache.getProperty(Constants.REDIS_PORT)));
+    }
+
+    /**
+     * Creates a JedisPool bean for Redis data connection pooling.
+     * This bean connects to a separate Redis instance for data operations.
+     *
+     * @return JedisPool instance configured with Redis data settings.
+     */
+    @Bean(name = "jedisDataPool")
+    public JedisPool jedisDataPool() {
+        System.setProperty("org.apache.commons.pool2.registerMbeans", "false");
+
+        JedisPoolConfig poolConfig = buildPoolConfig();
+        return new JedisPool(poolConfig, serverProperties.getRedisDataHost(),
+                Integer.parseInt(serverProperties.getRedisDataPort()));
     }
 
     private JedisPoolConfig buildPoolConfig() {

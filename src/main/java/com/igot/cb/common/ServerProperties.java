@@ -27,4 +27,13 @@ public class ServerProperties {
 
     @Value("${user.competency.cache.ttl.seconds:3600}")
     private int userCompetencyCacheTtlSeconds;
+
+    @Value("${spring.redis.data.host:localhost}")
+    private String redisDataHost;
+
+    @Value("${spring.redis.data.port:6379}")
+    private String redisDataPort;
+
+    @Value("${content.health.redis.db.index:12}")
+    private int contentHealthDbIndex;
 }

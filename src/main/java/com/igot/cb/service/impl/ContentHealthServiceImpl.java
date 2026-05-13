@@ -56,23 +56,10 @@ public class ContentHealthServiceImpl implements ContentHealthService {
             String redisKey = Constants.COURSE_METRICS_KEY_PREFIX + contentId.trim();
             Map<String, String> cachedData = redisDataCacheMgr.getAllHashFields(redisKey, serverProperties.getContentHealthDbIndex());
 
-            List<Map<String, Object>> healthDataList = new ArrayList<>();
-            if (MapUtils.isNotEmpty(cachedData)) {
-                for (Map.Entry<String, String> entry : cachedData.entrySet()) {
-                    try {
-                        Map<String, Object> metricData = objectMapper.readValue(entry.getValue(), Map.class);
-                        healthDataList.add(metricData);
-                    } catch (Exception e) {
-                        log.error("ContentHealthServiceImpl:getContentHealthReport - Error parsing field {}: {}", entry.getKey(), e.getMessage());
-                    }
-                }
-                log.info("ContentHealthServiceImpl:getContentHealthReport - Successfully retrieved {} metrics for contentId: {}", healthDataList.size(), contentId);
-            } else {
-                log.warn("ContentHealthServiceImpl:getContentHealthReport - No health data found for contentId: {}, returning empty list", contentId);
-            }
+            Map<String, Object> structuredData = structureHealthData(cachedData);
 
             Map<String, Object> contentData = new HashMap<>();
-            contentData.put(contentId.trim(), healthDataList);
+            contentData.put(contentId.trim(), structuredData);
 
             List<Map<String, Object>> resultList = new ArrayList<>();
             resultList.add(contentData);
@@ -125,26 +112,23 @@ public class ContentHealthServiceImpl implements ContentHealthService {
                 }
 
                 String courseId = courseIdObjItem.toString().trim();
-                List<Map<String, Object>> courseMetrics = new ArrayList<>();
 
                 try {
                     String redisKey = Constants.COURSE_METRICS_KEY_PREFIX + courseId;
+                    String healthScoreJson = redisDataCacheMgr.getHashField(redisKey, Constants.HEALTH_SCORE, serverProperties.getContentHealthDbIndex());
 
-                    String dropOffRateJson = redisDataCacheMgr.getHashField(redisKey, Constants.DROP_OFF_RATE, serverProperties.getContentHealthDbIndex());
+                    if (StringUtils.isNotBlank(healthScoreJson)) {
+                        Map<String, Object> healthScoreData = objectMapper.readValue(healthScoreJson, Map.class);
 
-                    if (StringUtils.isNotBlank(dropOffRateJson)) {
-                        Map<String, Object> dropOffData = objectMapper.readValue(dropOffRateJson, Map.class);
-                        courseMetrics.add(dropOffData);
+                        Map<String, Object> courseData = new HashMap<>();
+                        courseData.put(courseId, healthScoreData);
+                        resultList.add(courseData);
                     } else {
-                        log.debug("ContentHealthServiceImpl:getContentHealthSummary - No dropoff_rate data for courseId: {}", courseId);
+                        log.debug("ContentHealthServiceImpl:getContentHealthSummary - No health_score data for courseId: {}", courseId);
                     }
                 } catch (Exception e) {
                     log.error("ContentHealthServiceImpl:getContentHealthSummary - Error processing courseId: {}", courseId, e);
                 }
-
-                Map<String, Object> courseData = new HashMap<>();
-                courseData.put(courseId, courseMetrics);
-                resultList.add(courseData);
             }
             response.getResult().put(Constants.CONTENT_LIST, resultList);
             response.setResponseCode(HttpStatus.OK);
@@ -165,6 +149,44 @@ public class ContentHealthServiceImpl implements ContentHealthService {
         response.setResponseCode(HttpStatus.BAD_REQUEST);
         response.put(Constants.ERROR, Constants.FAILED);
         response.put(Constants.ERROR_MESSAGE, message);
+    }
+
+    /**
+     * Helper method to structure health data from Redis into the required format.
+     * Separates metrics with "type" field into "indicators" array and keeps other fields at the same level.
+     *
+     * @param cachedData Raw data from Redis hash
+     * @return Structured map with "indicators" array and other fields
+     */
+    private Map<String, Object> structureHealthData(Map<String, String> cachedData) {
+        Map<String, Object> structuredData = new HashMap<>();
+        List<Map<String, Object>> indicators = new ArrayList<>();
+
+        if (MapUtils.isEmpty(cachedData)) {
+            log.warn("ContentHealthServiceImpl:structureHealthData - No data to structure, returning empty indicators");
+            structuredData.put(Constants.INDICATORS, indicators);
+            return structuredData;
+        }
+
+        for (Map.Entry<String, String> entry : cachedData.entrySet()) {
+            try {
+                Map<String, Object> metricData = objectMapper.readValue(entry.getValue(), Map.class);
+
+                if (metricData.containsKey(Constants.TYPE)) {
+                    indicators.add(metricData);
+                } else {
+                    String fieldName = entry.getKey();
+                    structuredData.put(fieldName, metricData);
+                }
+            } catch (Exception e) {
+                log.error("ContentHealthServiceImpl:structureHealthData - Error parsing field {}: {}", entry.getKey(), e.getMessage());
+            }
+        }
+        structuredData.put(Constants.INDICATORS, indicators);
+
+        log.debug("ContentHealthServiceImpl:structureHealthData - Structured data with {} indicators and {} other fields",
+                 indicators.size(), structuredData.size() - 1);
+        return structuredData;
     }
 }
 

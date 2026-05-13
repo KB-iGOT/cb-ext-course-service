@@ -594,7 +594,8 @@ public class Constants {
     public static final String COURSE_METRICS_KEY_PREFIX = "course_metrics:";
     public static final String API_CONTENT_HEALTH_REPORT = "api.content.health.report";
     public static final String API_CONTENT_HEALTH_SUMMARY = "api.content.health.summary";
-    public static final String DROP_OFF_RATE = "dropoff_rate";
+    public static final String HEALTH_SCORE = "health_score";
+    public static final String INDICATORS = "indicators";
 
     private Constants() {
     }

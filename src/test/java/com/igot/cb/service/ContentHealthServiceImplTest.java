@@ -90,8 +90,19 @@ class ContentHealthServiceImplTest {
         Map<String, Object> contentData = contentList.get(0);
         assertTrue(contentData.containsKey(CONTENT_ID));
         
-        List<Map<String, Object>> healthDataList = (List<Map<String, Object>>) contentData.get(CONTENT_ID);
-        assertEquals(5, healthDataList.size());
+        // Check the new structure
+        Map<String, Object> structuredData = (Map<String, Object>) contentData.get(CONTENT_ID);
+        assertTrue(structuredData.containsKey(Constants.INDICATORS));
+        assertTrue(structuredData.containsKey("health_score"));
+        
+        // Verify indicators array contains metrics with "type" field
+        List<Map<String, Object>> indicators = (List<Map<String, Object>>) structuredData.get(Constants.INDICATORS);
+        assertEquals(4, indicators.size()); // 4 metrics with "type" field
+        
+        // Verify health_score is separate
+        Map<String, Object> healthScore = (Map<String, Object>) structuredData.get("health_score");
+        assertNotNull(healthScore);
+        assertEquals(7.5, healthScore.get("total_health_score"));
 
         verify(redisDataCacheMgr).getAllHashFields(REDIS_KEY_PREFIX + CONTENT_ID, DB_INDEX);
         verify(serverProperties, atLeastOnce()).getContentHealthDbIndex();
@@ -101,7 +112,7 @@ class ContentHealthServiceImplTest {
     void testGetContentHealthReport_Success_WithSingleMetric() throws Exception {
         // Arrange
         Map<String, String> cachedData = new HashMap<>();
-        cachedData.put("dropoff_rate", "{\"name\":\"Drop-off Rate\",\"score\":1}");
+        cachedData.put("dropoff_rate", "{\"name\":\"Drop-off Rate\",\"score\":1,\"type\":\"dynamic\"}");
 
         when(redisDataCacheMgr.getAllHashFields(REDIS_KEY_PREFIX + CONTENT_ID, DB_INDEX))
                 .thenReturn(cachedData);
@@ -118,14 +129,15 @@ class ContentHealthServiceImplTest {
         assertEquals(1, contentList.size());
         
         Map<String, Object> contentData = contentList.get(0);
-        List<Map<String, Object>> healthDataList = (List<Map<String, Object>>) contentData.get(CONTENT_ID);
-        assertEquals(1, healthDataList.size());
+        Map<String, Object> structuredData = (Map<String, Object>) contentData.get(CONTENT_ID);
+        List<Map<String, Object>> indicators = (List<Map<String, Object>>) structuredData.get(Constants.INDICATORS);
+        assertEquals(1, indicators.size());
 
         verify(redisDataCacheMgr).getAllHashFields(REDIS_KEY_PREFIX + CONTENT_ID, DB_INDEX);
     }
 
     @Test
-    void testGetContentHealthReport_EmptyData_ReturnsEmptyList() {
+    void testGetContentHealthReport_EmptyData_ReturnsEmptyIndicators() {
         // Arrange
         when(redisDataCacheMgr.getAllHashFields(REDIS_KEY_PREFIX + CONTENT_ID, DB_INDEX))
                 .thenReturn(new HashMap<>());
@@ -142,14 +154,15 @@ class ContentHealthServiceImplTest {
         assertEquals(1, contentList.size());
         
         Map<String, Object> contentData = contentList.get(0);
-        List<Map<String, Object>> healthDataList = (List<Map<String, Object>>) contentData.get(CONTENT_ID);
-        assertTrue(healthDataList.isEmpty());
+        Map<String, Object> structuredData = (Map<String, Object>) contentData.get(CONTENT_ID);
+        List<Map<String, Object>> indicators = (List<Map<String, Object>>) structuredData.get(Constants.INDICATORS);
+        assertTrue(indicators.isEmpty());
 
         verify(redisDataCacheMgr).getAllHashFields(REDIS_KEY_PREFIX + CONTENT_ID, DB_INDEX);
     }
 
     @Test
-    void testGetContentHealthReport_NullData_ReturnsEmptyList() {
+    void testGetContentHealthReport_NullData_ReturnsEmptyIndicators() {
         // Arrange
         when(redisDataCacheMgr.getAllHashFields(REDIS_KEY_PREFIX + CONTENT_ID, DB_INDEX))
                 .thenReturn(null);
@@ -166,8 +179,9 @@ class ContentHealthServiceImplTest {
         assertEquals(1, contentList.size());
         
         Map<String, Object> contentData = contentList.get(0);
-        List<Map<String, Object>> healthDataList = (List<Map<String, Object>>) contentData.get(CONTENT_ID);
-        assertTrue(healthDataList.isEmpty());
+        Map<String, Object> structuredData = (Map<String, Object>) contentData.get(CONTENT_ID);
+        List<Map<String, Object>> indicators = (List<Map<String, Object>>) structuredData.get(Constants.INDICATORS);
+        assertTrue(indicators.isEmpty());
 
         verify(redisDataCacheMgr).getAllHashFields(REDIS_KEY_PREFIX + CONTENT_ID, DB_INDEX);
     }
@@ -205,7 +219,7 @@ class ContentHealthServiceImplTest {
         // Arrange
         String contentIdWithSpaces = "  " + CONTENT_ID + "  ";
         Map<String, String> cachedData = new HashMap<>();
-        cachedData.put("dropoff_rate", "{\"name\":\"Drop-off Rate\",\"score\":1}");
+        cachedData.put("dropoff_rate", "{\"name\":\"Drop-off Rate\",\"score\":1,\"type\":\"dynamic\"}");
 
         when(redisDataCacheMgr.getAllHashFields(REDIS_KEY_PREFIX + CONTENT_ID, DB_INDEX))
                 .thenReturn(cachedData);
@@ -225,7 +239,7 @@ class ContentHealthServiceImplTest {
         // Arrange
         Map<String, String> cachedData = new HashMap<>();
         cachedData.put("dropoff_rate", "invalid-json");
-        cachedData.put("valid_metric", "{\"name\":\"Valid Metric\",\"score\":1}");
+        cachedData.put("valid_metric", "{\"name\":\"Valid Metric\",\"score\":1,\"type\":\"dynamic\"}");
 
         when(redisDataCacheMgr.getAllHashFields(REDIS_KEY_PREFIX + CONTENT_ID, DB_INDEX))
                 .thenReturn(cachedData);
@@ -239,10 +253,37 @@ class ContentHealthServiceImplTest {
         
         List<Map<String, Object>> contentList = (List<Map<String, Object>>) response.get(Constants.CONTENT_LIST);
         Map<String, Object> contentData = contentList.get(0);
-        List<Map<String, Object>> healthDataList = (List<Map<String, Object>>) contentData.get(CONTENT_ID);
-        assertEquals(1, healthDataList.size()); // Only valid metric should be included
+        Map<String, Object> structuredData = (Map<String, Object>) contentData.get(CONTENT_ID);
+        List<Map<String, Object>> indicators = (List<Map<String, Object>>) structuredData.get(Constants.INDICATORS);
+        assertEquals(1, indicators.size()); // Only valid metric should be included
 
         verify(redisDataCacheMgr).getAllHashFields(REDIS_KEY_PREFIX + CONTENT_ID, DB_INDEX);
+    }
+
+    @Test
+    void testGetContentHealthReport_MetricsWithoutTypeField() {
+        // Arrange
+        Map<String, String> cachedData = new HashMap<>();
+        cachedData.put("dropoff_rate", "{\"name\":\"Drop-off Rate\",\"score\":1,\"type\":\"dynamic\"}"); // has type
+        cachedData.put("other_metric", "{\"name\":\"Other Metric\",\"score\":2}"); // no type, should not go to indicators
+
+        when(redisDataCacheMgr.getAllHashFields(REDIS_KEY_PREFIX + CONTENT_ID, DB_INDEX))
+                .thenReturn(cachedData);
+
+        // Act
+        ApiResponse response = contentHealthService.getContentHealthReport(CONTENT_ID);
+
+        // Assert
+        assertNotNull(response);
+        List<Map<String, Object>> contentList = (List<Map<String, Object>>) response.get(Constants.CONTENT_LIST);
+        Map<String, Object> contentData = contentList.get(0);
+        Map<String, Object> structuredData = (Map<String, Object>) contentData.get(CONTENT_ID);
+        List<Map<String, Object>> indicators = (List<Map<String, Object>>) structuredData.get(Constants.INDICATORS);
+
+        // Only metric with "type" should be in indicators - dropoff_rate
+        assertEquals(1, indicators.size());
+        // other_metric without type should be at top level
+        assertTrue(structuredData.containsKey("other_metric"));
     }
 
     @Test
@@ -268,12 +309,12 @@ class ContentHealthServiceImplTest {
     @Test
     void testGetContentHealthSummary_Success_SingleCourseId() throws Exception {
         // Arrange
-        String dropOffJson = "{\"name\":\"Drop-off Rate\",\"overview\":\"Measures how many learners quit immediately after the first resource, indicating a poor hook or onboarding experience.\",\"maxWeight\":15,\"type\":\"dynamic\",\"score\":1,\"value\":20.0,\"points\":3.0,\"calculated_at\":\"2026-05-11T16:27:24Z\"}";
+        String healthScoreJson = "{\"total_health_score\":9.0,\"red_flag\":false,\"calculated_at\":\"2026-05-12T09:10:58Z\"}";
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put(Constants.COURSE_ID, Arrays.asList("do_123"));
 
-        when(redisDataCacheMgr.getHashField(REDIS_KEY_PREFIX + "do_123", Constants.DROP_OFF_RATE, DB_INDEX))
-                .thenReturn(dropOffJson);
+        when(redisDataCacheMgr.getHashField(REDIS_KEY_PREFIX + "do_123", Constants.HEALTH_SCORE, DB_INDEX))
+                .thenReturn(healthScoreJson);
 
         // Act
         ApiResponse response = contentHealthService.getContentHealthSummary(requestBody);
@@ -290,26 +331,28 @@ class ContentHealthServiceImplTest {
         Map<String, Object> courseData = contentList.get(0);
         assertTrue(courseData.containsKey("do_123"));
         
-        List<Map<String, Object>> metrics = (List<Map<String, Object>>) courseData.get("do_123");
-        assertEquals(1, metrics.size());
-        assertEquals("Drop-off Rate", metrics.get(0).get("name"));
+        // Verify the health score object is directly under courseId (not wrapped in a list)
+        Map<String, Object> healthScore = (Map<String, Object>) courseData.get("do_123");
+        assertEquals(9.0, healthScore.get("total_health_score"));
+        assertEquals(false, healthScore.get("red_flag"));
+        assertEquals("2026-05-12T09:10:58Z", healthScore.get("calculated_at"));
 
-        verify(redisDataCacheMgr).getHashField(REDIS_KEY_PREFIX + "do_123", Constants.DROP_OFF_RATE, DB_INDEX);
+        verify(redisDataCacheMgr).getHashField(REDIS_KEY_PREFIX + "do_123", Constants.HEALTH_SCORE, DB_INDEX);
     }
 
     @Test
     void testGetContentHealthSummary_Success_MultipleCourseIds() throws Exception {
         // Arrange
-        String dropOffJson1 = "{\"name\":\"Drop-off Rate\",\"score\":1}";
-        String dropOffJson2 = "{\"name\":\"Drop-off Rate\",\"score\":2}";
-        
+        String healthScoreJson1 = "{\"total_health_score\":5.0,\"calculated_at\":\"2026-05-11T16:27:24Z\"}";
+        String healthScoreJson2 = "{\"total_health_score\":6.0,\"calculated_at\":\"2026-05-11T16:27:24Z\"}";
+
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put(Constants.COURSE_ID, Arrays.asList("do_123", "do_456"));
 
-        when(redisDataCacheMgr.getHashField(REDIS_KEY_PREFIX + "do_123", Constants.DROP_OFF_RATE, DB_INDEX))
-                .thenReturn(dropOffJson1);
-        when(redisDataCacheMgr.getHashField(REDIS_KEY_PREFIX + "do_456", Constants.DROP_OFF_RATE, DB_INDEX))
-                .thenReturn(dropOffJson2);
+        when(redisDataCacheMgr.getHashField(REDIS_KEY_PREFIX + "do_123", Constants.HEALTH_SCORE, DB_INDEX))
+                .thenReturn(healthScoreJson1);
+        when(redisDataCacheMgr.getHashField(REDIS_KEY_PREFIX + "do_456", Constants.HEALTH_SCORE, DB_INDEX))
+                .thenReturn(healthScoreJson2);
 
         // Act
         ApiResponse response = contentHealthService.getContentHealthSummary(requestBody);
@@ -322,8 +365,8 @@ class ContentHealthServiceImplTest {
         assertNotNull(contentList);
         assertEquals(2, contentList.size());
 
-        verify(redisDataCacheMgr).getHashField(REDIS_KEY_PREFIX + "do_123", Constants.DROP_OFF_RATE, DB_INDEX);
-        verify(redisDataCacheMgr).getHashField(REDIS_KEY_PREFIX + "do_456", Constants.DROP_OFF_RATE, DB_INDEX);
+        verify(redisDataCacheMgr).getHashField(REDIS_KEY_PREFIX + "do_123", Constants.HEALTH_SCORE, DB_INDEX);
+        verify(redisDataCacheMgr).getHashField(REDIS_KEY_PREFIX + "do_456", Constants.HEALTH_SCORE, DB_INDEX);
     }
 
     @Test
@@ -332,7 +375,7 @@ class ContentHealthServiceImplTest {
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put(Constants.COURSE_ID, Arrays.asList("do_123"));
 
-        when(redisDataCacheMgr.getHashField(REDIS_KEY_PREFIX + "do_123", Constants.DROP_OFF_RATE, DB_INDEX))
+        when(redisDataCacheMgr.getHashField(REDIS_KEY_PREFIX + "do_123", Constants.HEALTH_SCORE, DB_INDEX))
                 .thenReturn(null);
 
         // Act
@@ -344,13 +387,10 @@ class ContentHealthServiceImplTest {
         
         List<Map<String, Object>> contentList = (List<Map<String, Object>>) response.getResult().get(Constants.CONTENT_LIST);
         assertNotNull(contentList);
-        assertEquals(1, contentList.size());
-        
-        Map<String, Object> courseData = contentList.get(0);
-        List<Map<String, Object>> metrics = (List<Map<String, Object>>) courseData.get("do_123");
-        assertTrue(metrics.isEmpty());
+        // When no data is found, the course is not added to the result list
+        assertEquals(0, contentList.size());
 
-        verify(redisDataCacheMgr).getHashField(REDIS_KEY_PREFIX + "do_123", Constants.DROP_OFF_RATE, DB_INDEX);
+        verify(redisDataCacheMgr).getHashField(REDIS_KEY_PREFIX + "do_123", Constants.HEALTH_SCORE, DB_INDEX);
     }
 
     @Test
@@ -438,8 +478,8 @@ class ContentHealthServiceImplTest {
     @Test
     void testGetContentHealthSummary_CourseIdListWithNullValues() throws Exception {
         // Arrange
-        String dropOffJson = "{\"name\":\"Drop-off Rate\",\"score\":1}";
-        
+        String healthScoreJson = "{\"total_health_score\":5.0,\"calculated_at\":\"2026-05-11T16:27:24Z\"}";
+
         List<Object> courseIds = new ArrayList<>();
         courseIds.add(null);
         courseIds.add("do_123");
@@ -448,8 +488,8 @@ class ContentHealthServiceImplTest {
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put(Constants.COURSE_ID, courseIds);
 
-        when(redisDataCacheMgr.getHashField(REDIS_KEY_PREFIX + "do_123", Constants.DROP_OFF_RATE, DB_INDEX))
-                .thenReturn(dropOffJson);
+        when(redisDataCacheMgr.getHashField(REDIS_KEY_PREFIX + "do_123", Constants.HEALTH_SCORE, DB_INDEX))
+                .thenReturn(healthScoreJson);
 
         // Act
         ApiResponse response = contentHealthService.getContentHealthSummary(requestBody);
@@ -462,14 +502,14 @@ class ContentHealthServiceImplTest {
         assertNotNull(contentList);
         assertEquals(1, contentList.size()); // Only non-null course ID should be processed
 
-        verify(redisDataCacheMgr).getHashField(REDIS_KEY_PREFIX + "do_123", Constants.DROP_OFF_RATE, DB_INDEX);
+        verify(redisDataCacheMgr).getHashField(REDIS_KEY_PREFIX + "do_123", Constants.HEALTH_SCORE, DB_INDEX);
     }
 
     @Test
     void testGetContentHealthSummary_CourseIdListWithEmptyStrings() throws Exception {
         // Arrange
-        String dropOffJson = "{\"name\":\"Drop-off Rate\",\"score\":1}";
-        
+        String healthScoreJson = "{\"total_health_score\":5.0,\"calculated_at\":\"2026-05-11T16:27:24Z\"}";
+
         List<Object> courseIds = new ArrayList<>();
         courseIds.add("");
         courseIds.add("do_123");
@@ -478,10 +518,9 @@ class ContentHealthServiceImplTest {
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put(Constants.COURSE_ID, courseIds);
 
-        when(redisDataCacheMgr.getHashField(REDIS_KEY_PREFIX + "do_123", Constants.DROP_OFF_RATE, DB_INDEX))
-                .thenReturn(dropOffJson);
+        when(redisDataCacheMgr.getHashField(REDIS_KEY_PREFIX + "do_123", Constants.HEALTH_SCORE, DB_INDEX))
+                .thenReturn(healthScoreJson);
 
-        // Act
         ApiResponse response = contentHealthService.getContentHealthSummary(requestBody);
 
         // Assert
@@ -492,19 +531,19 @@ class ContentHealthServiceImplTest {
         assertNotNull(contentList);
         assertEquals(1, contentList.size()); // Only non-blank course ID should be processed
 
-        verify(redisDataCacheMgr).getHashField(REDIS_KEY_PREFIX + "do_123", Constants.DROP_OFF_RATE, DB_INDEX);
+        verify(redisDataCacheMgr).getHashField(REDIS_KEY_PREFIX + "do_123", Constants.HEALTH_SCORE, DB_INDEX);
     }
 
     @Test
     void testGetContentHealthSummary_CourseIdWithSpaces() throws Exception {
         // Arrange
-        String dropOffJson = "{\"name\":\"Drop-off Rate\",\"score\":1}";
-        
+        String healthScoreJson = "{\"total_health_score\":5.0,\"calculated_at\":\"2026-05-11T16:27:24Z\"}";
+
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put(Constants.COURSE_ID, Arrays.asList("  do_123  "));
 
-        when(redisDataCacheMgr.getHashField(REDIS_KEY_PREFIX + "do_123", Constants.DROP_OFF_RATE, DB_INDEX))
-                .thenReturn(dropOffJson);
+        when(redisDataCacheMgr.getHashField(REDIS_KEY_PREFIX + "do_123", Constants.HEALTH_SCORE, DB_INDEX))
+                .thenReturn(healthScoreJson);
 
         // Act
         ApiResponse response = contentHealthService.getContentHealthSummary(requestBody);
@@ -517,7 +556,7 @@ class ContentHealthServiceImplTest {
         Map<String, Object> courseData = contentList.get(0);
         assertTrue(courseData.containsKey("do_123")); // Should use trimmed ID as key
 
-        verify(redisDataCacheMgr).getHashField(REDIS_KEY_PREFIX + "do_123", Constants.DROP_OFF_RATE, DB_INDEX);
+        verify(redisDataCacheMgr).getHashField(REDIS_KEY_PREFIX + "do_123", Constants.HEALTH_SCORE, DB_INDEX);
     }
 
     @Test
@@ -526,25 +565,22 @@ class ContentHealthServiceImplTest {
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put(Constants.COURSE_ID, Arrays.asList("do_123"));
 
-        when(redisDataCacheMgr.getHashField(REDIS_KEY_PREFIX + "do_123", Constants.DROP_OFF_RATE, DB_INDEX))
+        when(redisDataCacheMgr.getHashField(REDIS_KEY_PREFIX + "do_123", Constants.HEALTH_SCORE, DB_INDEX))
                 .thenReturn("invalid-json");
 
         // Act
         ApiResponse response = contentHealthService.getContentHealthSummary(requestBody);
 
-        // Assert - should handle error gracefully and return empty metrics
+        // Assert - should handle error gracefully
         assertNotNull(response);
         assertEquals(HttpStatus.OK, response.getResponseCode());
         
         List<Map<String, Object>> contentList = (List<Map<String, Object>>) response.getResult().get(Constants.CONTENT_LIST);
         assertNotNull(contentList);
-        assertEquals(1, contentList.size());
-        
-        Map<String, Object> courseData = contentList.get(0);
-        List<Map<String, Object>> metrics = (List<Map<String, Object>>) courseData.get("do_123");
-        assertTrue(metrics.isEmpty()); // Should be empty due to JSON parse error
+        // When JSON is invalid, the entry is not added to result list
+        assertEquals(0, contentList.size());
 
-        verify(redisDataCacheMgr).getHashField(REDIS_KEY_PREFIX + "do_123", Constants.DROP_OFF_RATE, DB_INDEX);
+        verify(redisDataCacheMgr).getHashField(REDIS_KEY_PREFIX + "do_123", Constants.HEALTH_SCORE, DB_INDEX);
     }
 
     @Test
@@ -553,7 +589,7 @@ class ContentHealthServiceImplTest {
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put(Constants.COURSE_ID, Arrays.asList("do_123"));
 
-        when(redisDataCacheMgr.getHashField(REDIS_KEY_PREFIX + "do_123", Constants.DROP_OFF_RATE, DB_INDEX))
+        when(redisDataCacheMgr.getHashField(REDIS_KEY_PREFIX + "do_123", Constants.HEALTH_SCORE, DB_INDEX))
                 .thenThrow(new RuntimeException("Redis connection error"));
 
         // Act
@@ -565,31 +601,27 @@ class ContentHealthServiceImplTest {
         
         List<Map<String, Object>> contentList = (List<Map<String, Object>>) response.getResult().get(Constants.CONTENT_LIST);
         assertNotNull(contentList);
-        assertEquals(1, contentList.size());
-        
-        // The course data should be present but with empty metrics due to the error
-        Map<String, Object> courseData = contentList.get(0);
-        assertTrue(courseData.containsKey("do_123"));
-        List<Map<String, Object>> metrics = (List<Map<String, Object>>) courseData.get("do_123");
-        assertTrue(metrics.isEmpty());
+        // When there's an error, the course is not added to the result list
+        assertEquals(0, contentList.size());
 
-        verify(redisDataCacheMgr).getHashField(REDIS_KEY_PREFIX + "do_123", Constants.DROP_OFF_RATE, DB_INDEX);
+        verify(redisDataCacheMgr).getHashField(REDIS_KEY_PREFIX + "do_123", Constants.HEALTH_SCORE, DB_INDEX);
     }
 
     @Test
     void testGetContentHealthSummary_PartialFailure_SomeCoursesSucceedSomeFail() throws Exception {
         // Arrange
-        String dropOffJson = "{\"name\":\"Drop-off Rate\",\"score\":1}";
-        
+        String healthScoreJson1 = "{\"total_health_score\":5.0,\"calculated_at\":\"2026-05-11T16:27:24Z\"}";
+        String healthScoreJson2 = "{\"total_health_score\":6.0,\"calculated_at\":\"2026-05-11T16:27:24Z\"}";
+
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put(Constants.COURSE_ID, Arrays.asList("do_123", "do_456", "do_789"));
 
-        when(redisDataCacheMgr.getHashField(REDIS_KEY_PREFIX + "do_123", Constants.DROP_OFF_RATE, DB_INDEX))
-                .thenReturn(dropOffJson);
-        when(redisDataCacheMgr.getHashField(REDIS_KEY_PREFIX + "do_456", Constants.DROP_OFF_RATE, DB_INDEX))
+        when(redisDataCacheMgr.getHashField(REDIS_KEY_PREFIX + "do_123", Constants.HEALTH_SCORE, DB_INDEX))
+                .thenReturn(healthScoreJson1);
+        when(redisDataCacheMgr.getHashField(REDIS_KEY_PREFIX + "do_456", Constants.HEALTH_SCORE, DB_INDEX))
                 .thenThrow(new RuntimeException("Error for do_456"));
-        when(redisDataCacheMgr.getHashField(REDIS_KEY_PREFIX + "do_789", Constants.DROP_OFF_RATE, DB_INDEX))
-                .thenReturn(dropOffJson);
+        when(redisDataCacheMgr.getHashField(REDIS_KEY_PREFIX + "do_789", Constants.HEALTH_SCORE, DB_INDEX))
+                .thenReturn(healthScoreJson2);
 
         // Act
         ApiResponse response = contentHealthService.getContentHealthSummary(requestBody);
@@ -600,10 +632,40 @@ class ContentHealthServiceImplTest {
         
         List<Map<String, Object>> contentList = (List<Map<String, Object>>) response.getResult().get(Constants.CONTENT_LIST);
         assertNotNull(contentList);
-        assertEquals(3, contentList.size()); // All three should be present
+        // Only 2 courses should be present (do_123 and do_789), do_456 failed and is not added
+        assertEquals(2, contentList.size());
 
-        verify(redisDataCacheMgr).getHashField(REDIS_KEY_PREFIX + "do_123", Constants.DROP_OFF_RATE, DB_INDEX);
-        verify(redisDataCacheMgr).getHashField(REDIS_KEY_PREFIX + "do_456", Constants.DROP_OFF_RATE, DB_INDEX);
-        verify(redisDataCacheMgr).getHashField(REDIS_KEY_PREFIX + "do_789", Constants.DROP_OFF_RATE, DB_INDEX);
+        verify(redisDataCacheMgr).getHashField(REDIS_KEY_PREFIX + "do_123", Constants.HEALTH_SCORE, DB_INDEX);
+        verify(redisDataCacheMgr).getHashField(REDIS_KEY_PREFIX + "do_456", Constants.HEALTH_SCORE, DB_INDEX);
+        verify(redisDataCacheMgr).getHashField(REDIS_KEY_PREFIX + "do_789", Constants.HEALTH_SCORE, DB_INDEX);
+    }
+
+    @Test
+    void testGetContentHealthSummary_AllCoursesWithHealthScoreOnly() throws Exception {
+        // Arrange - only health_score
+        String healthScoreJson = "{\"total_health_score\":5.0,\"red_flag\":false,\"calculated_at\":\"2026-05-11T16:27:24Z\"}";
+
+        Map<String, Object> requestBody = new HashMap<>();
+        requestBody.put(Constants.COURSE_ID, Arrays.asList("do_123"));
+
+        when(redisDataCacheMgr.getHashField(REDIS_KEY_PREFIX + "do_123", Constants.HEALTH_SCORE, DB_INDEX))
+                .thenReturn(healthScoreJson);
+
+        // Act
+        ApiResponse response = contentHealthService.getContentHealthSummary(requestBody);
+
+        // Assert
+        assertNotNull(response);
+        assertEquals(HttpStatus.OK, response.getResponseCode());
+
+        List<Map<String, Object>> contentList = (List<Map<String, Object>>) response.getResult().get(Constants.CONTENT_LIST);
+        Map<String, Object> courseData = contentList.get(0);
+
+        // Verify the health score object is directly under courseId
+        Map<String, Object> healthScore = (Map<String, Object>) courseData.get("do_123");
+        assertEquals(5.0, healthScore.get("total_health_score"));
+        assertEquals(false, healthScore.get("red_flag"));
+
+        verify(redisDataCacheMgr).getHashField(REDIS_KEY_PREFIX + "do_123", Constants.HEALTH_SCORE, DB_INDEX);
     }
 }

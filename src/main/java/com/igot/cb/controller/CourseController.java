@@ -34,4 +34,10 @@ public class CourseController {
         ApiResponse response = courseService.updateContentState(requestBody, authToken);
         return new ResponseEntity<>(response, response.getResponseCode());
     }
+
+    @PostMapping("chatbot/consumption/v2/read")
+    public ResponseEntity<Object> readUserContentConsumptionV2(@RequestBody Map<String, Object> requestBody) {
+        ApiResponse response = courseService.readUserContentConsumptionV2(requestBody);
+        return new ResponseEntity<>(response, response.getResponseCode());
+    }
 }

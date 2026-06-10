@@ -596,6 +596,9 @@ public class Constants {
     public static final String API_CONTENT_HEALTH_SUMMARY = "api.content.health.summary";
     public static final String HEALTH_SCORE = "health_score";
     public static final String INDICATORS = "indicators";
+    public static final String USER_CONTENT_CONSUMPTION_V2 = "user_content_consumption_v2";
+    public static final String API_USER_CONTENT_CONSUMPTION_V2_READ = "api.chatbot.user.content.consumption.v2.read";
+    public static final String CONSUMPTION_RECORDS = "consumptionRecords";
 
     private Constants() {
     }

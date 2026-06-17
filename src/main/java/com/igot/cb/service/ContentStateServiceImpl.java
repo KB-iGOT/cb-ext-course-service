@@ -516,7 +516,7 @@ public class ContentStateServiceImpl {
     private Map<String, Object> transformRecord(Map<String, Object> record) {
         Map<String, Object> transformed = new HashMap<>();
         record.forEach((key, value) -> {
-            if ("progressdetails".equalsIgnoreCase(key) && value instanceof String) {
+            if (Constants.PROGRESSDETAILS.equalsIgnoreCase(key) && value instanceof String) {
                 try {
                     transformed.put(key, objectMapper.readValue((String) value, Object.class));
                 } catch (Exception ex) {

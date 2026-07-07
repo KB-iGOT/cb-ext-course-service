@@ -57,4 +57,10 @@ public class CourseAccessController {
         ApiResponse response = courseAccessService.getAssignedCoursesForUserByAdmin(userId, requestBody, authToken);
         return new ResponseEntity<>(response, response.getResponseCode());
     }
+
+    @GetMapping("/content/user/info")
+    public ResponseEntity<ApiResponse> getPersonalContentInfo(@RequestHeader(Constants.X_AUTH_TOKEN) String authToken) {
+        ApiResponse response = courseAccessService.getPersonalContentInfo(authToken);
+        return new ResponseEntity<>(response, response.getResponseCode());
+    }
 }

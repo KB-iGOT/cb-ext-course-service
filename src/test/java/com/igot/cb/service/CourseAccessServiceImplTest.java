@@ -48,6 +48,9 @@ class CourseAccessServiceImplTest {
     private RedisCacheMgr redisCacheMgr;
 
     @Mock
+    private CbPlanLearnerServiceImpl cbPlanLearnerServiceImpl;
+
+    @Mock
     private OutboundRequestHandlerServiceImpl outboundRequestHandlerService;
     private final String authToken = "validToken";
 
@@ -60,7 +63,7 @@ class CourseAccessServiceImplTest {
         courseAccessService = new CourseAccessServiceImpl(
             mockAccessTokenValidator, 
             mockUserProfileService,
-            mockAccessSettingRuleCacheMgr, contentInfoService, outboundRequestHandlerService
+            mockAccessSettingRuleCacheMgr, contentInfoService, outboundRequestHandlerService, cbPlanLearnerServiceImpl
         );
         
         // Inject the mocked RedisCacheMgr using reflection

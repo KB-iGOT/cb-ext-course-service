@@ -27,6 +27,8 @@ import com.igot.cb.util.Constants;
 
 import lombok.extern.slf4j.Slf4j;
 
+import static com.igot.cb.util.Constants.*;
+
 /**
  * Service implementation for managing course access based on user profiles and access setting rules.
  */
@@ -39,6 +41,7 @@ public class CourseAccessServiceImpl {
     private final ContentInfoServiceImpl contentService;
     private final OutboundRequestHandlerServiceImpl outboundRequestHandlerService;
     private final ObjectMapper objectMapper;
+    private final CbPlanLearnerServiceImpl cbPlanLearnerService;
 
     @Autowired
     private RedisCacheMgr redisCacheMgr;
@@ -80,6 +83,9 @@ public class CourseAccessServiceImpl {
     @Value("${access.course.cache.ttl.seconds:600}")
     private Integer accessCacheTtlSecods;
 
+    @Value("${moderated.course.search.request}")
+    private String moderatedCourseSearchRequest;
+
     private final Map<String, List<String>> courseCategoryCache = new ConcurrentHashMap<>();
     private final Map<String, Long> cacheTimestamps = new ConcurrentHashMap<>();
 
@@ -93,13 +99,14 @@ public class CourseAccessServiceImpl {
      * @param accessSettingRuleCacheMgr Cache manager for access setting rules.
      */
     public CourseAccessServiceImpl(AccessTokenValidator accessTokenValidator,
-                                   UserAndOrgServiceImpl userProfileServiceImpl, AccessSettingRuleCacheMgr accessSettingRuleCacheMgr, ContentInfoServiceImpl contentService, OutboundRequestHandlerServiceImpl outboundRequestHandlerService1) {
+                                   UserAndOrgServiceImpl userProfileServiceImpl, AccessSettingRuleCacheMgr accessSettingRuleCacheMgr, ContentInfoServiceImpl contentService, OutboundRequestHandlerServiceImpl outboundRequestHandlerService1, CbPlanLearnerServiceImpl cbPlanLearnerService) {
         this.accessTokenValidator = accessTokenValidator;
         this.userProfileServiceImpl = userProfileServiceImpl;
         this.accessSettingRuleCacheMgr = accessSettingRuleCacheMgr;
         this.contentService = contentService;
         this.outboundRequestHandlerService = outboundRequestHandlerService1;
         this.objectMapper = new ObjectMapper();
+        this.cbPlanLearnerService = cbPlanLearnerService;
     }
 
     /**
@@ -602,45 +609,121 @@ public class CourseAccessServiceImpl {
                 response.getParams().setErrMsg("Invalid auth token");
                 return response;
             }
-
             Map<String, Object> result = new HashMap<>();
-
-            String contentInfoKey = Constants.PERSONAL_CONTENT_INFO_REDIS_KEY_PREFIX + userId;
-            String cachedContentInfo = redisCacheMgr.getFromCache(contentInfoKey);
-            if (org.apache.commons.lang3.StringUtils.isNotBlank(cachedContentInfo)) {
-                log.info("personalContentInfo cache HIT for userId: {}", userId);
-                Map<String, Object> contentInfoMap = objectMapper.readValue(
-                        cachedContentInfo, new TypeReference<Map<String, Object>>() {});
-                result.putAll(contentInfoMap);
-            } else {
-                // TODO: call API 1 (CBP Plans) + API 2 (MyAssignedCourses)
-                //       populate Redis key 1
-                log.info("personalContentInfo cache MISS for userId: {}", userId);
-            }
-
-            String moderatedCourseKey = Constants.MODERATED_COURSE_COUNT_REDIS_KEY_PREFIX + userId;
-            String cachedModeratedCourse = redisCacheMgr.getFromCache(moderatedCourseKey);
-            if (org.apache.commons.lang3.StringUtils.isNotBlank(cachedModeratedCourse)) {
-                log.info("moderatedCourseCount cache HIT for userId: {}", userId);
-                Map<String, Object> moderatedCourseMap = objectMapper.readValue(
-                        cachedModeratedCourse, new TypeReference<Map<String, Object>>() {});
-                Object moderatedCount = moderatedCourseMap.get(orgId);
-                result.put("moderatedContent", moderatedCount != null ? moderatedCount : 0);
-            } else {
-                log.info("moderatedCourseCount cache MISS for userId: {}", userId);
-            }
-
+            result.putAll(org.apache.commons.lang3.StringUtils.isNotBlank(userId) ? getPersonalContentInfoFromCacheOrApi(userId, orgId, authToken) : Collections.emptyMap());
+            result.put(MODERATED_CONTENT, getModeratedContentCount(userId, orgId));
             response.setResult(result);
             return response;
-
         } catch (Exception e) {
             log.error("Error fetching personal content info: {}", e.getMessage(), e);
             response.getParams().setStatus(Constants.FAILED);
             response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
-            response.getParams().setErrMsg(
-                    "Failed to fetch personal content info: " + e.getMessage());
+            response.getParams().setErrMsg("Failed to fetch personal content info: " + e.getMessage());
             return response;
         }
+    }
+
+    private Map<String, Object> getPersonalContentInfoFromCacheOrApi(String userId, String orgId, String authToken) throws Exception {
+        String redisKey = Constants.PERSONAL_CONTENT_INFO_REDIS_KEY_PREFIX + userId;
+        String cached = redisCacheMgr.getFromCache(redisKey);
+        if (org.apache.commons.lang3.StringUtils.isNotBlank(cached)) {
+            log.info("personalContentInfo cache HIT for userId: {}", userId);
+            return objectMapper.readValue(cached, new TypeReference<Map<String, Object>>() {});
+        }
+        log.info("personalContentInfo cache MISS for userId: {}", userId);
+        Map<String, Object> contentInfoMap = buildPersonalContentInfo(userId, orgId, authToken);
+        redisCacheMgr.putInCache(redisKey, objectMapper.writeValueAsString(contentInfoMap));
+        log.info("personalContentInfo cached for userId: {}", userId);
+        return contentInfoMap;
+    }
+
+    private Map<String, Object> buildPersonalContentInfo(String userId, String orgId, String authToken) {
+        int aparCount = 0;
+        int trainingPlanCount = 0;
+        ApiResponse cbPlanResponse = cbPlanLearnerService.getCBPlanListForUser(orgId, userId, true);
+        if (cbPlanResponse != null
+                && cbPlanResponse.getResult() != null
+                && cbPlanResponse.getResult().containsKey(Constants.CONTENT)) {
+            List<Map<String, Object>> plans = (List<Map<String, Object>>)
+                    cbPlanResponse.getResult().get(Constants.CONTENT);
+            if (org.apache.commons.collections4.CollectionUtils.isNotEmpty(plans)) {
+                aparCount = (int) plans.stream()
+                        .filter(p -> Boolean.TRUE.equals(p.get(Constants.IS_APAR)))
+                        .count();
+                trainingPlanCount = (int) plans.stream()
+                        .filter(p -> !Boolean.TRUE.equals(p.get(Constants.IS_APAR)))
+                        .count();
+            }
+        }
+        int caProgramCount = getAssignedCourseCount(userId, Constants.COURSE_CATEGORY_COMPREHENSIVE_ASSESSMENT_PROGRAM, authToken);
+        int lpCount = getAssignedCourseCount(userId, Constants.LEARNING_PATHWAY, authToken);
+
+        //TODO: standaloneAssessment from enrolment history
+        int standaloneCount = 0;
+
+        Map<String, Object> map = new HashMap<>();
+        map.put(Constants.TRAINING_PLAN, trainingPlanCount);
+        map.put(Constants.APAR, aparCount);
+        map.put(CA_PROGRAM, caProgramCount);
+        map.put(LEARNING_PATHWAY_FIELD, lpCount);
+        map.put(STANDALONE_ASSESSMENT, standaloneCount);
+        return map;
+    }
+
+    private int getModeratedContentCount(String userId, String orgId) throws Exception {
+        String redisKey = Constants.MODERATED_COURSE_COUNT_REDIS_KEY_PREFIX + userId;
+        String cached = redisCacheMgr.getFromCache(redisKey);
+        if (org.apache.commons.lang3.StringUtils.isNotBlank(cached)) {
+            log.info("moderatedCourseCount cache HIT for userId: {}", userId);
+            Map<String, Object> moderatedMap = objectMapper.readValue(
+                    cached, new TypeReference<Map<String, Object>>() {});
+            return (int) moderatedMap.getOrDefault(orgId, 0);
+        }
+        log.info("moderatedCourseCount cache MISS for userId: {}", userId);
+        int count = getModeratedCourseCount(orgId);
+        Map<String, Object> moderatedMap = new HashMap<>();
+        moderatedMap.put(orgId, count);
+        redisCacheMgr.putInCache(redisKey, objectMapper.writeValueAsString(moderatedMap));
+        log.info("moderatedCourseCount cached for userId: {}", userId);
+        return count;
+    }
+
+    private int getAssignedCourseCount(String userId, String courseCategory, String authToken) {
+        try {
+            Map<String, Object> request = new HashMap<>();
+            request.put(Constants.COURSE_CATEGORY, courseCategory);
+            ApiResponse response = getAssignedCoursesForUserByAdmin(userId, request, authToken);
+            if (response != null && response.getResult() != null) {
+                List<Map<String, Object>> courses = (List<Map<String, Object>>)
+                        response.getResult().get(Constants.CONTENT);
+                return org.apache.commons.collections4.CollectionUtils.isNotEmpty(courses) ? courses.size() : 0;
+            }
+        } catch (Exception e) {
+            log.error("Error fetching count for courseCategory: {}, userId: {}, error: {}",
+                    courseCategory, userId, e.getMessage());
+        }
+        return 0;
+    }
+
+    private int getModeratedCourseCount(String orgId) {
+        try {
+            String requestBody = String.format(moderatedCourseSearchRequest, orgId);
+            Map<String, Object> requestMap = objectMapper.readValue(
+                    requestBody, new TypeReference<Map<String, Object>>() {});
+            String searchUrl = sbSearchServiceHost + sbCompositeV4Search;
+            Map<String, Object> searchResponse = outboundRequestHandlerService
+                    .fetchResultUsingPost(searchUrl, requestMap, null);
+            if (MapUtils.isNotEmpty(searchResponse)) {
+                Map<String, Object> result = (Map<String, Object>) searchResponse.get(Constants.RESULT);
+                if (result != null && result.containsKey(Constants.COUNT)) {
+                    return ((Number) result.get(Constants.COUNT)).intValue();
+                }
+            }
+        } catch (Exception e) {
+            log.error("Error fetching moderated course count for orgId: {}, error: {}",
+                    orgId, e.getMessage());
+        }
+        return 0;
     }
 
 }

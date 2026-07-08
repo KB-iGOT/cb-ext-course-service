@@ -38,6 +38,7 @@ public class CourseAccessServiceImpl {
     private final AccessSettingRuleCacheMgr accessSettingRuleCacheMgr;
     private final ContentInfoServiceImpl contentService;
     private final OutboundRequestHandlerServiceImpl outboundRequestHandlerService;
+    private final ObjectMapper objectMapper;
 
     @Autowired
     private RedisCacheMgr redisCacheMgr;
@@ -98,6 +99,7 @@ public class CourseAccessServiceImpl {
         this.accessSettingRuleCacheMgr = accessSettingRuleCacheMgr;
         this.contentService = contentService;
         this.outboundRequestHandlerService = outboundRequestHandlerService1;
+        this.objectMapper = new ObjectMapper();
     }
 
     /**
@@ -586,6 +588,56 @@ public class CourseAccessServiceImpl {
             }
         }
         return contentIds;
+    }
+
+    public ApiResponse getPersonalContentInfo(String authToken) {
+        ApiResponse response = ApiResponse.createDefaultResponse(Constants.API_PERSONAL_CONTENT_INFO);
+        try {
+            String userId = accessTokenValidator.fetchUserIdFromAccessToken(authToken, response);
+            if (org.apache.commons.lang3.StringUtils.isBlank(userId)) {
+                response.getParams().setStatus(Constants.FAILED);
+                response.setResponseCode(HttpStatus.UNAUTHORIZED);
+                response.getParams().setErrMsg("Invalid auth token");
+                return response;
+            }
+
+            Map<String, Object> result = new HashMap<>();
+
+            String contentInfoKey = Constants.PERSONAL_CONTENT_INFO_REDIS_KEY_PREFIX + userId;
+            String cachedContentInfo = redisCacheMgr.getFromCache(contentInfoKey);
+            if (org.apache.commons.lang3.StringUtils.isNotBlank(cachedContentInfo)) {
+                log.info("personalContentInfo cache HIT for userId: {}", userId);
+                Map<String, Object> contentInfoMap = objectMapper.readValue(
+                        cachedContentInfo, new TypeReference<Map<String, Object>>() {});
+                result.putAll(contentInfoMap);
+            } else {
+                // TODO: call API 1 (CBP Plans) + API 2 (MyAssignedCourses)
+                //       populate Redis key 1
+                log.info("personalContentInfo cache MISS for userId: {}", userId);
+            }
+
+            String moderatedCourseKey = Constants.MODERATED_COURSE_COUNT_REDIS_KEY_PREFIX + userId;
+            String cachedModeratedCourse = redisCacheMgr.getFromCache(moderatedCourseKey);
+            if (org.apache.commons.lang3.StringUtils.isNotBlank(cachedModeratedCourse)) {
+                log.info("moderatedCourseCount cache HIT for userId: {}", userId);
+                Map<String, Object> moderatedCourseMap = objectMapper.readValue(
+                        cachedModeratedCourse, new TypeReference<Map<String, Object>>() {});
+                result.put("moderatedCourseCount", moderatedCourseMap);
+            } else {
+                log.info("moderatedCourseCount cache MISS for userId: {}", userId);
+            }
+
+            response.setResult(result);
+            return response;
+
+        } catch (Exception e) {
+            log.error("Error fetching personal content info: {}", e.getMessage(), e);
+            response.getParams().setStatus(Constants.FAILED);
+            response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
+            response.getParams().setErrMsg(
+                    "Failed to fetch personal content info: " + e.getMessage());
+            return response;
+        }
     }
 
 }

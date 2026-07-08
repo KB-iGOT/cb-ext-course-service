@@ -600,7 +600,9 @@ public class Constants {
     // Content Dictionary Constants
     public static final String REDIS_CONTENT_DICTIONARY_KEY = "content_dictionary";
     public static final String API_CONTENT_DICTIONARY_READ = "api.content.dictionary.read";
-
+    public static final String PERSONAL_CONTENT_INFO_REDIS_KEY_PREFIX = "personalContentInfo_";
+    public static final String MODERATED_COURSE_COUNT_REDIS_KEY_PREFIX = "moderatedCourseCount_";
+    public static final String API_PERSONAL_CONTENT_INFO = "api.content.user.info";
     private Constants() {
     }
 }

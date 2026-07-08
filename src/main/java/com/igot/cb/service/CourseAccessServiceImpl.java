@@ -603,7 +603,7 @@ public class CourseAccessServiceImpl {
             Map<String, Object> tokenData = accessTokenValidator.fetchUserIdAndOrg(authToken);
             String userId = (String) tokenData.get("userId");
             String orgId = (String) tokenData.get("org");
-            if (org.apache.commons.lang3.StringUtils.isBlank(userId)) {
+            if (!StringUtils.hasText(userId)) {
                 response.getParams().setStatus(Constants.FAILED);
                 response.setResponseCode(HttpStatus.UNAUTHORIZED);
                 response.getParams().setErrMsg("Invalid auth token");
@@ -626,7 +626,7 @@ public class CourseAccessServiceImpl {
     private Map<String, Object> getPersonalContentInfoFromCacheOrApi(String userId, String orgId, String authToken) throws Exception {
         String redisKey = Constants.PERSONAL_CONTENT_INFO_REDIS_KEY_PREFIX + userId;
         String cached = redisCacheMgr.getFromCache(redisKey);
-        if (org.apache.commons.lang3.StringUtils.isNotBlank(cached)) {
+        if (StringUtils.hasText(cached)) {
             log.info("personalContentInfo cache HIT for userId: {}", userId);
             return objectMapper.readValue(cached, new TypeReference<Map<String, Object>>() {});
         }
@@ -646,7 +646,7 @@ public class CourseAccessServiceImpl {
                 && cbPlanResponse.getResult().containsKey(Constants.CONTENT)) {
             List<Map<String, Object>> plans = (List<Map<String, Object>>)
                     cbPlanResponse.getResult().get(Constants.CONTENT);
-            if (org.apache.commons.collections4.CollectionUtils.isNotEmpty(plans)) {
+            if (!CollectionUtils.isEmpty(plans)) {
                 aparCount = (int) plans.stream()
                         .filter(p -> Boolean.TRUE.equals(p.get(Constants.IS_APAR)))
                         .count();
@@ -673,7 +673,7 @@ public class CourseAccessServiceImpl {
     private int getModeratedContentCount(String userId, String orgId) throws Exception {
         String redisKey = Constants.MODERATED_COURSE_COUNT_REDIS_KEY_PREFIX + userId;
         String cached = redisCacheMgr.getFromCache(redisKey);
-        if (org.apache.commons.lang3.StringUtils.isNotBlank(cached)) {
+        if (StringUtils.hasText(cached)) {
             log.info("moderatedCourseCount cache HIT for userId: {}", userId);
             Map<String, Object> moderatedMap = objectMapper.readValue(
                     cached, new TypeReference<Map<String, Object>>() {});
@@ -696,7 +696,7 @@ public class CourseAccessServiceImpl {
             if (response != null && response.getResult() != null) {
                 List<Map<String, Object>> courses = (List<Map<String, Object>>)
                         response.getResult().get(Constants.CONTENT);
-                return org.apache.commons.collections4.CollectionUtils.isNotEmpty(courses) ? courses.size() : 0;
+                return CollectionUtils.isEmpty(courses) ? 0 : courses.size();
             }
         } catch (Exception e) {
             log.error("Error fetching count for courseCategory: {}, userId: {}, error: {}",

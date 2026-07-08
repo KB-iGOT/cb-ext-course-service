@@ -593,7 +593,9 @@ public class CourseAccessServiceImpl {
     public ApiResponse getPersonalContentInfo(String authToken) {
         ApiResponse response = ApiResponse.createDefaultResponse(Constants.API_PERSONAL_CONTENT_INFO);
         try {
-            String userId = accessTokenValidator.fetchUserIdFromAccessToken(authToken, response);
+            Map<String, Object> tokenData = accessTokenValidator.fetchUserIdAndOrg(authToken);
+            String userId = (String) tokenData.get("userId");
+            String orgId = (String) tokenData.get("org");
             if (org.apache.commons.lang3.StringUtils.isBlank(userId)) {
                 response.getParams().setStatus(Constants.FAILED);
                 response.setResponseCode(HttpStatus.UNAUTHORIZED);
@@ -622,7 +624,8 @@ public class CourseAccessServiceImpl {
                 log.info("moderatedCourseCount cache HIT for userId: {}", userId);
                 Map<String, Object> moderatedCourseMap = objectMapper.readValue(
                         cachedModeratedCourse, new TypeReference<Map<String, Object>>() {});
-                result.put("moderatedCourseCount", moderatedCourseMap);
+                Object moderatedCount = moderatedCourseMap.get(orgId);
+                result.put("moderatedContent", moderatedCount != null ? moderatedCount : 0);
             } else {
                 log.info("moderatedCourseCount cache MISS for userId: {}", userId);
             }

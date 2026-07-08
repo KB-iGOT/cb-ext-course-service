@@ -1,8 +1,10 @@
 package com.igot.cb.util;
 
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
 
+import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.keycloak.common.util.Time;
 import org.springframework.http.HttpStatus;
@@ -160,5 +162,25 @@ public class AccessTokenValidator {
             response.setResponseCode(HttpStatus.BAD_REQUEST);
         }
         return clientAccessTokenId;
+    }
+
+    public Map<String, Object> fetchUserIdAndOrg(String token) {
+        String userId = Constants.UNAUTHORIZED;
+        Map<String, Object> tokenData = new HashMap<>();
+        try {
+            Map<String, Object> payload = validateToken(token);
+            if (MapUtils.isNotEmpty(payload) && checkIss((String) payload.get("iss"))) {
+                userId = (String) payload.get(Constants.SUB);
+                if (StringUtils.isNotBlank(userId)) {
+                    int pos = userId.lastIndexOf(":");
+                    userId = userId.substring(pos + 1);
+                }
+                tokenData.put("userId", userId);
+                tokenData.put("org", payload.get("org"));
+            }
+        } catch (Exception ex) {
+            log.error("Exception in verifyUserAccessToken: verify ", ex);
+        }
+        return tokenData;
     }
 }

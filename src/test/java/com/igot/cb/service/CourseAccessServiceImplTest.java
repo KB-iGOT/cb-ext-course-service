@@ -10,6 +10,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.igot.cb.cache.IdMapCacheMgr;
+import com.igot.cb.cassandra.CassandraOperation;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -57,13 +58,16 @@ class CourseAccessServiceImplTest {
     @Mock
     private IdMapCacheMgr idMapCacheMgr;
 
+    @Mock
+    private CassandraOperation cassandraOperation;
+
 
     @BeforeEach
     void setUp() throws Exception {
         courseAccessService = new CourseAccessServiceImpl(
             mockAccessTokenValidator, 
             mockUserProfileService,
-            mockAccessSettingRuleCacheMgr, contentInfoService, outboundRequestHandlerService, cbPlanLearnerServiceImpl
+            mockAccessSettingRuleCacheMgr, contentInfoService, outboundRequestHandlerService, cbPlanLearnerServiceImpl, cassandraOperation
         );
         
         // Inject the mocked RedisCacheMgr using reflection
@@ -709,6 +713,242 @@ class CourseAccessServiceImplTest {
         assertEquals(2, result.size());
         assertTrue(result.contains("E1"));
         assertTrue(result.contains("E2"));
+    }
+
+    // Test cases for getPersonalContentInfo
+    @Test
+    void testGetPersonalContentInfo_ValidTokenAndSuccess() throws Exception {
+        String authToken = "validToken123";
+        String userId = "user123";
+        String orgId = "org456";
+        
+        Map<String, Object> tokenData = new HashMap<>();
+        tokenData.put("userId", userId);
+        tokenData.put("org", orgId);
+        
+        when(mockAccessTokenValidator.fetchUserIdAndOrg(authToken)).thenReturn(tokenData);
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
+        
+        ApiResponse cbPlanResponse = new ApiResponse();
+        cbPlanResponse.setResult(new HashMap<>());
+        when(cbPlanLearnerServiceImpl.getCBPlanListForUser(orgId, userId, true)).thenReturn(cbPlanResponse);
+        
+        doNothing().when(redisCacheMgr).putInCache(anyString(), anyString());
+        
+        ApiResponse result = courseAccessService.getPersonalContentInfo(authToken);
+        
+        assertNotNull(result);
+        assertNotNull(result.getResult());
+    }
+
+    @Test
+    void testGetPersonalContentInfo_InvalidTokenEmptyUserId() throws Exception {
+        String authToken = "invalidToken";
+        
+        Map<String, Object> tokenData = new HashMap<>();
+        tokenData.put("userId", "");
+        tokenData.put("org", "org456");
+        
+        when(mockAccessTokenValidator.fetchUserIdAndOrg(authToken)).thenReturn(tokenData);
+        
+        ApiResponse result = courseAccessService.getPersonalContentInfo(authToken);
+        
+        assertNotNull(result);
+        assertEquals(Constants.FAILED, result.getParams().getStatus());
+        assertEquals(HttpStatus.UNAUTHORIZED, result.getResponseCode());
+        assertEquals("Invalid auth token", result.getParams().getErrMsg());
+    }
+
+    @Test
+    void testGetPersonalContentInfo_InvalidTokenNullUserId() throws Exception {
+        String authToken = "invalidToken";
+        
+        Map<String, Object> tokenData = new HashMap<>();
+        tokenData.put("userId", null);
+        tokenData.put("org", "org456");
+        
+        when(mockAccessTokenValidator.fetchUserIdAndOrg(authToken)).thenReturn(tokenData);
+        
+        ApiResponse result = courseAccessService.getPersonalContentInfo(authToken);
+        
+        assertNotNull(result);
+        assertEquals(Constants.FAILED, result.getParams().getStatus());
+        assertEquals(HttpStatus.UNAUTHORIZED, result.getResponseCode());
+        assertEquals("Invalid auth token", result.getParams().getErrMsg());
+    }
+
+    @Test
+    void testGetPersonalContentInfo_ExceptionHandling() throws Exception {
+        String authToken = "token123";
+        
+        when(mockAccessTokenValidator.fetchUserIdAndOrg(authToken))
+                .thenThrow(new RuntimeException("Token validation failed"));
+        
+        ApiResponse result = courseAccessService.getPersonalContentInfo(authToken);
+        
+        assertNotNull(result);
+        assertEquals(Constants.FAILED, result.getParams().getStatus());
+        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, result.getResponseCode());
+        assertTrue(result.getParams().getErrMsg().contains("Failed to fetch personal content info"));
+    }
+
+    @Test
+    void testGetPersonalContentInfo_CacheHitForPersonalContent() throws Exception {
+        String authToken = "validToken123";
+        String userId = "user123";
+        String orgId = "org456";
+        
+        Map<String, Object> tokenData = new HashMap<>();
+        tokenData.put("userId", userId);
+        tokenData.put("org", orgId);
+        
+        Map<String, Object> cachedContent = new HashMap<>();
+        cachedContent.put(Constants.TRAINING_PLAN, 5);
+        cachedContent.put(Constants.APAR, 2);
+        
+        ObjectMapper objectMapper = new ObjectMapper();
+        
+        when(mockAccessTokenValidator.fetchUserIdAndOrg(authToken)).thenReturn(tokenData);
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
+        doNothing().when(redisCacheMgr).putInCache(anyString(), anyString());
+        
+        ReflectionTestUtils.setField(courseAccessService, "objectMapper", objectMapper);
+        
+        ApiResponse result = courseAccessService.getPersonalContentInfo(authToken);
+        
+        assertNotNull(result);
+        verify(redisCacheMgr, atLeastOnce()).getFromCache(Constants.PERSONAL_CONTENT_INFO_REDIS_KEY_PREFIX + userId);
+    }
+
+    @Test
+    void testGetPersonalContentInfo_CacheMissForPersonalContent() throws Exception {
+        String authToken = "validToken123";
+        String userId = "user123";
+        String orgId = "org456";
+        
+        Map<String, Object> tokenData = new HashMap<>();
+        tokenData.put("userId", userId);
+        tokenData.put("org", orgId);
+        
+        when(mockAccessTokenValidator.fetchUserIdAndOrg(authToken)).thenReturn(tokenData);
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
+        
+        ApiResponse cbPlanResponse = new ApiResponse();
+        Map<String, Object> cbPlanResult = new HashMap<>();
+        cbPlanResponse.setResult(cbPlanResult);
+        when(cbPlanLearnerServiceImpl.getCBPlanListForUser(orgId, userId, true)).thenReturn(cbPlanResponse);
+        
+        doNothing().when(redisCacheMgr).putInCache(anyString(), anyString());
+        
+        ObjectMapper objectMapper = new ObjectMapper();
+        ReflectionTestUtils.setField(courseAccessService, "objectMapper", objectMapper);
+        
+        ApiResponse result = courseAccessService.getPersonalContentInfo(authToken);
+        
+        assertNotNull(result);
+    }
+
+    @Test
+    void testGetPersonalContentInfo_WithCachedModeratedContent() throws Exception {
+        String authToken = "validToken123";
+        String userId = "user123";
+        String orgId = "org456";
+        
+        Map<String, Object> tokenData = new HashMap<>();
+        tokenData.put("userId", userId);
+        tokenData.put("org", orgId);
+        
+        Map<String, Object> moderatedCacheData = new HashMap<>();
+        moderatedCacheData.put(orgId, 5);
+        
+        ObjectMapper objectMapper = new ObjectMapper();
+        String moderatedCachedJson = objectMapper.writeValueAsString(moderatedCacheData);
+        
+        when(mockAccessTokenValidator.fetchUserIdAndOrg(authToken)).thenReturn(tokenData);
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
+        
+        ApiResponse cbPlanResponse = new ApiResponse();
+        cbPlanResponse.setResult(new HashMap<>());
+        when(cbPlanLearnerServiceImpl.getCBPlanListForUser(orgId, userId, true)).thenReturn(cbPlanResponse);
+        
+        doNothing().when(redisCacheMgr).putInCache(anyString(), anyString());
+        
+        ReflectionTestUtils.setField(courseAccessService, "objectMapper", objectMapper);
+        
+        ApiResponse result = courseAccessService.getPersonalContentInfo(authToken);
+        
+        assertNotNull(result);
+    }
+
+    @Test
+    void testGetPersonalContentInfo_WithCBPlansAPAR() throws Exception {
+        String authToken = "validToken123";
+        String userId = "user123";
+        String orgId = "org456";
+        
+        Map<String, Object> tokenData = new HashMap<>();
+        tokenData.put("userId", userId);
+        tokenData.put("org", orgId);
+        
+        when(mockAccessTokenValidator.fetchUserIdAndOrg(authToken)).thenReturn(tokenData);
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
+        
+        ApiResponse cbPlanResponse = new ApiResponse();
+        Map<String, Object> cbPlanResult = new HashMap<>();
+        
+        List<Map<String, Object>> plans = new ArrayList<>();
+        Map<String, Object> plan1 = new HashMap<>();
+        plan1.put(Constants.IS_APAR, true);
+        plans.add(plan1);
+        
+        Map<String, Object> plan2 = new HashMap<>();
+        plan2.put(Constants.IS_APAR, false);
+        plans.add(plan2);
+        
+        cbPlanResult.put(Constants.CONTENT, plans);
+        cbPlanResponse.setResult(cbPlanResult);
+        
+        when(cbPlanLearnerServiceImpl.getCBPlanListForUser(orgId, userId, true)).thenReturn(cbPlanResponse);
+        
+        doNothing().when(redisCacheMgr).putInCache(anyString(), anyString());
+        
+        ObjectMapper objectMapper = new ObjectMapper();
+        ReflectionTestUtils.setField(courseAccessService, "objectMapper", objectMapper);
+        
+        ApiResponse result = courseAccessService.getPersonalContentInfo(authToken);
+        
+        assertNotNull(result);
+        assertNotNull(result.getResult());
+    }
+
+    @Test
+    void testGetPersonalContentInfo_ResponseStructure() throws Exception {
+        String authToken = "validToken123";
+        String userId = "user123";
+        String orgId = "org456";
+        
+        Map<String, Object> tokenData = new HashMap<>();
+        tokenData.put("userId", userId);
+        tokenData.put("org", orgId);
+        
+        when(mockAccessTokenValidator.fetchUserIdAndOrg(authToken)).thenReturn(tokenData);
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
+        
+        ApiResponse cbPlanResponse = new ApiResponse();
+        cbPlanResponse.setResult(new HashMap<>());
+        when(cbPlanLearnerServiceImpl.getCBPlanListForUser(orgId, userId, true)).thenReturn(cbPlanResponse);
+        
+        doNothing().when(redisCacheMgr).putInCache(anyString(), anyString());
+        
+        ObjectMapper objectMapper = new ObjectMapper();
+        ReflectionTestUtils.setField(courseAccessService, "objectMapper", objectMapper);
+        
+        ApiResponse result = courseAccessService.getPersonalContentInfo(authToken);
+        
+        assertNotNull(result);
+        assertNotNull(result.getParams());
+        assertNotNull(result.getResponseCode());
+        assertNotNull(result.getResult());
     }
 
 }

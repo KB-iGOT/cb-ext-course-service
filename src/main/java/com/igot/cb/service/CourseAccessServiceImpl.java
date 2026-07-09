@@ -9,6 +9,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.igot.cb.cache.RedisCacheMgr;
+import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.cassandra.exceptions.CustomException;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.kafka.common.protocol.types.Field;
@@ -42,6 +43,7 @@ public class CourseAccessServiceImpl {
     private final OutboundRequestHandlerServiceImpl outboundRequestHandlerService;
     private final ObjectMapper objectMapper;
     private final CbPlanLearnerServiceImpl cbPlanLearnerService;
+    private final CassandraOperation cassandraOperation;
 
     @Autowired
     private RedisCacheMgr redisCacheMgr;
@@ -86,6 +88,9 @@ public class CourseAccessServiceImpl {
     @Value("${moderated.course.search.request}")
     private String moderatedCourseSearchRequest;
 
+    @Value("${standalone.assessment.search.request}")
+    private String standaloneAssessmentSearchRequest;
+
     private final Map<String, List<String>> courseCategoryCache = new ConcurrentHashMap<>();
     private final Map<String, Long> cacheTimestamps = new ConcurrentHashMap<>();
 
@@ -99,7 +104,7 @@ public class CourseAccessServiceImpl {
      * @param accessSettingRuleCacheMgr Cache manager for access setting rules.
      */
     public CourseAccessServiceImpl(AccessTokenValidator accessTokenValidator,
-                                   UserAndOrgServiceImpl userProfileServiceImpl, AccessSettingRuleCacheMgr accessSettingRuleCacheMgr, ContentInfoServiceImpl contentService, OutboundRequestHandlerServiceImpl outboundRequestHandlerService1, CbPlanLearnerServiceImpl cbPlanLearnerService) {
+                                   UserAndOrgServiceImpl userProfileServiceImpl, AccessSettingRuleCacheMgr accessSettingRuleCacheMgr, ContentInfoServiceImpl contentService, OutboundRequestHandlerServiceImpl outboundRequestHandlerService1, CbPlanLearnerServiceImpl cbPlanLearnerService, CassandraOperation cassandraOperation) {
         this.accessTokenValidator = accessTokenValidator;
         this.userProfileServiceImpl = userProfileServiceImpl;
         this.accessSettingRuleCacheMgr = accessSettingRuleCacheMgr;
@@ -107,6 +112,7 @@ public class CourseAccessServiceImpl {
         this.outboundRequestHandlerService = outboundRequestHandlerService1;
         this.objectMapper = new ObjectMapper();
         this.cbPlanLearnerService = cbPlanLearnerService;
+        this.cassandraOperation = cassandraOperation;
     }
 
     /**
@@ -658,8 +664,7 @@ public class CourseAccessServiceImpl {
         int caProgramCount = getAssignedCourseCount(userId, Constants.COURSE_CATEGORY_COMPREHENSIVE_ASSESSMENT_PROGRAM, authToken);
         int lpCount = getAssignedCourseCount(userId, Constants.LEARNING_PATHWAY, authToken);
 
-        //TODO: standaloneAssessment from enrolment history
-        int standaloneCount = 0;
+        int standaloneCount = getStandaloneAssessmentCount(userId);
 
         Map<String, Object> map = new HashMap<>();
         map.put(Constants.TRAINING_PLAN, trainingPlanCount);
@@ -673,18 +678,26 @@ public class CourseAccessServiceImpl {
     private int getModeratedContentCount(String userId, String orgId) throws Exception {
         String redisKey = Constants.MODERATED_COURSE_COUNT_REDIS_KEY_PREFIX + userId;
         String cached = redisCacheMgr.getFromCache(redisKey);
-        if (StringUtils.hasText(cached)) {
-            log.info("moderatedCourseCount cache HIT for userId: {}", userId);
-            Map<String, Object> moderatedMap = objectMapper.readValue(
-                    cached, new TypeReference<Map<String, Object>>() {});
-            return (int) moderatedMap.getOrDefault(orgId, 0);
-        }
-        log.info("moderatedCourseCount cache MISS for userId: {}", userId);
-        int count = getModeratedCourseCount(orgId);
+
         Map<String, Object> moderatedMap = new HashMap<>();
+
+        if (StringUtils.hasText(cached)) {
+            moderatedMap = objectMapper.readValue(
+                    cached, new TypeReference<Map<String, Object>>() {});
+            if (moderatedMap.containsKey(orgId)) {
+                log.info("moderatedCourseCount cache HIT for userId: {} orgId: {}", userId, orgId);
+                return (int) moderatedMap.get(orgId);
+            }
+            log.info("orgId not in map for userId: {}, calling search API", userId);
+        } else {
+            log.info("moderatedCourseCount cache MISS for userId: {}", userId);
+        }
+        int count = getModeratedCourseCount(orgId);
         moderatedMap.put(orgId, count);
-        redisCacheMgr.putInCache(redisKey, objectMapper.writeValueAsString(moderatedMap));
-        log.info("moderatedCourseCount cached for userId: {}", userId);
+        redisCacheMgr.putInCache(redisKey,
+                objectMapper.writeValueAsString(moderatedMap));
+        log.info("moderatedCourseCount updated in Redis for userId: {} orgId: {}", userId, orgId);
+
         return count;
     }
 
@@ -722,6 +735,78 @@ public class CourseAccessServiceImpl {
         } catch (Exception e) {
             log.error("Error fetching moderated course count for orgId: {}, error: {}",
                     orgId, e.getMessage());
+        }
+        return 0;
+    }
+
+    private int getStandaloneAssessmentCount(String userId) {
+        try {
+            String enrolmentRedisKey = USER_ENROLMENT_REDIS_KEY_PREFIX + userId;
+            List<String> enrolledCourseIds = new ArrayList<>();
+
+            String cachedEnrolments = redisCacheMgr.getFromCache(enrolmentRedisKey);
+            if (StringUtils.hasText(cachedEnrolments)) {
+                log.info("userEnrolments cache HIT for userId: {}", userId);
+                enrolledCourseIds = objectMapper.readValue(
+                        cachedEnrolments, new TypeReference<List<String>>() {});
+            } else {
+                log.info("userEnrolments cache MISS for userId: {}, reading from Cassandra", userId);
+                Map<String, Object> propertiesMap = new HashMap<>();
+                propertiesMap.put(Constants.USER_ID, userId);
+
+                List<Map<String, Object>> enrollments = cassandraOperation
+                        .getRecordsByProperties(
+                                KEYSPACE_SUNBIRD_COURSE,
+                                USER_ENROLMENTS_V2_TABLE,
+                                propertiesMap,
+                                Arrays.asList(Constants.COURSE_ID),
+                                null);
+
+                if (CollectionUtils.isEmpty(enrollments)) {
+                    log.info("No enrollments found for userId: {}", userId);
+                    return 0;
+                }
+
+                enrolledCourseIds = enrollments.stream()
+                        .map(e -> (String) e.get(Constants.COURSE_ID_KEY))
+                        .filter(Objects::nonNull)
+                        .distinct()
+                        .toList();
+
+                if (!CollectionUtils.isEmpty(enrolledCourseIds)) {
+                    redisCacheMgr.putInCache(enrolmentRedisKey,
+                            objectMapper.writeValueAsString(enrolledCourseIds));
+                    log.info("userEnrolments cached for userId: {} count: {}",
+                            userId, enrolledCourseIds.size());
+                }
+            }
+
+            if (CollectionUtils.isEmpty(enrolledCourseIds)) {
+                log.info("No courseIds found for userId: {}", userId);
+                return 0;
+            }
+
+            String courseIdsJson = objectMapper.writeValueAsString(enrolledCourseIds);
+            String requestBody = String.format(standaloneAssessmentSearchRequest, courseIdsJson);
+            Map<String, Object> requestMap = objectMapper.readValue(
+                    requestBody, new TypeReference<Map<String, Object>>() {});
+
+            String searchUrl = sbSearchServiceHost + sbCompositeV4Search;
+            Map<String, Object> searchResponse = outboundRequestHandlerService
+                    .fetchResultUsingPost(searchUrl, requestMap, null);
+
+            if (MapUtils.isNotEmpty(searchResponse)) {
+                Map<String, Object> result = (Map<String, Object>)
+                        searchResponse.get(Constants.RESULT);
+                if (result != null && result.containsKey(Constants.COUNT)) {
+                    int count = ((Number) result.get(Constants.COUNT)).intValue();
+                    log.info("Standalone assessment count for userId: {} = {}", userId, count);
+                    return count;
+                }
+            }
+        } catch (Exception e) {
+            log.error("Error fetching standalone assessment count for userId: {}, error: {}",
+                    userId, e.getMessage());
         }
         return 0;
     }

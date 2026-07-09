@@ -609,6 +609,8 @@ public class Constants {
     public static final String LEARNING_PATHWAY_FIELD = "learningPathway";
     public static final String STANDALONE_ASSESSMENT = "standaloneAssessment";
     public static final String MODERATED_CONTENT = "moderatedContent";
+    public static final String USER_ENROLMENT_REDIS_KEY_PREFIX = "userEnrolments_";
+    public static final String COURSE_ID_KEY = "courseid";
 
     private Constants() {
     }

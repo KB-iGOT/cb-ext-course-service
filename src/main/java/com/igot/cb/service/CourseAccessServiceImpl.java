@@ -88,8 +88,14 @@ public class CourseAccessServiceImpl {
     @Value("${moderated.course.search.request}")
     private String moderatedCourseSearchRequest;
 
-    @Value("${standalone.assessment.search.request}")
-    private String standaloneAssessmentSearchRequest;
+    @Value("${enrolment.dictionary.request}")
+    private String enrolmentDictionaryRequest;
+
+    @Value("${enrolment.dictionary.url}")
+    private String enrolmentDictionaryUrl;
+
+    @Value("${lms.host}")
+    private String lmsServiceHost;
 
     private final Map<String, List<String>> courseCategoryCache = new ConcurrentHashMap<>();
     private final Map<String, Long> cacheTimestamps = new ConcurrentHashMap<>();
@@ -741,74 +747,87 @@ public class CourseAccessServiceImpl {
 
     private int getStandaloneAssessmentCount(String userId) {
         try {
-            String enrolmentRedisKey = USER_ENROLMENT_REDIS_KEY_PREFIX + userId;
-            List<String> enrolledCourseIds = new ArrayList<>();
-
-            String cachedEnrolments = redisCacheMgr.getFromCache(enrolmentRedisKey);
-            if (StringUtils.hasText(cachedEnrolments)) {
-                log.info("userEnrolments cache HIT for userId: {}", userId);
-                enrolledCourseIds = objectMapper.readValue(
-                        cachedEnrolments, new TypeReference<List<String>>() {});
-            } else {
-                log.info("userEnrolments cache MISS for userId: {}, reading from Cassandra", userId);
-                Map<String, Object> propertiesMap = new HashMap<>();
-                propertiesMap.put(Constants.USER_ID, userId);
-
-                List<Map<String, Object>> enrollments = cassandraOperation
-                        .getRecordsByProperties(
-                                KEYSPACE_SUNBIRD_COURSE,
-                                USER_ENROLMENTS_V2_TABLE,
-                                propertiesMap,
-                                Arrays.asList(Constants.COURSE_ID),
-                                null);
-
-                if (CollectionUtils.isEmpty(enrollments)) {
-                    log.info("No enrollments found for userId: {}", userId);
-                    return 0;
-                }
-
-                enrolledCourseIds = enrollments.stream()
-                        .map(e -> (String) e.get(Constants.COURSE_ID_KEY))
-                        .filter(Objects::nonNull)
-                        .distinct()
-                        .toList();
-
-                if (!CollectionUtils.isEmpty(enrolledCourseIds)) {
-                    redisCacheMgr.putInCache(enrolmentRedisKey,
-                            objectMapper.writeValueAsString(enrolledCourseIds));
-                    log.info("userEnrolments cached for userId: {} count: {}",
-                            userId, enrolledCourseIds.size());
-                }
-            }
-
+            List<String> enrolledCourseIds = getEnrolledCourseIds(userId);
             if (CollectionUtils.isEmpty(enrolledCourseIds)) {
-                log.info("No courseIds found for userId: {}", userId);
+                log.info("No enrollments found for userId: {}", userId);
                 return 0;
             }
 
-            String courseIdsJson = objectMapper.writeValueAsString(enrolledCourseIds);
-            String requestBody = String.format(standaloneAssessmentSearchRequest, courseIdsJson);
-            Map<String, Object> requestMap = objectMapper.readValue(
-                    requestBody, new TypeReference<Map<String, Object>>() {});
-
-            String searchUrl = sbSearchServiceHost + sbCompositeV4Search;
-            Map<String, Object> searchResponse = outboundRequestHandlerService
-                    .fetchResultUsingPost(searchUrl, requestMap, null);
-
-            if (MapUtils.isNotEmpty(searchResponse)) {
-                Map<String, Object> result = (Map<String, Object>)
-                        searchResponse.get(Constants.RESULT);
-                if (result != null && result.containsKey(Constants.COUNT)) {
-                    int count = ((Number) result.get(Constants.COUNT)).intValue();
-                    log.info("Standalone assessment count for userId: {} = {}", userId, count);
-                    return count;
-                }
+            List<Map<String, Object>> responseList = callEnrolmentDictionaryApi(userId, enrolledCourseIds);
+            if (CollectionUtils.isEmpty(responseList)) {
+                return 0;
             }
+
+            long count = responseList.stream()
+                    .filter(this::isStandaloneAssessment)
+                    .count();
+
+            log.info("Standalone assessment count for userId: {} = {}", userId, count);
+            return (int) count;
+
         } catch (Exception e) {
             log.error("Error fetching standalone assessment count for userId: {}, error: {}",
                     userId, e.getMessage());
         }
         return 0;
+    }
+
+    private List<String> getEnrolledCourseIds(String userId) throws Exception {
+        String redisKey = USER_ENROLMENT_REDIS_KEY_PREFIX + userId;
+        String cached = redisCacheMgr.getFromCache(redisKey);
+        if (StringUtils.hasText(cached)) {
+            log.info("userEnrolments cache HIT for userId: {}", userId);
+            return objectMapper.readValue(cached, new TypeReference<List<String>>() {});
+        }
+        log.info("userEnrolments cache MISS for userId: {}", userId);
+        Map<String, Object> propertiesMap = new HashMap<>();
+        propertiesMap.put(Constants.USER_ID, userId);
+        List<Map<String, Object>> enrollments = cassandraOperation.getRecordsByProperties(
+                KEYSPACE_SUNBIRD_COURSE,
+                USER_ENROLMENTS_V2_TABLE,
+                propertiesMap,
+                Arrays.asList(COURSE_ID_KEY),
+                null);
+        if (CollectionUtils.isEmpty(enrollments)) {
+            return Collections.emptyList();
+        }
+        List<String> courseIds = enrollments.stream()
+                .map(e -> (String) e.get(COURSE_ID_KEY))
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (!CollectionUtils.isEmpty(courseIds)) {
+            redisCacheMgr.putInCache(redisKey, objectMapper.writeValueAsString(courseIds));
+            log.info("userEnrolments cached for userId: {} count: {}", userId, courseIds.size());
+        }
+        return courseIds;
+    }
+
+    private List<Map<String, Object>> callEnrolmentDictionaryApi(
+            String userId, List<String> enrolledCourseIds) throws Exception {
+        String courseIdsJson = objectMapper.writeValueAsString(enrolledCourseIds);
+        String requestBodyStr = String.format(enrolmentDictionaryRequest, userId, courseIdsJson);
+        Map<String, Object> requestBody = objectMapper.readValue(
+                requestBodyStr, new TypeReference<Map<String, Object>>() {});
+        Map<String, Object> apiResponse = outboundRequestHandlerService
+                .fetchResultUsingPost(lmsServiceHost + enrolmentDictionaryUrl, requestBody, null);
+        if (MapUtils.isEmpty(apiResponse)) {
+            log.info("Empty response from enrolment dictionary API for userId: {}", userId);
+            return Collections.emptyList();
+        }
+        Map<String, Object> result = (Map<String, Object>) apiResponse.get(Constants.RESULT);
+        if (result == null || !result.containsKey(Constants.RESPONSE)) {
+            return Collections.emptyList();
+        }
+        return (List<Map<String, Object>>) result.get(Constants.RESPONSE);
+    }
+
+    private boolean isStandaloneAssessment(Map<String, Object> item) {
+        Map<String, Object> content = (Map<String, Object>) item.get("content");
+        return content != null
+                && "Standalone Assessment".equals(content.get("primaryCategory"))
+                && "Invite-Only Assessment".equals(content.get("courseCategory"))
+                && "Live".equals(content.get("status"));
     }
 
 }

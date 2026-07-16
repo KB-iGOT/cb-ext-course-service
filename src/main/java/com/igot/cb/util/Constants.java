@@ -611,6 +611,8 @@ public class Constants {
     public static final String MODERATED_CONTENT = "moderatedContent";
     public static final String USER_ENROLMENT_REDIS_KEY_PREFIX = "userEnrolments_";
     public static final String COURSE_ID_KEY = "courseid";
+    public static final String PRIMARY_CATEGORY_STANDALONE_ASSESSMENT = "Standalone Assessment";
+    public static final String COURSE_CATEGORY_INVITE_ONLY_ASSESSMENT = "Invite-Only Assessment";
 
     private Constants() {
     }

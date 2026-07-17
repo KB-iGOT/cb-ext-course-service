@@ -665,13 +665,9 @@ public class CourseAccessServiceImpl {
             }
         }
         int lpCount = getAssignedCourseCount(userId, Constants.LEARNING_PATHWAY, authToken);
-
         Map<String, Map<String, Object>> enrolmentDictionary = callEnrolmentDictionaryApi(authToken);
-
         int caProgramCount = getCaProgramCount(enrolmentDictionary);
-
         int standaloneCount = getStandaloneAssessmentCount(enrolmentDictionary);
-
         Map<String, Object> map = new HashMap<>();
         map.put(Constants.TRAINING_PLAN, trainingPlanCount);
         map.put(Constants.APAR, aparCount);

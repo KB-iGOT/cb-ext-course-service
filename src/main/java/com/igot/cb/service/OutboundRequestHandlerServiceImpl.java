@@ -256,4 +256,67 @@ public class OutboundRequestHandlerServiceImpl {
 
         return response;
     }
+
+	/**
+	 * GET request helper which accepts optional headers.
+	 */
+	public Map<String, Object> fetchResultUsingGet(
+			String uri,
+			Map<String, String> headersValues) {
+
+		ObjectMapper mapper = new ObjectMapper();
+		mapper.configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false);
+		Map<String, Object> response = null;
+		try {
+			HttpHeaders headers = new HttpHeaders();
+
+			if (!CollectionUtils.isEmpty(headersValues)) {
+				headersValues.forEach(headers::set);
+			}
+			headers.setContentType(MediaType.APPLICATION_JSON);
+			HttpEntity<Void> entity = new HttpEntity<>(headers);
+			if (log.isDebugEnabled()) {
+				StringBuilder str = new StringBuilder(this.getClass().getCanonicalName())
+						.append(".fetchResultUsingGet")
+						.append(System.lineSeparator());
+				str.append("URI: ").append(uri).append(System.lineSeparator());
+				log.debug(str.toString());
+			}
+			ResponseEntity<Map> responseEntity = restTemplate.exchange(
+					uri,
+					HttpMethod.GET,
+					entity,
+					Map.class
+			);
+			response = responseEntity.getBody();
+			if (log.isDebugEnabled()) {
+				log.debug("Response: {}", mapper.writeValueAsString(response));
+			}
+
+		} catch (HttpStatusCodeException hce) {
+
+			try {
+				response = mapper.readValue(
+						hce.getResponseBodyAsString(),
+						new TypeReference<HashMap<String, Object>>() {
+						});
+			} catch (Exception e1) {
+				log.debug("Failed to parse error response: {}", hce.getResponseBodyAsString(), e1);
+			}
+
+			log.error("Error received: {}", hce.getResponseBodyAsString(), hce);
+
+		} catch (Exception e) {
+
+			log.error("Failed to call GET URL: {}", uri, e);
+
+			try {
+				log.warn("Error Response: {}", mapper.writeValueAsString(response));
+			} catch (Exception e1) {
+				log.debug("Failed to parse error response", e1);
+			}
+		}
+
+		return response == null ? MapUtils.EMPTY_MAP : response;
+	}
 }

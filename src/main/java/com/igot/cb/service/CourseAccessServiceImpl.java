@@ -88,9 +88,6 @@ public class CourseAccessServiceImpl {
     @Value("${moderated.course.search.request}")
     private String moderatedCourseSearchRequest;
 
-    @Value("${enrolment.dictionary.request}")
-    private String enrolmentDictionaryRequest;
-
     @Value("${enrolment.dictionary.url}")
     private String enrolmentDictionaryUrl;
 
@@ -649,7 +646,7 @@ public class CourseAccessServiceImpl {
         return contentInfoMap;
     }
 
-    private Map<String, Object> buildPersonalContentInfo(String userId, String orgId, String authToken) {
+    private Map<String, Object> buildPersonalContentInfo(String userId, String orgId, String authToken) throws Exception {
         int aparCount = 0;
         int trainingPlanCount = 0;
         ApiResponse cbPlanResponse = cbPlanLearnerService.getCBPlanListForUser(orgId, userId, true);
@@ -667,11 +664,10 @@ public class CourseAccessServiceImpl {
                         .count();
             }
         }
-        int caProgramCount = getAssignedCourseCount(userId, Constants.COURSE_CATEGORY_COMPREHENSIVE_ASSESSMENT_PROGRAM, authToken);
         int lpCount = getAssignedCourseCount(userId, Constants.LEARNING_PATHWAY, authToken);
-
-        int standaloneCount = getStandaloneAssessmentCount(userId);
-
+        Map<String, Map<String, Object>> enrolmentDictionary = callEnrolmentDictionaryApi(authToken);
+        int caProgramCount = getCaProgramCount(enrolmentDictionary);
+        int standaloneCount = getStandaloneAssessmentCount(enrolmentDictionary);
         Map<String, Object> map = new HashMap<>();
         map.put(Constants.TRAINING_PLAN, trainingPlanCount);
         map.put(Constants.APAR, aparCount);
@@ -745,89 +741,71 @@ public class CourseAccessServiceImpl {
         return 0;
     }
 
-    private int getStandaloneAssessmentCount(String userId) {
-        try {
-            List<String> enrolledCourseIds = getEnrolledCourseIds(userId);
-            if (CollectionUtils.isEmpty(enrolledCourseIds)) {
-                log.info("No enrollments found for userId: {}", userId);
-                return 0;
-            }
+    private Map<String, Map<String, Object>> callEnrolmentDictionaryApi(
+            String userToken) throws Exception {
 
-            List<Map<String, Object>> responseList = callEnrolmentDictionaryApi(userId, enrolledCourseIds);
-            if (CollectionUtils.isEmpty(responseList)) {
-                return 0;
-            }
+        Map<String, String> headers = new HashMap<>();
+        headers.put(X_AUTH_TOKEN, userToken);
 
-            long count = responseList.stream()
-                    .filter(this::isStandaloneAssessment)
-                    .count();
+        Map<String, Object> apiResponse =
+                outboundRequestHandlerService.fetchResultUsingGet(
+                        lmsServiceHost + enrolmentDictionaryUrl,
+                        headers);
 
-            log.info("Standalone assessment count for userId: {} = {}", userId, count);
-            return (int) count;
-
-        } catch (Exception e) {
-            log.error("Error fetching standalone assessment count for userId: {}, error: {}",
-                    userId, e.getMessage());
-        }
-        return 0;
-    }
-
-    private List<String> getEnrolledCourseIds(String userId) throws Exception {
-        String redisKey = USER_ENROLMENT_REDIS_KEY_PREFIX + userId;
-        String cached = redisCacheMgr.getFromCache(redisKey);
-        if (StringUtils.hasText(cached)) {
-            log.info("userEnrolments cache HIT for userId: {}", userId);
-            return objectMapper.readValue(cached, new TypeReference<List<String>>() {});
-        }
-        log.info("userEnrolments cache MISS for userId: {}", userId);
-        Map<String, Object> propertiesMap = new HashMap<>();
-        propertiesMap.put(Constants.USER_ID, userId);
-        List<Map<String, Object>> enrollments = cassandraOperation.getRecordsByProperties(
-                KEYSPACE_SUNBIRD_COURSE,
-                USER_ENROLMENTS_V2_TABLE,
-                propertiesMap,
-                Arrays.asList(COURSE_ID_KEY),
-                null);
-        if (CollectionUtils.isEmpty(enrollments)) {
-            return Collections.emptyList();
-        }
-        List<String> courseIds = enrollments.stream()
-                .map(e -> (String) e.get(COURSE_ID_KEY))
-                .filter(Objects::nonNull)
-                .distinct()
-                .toList();
-        if (!CollectionUtils.isEmpty(courseIds)) {
-            redisCacheMgr.putInCache(redisKey, objectMapper.writeValueAsString(courseIds));
-            log.info("userEnrolments cached for userId: {} count: {}", userId, courseIds.size());
-        }
-        return courseIds;
-    }
-
-    private List<Map<String, Object>> callEnrolmentDictionaryApi(
-            String userId, List<String> enrolledCourseIds) throws Exception {
-        String courseIdsJson = objectMapper.writeValueAsString(enrolledCourseIds);
-        String requestBodyStr = String.format(enrolmentDictionaryRequest, userId, courseIdsJson);
-        Map<String, Object> requestBody = objectMapper.readValue(
-                requestBodyStr, new TypeReference<Map<String, Object>>() {});
-        Map<String, Object> apiResponse = outboundRequestHandlerService
-                .fetchResultUsingPost(lmsServiceHost + enrolmentDictionaryUrl, requestBody, null);
         if (MapUtils.isEmpty(apiResponse)) {
-            log.info("Empty response from enrolment dictionary API for userId: {}", userId);
-            return Collections.emptyList();
+            return Collections.emptyMap();
         }
-        Map<String, Object> result = (Map<String, Object>) apiResponse.get(Constants.RESULT);
-        if (result == null || !result.containsKey(Constants.RESPONSE)) {
-            return Collections.emptyList();
+
+        Map<String, Object> result =
+                (Map<String, Object>) apiResponse.get(Constants.RESULT);
+
+        if (result == null || result.get(Constants.RESPONSE) == null) {
+            return Collections.emptyMap();
         }
-        return (List<Map<String, Object>>) result.get(Constants.RESPONSE);
+
+        return (Map<String, Map<String, Object>>) result.get(Constants.RESPONSE);
     }
 
     private boolean isStandaloneAssessment(Map<String, Object> item) {
-        Map<String, Object> content = (Map<String, Object>) item.get("content");
-        return content != null
-                && "Standalone Assessment".equals(content.get("primaryCategory"))
-                && "Invite-Only Assessment".equals(content.get("courseCategory"))
-                && "Live".equals(content.get("status"));
+        return Constants.PRIMARY_CATEGORY_STANDALONE_ASSESSMENT.equals(item.get(PRIMARY_CATEGORY))
+                && Constants.COURSE_CATEGORY_INVITE_ONLY_ASSESSMENT
+                .equalsIgnoreCase(String.valueOf(item.get(COURSE_CATEGORY)));
+    }
+
+    private boolean isCAProgram(Map<String, Object> item) {
+        return Constants.COURSE_CATEGORY_COMPREHENSIVE_ASSESSMENT_PROGRAM
+                .equalsIgnoreCase(String.valueOf(item.get(COURSE_CATEGORY)));
+    }
+
+    private boolean isActiveInProgress(Map<String, Object> enrolment) {
+        Number status = (Number) enrolment.get(Constants.STATUS);
+
+        return Boolean.TRUE.equals(enrolment.get(Constants.ACTIVE))
+                && status != null
+                && (status.intValue() == 0 || status.intValue() == 1);
+    }
+
+    private int getStandaloneAssessmentCount(
+            Map<String, Map<String, Object>> enrolmentDictionary) {
+        if (MapUtils.isEmpty(enrolmentDictionary)) {
+            return 0;
+        }
+        return (int) enrolmentDictionary.values()
+                .stream()
+                .filter(this::isActiveInProgress)
+                .filter(this::isStandaloneAssessment)
+                .count();
+    }
+
+    private int getCaProgramCount(Map<String, Map<String, Object>> enrolmentDictionary) {
+        if (MapUtils.isEmpty(enrolmentDictionary)) {
+            return 0;
+        }
+        return (int) enrolmentDictionary.values()
+                .stream()
+                .filter(this::isActiveInProgress)
+                .filter(this::isCAProgram)
+                .count();
     }
 
 }

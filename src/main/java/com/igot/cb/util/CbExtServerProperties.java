@@ -25,6 +25,12 @@ public class CbExtServerProperties {
     @Value("${elastic.required.field.cb.plan.json.path}")
     private String elasticCbPlanJsonPath;
 
+    @Value("${org.eligibility.index}")
+    private String orgEligibilityIndex;
+
+    @Value("${elastic.required.field.org.eligibility.json.path}")
+    private String elasticOrgEligibilityJsonPath;
+
     @Value("${msg.on.user.group.restriction.for.all.org}")
     private String msgOnUserGroupRestrictionForAllOrg;
 

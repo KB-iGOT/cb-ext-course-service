@@ -36,6 +36,25 @@ public class CbPlanWithAccessSettings {
         return new ResponseEntity<>(response, response.getResponseCode());
     }
 
+    @PostMapping("/admin/create")
+    public ResponseEntity<ApiResponse> createCbPlanByAdmin(
+            @RequestBody ApiRequest request,
+            @RequestHeader(Constants.X_AUTH_TOKEN) String token) throws Exception {
+
+        ApiResponse response = cbPlanService.createCbPlan(request, null, token, true);
+        return new ResponseEntity<>(response, response.getResponseCode());
+    }
+
+    @PostMapping("/admin/publish")
+    public ResponseEntity<ApiResponse> publishCbPlanByAdmin(
+            @RequestBody ApiRequest request,
+            @RequestHeader(Constants.X_AUTH_TOKEN) String token,
+            @RequestHeader(Constants.X_AUTH_USER_ROLES) List<String> userRoles) throws Exception {
+
+        ApiResponse response = cbPlanService.publishCbPlan(request, null, token, userRoles, true);
+        return new ResponseEntity<>(response, response.getResponseCode());
+    }
+
     @PostMapping("/update")
     public ResponseEntity<ApiResponse> updateCbPlan(
             @RequestBody ApiRequest request,

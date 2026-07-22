@@ -210,6 +210,7 @@ public class Constants {
     public static final String  MODERATORS = "moderators";
     public static final String TABLE_USER = "user";
     public static final String ROOT_ORG_ID = "rootOrgId";
+    public static final String TARGETED_ORGANISATION = "targetedOrganisation";
     public static final String FIRST_NAME = "firstname";
     public static final String USER_ROOT_ORG_ID = "rootorgid";
     public static final String USER_DETAILS_NOT_FOUND = "User details not found with userId";
@@ -400,6 +401,7 @@ public class Constants {
     public static final String SECURE_SETTINGS = "secureSettings";
     public static final String TABLE_USER_EXTENDED_PROFILE = "user_extended_profile";
     public static final String CONTEXT_TYPE = "contextType";
+    public static final String PLAN_TYPE = "planType";
     public static final String ORG_ADDITIONAL_PROPERTIES = "orgAdditionalProperties";
     public static final String CONTEXT_DATA_KEY = "contextData";
     public static final String ORGANISATION_ID = "organisationId";

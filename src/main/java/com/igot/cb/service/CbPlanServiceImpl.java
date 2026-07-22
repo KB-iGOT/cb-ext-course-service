@@ -84,6 +84,14 @@ public class CbPlanServiceImpl {
     }
 
     public ApiResponse createCbPlan(ApiRequest request, String userOrgId, String authUserToken) {
+        return createCbPlan(request, userOrgId, authUserToken, false);
+    }
+
+    /**
+     * @param isAdmin when true, this is an admin request with no orgId header; userOrgId is
+     *                ignored and the caller's own rootOrg (resolved from the token) is used instead.
+     */
+    public ApiResponse createCbPlan(ApiRequest request, String userOrgId, String authUserToken, boolean isAdmin) {
         ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_CB_PLAN_CREATE);
         try {
             String userId = accessTokenValidator.fetchUserIdFromAccessToken(authUserToken, response);
@@ -94,6 +102,10 @@ public class CbPlanServiceImpl {
             String rootOrgId = getRootOrgFromUser(userId, response);
             if (Constants.FAILED.equalsIgnoreCase(response.getParams().getStatus())) {
                 return response;
+            }
+
+            if (isAdmin) {
+                userOrgId = rootOrgId;
             }
 
             boolean isCCA = getCCAFromOrg(rootOrgId, response);
@@ -252,6 +264,15 @@ public class CbPlanServiceImpl {
 
     public ApiResponse publishCbPlan(ApiRequest request, String userOrgId, String authUserToken,
             List<String> userRoles) {
+        return publishCbPlan(request, userOrgId, authUserToken, userRoles, false);
+    }
+
+    /**
+     * @param isAdmin when true, this is an admin request with no orgId header; userOrgId is
+     *                ignored and the caller's own rootOrg (resolved from the token) is used instead.
+     */
+    public ApiResponse publishCbPlan(ApiRequest request, String userOrgId, String authUserToken,
+            List<String> userRoles, boolean isAdmin) {
         ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_CB_PLAN_PUBLISH);
         Map<String, Object> incomingRequest = (Map<String, Object>) request.getRequest();
         try {
@@ -290,6 +311,10 @@ public class CbPlanServiceImpl {
             String rootOrgId = getRootOrgFromUser(userId, response);
             if (Constants.FAILED.equalsIgnoreCase(response.getParams().getStatus())) {
                 return response;
+            }
+
+            if (isAdmin) {
+                userOrgId = rootOrgId;
             }
 
             boolean isCCA = getCCAFromOrg(rootOrgId, response);
@@ -485,7 +510,8 @@ public class CbPlanServiceImpl {
             if (criteriaList != null && !criteriaList.isEmpty()) {
                 for (Map<String, Object> criteria : criteriaList) {
                     String criteriaKey = (String) criteria.get(Constants.CRITERIA_KEY);
-                    if (Constants.ROOT_ORG_ID.equalsIgnoreCase(criteriaKey)) {
+                    if (Constants.ROOT_ORG_ID.equalsIgnoreCase(criteriaKey)
+                            || Constants.TARGETED_ORGANISATION.equalsIgnoreCase(criteriaKey)) {
                         List<String> values = (List<String>) criteria.get(Constants.CRITERIA_VALUE);
                         if (values != null && !values.isEmpty()) {
                             orgIdSet.addAll(values);
@@ -598,6 +624,7 @@ public class CbPlanServiceImpl {
             }
         }
         enrichData.put(Constants.CONTENT_TYPE, cbPlan.get(Constants.CONTENT_TYPE));
+        enrichData.put(Constants.PLAN_TYPE, cbPlan.get(Constants.PLAN_TYPE));
         enrichData.put(Constants.CREATED_AT, cbPlan.get(Constants.CREATED_AT_REQ));
         enrichData.put(Constants.CB_PUBLISHED_AT, cbPlan.get(Constants.CB_PUBLISHED_AT));
         enrichData.put(Constants.STATUS, cbPlan.get(Constants.STATUS));
@@ -871,6 +898,9 @@ public class CbPlanServiceImpl {
         cbPlan.put(Constants.IS_APAR, incomingRequest.get(Constants.IS_APAR));
         cbPlan.put(Constants.CONTEXT_DATA_REQUEST,
                 mapper.writeValueAsString(incomingRequest.get(Constants.CONTEXT_DATA_REQUEST)));
+        if (incomingRequest.containsKey(Constants.PLAN_TYPE)) {
+            cbPlan.put(Constants.PLAN_TYPE, incomingRequest.get(Constants.PLAN_TYPE));
+        }
         return cbPlan;
     }
 
@@ -891,6 +921,9 @@ public class CbPlanServiceImpl {
         updatedRequest.put(Constants.IS_APAR, incomingRequest.get(Constants.IS_APAR));
         updatedRequest.put(Constants.CONTEXT_DATA_REQUEST,
                 mapper.writeValueAsString(incomingRequest.get(Constants.CONTEXT_DATA_REQUEST)));
+        if (incomingRequest.containsKey(Constants.PLAN_TYPE)) {
+            updatedRequest.put(Constants.PLAN_TYPE, incomingRequest.get(Constants.PLAN_TYPE));
+        }
         return updatedRequest;
     }
 
@@ -930,6 +963,9 @@ public class CbPlanServiceImpl {
         if (dataInDraftObject.containsKey(Constants.CONTENT_LIST)) {
             updatedRequest.put(Constants.CONTENT_LIST,
                     dataInDraftObject.get(Constants.CONTENT_LIST));
+        }
+        if (dataInDraftObject.containsKey(Constants.PLAN_TYPE)) {
+            updatedRequest.put(Constants.PLAN_TYPE, dataInDraftObject.get(Constants.PLAN_TYPE));
         }
         updatedRequest.put(Constants.COMMENT, incomingRequest.get(Constants.COMMENT));
 

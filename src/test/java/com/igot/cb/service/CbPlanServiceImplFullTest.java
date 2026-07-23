@@ -606,7 +606,7 @@ public class CbPlanServiceImplFullTest {
         orgMap.put(Constants.IS_CCA, true);
         when(userAndOrgService.readOrgFromDB("root1", null)).thenReturn(orgMap);
 
-        when(requestValidator.validateCbPlanCreateRequest(any(ApiRequest.class), eq(true), anyString()))
+        when(requestValidator.validateCbPlanCreateRequest(any(ApiRequest.class), eq(true), anyString(), anyBoolean()))
                 .thenReturn(Collections.emptyList());
 
         ApiResponse insertResponse = new ApiResponse();
@@ -648,7 +648,7 @@ public class CbPlanServiceImplFullTest {
                 .thenReturn(Map.of("id", "user123", "rootOrgId", "root1"));
         when(userAndOrgService.readOrgFromDB(eq("root1"), any()))
                 .thenReturn(Map.of("isCCA", true));
-        when(requestValidator.validateCbPlanCreateRequest(any(ApiRequest.class), anyBoolean(), anyString()))
+        when(requestValidator.validateCbPlanCreateRequest(any(ApiRequest.class), anyBoolean(), anyString(), anyBoolean()))
                 .thenReturn(List.of("Error1"));
         ApiResponse response = cbPlanService.createCbPlan(apiRequest, "org1", "token123");
         assertEquals("Failed", response.getParams().getStatus());
@@ -666,7 +666,7 @@ public class CbPlanServiceImplFullTest {
                 .thenReturn(Map.of("id", "user123", "rootOrgId", "root1"));
         when(userAndOrgService.readOrgFromDB(eq("root1"), any()))
                 .thenReturn(Map.of("isCCA", true));
-        when(requestValidator.validateCbPlanCreateRequest(any(ApiRequest.class), anyBoolean(), anyString()))
+        when(requestValidator.validateCbPlanCreateRequest(any(ApiRequest.class), anyBoolean(), anyString(), anyBoolean()))
                 .thenReturn(Collections.emptyList());
         ApiResponse insertResp = new ApiResponse();
         insertResp.getParams().setStatus(Constants.FAILED);

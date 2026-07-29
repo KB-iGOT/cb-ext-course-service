@@ -596,6 +596,36 @@ public class Constants {
     public static final String API_CONTENT_HEALTH_SUMMARY = "api.content.health.summary";
     public static final String HEALTH_SCORE = "health_score";
     public static final String INDICATORS = "indicators";
+    public static final String USER_CONTENT_CONSUMPTION_V2 = "user_content_consumption_v2";
+    public static final String API_USER_CONTENT_CONSUMPTION_V2_READ = "api.chatbot.user.content.consumption.v2.read";
+    public static final String CONSUMPTION_RECORDS = "consumptionRecords";
+    
+    // Content Dictionary Constants
+    public static final String REDIS_CONTENT_DICTIONARY_KEY = "content_dictionary";
+    public static final String API_CONTENT_DICTIONARY_READ = "api.content.dictionary.read";
+    public static final String PERSONAL_CONTENT_INFO_REDIS_KEY_PREFIX = "personalContentInfo_";
+    public static final String MODERATED_COURSE_COUNT_REDIS_KEY_PREFIX = "moderatedCourseCount_";
+    public static final String API_PERSONAL_CONTENT_INFO = "api.content.user.info";
+    public static final String APAR = "apar";
+    public static final String TRAINING_PLAN  = "trainingPlan";
+    public static final String CA_PROGRAM = "caProgram";
+    public static final String LEARNING_PATHWAY_FIELD = "learningPathway";
+    public static final String STANDALONE_ASSESSMENT = "standaloneAssessment";
+    public static final String MODERATED_CONTENT = "moderatedContent";
+    public static final String USER_ENROLMENT_REDIS_KEY_PREFIX = "userEnrolments_";
+    public static final String COURSE_ID_KEY = "courseid";
+    public static final String PRIMARY_CATEGORY_STANDALONE_ASSESSMENT = "Standalone Assessment";
+    public static final String COURSE_CATEGORY_INVITE_ONLY_ASSESSMENT = "Invite-Only Assessment";
+    public static final String KEYSPACE_SUNBIRD_COURSES = "sunbird_courses";
+    public static final String USER_FIRST_NAME = "firstName";
+    public static final String TRAINER_TYPE = "trainerType";
+    public static final String PROGRAM_ID = "programId";
+    public static final String COORDINATORS = "coordinators";
+    public static final String REMOVED = "removed";
+    public static final String TIMESTAMP = "timestamp";
+    public static final String ADDED_OR_UPDATED = "added_or_updated";
+    public static final String PROGRAM_ID_KEY = "program_id";
+    public static final String TRAINER_TYPE_KEY = "trainer_type";
 
     private Constants() {
     }

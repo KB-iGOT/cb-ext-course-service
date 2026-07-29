@@ -1,0 +1,16 @@
+{
+  "programId": {
+    "type": "keyword"
+  },
+  "coordinators": {
+    "type": "nested",
+    "properties": {
+      "userId": {
+        "type": "keyword"
+      },
+      "trainerType": {
+        "type": "keyword"
+      }
+    }
+  }
+}

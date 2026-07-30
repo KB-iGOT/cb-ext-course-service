@@ -1,8 +1,10 @@
 package com.igot.cb.util;
 
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 
+import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.keycloak.common.util.Time;
 import org.springframework.http.HttpStatus;
@@ -160,5 +162,19 @@ public class AccessTokenValidator {
             response.setResponseCode(HttpStatus.BAD_REQUEST);
         }
         return clientAccessTokenId;
+    }
+
+    public List<String> fetchUserRolesFromToken(String accessToken) {
+        try {
+            Map<String, Object> tokenBody = validateToken(accessToken);
+            if (MapUtils.isEmpty(tokenBody)) {
+                return Collections.emptyList();
+            }
+            List<String> roles = (List<String>) tokenBody.get("user_roles");
+            return roles != null ? roles : Collections.emptyList();
+        } catch (Exception ex) {
+            log.error("Exception while fetching roles from token: {}", ex.getMessage());
+            return Collections.emptyList();
+        }
     }
 }

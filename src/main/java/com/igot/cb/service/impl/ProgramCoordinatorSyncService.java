@@ -1,8 +1,7 @@
 package com.igot.cb.service.impl;
 
 import com.igot.cb.elasticsearch.service.EsUtilService;
-import lombok.AllArgsConstructor;
-import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -11,10 +10,15 @@ import java.util.List;
 import java.util.Map;
 
 @Service
-@RequiredArgsConstructor
 public class ProgramCoordinatorSyncService {
 
     private final EsUtilService esUtilService;
+
+    public ProgramCoordinatorSyncService(
+            @Qualifier("sunbirdEsUtilServiceImpl")
+            EsUtilService esUtilService) {
+        this.esUtilService = esUtilService;
+    }
 
     @Value("${elastic.required.field.program.coordinator.json.path}")
     private String coordinatorIndexSchemaPath;

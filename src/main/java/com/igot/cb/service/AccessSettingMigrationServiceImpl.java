@@ -8,6 +8,7 @@ import java.util.stream.Collectors;
 
 import com.igot.cb.elasticsearch.service.EsUtilService;
 import org.apache.commons.collections4.MapUtils;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -45,7 +46,7 @@ public class AccessSettingMigrationServiceImpl {
 
     public AccessSettingMigrationServiceImpl(CassandraOperation cassandraOperation,
                                              ContentInfoServiceImpl contentService,
-                                             IdMapCacheMgr idMapCacheMgr, EsUtilService esUtilService) {
+                                             IdMapCacheMgr idMapCacheMgr, @Qualifier("esUtilServiceImpl") EsUtilService esUtilService) {
         this.cassandraOperation = cassandraOperation;
         this.contentService = contentService;
         this.idMapCacheMgr = idMapCacheMgr;

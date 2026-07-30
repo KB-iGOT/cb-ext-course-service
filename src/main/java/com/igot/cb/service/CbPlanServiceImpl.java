@@ -20,6 +20,7 @@ import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
@@ -72,8 +73,8 @@ public class CbPlanServiceImpl {
 
 
     public CbPlanServiceImpl(AccessTokenValidator accessTokenValidator, CassandraOperation cassandraOperation,
-            CbExtServerProperties serverProperties, UserAndOrgServiceImpl userAndOrgService,
-            ContentInfoServiceImpl contentService, EsUtilService esUtilService, RequestValidator requestValidator) {
+                             CbExtServerProperties serverProperties, UserAndOrgServiceImpl userAndOrgService,
+                             ContentInfoServiceImpl contentService, @Qualifier("esUtilServiceImpl") EsUtilService esUtilService, RequestValidator requestValidator) {
         this.accessTokenValidator = accessTokenValidator;
         this.cassandraOperation = cassandraOperation;
         this.serverProperties = serverProperties;

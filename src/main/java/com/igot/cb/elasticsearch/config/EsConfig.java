@@ -32,6 +32,18 @@ public class EsConfig {
     @Value("${elasticsearch.password}")
     private String elasticsearchPassword;
 
+    @Value("${sunbird.es.host}")
+    private String sunbirdEsHost;
+
+    @Value("${sunbird.es.port}")
+    private int sunbirdEsPort;
+
+    @Value("${sunbird.es.username}")
+    private String sunbirdEsUsername;
+
+    @Value("${sunbird.es.password}")
+    private String sunbirdEsPassword;
+
     @Bean(name = "elasticsearchClient")
     public ElasticsearchClient elasticsearchClient() {
         return createClient(elasticsearchHost, elasticsearchPort, elasticsearchUsername, elasticsearchPassword);
@@ -51,5 +63,14 @@ public class EsConfig {
         ElasticsearchTransport elasticsearchTransport = new RestClientTransport(restClient, new JacksonJsonpMapper());
         ElasticsearchClient client = new ElasticsearchClient(elasticsearchTransport);
         return client;
+    }
+
+    @Bean(name = "sunbirdElasticsearchClient")
+    public ElasticsearchClient sunbirdElasticsearchClient() {
+        return createClient(
+                sunbirdEsHost,
+                sunbirdEsPort,
+                sunbirdEsUsername,
+                sunbirdEsPassword);
     }
 }

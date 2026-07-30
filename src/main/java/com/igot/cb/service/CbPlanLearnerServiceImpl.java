@@ -6,7 +6,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.igot.cb.cache.CbPlanCacheMgr;
 import com.igot.cb.cache.RedisCacheMgr;
 import com.igot.cb.cassandra.CassandraOperation;
-import com.igot.cb.elasticsearch.service.EsUtilService;
 import com.igot.cb.model.ApiResponse;
 import com.igot.cb.user.UserUtilityService;
 import com.igot.cb.util.AccessTokenValidator;
@@ -55,9 +54,6 @@ public class CbPlanLearnerServiceImpl {
 
     @Autowired
     ContentInfoServiceImpl contentService;
-
-    @Autowired
-    private EsUtilService esUtilService;
 
     private final CbPlanCacheMgr cbPlanCacheMgr;
 

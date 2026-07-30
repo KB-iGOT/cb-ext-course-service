@@ -7,6 +7,7 @@ import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.model.ApiResponse;
 import com.igot.cb.service.ProgramCoordinatorService;
 import com.igot.cb.service.UserAndOrgServiceImpl;
+import com.igot.cb.util.AccessTokenValidator;
 import com.igot.cb.util.Constants;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -35,6 +36,7 @@ public class ProgramCoordinatorServiceImpl implements ProgramCoordinatorService 
     private final ObjectMapper objectMapper;
     private final UserAndOrgServiceImpl userProfileService;
     private final KafkaTemplate kafkaTemplate;
+    private final AccessTokenValidator accessTokenValidator;
 
     @Value("${program.coordinator.lookup.table:program_coordinator_lookup}")
     private String lookupTable;
@@ -48,12 +50,28 @@ public class ProgramCoordinatorServiceImpl implements ProgramCoordinatorService 
     @Value("${program.coordinator.sync.topic}")
     private String coordinatorSyncTopic;
 
+    @Value("${program.coordinator.required.role}")
+    private String requiredRole;
+
+    @Value("#{'${program.coordinator.allowed.trainer.types}'.split(',')}")
+    private List<String> allowedTrainerTypes;
+
     @Override
     public ApiResponse upsertCoordinators(String programId, List<Map<String, String>> incomingCoordinators, String authUserToken) throws IOException {
         ApiResponse response = ApiResponse.createDefaultResponse("api.program.coordinator.upsert");
 
-        if (StringUtils.isBlank(programId) || CollectionUtils.isEmpty(incomingCoordinators)) {
+        if (CollectionUtils.isEmpty(incomingCoordinators)) {
             response.updateErrorDetails("programId and coordinators are required", HttpStatus.BAD_REQUEST);
+            return response;
+        }
+
+        List<String> userRoles = accessTokenValidator.fetchUserRolesFromToken(authUserToken);
+        if (!userRoles.contains(requiredRole)) {
+            response.updateErrorDetails("User does not have the required role: " + requiredRole, HttpStatus.FORBIDDEN);
+            return response;
+        }
+
+        if (!validateTrainerTypes(incomingCoordinators, response)) {
             return response;
         }
 
@@ -126,8 +144,9 @@ public class ProgramCoordinatorServiceImpl implements ProgramCoordinatorService 
     public ApiResponse getProgramCoordinators(String programId, String authUserToken) throws IOException {
         ApiResponse response = ApiResponse.createDefaultResponse("api.program.coordinators.read");
 
-        if (StringUtils.isEmpty(programId)) {
-            response.updateErrorDetails("programId is required", HttpStatus.BAD_REQUEST);
+        List<String> userRoles = accessTokenValidator.fetchUserRolesFromToken(authUserToken);
+        if (!userRoles.contains(requiredRole)) {
+            response.updateErrorDetails("User does not have the required role: " + requiredRole, HttpStatus.FORBIDDEN);
             return response;
         }
 
@@ -197,6 +216,30 @@ public class ProgramCoordinatorServiceImpl implements ProgramCoordinatorService 
         }
 
         return response;
+    }
+
+    private boolean validateTrainerTypes(
+            List<Map<String, String>> incomingCoordinators,
+            ApiResponse response) {
+
+        Set<String> incomingTrainerTypes = incomingCoordinators.stream()
+                .map(c -> c.get(TRAINER_TYPE))
+                .filter(StringUtils::isNotBlank)
+                .collect(Collectors.toSet());
+
+        Set<String> invalidTrainerTypes = incomingTrainerTypes.stream()
+                .filter(type -> !allowedTrainerTypes.contains(type))
+                .collect(Collectors.toSet());
+
+        if (!invalidTrainerTypes.isEmpty()) {
+            response.updateErrorDetails(
+                    "Invalid trainerType(s): " + invalidTrainerTypes
+                            + ". Allowed values are: " + allowedTrainerTypes,
+                    HttpStatus.BAD_REQUEST);
+            return false;
+        }
+
+        return true;
     }
 
 }

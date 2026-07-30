@@ -626,6 +626,19 @@ public class Constants {
     public static final String ADDED_OR_UPDATED = "added_or_updated";
     public static final String PROGRAM_ID_KEY = "program_id";
     public static final String TRAINER_TYPE_KEY = "trainer_type";
+    public static final String API_PROGRAM_COORDINATOR_UPSERT = "api.program.coordinator.upsert";
+    public static final String ERROR_PROGRAM_ID_COORDINATORS_REQUIRED = "programId and coordinators are required";
+    public static final String ERROR_REQUIRED_ROLE_PREFIX = "User does not have the required role: ";
+    public static final String LOG_UPSERT_COORDINATORS_FAILED = "Failed to upsert coordinators for programId: {}";
+    public static final String ERROR_UPSERT_COORDINATORS_PREFIX = "Failed to upsert coordinators: ";
+    public static final String EVENT_TYPE_COORDINATOR_LIST_SYNCED = "COORDINATOR_LIST_SYNCED";
+    public static final String API_PROGRAM_COORDINATORS_READ = "api.program.coordinators.read";
+    public static final String LOG_PROGRAM_COORDINATORS_CACHE_HIT = "Program coordinators cache hit for programId: {}";
+    public static final String LOG_PROGRAM_COORDINATORS_CACHE_MISS = "Program coordinators cache miss for programId: {} — querying Cassandra";
+    public static final String LOG_ENRICH_COORDINATOR_PROFILE_FAILED = "Failed to enrich coordinator profile for userId: {}";
+    public static final String ERROR_FAILED_TO_FETCH_COORDINATORS = "Failed to fetch coordinators: ";
+    public static final String ERROR_INVALID_TRAINER_TYPES_PREFIX = "Invalid trainerType(s): ";
+    public static final String ERROR_ALLOWED_TRAINER_TYPES_SUFFIX = ". Allowed values are: ";
 
     private Constants() {
     }

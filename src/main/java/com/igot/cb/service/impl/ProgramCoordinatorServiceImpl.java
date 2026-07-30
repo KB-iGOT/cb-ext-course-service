@@ -57,17 +57,17 @@ public class ProgramCoordinatorServiceImpl implements ProgramCoordinatorService 
     private List<String> allowedTrainerTypes;
 
     @Override
-    public ApiResponse upsertCoordinators(String programId, List<Map<String, String>> incomingCoordinators, String authUserToken) throws IOException {
-        ApiResponse response = ApiResponse.createDefaultResponse("api.program.coordinator.upsert");
+    public ApiResponse upsertCoordinators(String programId, List<Map<String, String>> incomingCoordinators, String authUserToken) {
+        ApiResponse response = ApiResponse.createDefaultResponse(API_PROGRAM_COORDINATOR_UPSERT);
 
         if (CollectionUtils.isEmpty(incomingCoordinators)) {
-            response.updateErrorDetails("programId and coordinators are required", HttpStatus.BAD_REQUEST);
+            response.updateErrorDetails(ERROR_PROGRAM_ID_COORDINATORS_REQUIRED, HttpStatus.BAD_REQUEST);
             return response;
         }
 
         List<String> userRoles = accessTokenValidator.fetchUserRolesFromToken(authUserToken);
         if (!userRoles.contains(requiredRole)) {
-            response.updateErrorDetails("User does not have the required role: " + requiredRole, HttpStatus.FORBIDDEN);
+            response.updateErrorDetails(ERROR_REQUIRED_ROLE_PREFIX + requiredRole, HttpStatus.FORBIDDEN);
             return response;
         }
 
@@ -107,8 +107,8 @@ public class ProgramCoordinatorServiceImpl implements ProgramCoordinatorService 
             if (bulkInsertResponse == null
                     || !Constants.SUCCESS.equalsIgnoreCase(
                     String.valueOf(bulkInsertResponse.getResult().get(Constants.RESPONSE)))) {
-                log.error("Bulk insert failed for programId: {}", programId);
-                response.updateErrorDetails("Failed to insert coordinators", HttpStatus.INTERNAL_SERVER_ERROR);
+                log.error(ERROR_UPSERT_COORDINATORS_PREFIX, programId);
+                response.updateErrorDetails(ERROR_UPSERT_COORDINATORS_PREFIX, HttpStatus.INTERNAL_SERVER_ERROR);
                 return response;
             }
 
@@ -123,7 +123,7 @@ public class ProgramCoordinatorServiceImpl implements ProgramCoordinatorService 
             event.put(PROGRAM_ID, programId);
             event.put(COORDINATORS, incomingCoordinators);
             event.put(REMOVED, toRemove);
-            event.put(EVENT_TYPE, "COORDINATOR_LIST_SYNCED");
+            event.put(EVENT_TYPE, EVENT_TYPE_COORDINATOR_LIST_SYNCED);
             event.put(TIMESTAMP, Instant.now().toString());
             kafkaTemplate.send(coordinatorSyncTopic, objectMapper.writeValueAsString(event));
 
@@ -133,8 +133,8 @@ public class ProgramCoordinatorServiceImpl implements ProgramCoordinatorService 
             response.put(ADDED_OR_UPDATED, incomingUserIds);
             response.put(REMOVED, toRemove);
         } catch (Exception e) {
-            log.error("Failed to upsert coordinators for programId: {}", programId, e);
-            response.updateErrorDetails("Failed to upsert coordinators: " + e.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR);
+            log.error(LOG_UPSERT_COORDINATORS_FAILED, programId, e);
+            response.updateErrorDetails(LOG_UPSERT_COORDINATORS_FAILED + e.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR);
         }
 
         return response;
@@ -142,11 +142,11 @@ public class ProgramCoordinatorServiceImpl implements ProgramCoordinatorService 
 
     @Override
     public ApiResponse getProgramCoordinators(String programId, String authUserToken) throws IOException {
-        ApiResponse response = ApiResponse.createDefaultResponse("api.program.coordinators.read");
+        ApiResponse response = ApiResponse.createDefaultResponse(API_PROGRAM_COORDINATORS_READ);
 
         List<String> userRoles = accessTokenValidator.fetchUserRolesFromToken(authUserToken);
         if (!userRoles.contains(requiredRole)) {
-            response.updateErrorDetails("User does not have the required role: " + requiredRole, HttpStatus.FORBIDDEN);
+            response.updateErrorDetails(ERROR_REQUIRED_ROLE_PREFIX + requiredRole, HttpStatus.FORBIDDEN);
             return response;
         }
 
@@ -156,13 +156,13 @@ public class ProgramCoordinatorServiceImpl implements ProgramCoordinatorService 
             String cached = redisCacheMgr.getFromCache(cacheKeyPrefix + programId);
             if (cached != null && !cached.isEmpty()) {
                 coordinators = objectMapper.readValue(cached, new TypeReference<List<Map<String, Object>>>() {});
-                log.info("Program coordinators cache hit for programId: {}", programId);
+                log.info(LOG_PROGRAM_COORDINATORS_CACHE_HIT, programId);
             }
 
             if (coordinators == null) {
-                log.info("Program coordinators cache miss for programId: {} — querying Cassandra", programId);
+                log.info(LOG_PROGRAM_COORDINATORS_CACHE_MISS, programId);
                 Map<String, Object> propertyMap = new HashMap<>();
-                propertyMap.put("program_id", programId);
+                propertyMap.put(PROGRAM_ID_KEY, programId);
                 List<Map<String, Object>> rows = cassandraOperation.getRecordsByProperties(Constants.KEYSPACE_SUNBIRD_COURSES, lookupTable, propertyMap, null, null);
 
                 coordinators = new ArrayList<>();
@@ -201,18 +201,18 @@ public class ProgramCoordinatorServiceImpl implements ProgramCoordinatorService 
 
                         Object firstName = profileDetails.get(Constants.USER_FIRST_NAME);
                         if (firstName != null) {
-                            coordinator.put("name", firstName.toString());
+                            coordinator.put(NAME, firstName.toString());
                         }
                     }
                 } catch (Exception e) {
-                    log.error("Failed to enrich coordinator profile for userId: {}", userId, e);
+                    log.error(LOG_ENRICH_COORDINATOR_PROFILE_FAILED, userId, e);
                 }
             }
 
             response.put(PROGRAM_ID, programId);
             response.put(COORDINATORS, coordinators);
         } catch (Exception e) {
-            response.updateErrorDetails("Failed to fetch coordinators: " + e.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR);
+            response.updateErrorDetails(ERROR_FAILED_TO_FETCH_COORDINATORS + e.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR);
         }
 
         return response;
@@ -233,8 +233,8 @@ public class ProgramCoordinatorServiceImpl implements ProgramCoordinatorService 
 
         if (!invalidTrainerTypes.isEmpty()) {
             response.updateErrorDetails(
-                    "Invalid trainerType(s): " + invalidTrainerTypes
-                            + ". Allowed values are: " + allowedTrainerTypes,
+                    ERROR_INVALID_TRAINER_TYPES_PREFIX + invalidTrainerTypes
+                            + ERROR_ALLOWED_TRAINER_TYPES_SUFFIX + allowedTrainerTypes,
                     HttpStatus.BAD_REQUEST);
             return false;
         }

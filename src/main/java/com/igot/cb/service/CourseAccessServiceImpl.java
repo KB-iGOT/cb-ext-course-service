@@ -1,5 +1,6 @@
 package com.igot.cb.service;
 
+import java.time.LocalDate;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
@@ -620,7 +621,6 @@ public class CourseAccessServiceImpl {
             }
             Map<String, Object> result = new HashMap<>();
             result.putAll(org.apache.commons.lang3.StringUtils.isNotBlank(userId) ? getPersonalContentInfoFromCacheOrApi(userId, orgId, authToken) : Collections.emptyMap());
-            result.put(MODERATED_CONTENT, getModeratedContentCount(userId, orgId));
             response.setResult(result);
             return response;
         } catch (Exception e) {
@@ -647,8 +647,8 @@ public class CourseAccessServiceImpl {
     }
 
     private Map<String, Object> buildPersonalContentInfo(String userId, String orgId, String authToken) throws Exception {
-        int aparCount = 0;
-        int trainingPlanCount = 0;
+        List<String> aparIds = new ArrayList<>();;
+        List<String> trainingPlanIds = new ArrayList<>();
         ApiResponse cbPlanResponse = cbPlanLearnerService.getCBPlanListForUser(orgId, userId, true);
         if (cbPlanResponse != null
                 && cbPlanResponse.getResult() != null
@@ -656,28 +656,46 @@ public class CourseAccessServiceImpl {
             List<Map<String, Object>> plans = (List<Map<String, Object>>)
                     cbPlanResponse.getResult().get(Constants.CONTENT);
             if (!CollectionUtils.isEmpty(plans)) {
-                aparCount = (int) plans.stream()
+                 aparIds = plans.stream()
                         .filter(p -> Boolean.TRUE.equals(p.get(Constants.IS_APAR)))
-                        .count();
-                trainingPlanCount = (int) plans.stream()
+                        .flatMap(p -> ((List<Map<String, Object>>) p.get(CONTENT_LIST)).stream())
+                        .map(content -> (String) content.get(Constants.IDENTIFIER))
+                        .collect(Collectors.toList());
+                 trainingPlanIds = plans.stream()
                         .filter(p -> !Boolean.TRUE.equals(p.get(Constants.IS_APAR)))
-                        .count();
+                        .flatMap(p -> ((List<Map<String, Object>>) p.get(CONTENT_LIST)).stream())
+                        .map(content -> (String) content.get(Constants.IDENTIFIER))
+                        .collect(Collectors.toList());
             }
         }
-        int lpCount = getAssignedCourseCount(userId, Constants.LEARNING_PATHWAY, authToken);
-        Map<String, Map<String, Object>> enrolmentDictionary = callEnrolmentDictionaryApi(authToken);
+        java.util.List<String> learningPathwayIds = getAssignedCourseCount(userId, Constants.LEARNING_PATHWAY, authToken);
+        Map<String, Map<String, Object>> enrolmentDictionary = callEnrolmentDictionaryApi(authToken, userId);
         int caProgramCount = getCaProgramCount(enrolmentDictionary);
-        int standaloneCount = getStandaloneAssessmentCount(enrolmentDictionary);
+        java.util.List<String> standaloneIds = getStandaloneAssessmentIdentifiers(enrolmentDictionary);
         Map<String, Object> map = new HashMap<>();
-        map.put(Constants.TRAINING_PLAN, trainingPlanCount);
-        map.put(Constants.APAR, aparCount);
+        map.put(Constants.TRAINING_PLAN, trainingPlanIds.size());
+        map.put(Constants.APAR, aparIds.size());
         map.put(CA_PROGRAM, caProgramCount);
-        map.put(LEARNING_PATHWAY_FIELD, lpCount);
-        map.put(STANDALONE_ASSESSMENT, standaloneCount);
+        map.put(LEARNING_PATHWAY_FIELD, learningPathwayIds.size());
+        map.put(STANDALONE_ASSESSMENT, standaloneIds.size());
+
+        Map<String, Object> contentIds = new HashMap<>();
+        contentIds.put(Constants.TRAINING_PLAN, trainingPlanIds);
+        contentIds.put(Constants.APAR, aparIds);
+        contentIds.put(CA_PROGRAM, getCaProgramIdentifiers(enrolmentDictionary));
+        contentIds.put(LEARNING_PATHWAY_FIELD, learningPathwayIds);
+        contentIds.put(STANDALONE_ASSESSMENT, standaloneIds);
+        List<String> moderatedContentIds = getModeratedContentIdentifiers(userId, orgId);
+
+        map.put(MODERATED_CONTENT, moderatedContentIds.size());
+        contentIds.put(MODERATED_CONTENT, moderatedContentIds);
+        map.put(CONTENT_IDS, contentIds);
+
+
         return map;
     }
 
-    private int getModeratedContentCount(String userId, String orgId) throws Exception {
+    private List<String> getModeratedContentIdentifiers(String userId, String orgId) throws Exception {
         String redisKey = Constants.MODERATED_COURSE_COUNT_REDIS_KEY_PREFIX + userId;
         String cached = redisCacheMgr.getFromCache(redisKey);
 
@@ -686,24 +704,31 @@ public class CourseAccessServiceImpl {
         if (StringUtils.hasText(cached)) {
             moderatedMap = objectMapper.readValue(
                     cached, new TypeReference<Map<String, Object>>() {});
+
             if (moderatedMap.containsKey(orgId)) {
-                log.info("moderatedCourseCount cache HIT for userId: {} orgId: {}", userId, orgId);
-                return (int) moderatedMap.get(orgId);
+                log.info("moderatedContentIdentifiers cache HIT for userId: {} orgId: {}", userId, orgId);
+                return (List<String>) moderatedMap.get(orgId);
             }
+
             log.info("orgId not in map for userId: {}, calling search API", userId);
         } else {
-            log.info("moderatedCourseCount cache MISS for userId: {}", userId);
+            log.info("moderatedContentIdentifiers cache MISS for userId: {}", userId);
         }
-        int count = getModeratedCourseCount(orgId);
-        moderatedMap.put(orgId, count);
-        redisCacheMgr.putInCache(redisKey,
-                objectMapper.writeValueAsString(moderatedMap));
-        log.info("moderatedCourseCount updated in Redis for userId: {} orgId: {}", userId, orgId);
 
-        return count;
+        List<String> identifiers = getModeratedCourseIdentifiers(orgId);
+
+        moderatedMap.put(orgId, identifiers);
+
+        redisCacheMgr.putInCache(
+                redisKey,
+                objectMapper.writeValueAsString(moderatedMap));
+
+        log.info("moderatedContentIdentifiers updated in Redis for userId: {} orgId: {}", userId, orgId);
+
+        return identifiers;
     }
 
-    private int getAssignedCourseCount(String userId, String courseCategory, String authToken) {
+    private List<String> getAssignedCourseCount(String userId, String courseCategory, String authToken) {
         try {
             Map<String, Object> request = new HashMap<>();
             request.put(Constants.COURSE_CATEGORY, courseCategory);
@@ -711,45 +736,69 @@ public class CourseAccessServiceImpl {
             if (response != null && response.getResult() != null) {
                 List<Map<String, Object>> courses = (List<Map<String, Object>>)
                         response.getResult().get(Constants.CONTENT);
-                return CollectionUtils.isEmpty(courses) ? 0 : courses.size();
+                return courses.stream()
+                        .map(course -> (String) course.get(Constants.IDENTIFIER))
+                        .collect(Collectors.toList());
             }
         } catch (Exception e) {
             log.error("Error fetching count for courseCategory: {}, userId: {}, error: {}",
                     courseCategory, userId, e.getMessage());
         }
-        return 0;
+        return Collections.EMPTY_LIST;
     }
 
-    private int getModeratedCourseCount(String orgId) {
+    private List<String> getModeratedCourseIdentifiers(String orgId) {
         try {
             String requestBody = String.format(moderatedCourseSearchRequest, orgId);
             Map<String, Object> requestMap = objectMapper.readValue(
                     requestBody, new TypeReference<Map<String, Object>>() {});
+
             String searchUrl = sbSearchServiceHost + sbCompositeV4Search;
-            Map<String, Object> searchResponse = outboundRequestHandlerService
-                    .fetchResultUsingPost(searchUrl, requestMap, null);
+
+            Map<String, Object> searchResponse =
+                    outboundRequestHandlerService.fetchResultUsingPost(searchUrl, requestMap, null);
+
             if (MapUtils.isNotEmpty(searchResponse)) {
-                Map<String, Object> result = (Map<String, Object>) searchResponse.get(Constants.RESULT);
-                if (result != null && result.containsKey(Constants.COUNT)) {
-                    return ((Number) result.get(Constants.COUNT)).intValue();
+
+                Map<String, Object> result =
+                        (Map<String, Object>) searchResponse.get(Constants.RESULT);
+
+                if (result != null && result.containsKey(Constants.CONTENT)) {
+
+                    List<Map<String, Object>> contents =
+                            (List<Map<String, Object>>) result.get(Constants.CONTENT);
+
+                    return contents.stream()
+                            .map(content -> (String) content.get(Constants.IDENTIFIER))
+                            .collect(Collectors.toList());
                 }
             }
+
         } catch (Exception e) {
-            log.error("Error fetching moderated course count for orgId: {}, error: {}",
+            log.error("Error fetching moderated course identifiers for orgId: {}, error: {}",
                     orgId, e.getMessage());
         }
-        return 0;
+
+        return Collections.emptyList();
     }
 
     private Map<String, Map<String, Object>> callEnrolmentDictionaryApi(
-            String userToken) throws Exception {
+            String userToken, String userId) throws Exception {
 
         Map<String, String> headers = new HashMap<>();
         headers.put(X_AUTH_TOKEN, userToken);
+        headers.put(CONTENT_TYPE_KEY, APPLICATION_JSON);
+
+        Map<String, Object> request = new HashMap<>();
+
+        Map<String, Object> requestBody = new HashMap<>();
+        requestBody.put(Constants.USER_ID, userId);
+
+        request.put(Constants.REQUEST, requestBody);
 
         Map<String, Object> apiResponse =
-                outboundRequestHandlerService.fetchResultUsingGet(
-                        lmsServiceHost + enrolmentDictionaryUrl,
+                outboundRequestHandlerService.fetchResultUsingPost(
+                        lmsServiceHost + enrolmentDictionaryUrl,request,
                         headers);
 
         if (MapUtils.isEmpty(apiResponse)) {
@@ -785,17 +834,24 @@ public class CourseAccessServiceImpl {
                 && (status.intValue() == 0 || status.intValue() == 1);
     }
 
-    private int getStandaloneAssessmentCount(
+
+    private List<String> getStandaloneAssessmentIdentifiers(
             Map<String, Map<String, Object>> enrolmentDictionary) {
+
         if (MapUtils.isEmpty(enrolmentDictionary)) {
-            return 0;
+            return Collections.emptyList();
         }
-        return (int) enrolmentDictionary.values()
+
+        return enrolmentDictionary.entrySet()
                 .stream()
-                .filter(this::isActiveInProgress)
-                .filter(this::isStandaloneAssessment)
-                .count();
+                .filter(entry -> isActiveInProgress(entry.getValue()))
+                .filter(entry -> isNotCompleted(entry.getValue()))
+                .filter(entry -> isBatchEndDateValid(entry.getValue()))
+                .filter(entry -> isStandaloneAssessment(entry.getValue()))
+                .map(Map.Entry::getKey)
+                .collect(Collectors.toList());
     }
+
 
     private int getCaProgramCount(Map<String, Map<String, Object>> enrolmentDictionary) {
         if (MapUtils.isEmpty(enrolmentDictionary)) {
@@ -804,8 +860,42 @@ public class CourseAccessServiceImpl {
         return (int) enrolmentDictionary.values()
                 .stream()
                 .filter(this::isActiveInProgress)
+                .filter(this::isNotCompleted)
+                .filter(this::isBatchEndDateValid)
                 .filter(this::isCAProgram)
                 .count();
+    }
+
+    private boolean isBatchEndDateValid(Map<String, Object> enrolment) {
+        Object batchEndDate = enrolment.get(BATCH_END_DATE);
+
+        if (batchEndDate == null) {
+            return true;
+        }
+
+        LocalDate endDate = LocalDate.parse(batchEndDate.toString());
+        return !endDate.isBefore(LocalDate.now());
+    }
+
+    private boolean isNotCompleted(Map<String, Object> enrolment) {
+        Object status = enrolment.get(Constants.STATUS);
+        return status != null && Integer.parseInt(status.toString()) != 2;
+    }
+
+    private List<String> getCaProgramIdentifiers(
+            Map<String, Map<String, Object>> enrolmentDictionary) {
+
+        if (MapUtils.isEmpty(enrolmentDictionary)) {
+            return Collections.emptyList();
+        }
+
+        return enrolmentDictionary.entrySet().stream()
+                .filter(entry -> isActiveInProgress(entry.getValue()))
+                .filter(entry -> isNotCompleted(entry.getValue()))
+                .filter(entry -> isBatchEndDateValid(entry.getValue()))
+                .filter(entry -> isCAProgram(entry.getValue()))
+                .map(Map.Entry::getKey)   // course identifier (do_xxx)
+                .collect(Collectors.toList());
     }
 
 }

@@ -618,6 +618,7 @@ public class Constants {
     public static final String COURSE_ID_KEY = "courseid";
     public static final String PRIMARY_CATEGORY_STANDALONE_ASSESSMENT = "Standalone Assessment";
     public static final String COURSE_CATEGORY_INVITE_ONLY_ASSESSMENT = "Invite-Only Assessment";
+    public static final String BATCH_END_DATE   = "batchEndDate";
 
     private Constants() {
     }

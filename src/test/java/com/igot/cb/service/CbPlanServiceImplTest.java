@@ -1789,7 +1789,7 @@ class CbPlanServiceImplTest {
         Mockito.when(accessTokenValidator.fetchUserIdFromAccessToken(Mockito.anyString(), Mockito.any()))
                 .thenReturn("user1");
 
-        Mockito.when(requestValidator.validateCbPlanCreateRequest(Mockito.any(), Mockito.anyBoolean(), Mockito.anyString()))
+        Mockito.when(requestValidator.validateCbPlanCreateRequest(Mockito.any(), Mockito.anyBoolean(), Mockito.anyString(), Mockito.anyBoolean()))
                 .thenReturn(List.of("error1"));
 
         ApiResponse resp = cbPlanService.createCbPlan(request, "org1", "token");
@@ -1805,7 +1805,7 @@ class CbPlanServiceImplTest {
         Mockito.when(accessTokenValidator.fetchUserIdFromAccessToken(Mockito.anyString(), Mockito.any()))
                 .thenReturn("user1");
 
-        Mockito.when(requestValidator.validateCbPlanCreateRequest(Mockito.any(), Mockito.anyBoolean(), Mockito.anyString()))
+        Mockito.when(requestValidator.validateCbPlanCreateRequest(Mockito.any(), Mockito.anyBoolean(), Mockito.anyString(), Mockito.anyBoolean()))
                 .thenReturn(Collections.emptyList());
 
         Map<String, Object> cassResp = new HashMap<>();

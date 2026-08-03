@@ -28,13 +28,18 @@ public class RequestValidator {
     }
 
     public List<String> validateCbPlanCreateRequest(ApiRequest request, boolean isCCA, String loggedInOrgId) {
+        return validateCbPlanCreateRequest(request, isCCA, loggedInOrgId, false);
+    }
+
+    public List<String> validateCbPlanCreateRequest(ApiRequest request, boolean isCCA, String loggedInOrgId,
+            boolean isAdmin) {
         List<String> errors = new ArrayList<>();
         Map<String, Object> rawRequest = (Map<String, Object>) request.getRequest();
         errors = validateCbPlanRequest(rawRequest);
         if (CollectionUtils.isNotEmpty(errors)) {
             return errors;
         }
-        return validateContextData(rawRequest, isCCA, loggedInOrgId);
+        return validateContextData(rawRequest, isCCA, loggedInOrgId, null, isAdmin);
     }
 
     public List<String> validateCbPlanRequest(Map<String, Object> request) {
@@ -61,11 +66,16 @@ public class RequestValidator {
     }
 
     public List<String> validateContextData(Map<String, Object> request, boolean isCCA, String userOrgId) {
-        return validateContextData(request, isCCA, userOrgId, null);
+        return validateContextData(request, isCCA, userOrgId, null, false);
     }
 
     public List<String> validateContextData(Map<String, Object> request, boolean isCCA, String userOrgId,
             Set<String> rootOrgIdsInCriteria) {
+        return validateContextData(request, isCCA, userOrgId, rootOrgIdsInCriteria, false);
+    }
+
+    public List<String> validateContextData(Map<String, Object> request, boolean isCCA, String userOrgId,
+            Set<String> rootOrgIdsInCriteria, boolean isAdmin) {
         List<String> errors = new ArrayList<>();
 
         if (!request.containsKey(Constants.CONTEXT_DATA_REQUEST)) {
@@ -153,7 +163,8 @@ public class RequestValidator {
                     return errors;
                 }
                 criteria.put(Constants.CRITERIA_VALUE, criteriaValues);
-                if (Constants.ROOT_ORG_ID.equalsIgnoreCase(criteriaKey)) {
+                if (Constants.ROOT_ORG_ID.equalsIgnoreCase(criteriaKey)
+                        || Constants.TARGETED_ORGANISATION.equalsIgnoreCase(criteriaKey)) {
                     rootOrgCriteriaFound = true;
                     rootOrgIdsInCriteria.addAll(criteriaValues);
                 }
@@ -190,7 +201,7 @@ public class RequestValidator {
                 return errors; // only one rootOrgId allowed if not CCA
             } else if (rootOrgIdsInCriteria.size() == 1) {
                 String rootOrgId = rootOrgIdsInCriteria.iterator().next();
-                if (!StringUtils.equalsIgnoreCase(rootOrgId, userOrgId)) {
+                if (!isAdmin && !StringUtils.equalsIgnoreCase(rootOrgId, userOrgId)) {
                     errors.add("Validation Error: ROOT_ORG_ID in criteria does not match logged-in user's orgId");
                     return errors; // rootOrgId must match logged-in user's orgId
                 }

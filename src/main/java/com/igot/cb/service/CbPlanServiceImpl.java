@@ -84,6 +84,34 @@ public class CbPlanServiceImpl {
     }
 
     public ApiResponse createCbPlan(ApiRequest request, String userOrgId, String authUserToken) {
+        return createCbPlan(request, userOrgId, authUserToken, false);
+    }
+
+    /**
+     * Admin (aicbp) entry point for create. targetedOrganisation is required here; its value is
+     * assigned to orgIdList and forwarded as userOrgId into the existing createCbPlan, with isAdmin=true
+     * only to skip the "criteria doesn't match logged-in user's orgId" check (there's no logged-in
+     * user's orgId to match against for an admin request - the whole point is to target another org).
+     */
+    @SuppressWarnings("unchecked")
+    public ApiResponse createCbPlanByAdmin(ApiRequest request, String authUserToken) {
+        String targetedOrganisation = extractTargetedOrganisation(request);
+        if (StringUtils.isBlank(targetedOrganisation)) {
+            ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_CB_PLAN_CREATE);
+            response.getParams().setStatus(Constants.FAILED);
+            response.getParams().setErr("targetedOrganisation is required");
+            response.setResponseCode(HttpStatus.BAD_REQUEST);
+            return response;
+        }
+        ((Map<String, Object>) request.getRequest()).put(Constants.ORG_ID_LIST, List.of(targetedOrganisation));
+        return createCbPlan(request, targetedOrganisation, authUserToken, true);
+    }
+
+    /**
+     * @param isAdmin when true, skips the check that the criteria's ROOT_ORG_ID/targetedOrganisation
+     *                matches the logged-in user's orgId (userOrgId is still used as-is otherwise).
+     */
+    public ApiResponse createCbPlan(ApiRequest request, String userOrgId, String authUserToken, boolean isAdmin) {
         ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_CB_PLAN_CREATE);
         try {
             String userId = accessTokenValidator.fetchUserIdFromAccessToken(authUserToken, response);
@@ -101,7 +129,7 @@ public class CbPlanServiceImpl {
                 return response;
             }
 
-            List<String> validations = requestValidator.validateCbPlanCreateRequest(request, isCCA, userOrgId);
+            List<String> validations = requestValidator.validateCbPlanCreateRequest(request, isCCA, userOrgId, isAdmin);
             if (CollectionUtils.isNotEmpty(validations)) {
                 response.getParams().setStatus(Constants.FAILED);
                 response.getParams().setErr(mapper.writeValueAsString(validations));
@@ -252,6 +280,32 @@ public class CbPlanServiceImpl {
 
     public ApiResponse publishCbPlan(ApiRequest request, String userOrgId, String authUserToken,
             List<String> userRoles) {
+        return publishCbPlan(request, userOrgId, authUserToken, userRoles, false);
+    }
+
+    /**
+     * Admin (aicbp) entry point for publish - targetedOrganisation is required and forwarded as
+     * userOrgId, same as createCbPlanByAdmin. No userRoles header for aicbp: isAdmin=true skips the
+     * creator/authorized-role check entirely, so only a valid token is required.
+     */
+    public ApiResponse publishCbPlanByAdmin(ApiRequest request, String authUserToken) {
+        String targetedOrganisation = extractTargetedOrganisation(request);
+        if (StringUtils.isBlank(targetedOrganisation)) {
+            ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_CB_PLAN_PUBLISH);
+            response.getParams().setStatus(Constants.FAILED);
+            response.getParams().setErr("targetedOrganisation is required");
+            response.setResponseCode(HttpStatus.BAD_REQUEST);
+            return response;
+        }
+        return publishCbPlan(request, targetedOrganisation, authUserToken, Collections.emptyList(), true);
+    }
+
+    /**
+     * @param isAdmin when true, skips the creator/authorized-role check and the check that the
+     *                criteria's ROOT_ORG_ID/targetedOrganisation matches the logged-in user's orgId.
+     */
+    public ApiResponse publishCbPlan(ApiRequest request, String userOrgId, String authUserToken,
+            List<String> userRoles, boolean isAdmin) {
         ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_CB_PLAN_PUBLISH);
         Map<String, Object> incomingRequest = (Map<String, Object>) request.getRequest();
         try {
@@ -278,18 +332,23 @@ public class CbPlanServiceImpl {
                 return response;
             }
 
-            if (!(userId.equals(existingCbPlan.get(Constants.CREATED_BY)) ||
-                    serverProperties.getCbPlanUpdatePublishAuthorizedRoles().stream().anyMatch(
-                            roles -> CollectionUtils.isNotEmpty(userRoles) && userRoles.contains(roles)))) {
-                response.getParams().setStatus(Constants.FAILED);
-                response.getParams().setErr("Not Authorized to update cbp Plan");
-                response.setResponseCode(HttpStatus.BAD_REQUEST);
-                return response;
+            if (!isAdmin){
+                if (!(userId.equals(existingCbPlan.get(Constants.CREATED_BY)) ||
+                        serverProperties.getCbPlanUpdatePublishAuthorizedRoles().stream().anyMatch(
+                                roles -> CollectionUtils.isNotEmpty(userRoles) && userRoles.contains(roles)))) {
+                    response.getParams().setStatus(Constants.FAILED);
+                    response.getParams().setErr("Not Authorized to update cbp Plan");
+                    response.setResponseCode(HttpStatus.BAD_REQUEST);
+                    return response;
+                }
             }
-
             String rootOrgId = getRootOrgFromUser(userId, response);
             if (Constants.FAILED.equalsIgnoreCase(response.getParams().getStatus())) {
                 return response;
+            }
+
+            if (isAdmin){
+                rootOrgId = userOrgId;
             }
 
             boolean isCCA = getCCAFromOrg(rootOrgId, response);
@@ -311,19 +370,19 @@ public class CbPlanServiceImpl {
             List<String> errors = new ArrayList<>();
             if (Constants.LIVE.equalsIgnoreCase(existingPlanStatus)) {
                 // This will initialize the existing rootOrgIds in the Criteria from contextData
-                requestValidator.validateContextData(existingCbPlan, isCCA, userOrgId, existingRootOrgIdsInCriteria);
+                requestValidator.validateContextData(existingCbPlan, isCCA, userOrgId, existingRootOrgIdsInCriteria, isAdmin);
                 // Need to update live plan with draft data if any
                 // Need to update lookup table entries
                 updatedRequest.putAll(prepareCbPlanForRePublish(existingCbPlan, incomingRequest, userId));
                 if (updatedRequest.containsKey(Constants.CONTEXT_DATA_REQUEST)) {
-                    errors = requestValidator.validateContextData(updatedRequest, isCCA, userOrgId, rootOrgIdsInCriteria);
+                    errors = requestValidator.validateContextData(updatedRequest, isCCA, userOrgId, rootOrgIdsInCriteria, isAdmin);
                 }
             } else if (Constants.DRAFT.equalsIgnoreCase(existingPlanStatus)) {
                 // Need to update comment and then publish.
                 // Need to update lookup table entries
                 updatedRequest.put(Constants.STATUS, Constants.LIVE);
                 updatedRequest.put(Constants.END_DATE_REQUEST, parseEndDate(existingCbPlan.get(Constants.END_DATE_REQUEST)));
-                errors = requestValidator.validateContextData(existingCbPlan, isCCA, userOrgId, rootOrgIdsInCriteria);                
+                errors = requestValidator.validateContextData(existingCbPlan, isCCA, userOrgId, rootOrgIdsInCriteria, isAdmin);
             } else {
                 response.getParams().setStatus(Constants.FAILED);
                 response.getParams().setErr(
@@ -452,6 +511,13 @@ public class CbPlanServiceImpl {
     }
 
     @SuppressWarnings("unchecked")
+    private String extractTargetedOrganisation(ApiRequest request) {
+        Map<String, Object> rawRequest = (Map<String, Object>) request.getRequest();
+        Object value = rawRequest.get(Constants.TARGETED_ORGANISATION);
+        return value != null ? String.valueOf(value) : null;
+    }
+
+    @SuppressWarnings("unchecked")
     private Set<String> extractUniqueRootOrgIds(Map<String, Object> rawRequest) {
         Set<String> orgIdSet = new HashSet<>();
 
@@ -485,7 +551,8 @@ public class CbPlanServiceImpl {
             if (criteriaList != null && !criteriaList.isEmpty()) {
                 for (Map<String, Object> criteria : criteriaList) {
                     String criteriaKey = (String) criteria.get(Constants.CRITERIA_KEY);
-                    if (Constants.ROOT_ORG_ID.equalsIgnoreCase(criteriaKey)) {
+                    if (Constants.ROOT_ORG_ID.equalsIgnoreCase(criteriaKey)
+                            || Constants.TARGETED_ORGANISATION.equalsIgnoreCase(criteriaKey)) {
                         List<String> values = (List<String>) criteria.get(Constants.CRITERIA_VALUE);
                         if (values != null && !values.isEmpty()) {
                             orgIdSet.addAll(values);
@@ -598,6 +665,7 @@ public class CbPlanServiceImpl {
             }
         }
         enrichData.put(Constants.CONTENT_TYPE, cbPlan.get(Constants.CONTENT_TYPE));
+        enrichData.put(Constants.PLAN_TYPE, cbPlan.get(Constants.PLAN_TYPE));
         enrichData.put(Constants.CREATED_AT, cbPlan.get(Constants.CREATED_AT_REQ));
         enrichData.put(Constants.CB_PUBLISHED_AT, cbPlan.get(Constants.CB_PUBLISHED_AT));
         enrichData.put(Constants.STATUS, cbPlan.get(Constants.STATUS));
@@ -871,6 +939,9 @@ public class CbPlanServiceImpl {
         cbPlan.put(Constants.IS_APAR, incomingRequest.get(Constants.IS_APAR));
         cbPlan.put(Constants.CONTEXT_DATA_REQUEST,
                 mapper.writeValueAsString(incomingRequest.get(Constants.CONTEXT_DATA_REQUEST)));
+        if (incomingRequest.containsKey(Constants.PLAN_TYPE)) {
+            cbPlan.put(Constants.PLAN_TYPE, incomingRequest.get(Constants.PLAN_TYPE));
+        }
         return cbPlan;
     }
 
@@ -891,6 +962,9 @@ public class CbPlanServiceImpl {
         updatedRequest.put(Constants.IS_APAR, incomingRequest.get(Constants.IS_APAR));
         updatedRequest.put(Constants.CONTEXT_DATA_REQUEST,
                 mapper.writeValueAsString(incomingRequest.get(Constants.CONTEXT_DATA_REQUEST)));
+        if (incomingRequest.containsKey(Constants.PLAN_TYPE)) {
+            updatedRequest.put(Constants.PLAN_TYPE, incomingRequest.get(Constants.PLAN_TYPE));
+        }
         return updatedRequest;
     }
 
@@ -930,6 +1004,9 @@ public class CbPlanServiceImpl {
         if (dataInDraftObject.containsKey(Constants.CONTENT_LIST)) {
             updatedRequest.put(Constants.CONTENT_LIST,
                     dataInDraftObject.get(Constants.CONTENT_LIST));
+        }
+        if (dataInDraftObject.containsKey(Constants.PLAN_TYPE)) {
+            updatedRequest.put(Constants.PLAN_TYPE, dataInDraftObject.get(Constants.PLAN_TYPE));
         }
         updatedRequest.put(Constants.COMMENT, incomingRequest.get(Constants.COMMENT));
 

@@ -437,4 +437,96 @@ public class ContentStateServiceImpl {
             return inputTime.after(existingTime) ? inputTime : existingTime;
         }
     }
+
+    public ApiResponse readUserContentConsumptionV2(Map<String, Object> requestBody) {
+        log.info("CourseService::readUserContentConsumptionV2:inside");
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_USER_CONTENT_CONSUMPTION_V2_READ);
+        try {
+            if (MapUtils.isEmpty(requestBody)) {
+                setFailedResponse(response, "Request body is empty");
+                return response;
+            }
+
+            Map<String, Object> requestMap = validateAndGetRequest(response, requestBody);
+            if (requestMap == null) return response;
+
+            // Validate and extract mandatory fields
+            String[] mandatoryFields = {Constants.USER_ID, Constants.COURSE_ID, Constants.BATCH_ID};
+            for (String field : mandatoryFields) {
+                String value = (String) requestMap.get(field);
+                if (StringUtils.isBlank(value)) {
+                    setFailedResponse(response, field + " is mandatory and cannot be empty or null");
+                    return response;
+                }
+            }
+
+            // Build property map and fetch records
+            Map<String, Object> propertyMap = new HashMap<>();
+            propertyMap.put(Constants.USER_ID, (String) requestMap.get(Constants.USER_ID));
+            propertyMap.put(Constants.COURSE_ID, (String) requestMap.get(Constants.COURSE_ID));
+            propertyMap.put(Constants.BATCH_ID, (String) requestMap.get(Constants.BATCH_ID));
+
+            List<String> fields = extractFieldsList(requestMap);
+            List<Map<String, Object>> records = cassandraOperation.getRecordsByProperties(
+                    Constants.KEYSPACE_SUNBIRD_COURSE, Constants.USER_CONTENT_CONSUMPTION_V2,
+                    propertyMap, fields, null);
+
+            log.info("Retrieved {} consumption records", records.size());
+
+            // Transform records and set response
+            List<Map<String, Object>> transformed = records.stream()
+                    .map(this::transformRecord)
+                    .toList();
+
+            response.getResult().put(Constants.CONSUMPTION_RECORDS,
+                    objectMapper.convertValue(convertInstantsToString(transformed), new TypeReference<Object>() {}));
+            response.setResponseCode(HttpStatus.OK);
+            return response;
+
+        } catch (Exception e) {
+            log.error("Error while reading user content consumption v2 records", e);
+            setFailedResponse(response, "Failed to read consumption records: " + e.getMessage());
+            return response;
+        }
+    }
+
+    private Map<String, Object> validateAndGetRequest(ApiResponse response, Map<String, Object> requestBody) {
+        Object requestObj = requestBody.get(Constants.REQUEST);
+        if (!(requestObj instanceof Map)) {
+            setFailedResponse(response, "Missing or invalid 'request' object in payload");
+            return null;
+        }
+        return (Map<String, Object>) requestObj;
+    }
+
+    private List<String> extractFieldsList(Map<String, Object> requestMap) {
+        Object fieldsObj = requestMap.get(Constants.FIELDS);
+        if (fieldsObj instanceof List && !((List<?>) fieldsObj).isEmpty()) {
+            List<String> fields = ((List<?>) fieldsObj).stream()
+                    .filter(Objects::nonNull)
+                    .map(Object::toString)
+                    .toList();
+            log.info("Requested fields: {}", fields);
+            return fields;
+        }
+        log.info("No specific fields requested, fetching all fields");
+        return null;
+    }
+
+    private Map<String, Object> transformRecord(Map<String, Object> record) {
+        Map<String, Object> transformed = new HashMap<>();
+        record.forEach((key, value) -> {
+            if (Constants.PROGRESSDETAILS.equalsIgnoreCase(key) && value instanceof String) {
+                try {
+                    transformed.put(key, objectMapper.readValue((String) value, Object.class));
+                } catch (Exception ex) {
+                    log.error("Error parsing progressdetails JSON: {}", value, ex);
+                    transformed.put(key, value);
+                }
+            } else {
+                transformed.put(key, value);
+            }
+        });
+        return transformed;
+    }
 }

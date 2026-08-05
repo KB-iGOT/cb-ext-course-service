@@ -787,18 +787,10 @@ public class CourseAccessServiceImpl {
 
         Map<String, String> headers = new HashMap<>();
         headers.put(X_AUTH_TOKEN, userToken);
-        headers.put(CONTENT_TYPE_KEY, APPLICATION_JSON);
-
-        Map<String, Object> request = new HashMap<>();
-
-        Map<String, Object> requestBody = new HashMap<>();
-        requestBody.put(Constants.USER_ID, userId);
-
-        request.put(Constants.REQUEST, requestBody);
 
         Map<String, Object> apiResponse =
-                outboundRequestHandlerService.fetchResultUsingPost(
-                        lmsServiceHost + enrolmentDictionaryUrl,request,
+                outboundRequestHandlerService.fetchResultUsingGet(
+                        lmsServiceHost + enrolmentDictionaryUrl,
                         headers);
 
         if (MapUtils.isEmpty(apiResponse)) {

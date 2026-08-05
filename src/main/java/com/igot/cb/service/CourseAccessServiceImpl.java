@@ -669,7 +669,7 @@ public class CourseAccessServiceImpl {
             }
         }
         java.util.List<String> learningPathwayIds = getAssignedCourseCount(userId, Constants.LEARNING_PATHWAY, authToken);
-        Map<String, Map<String, Object>> enrolmentDictionary = callEnrolmentDictionaryApi(authToken, userId);
+        Map<String, Map<String, Object>> enrolmentDictionary = callEnrolmentDictionaryApi(authToken);
         int caProgramCount = getCaProgramCount(enrolmentDictionary);
         java.util.List<String> standaloneIds = getStandaloneAssessmentIdentifiers(enrolmentDictionary);
         Map<String, Object> map = new HashMap<>();
@@ -783,7 +783,7 @@ public class CourseAccessServiceImpl {
     }
 
     private Map<String, Map<String, Object>> callEnrolmentDictionaryApi(
-            String userToken, String userId) throws Exception {
+            String userToken) throws Exception {
 
         Map<String, String> headers = new HashMap<>();
         headers.put(X_AUTH_TOKEN, userToken);

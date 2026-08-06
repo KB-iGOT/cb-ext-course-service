@@ -285,7 +285,7 @@ public class CourseAccessServiceImpl {
             String redisKey = Constants.ACCESS_KEY + "_" + courseCategory + "_" + userId;
             List<Map<String, Object>> cacheResult = fetchFromRedisCache(redisKey);
 
-            if (cacheResult != null) {
+            if (!CollectionUtils.isEmpty(cacheResult)) {
                 response.getResult().put(Constants.CONTENT, cacheResult);
                 return response;
             }
@@ -335,6 +335,7 @@ public class CourseAccessServiceImpl {
                                 .filter(child -> !leafSet.contains(child))
                                 .collect(Collectors.toList());
                         contentDetails.put(Constants.COURSE_UNITS, courseUnits);
+                        contentDetails.put(Constants.END_DATE_CAMEL, (String) contentDetails.get(Constants.CHILD_NODES));
 }
                     // --- End custom logic for courseUnits ---
                     userCourses.add(contentDetails);
@@ -670,7 +671,8 @@ public class CourseAccessServiceImpl {
         }
         java.util.List<String> learningPathwayIds = getAssignedCourseCount(userId, Constants.LEARNING_PATHWAY, authToken);
         Map<String, Map<String, Object>> enrolmentDictionary = callEnrolmentDictionaryApi(authToken);
-        int caProgramCount = getCaProgramCount(enrolmentDictionary);
+        List<String> caProgramIds = getFilteredCaProgramIdentifiers(userId, authToken, enrolmentDictionary);
+        int caProgramCount = caProgramIds.size();
         java.util.List<String> standaloneIds = getStandaloneAssessmentIdentifiers(enrolmentDictionary);
         Map<String, Object> map = new HashMap<>();
         map.put(Constants.TRAINING_PLAN, trainingPlanIds.size());
@@ -682,9 +684,9 @@ public class CourseAccessServiceImpl {
         Map<String, Object> contentIds = new HashMap<>();
         contentIds.put(Constants.TRAINING_PLAN, trainingPlanIds);
         contentIds.put(Constants.APAR, aparIds);
-        contentIds.put(CA_PROGRAM, getCaProgramIdentifiers(enrolmentDictionary));
         contentIds.put(LEARNING_PATHWAY_FIELD, learningPathwayIds);
         contentIds.put(STANDALONE_ASSESSMENT, standaloneIds);
+        contentIds.put(CA_PROGRAM, caProgramIds);
         List<String> moderatedContentIds = getModeratedContentIdentifiers(userId, orgId);
 
         map.put(MODERATED_CONTENT, moderatedContentIds.size());
@@ -705,7 +707,7 @@ public class CourseAccessServiceImpl {
             moderatedMap = objectMapper.readValue(
                     cached, new TypeReference<Map<String, Object>>() {});
 
-            if (moderatedMap.containsKey(orgId)) {
+            if (moderatedMap.containsKey(orgId) && MapUtils.isNotEmpty(moderatedMap)) {
                 log.info("moderatedContentIdentifiers cache HIT for userId: {} orgId: {}", userId, orgId);
                 return (List<String>) moderatedMap.get(orgId);
             }
@@ -886,8 +888,71 @@ public class CourseAccessServiceImpl {
                 .filter(entry -> isNotCompleted(entry.getValue()))
                 .filter(entry -> isBatchEndDateValid(entry.getValue()))
                 .filter(entry -> isCAProgram(entry.getValue()))
-                .map(Map.Entry::getKey)   // course identifier (do_xxx)
+                .map(Map.Entry::getKey)
                 .collect(Collectors.toList());
+    }
+
+    private List<String> getFilteredCaProgramIdentifiers(
+            String userId,
+            String authToken,
+            Map<String, Map<String, Object>> enrolmentDictionary) {
+
+        try {
+            Map<String, Object> request = new HashMap<>();
+            request.put(Constants.COURSE_CATEGORY,
+                    Constants.COURSE_CATEGORY_COMPREHENSIVE_ASSESSMENT_PROGRAM);
+
+            ApiResponse response =
+                    getAssignedCoursesForUserByAdmin(userId, request, authToken);
+
+            if (response == null || response.getResult() == null) {
+                return Collections.emptyList();
+            }
+
+            List<Map<String, Object>> assignedCourses =
+                    (List<Map<String, Object>>) response.getResult().get(Constants.CONTENT);
+
+            if (CollectionUtils.isEmpty(assignedCourses)) {
+                return Collections.emptyList();
+            }
+
+            LocalDate today = LocalDate.now();
+            List<String> identifiers = new ArrayList<>();
+
+            for (Map<String, Object> course : assignedCourses) {
+
+                String identifier = (String) course.get(Constants.IDENTIFIER);
+                String endDate = (String) course.get(END_DATE_KEY);
+
+                if (!StringUtils.hasText(endDate)) {
+                    identifiers.add(identifier);
+                    continue;
+                }
+
+                LocalDate contentEndDate = LocalDate.parse(endDate);
+
+                if (!contentEndDate.isBefore(today)) {
+                    identifiers.add(identifier);
+                    continue;
+                }
+
+                Map<String, Object> enrolment = enrolmentDictionary.get(identifier);
+
+                if (enrolment != null
+                        && isActiveInProgress(enrolment)
+                        && isNotCompleted(enrolment)) {
+
+                    identifiers.add(identifier);
+                }
+            }
+
+            return identifiers;
+
+        } catch (Exception e) {
+            log.error("Error filtering CA Program identifiers for userId: {}, error: {}",
+                    userId, e.getMessage(), e);
+            return Collections.emptyList();
+        }
     }
 
 }

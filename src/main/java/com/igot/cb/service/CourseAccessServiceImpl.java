@@ -95,6 +95,9 @@ public class CourseAccessServiceImpl {
     @Value("${lms.host}")
     private String lmsServiceHost;
 
+    @Value("${standalone.assessment.search.request}")
+    private String standaloneAssessmentSearchRequest;
+
     private final Map<String, List<String>> courseCategoryCache = new ConcurrentHashMap<>();
     private final Map<String, Long> cacheTimestamps = new ConcurrentHashMap<>();
 
@@ -647,55 +650,55 @@ public class CourseAccessServiceImpl {
         return contentInfoMap;
     }
 
-    private Map<String, Object> buildPersonalContentInfo(String userId, String orgId, String authToken) throws Exception {
-        List<String> aparIds = new ArrayList<>();;
-        List<String> trainingPlanIds = new ArrayList<>();
-        ApiResponse cbPlanResponse = cbPlanLearnerService.getCBPlanListForUser(orgId, userId, true);
-        if (cbPlanResponse != null
-                && cbPlanResponse.getResult() != null
-                && cbPlanResponse.getResult().containsKey(Constants.CONTENT)) {
-            List<Map<String, Object>> plans = (List<Map<String, Object>>)
-                    cbPlanResponse.getResult().get(Constants.CONTENT);
-            if (!CollectionUtils.isEmpty(plans)) {
-                 aparIds = plans.stream()
-                        .filter(p -> Boolean.TRUE.equals(p.get(Constants.IS_APAR)))
-                        .flatMap(p -> ((List<Map<String, Object>>) p.get(CONTENT_LIST)).stream())
-                        .map(content -> (String) content.get(Constants.IDENTIFIER))
-                        .collect(Collectors.toList());
-                 trainingPlanIds = plans.stream()
-                        .filter(p -> !Boolean.TRUE.equals(p.get(Constants.IS_APAR)))
-                        .flatMap(p -> ((List<Map<String, Object>>) p.get(CONTENT_LIST)).stream())
-                        .map(content -> (String) content.get(Constants.IDENTIFIER))
-                        .collect(Collectors.toList());
+        private Map<String, Object> buildPersonalContentInfo(String userId, String orgId, String authToken) throws Exception {
+            List<String> aparIds = new ArrayList<>();;
+            List<String> trainingPlanIds = new ArrayList<>();
+            ApiResponse cbPlanResponse = cbPlanLearnerService.getCBPlanListForUser(orgId, userId, true);
+            if (cbPlanResponse != null
+                    && cbPlanResponse.getResult() != null
+                    && cbPlanResponse.getResult().containsKey(Constants.CONTENT)) {
+                List<Map<String, Object>> plans = (List<Map<String, Object>>)
+                        cbPlanResponse.getResult().get(Constants.CONTENT);
+                if (!CollectionUtils.isEmpty(plans)) {
+                     aparIds = plans.stream()
+                            .filter(p -> Boolean.TRUE.equals(p.get(Constants.IS_APAR)))
+                            .flatMap(p -> ((List<Map<String, Object>>) p.get(CONTENT_LIST)).stream())
+                            .map(content -> (String) content.get(Constants.IDENTIFIER))
+                            .collect(Collectors.toList());
+                     trainingPlanIds = plans.stream()
+                            .filter(p -> !Boolean.TRUE.equals(p.get(Constants.IS_APAR)))
+                            .flatMap(p -> ((List<Map<String, Object>>) p.get(CONTENT_LIST)).stream())
+                            .map(content -> (String) content.get(Constants.IDENTIFIER))
+                            .collect(Collectors.toList());
+                }
             }
+            java.util.List<String> learningPathwayIds = getAssignedCourseCount(userId, Constants.LEARNING_PATHWAY, authToken);
+            Map<String, Map<String, Object>> enrolmentDictionary = callEnrolmentDictionaryApi(authToken);
+            List<String> caProgramIds = getFilteredCaProgramIdentifiers(userId, authToken, enrolmentDictionary);
+            int caProgramCount = caProgramIds.size();
+            java.util.List<String> standaloneIds = getStandaloneAssessmentIdentifiers(enrolmentDictionary);
+            Map<String, Object> map = new HashMap<>();
+            map.put(Constants.TRAINING_PLAN, trainingPlanIds.size());
+            map.put(Constants.APAR, aparIds.size());
+            map.put(CA_PROGRAM, caProgramCount);
+            map.put(LEARNING_PATHWAY_FIELD, learningPathwayIds.size());
+            map.put(STANDALONE_ASSESSMENT, standaloneIds.size());
+
+            Map<String, Object> contentIds = new HashMap<>();
+            contentIds.put(Constants.TRAINING_PLAN, trainingPlanIds);
+            contentIds.put(Constants.APAR, aparIds);
+            contentIds.put(LEARNING_PATHWAY_FIELD, learningPathwayIds);
+            contentIds.put(STANDALONE_ASSESSMENT, standaloneIds);
+            contentIds.put(CA_PROGRAM, caProgramIds);
+            List<String> moderatedContentIds = getModeratedContentIdentifiers(userId, orgId);
+
+            map.put(MODERATED_CONTENT, moderatedContentIds.size());
+            contentIds.put(MODERATED_CONTENT, moderatedContentIds);
+            map.put(CONTENT_IDS, contentIds);
+
+
+            return map;
         }
-        java.util.List<String> learningPathwayIds = getAssignedCourseCount(userId, Constants.LEARNING_PATHWAY, authToken);
-        Map<String, Map<String, Object>> enrolmentDictionary = callEnrolmentDictionaryApi(authToken);
-        List<String> caProgramIds = getFilteredCaProgramIdentifiers(userId, authToken, enrolmentDictionary);
-        int caProgramCount = caProgramIds.size();
-        java.util.List<String> standaloneIds = getStandaloneAssessmentIdentifiers(enrolmentDictionary);
-        Map<String, Object> map = new HashMap<>();
-        map.put(Constants.TRAINING_PLAN, trainingPlanIds.size());
-        map.put(Constants.APAR, aparIds.size());
-        map.put(CA_PROGRAM, caProgramCount);
-        map.put(LEARNING_PATHWAY_FIELD, learningPathwayIds.size());
-        map.put(STANDALONE_ASSESSMENT, standaloneIds.size());
-
-        Map<String, Object> contentIds = new HashMap<>();
-        contentIds.put(Constants.TRAINING_PLAN, trainingPlanIds);
-        contentIds.put(Constants.APAR, aparIds);
-        contentIds.put(LEARNING_PATHWAY_FIELD, learningPathwayIds);
-        contentIds.put(STANDALONE_ASSESSMENT, standaloneIds);
-        contentIds.put(CA_PROGRAM, caProgramIds);
-        List<String> moderatedContentIds = getModeratedContentIdentifiers(userId, orgId);
-
-        map.put(MODERATED_CONTENT, moderatedContentIds.size());
-        contentIds.put(MODERATED_CONTENT, moderatedContentIds);
-        map.put(CONTENT_IDS, contentIds);
-
-
-        return map;
-    }
 
     private List<String> getModeratedContentIdentifiers(String userId, String orgId) throws Exception {
         String redisKey = Constants.MODERATED_COURSE_COUNT_REDIS_KEY_PREFIX + userId;
@@ -785,7 +788,7 @@ public class CourseAccessServiceImpl {
     }
 
     private Map<String, Map<String, Object>> callEnrolmentDictionaryApi(
-            String userToken) throws Exception {
+            String userToken) {
 
         Map<String, String> headers = new HashMap<>();
         headers.put(X_AUTH_TOKEN, userToken);
@@ -809,17 +812,6 @@ public class CourseAccessServiceImpl {
         return (Map<String, Map<String, Object>>) result.get(Constants.RESPONSE);
     }
 
-    private boolean isStandaloneAssessment(Map<String, Object> item) {
-        return Constants.PRIMARY_CATEGORY_STANDALONE_ASSESSMENT.equals(item.get(PRIMARY_CATEGORY))
-                && Constants.COURSE_CATEGORY_INVITE_ONLY_ASSESSMENT
-                .equalsIgnoreCase(String.valueOf(item.get(COURSE_CATEGORY)));
-    }
-
-    private boolean isCAProgram(Map<String, Object> item) {
-        return Constants.COURSE_CATEGORY_COMPREHENSIVE_ASSESSMENT_PROGRAM
-                .equalsIgnoreCase(String.valueOf(item.get(COURSE_CATEGORY)));
-    }
-
     private boolean isActiveInProgress(Map<String, Object> enrolment) {
         Number status = (Number) enrolment.get(Constants.STATUS);
 
@@ -828,36 +820,38 @@ public class CourseAccessServiceImpl {
                 && (status.intValue() == 0 || status.intValue() == 1);
     }
 
-
     private List<String> getStandaloneAssessmentIdentifiers(
             Map<String, Map<String, Object>> enrolmentDictionary) {
 
-        if (MapUtils.isEmpty(enrolmentDictionary)) {
+        List<String> assessments = getStandaloneAssessmentIdentifiersFromSystem();
+
+        if (CollectionUtils.isEmpty(assessments)) {
             return Collections.emptyList();
         }
 
-        return enrolmentDictionary.entrySet()
-                .stream()
-                .filter(entry -> isActiveInProgress(entry.getValue()))
-                .filter(entry -> isNotCompleted(entry.getValue()))
-                .filter(entry -> isBatchEndDateValid(entry.getValue()))
-                .filter(entry -> isStandaloneAssessment(entry.getValue()))
-                .map(Map.Entry::getKey)
-                .collect(Collectors.toList());
-    }
+        List<String> identifiers = new ArrayList<>();
 
+        for (String identifier : assessments) {
 
-    private int getCaProgramCount(Map<String, Map<String, Object>> enrolmentDictionary) {
-        if (MapUtils.isEmpty(enrolmentDictionary)) {
-            return 0;
+            Map<String, Object> enrolment = enrolmentDictionary.get(identifier);
+
+            if (enrolment == null) {
+                identifiers.add(identifier);
+                continue;
+            }
+
+            if (!isNotCompleted(enrolment)) {
+                continue;
+            }
+
+            if (!isBatchEndDateValid(enrolment)) {
+                continue;
+            }
+
+            identifiers.add(identifier);
         }
-        return (int) enrolmentDictionary.values()
-                .stream()
-                .filter(this::isActiveInProgress)
-                .filter(this::isNotCompleted)
-                .filter(this::isBatchEndDateValid)
-                .filter(this::isCAProgram)
-                .count();
+
+        return identifiers;
     }
 
     private boolean isBatchEndDateValid(Map<String, Object> enrolment) {
@@ -874,22 +868,6 @@ public class CourseAccessServiceImpl {
     private boolean isNotCompleted(Map<String, Object> enrolment) {
         Object status = enrolment.get(Constants.STATUS);
         return status != null && Integer.parseInt(status.toString()) != 2;
-    }
-
-    private List<String> getCaProgramIdentifiers(
-            Map<String, Map<String, Object>> enrolmentDictionary) {
-
-        if (MapUtils.isEmpty(enrolmentDictionary)) {
-            return Collections.emptyList();
-        }
-
-        return enrolmentDictionary.entrySet().stream()
-                .filter(entry -> isActiveInProgress(entry.getValue()))
-                .filter(entry -> isNotCompleted(entry.getValue()))
-                .filter(entry -> isBatchEndDateValid(entry.getValue()))
-                .filter(entry -> isCAProgram(entry.getValue()))
-                .map(Map.Entry::getKey)
-                .collect(Collectors.toList());
     }
 
     private List<String> getFilteredCaProgramIdentifiers(
@@ -924,6 +902,15 @@ public class CourseAccessServiceImpl {
                 String identifier = (String) course.get(Constants.IDENTIFIER);
                 String endDate = (String) course.get(END_DATE_KEY);
 
+                Map<String, Object> enrolment = enrolmentDictionary.get(identifier);
+
+                if (enrolment != null) {
+                    if (!isNotCompleted(enrolment)
+                            || !isActiveInProgress(enrolment)) {
+                        continue;
+                    }
+                }
+
                 if (!StringUtils.hasText(endDate)) {
                     identifiers.add(identifier);
                     continue;
@@ -931,19 +918,12 @@ public class CourseAccessServiceImpl {
 
                 LocalDate contentEndDate = LocalDate.parse(endDate);
 
-                if (!contentEndDate.isBefore(today)) {
-                    identifiers.add(identifier);
+
+                if (contentEndDate.isBefore(today)) {
                     continue;
                 }
 
-                Map<String, Object> enrolment = enrolmentDictionary.get(identifier);
-
-                if (enrolment != null
-                        && isActiveInProgress(enrolment)
-                        && isNotCompleted(enrolment)) {
-
-                    identifiers.add(identifier);
-                }
+                identifiers.add(identifier);
             }
 
             return identifiers;
@@ -953,6 +933,42 @@ public class CourseAccessServiceImpl {
                     userId, e.getMessage(), e);
             return Collections.emptyList();
         }
+    }
+
+    private List<String> getStandaloneAssessmentIdentifiersFromSystem() {
+        try {
+
+            Map<String, Object> requestMap = objectMapper.readValue(
+                    standaloneAssessmentSearchRequest,
+                    new TypeReference<Map<String, Object>>() {});
+
+            String searchUrl = sbSearchServiceHost + sbCompositeV4Search;
+
+            Map<String, Object> searchResponse =
+                    outboundRequestHandlerService.fetchResultUsingPost(searchUrl, requestMap, null);
+
+            if (MapUtils.isNotEmpty(searchResponse)) {
+
+                Map<String, Object> result =
+                        (Map<String, Object>) searchResponse.get(Constants.RESULT);
+
+                if (result != null && result.containsKey(Constants.CONTENT)) {
+
+                    List<Map<String, Object>> contents =
+                            (List<Map<String, Object>>) result.get(Constants.CONTENT);
+
+                    return contents.stream()
+                            .map(content -> (String) content.get(Constants.IDENTIFIER))
+                            .collect(Collectors.toList());
+                }
+            }
+
+        } catch (Exception e) {
+            log.error("Error fetching Standalone Assessment identifiers, error: {}",
+                    e.getMessage(), e);
+        }
+
+        return Collections.emptyList();
     }
 
 }

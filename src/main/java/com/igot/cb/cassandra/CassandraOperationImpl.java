@@ -23,6 +23,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.*;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 
@@ -128,6 +129,60 @@ public class CassandraOperationImpl implements CassandraOperation {
             throw e;
         }
         return response;
+    }
+
+    @Override
+    public Map<String, Object> updateRecord(String keyspaceName, String tableName, Map<String, Object> updateAttributes,
+                                             Map<String, Object> compositeKey, Supplier<Boolean> preCommitValidator,
+                                             Runnable onCommitFailureRollback) {
+        Map<String, Object> response = new HashMap<>();
+        boolean validationPassed = false;
+        try {
+            UpdateStart updateStart = QueryBuilder.update(keyspaceName, tableName);
+            UpdateWithAssignments updateWithAssignments = updateStart.set(updateAttributes.entrySet().stream()
+                    .map(entry -> Assignment.setColumn(entry.getKey(), QueryBuilder.literal(entry.getValue())))
+                    .toArray(Assignment[]::new));
+            com.datastax.oss.driver.api.querybuilder.update.Update update = updateWithAssignments.where(compositeKey.entrySet().stream()
+                    .map(entry -> Relation.column(entry.getKey()).isEqualTo(QueryBuilder.literal(entry.getValue())))
+                    .toArray(Relation[]::new));
+            SimpleStatement statement = update.build();
+
+            if (!preCommitValidator.get()) {
+                String abortMsg = String.format("Update aborted for %s: pre-commit validation failed", tableName);
+                log.error(abortMsg);
+                response.put(Constants.RESPONSE, Constants.FAILED);
+                response.put(Constants.ERROR_MESSAGE, abortMsg);
+                return response;
+            }
+            validationPassed = true;
+
+            connectionManager.getSession(keyspaceName).execute(statement);
+            response.put(Constants.RESPONSE, Constants.SUCCESS);
+        } catch (Exception e) {
+            if (validationPassed) {
+                log.error("ES_CASSANDRA_DIVERGENCE: Cassandra commit failed for {} after pre-commit validation already succeeded — attempting rollback. Cause: {}",
+                        tableName, e.getMessage());
+                runRollbackSafely(tableName, onCommitFailureRollback);
+            }
+            String errMsg = String.format("Exception occurred while updating record to %s: %s", tableName, e.getMessage());
+            log.error(errMsg, e);
+            response.put(Constants.RESPONSE, Constants.FAILED);
+            response.put(Constants.ERROR_MESSAGE, errMsg);
+            throw e;
+        }
+        return response;
+    }
+
+    private void runRollbackSafely(String tableName, Runnable onCommitFailureRollback) {
+        if (onCommitFailureRollback == null) {
+            return;
+        }
+        try {
+            onCommitFailureRollback.run();
+        } catch (Exception rollbackEx) {
+            log.error("ES_CASSANDRA_DIVERGENCE: rollback also failed for {} — manual reconciliation required. Cause: {}",
+                    tableName, rollbackEx.getMessage(), rollbackEx);
+        }
     }
 
     @Override

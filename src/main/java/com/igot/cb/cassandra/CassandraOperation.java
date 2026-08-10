@@ -5,6 +5,7 @@ import com.igot.cb.model.ApiResponse;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 /**
  * @author Mahesh RV
@@ -29,6 +30,22 @@ public interface CassandraOperation {
     public Map<String, Object> updateRecord(String keyspaceName, String tableName,
         Map<String, Object> updateAttributes,
         Map<String, Object> compositeKey
+    );
+
+    /**
+     * Updates a record only after a pre-commit validation (e.g. an ElasticSearch sync) succeeds,
+     * so the Cassandra write and the external sync it depends on never diverge in the caller's favor.
+     * If the Cassandra commit itself throws after validation already succeeded, onCommitFailureRollback
+     * is invoked as a best-effort compensating action (e.g. reverting the external sync).
+     *
+     * @param preCommitValidator     run after the statement is built but before it is executed; commit is skipped if this returns false
+     * @param onCommitFailureRollback best-effort compensation invoked if the commit throws after preCommitValidator returned true
+     */
+    public Map<String, Object> updateRecord(String keyspaceName, String tableName,
+        Map<String, Object> updateAttributes,
+        Map<String, Object> compositeKey,
+        Supplier<Boolean> preCommitValidator,
+        Runnable onCommitFailureRollback
     );
 
     ApiResponse insertBulkRecord(String keyspaceName, String tableName, List<Map<String, Object>> request);

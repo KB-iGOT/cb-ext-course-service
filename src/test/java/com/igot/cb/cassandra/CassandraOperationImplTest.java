@@ -189,6 +189,74 @@ class CassandraOperationImplTest {
     }
 
     @Test
+    void updateRecordWithValidator_ValidationSucceeds_Commits() {
+        Map<String, Object> updateAttrs = new HashMap<>();
+        updateAttrs.put("name", "New Name");
+        Map<String, Object> compositeKey = new HashMap<>();
+        compositeKey.put("id", 123);
+
+        when(connectionManager.getSession(keyspaceName)).thenReturn(mockSession);
+
+        Runnable rollback = mock(Runnable.class);
+        Map<String, Object> response = cassandraOperation.updateRecord(
+                keyspaceName, tableName, updateAttrs, compositeKey, () -> true, rollback);
+
+        assertEquals(Constants.SUCCESS, response.get(Constants.RESPONSE));
+        verify(mockSession, times(1)).execute(any(SimpleStatement.class));
+        verify(rollback, never()).run();
+    }
+
+    @Test
+    void updateRecordWithValidator_ValidationFails_SkipsCommitWithoutThrowing() {
+        Map<String, Object> updateAttrs = new HashMap<>();
+        updateAttrs.put("name", "New Name");
+        Map<String, Object> compositeKey = new HashMap<>();
+        compositeKey.put("id", 123);
+
+        Runnable rollback = mock(Runnable.class);
+        Map<String, Object> response = cassandraOperation.updateRecord(
+                keyspaceName, tableName, updateAttrs, compositeKey, () -> false, rollback);
+
+        assertEquals(Constants.FAILED, response.get(Constants.RESPONSE));
+        assertNotNull(response.get(Constants.ERROR_MESSAGE));
+        verify(mockSession, never()).execute(any(SimpleStatement.class));
+        verify(rollback, never()).run();
+    }
+
+    @Test
+    void updateRecordWithValidator_CommitFailsAfterValidationSucceeded_TriggersRollback() {
+        Map<String, Object> updateAttrs = new HashMap<>();
+        updateAttrs.put("name", "New Name");
+        Map<String, Object> compositeKey = new HashMap<>();
+        compositeKey.put("id", 123);
+
+        when(connectionManager.getSession(keyspaceName)).thenReturn(mockSession);
+        when(mockSession.execute(any(SimpleStatement.class))).thenThrow(new RuntimeException("Cassandra down"));
+
+        Runnable rollback = mock(Runnable.class);
+        assertThrows(RuntimeException.class, () -> cassandraOperation.updateRecord(
+                keyspaceName, tableName, updateAttrs, compositeKey, () -> true, rollback));
+
+        verify(rollback, times(1)).run();
+    }
+
+    @Test
+    void updateRecordWithValidator_RollbackItselfThrows_OriginalExceptionStillPropagates() {
+        Map<String, Object> updateAttrs = new HashMap<>();
+        updateAttrs.put("name", "New Name");
+        Map<String, Object> compositeKey = new HashMap<>();
+        compositeKey.put("id", 123);
+
+        when(connectionManager.getSession(keyspaceName)).thenReturn(mockSession);
+        when(mockSession.execute(any(SimpleStatement.class))).thenThrow(new RuntimeException("Cassandra down"));
+
+        Runnable rollback = () -> { throw new RuntimeException("ES also unreachable"); };
+        RuntimeException ex = assertThrows(RuntimeException.class, () -> cassandraOperation.updateRecord(
+                keyspaceName, tableName, updateAttrs, compositeKey, () -> true, rollback));
+        assertEquals("Cassandra down", ex.getMessage());
+    }
+
+    @Test
     void insertRecord_ActualSuccess() {
         Map<String, Object> request = new HashMap<>();
         request.put("id", "123");

@@ -404,13 +404,20 @@ public class CbPlanServiceImpl {
             } else if (Constants.DRAFT.equalsIgnoreCase(existingPlanStatus)) {
                 updatedRequest.put(Constants.ORG_SCOPE, existingCbPlan.get(Constants.ORG_SCOPE));
             }
+            Map<String, Object> sanitizedMap = sanitizeForElastic(updatedRequest);
+            Map<String, Object> sanitizedExisting = sanitizeForElastic(existingCbPlan);
             Map<String, Object> resp = cassandraOperation.updateRecord(Constants.KEYSPACE_SUNBIRD,
-                    Constants.TABLE_CB_PLAN_V2, updatedRequest, Map.of(Constants.PLAN_ID, cbPlanId));
+                    Constants.TABLE_CB_PLAN_V2, updatedRequest, Map.of(Constants.PLAN_ID, cbPlanId),
+                    () -> esUtilService.updateDocument(serverProperties.getCpPlanIndex(), Constants.INDEX_TYPE,
+                            cbPlanId, sanitizedMap, serverProperties.getElasticCbPlanJsonPath()) != null,
+                    () -> {
+                        String rollbackResult = esUtilService.updateDocument(serverProperties.getCpPlanIndex(), Constants.INDEX_TYPE,
+                                cbPlanId, sanitizedExisting, serverProperties.getElasticCbPlanJsonPath());
+                        if (rollbackResult == null) {
+                            log.error("ES_CASSANDRA_DIVERGENCE: failed to roll back ES document for cbPlanId={} after Cassandra commit failure — manual reconciliation required", cbPlanId);
+                        }
+                    });
             if (resp.get(Constants.RESPONSE).equals(Constants.SUCCESS)) {
-                Map<String, Object> sanitizedMap = sanitizeForElastic(updatedRequest);
-                esUtilService.updateDocument(serverProperties.getCpPlanIndex(), Constants.INDEX_TYPE,
-                        cbPlanId, sanitizedMap, serverProperties.getElasticCbPlanJsonPath());
-
                 if (Constants.SINGLE.equalsIgnoreCase((String) updatedRequest.get(Constants.ORG_SCOPE)) ||
                         Constants.CUSTOM.equalsIgnoreCase((String) updatedRequest.get(Constants.ORG_SCOPE))) {
                     ApiResponse lookupResp = upsertCustomOrgLookup(
@@ -469,7 +476,7 @@ public class CbPlanServiceImpl {
                 response.getParams().setStatus(Constants.FAILED);
                 response.getParams()
                         .setErr((String) resp.get(Constants.ERROR_MESSAGE) + "for cbPlanId: " + cbPlanId);
-                response.setResponseCode(HttpStatus.BAD_REQUEST);
+                response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
             }
 
         } catch (Exception e) {

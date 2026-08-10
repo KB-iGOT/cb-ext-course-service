@@ -1130,7 +1130,7 @@ public class CourseAccessServiceImpl {
             LocalDate endDate =
                     LocalDate.parse((String) endDateObj);
 
-            if (!endDate.isAfter(today)) {
+            if (!endDate.isBefore(today)) {
                 return true;
             }
         }

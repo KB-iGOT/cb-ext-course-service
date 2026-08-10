@@ -23,6 +23,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.*;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 
@@ -119,6 +120,55 @@ public class CassandraOperationImpl implements CassandraOperation {
                     .toArray(Relation[]::new));
             SimpleStatement statement = update.build();
             session.execute(statement);
+            response.put(Constants.RESPONSE, Constants.SUCCESS);
+        } catch (Exception e) {
+            String errMsg = String.format("Exception occurred while updating record to %s: %s", tableName, e.getMessage());
+            log.error(errMsg, e);
+            response.put(Constants.RESPONSE, Constants.FAILED);
+            response.put(Constants.ERROR_MESSAGE, errMsg);
+            throw e;
+        }
+        return response;
+    }
+
+    @Override
+    public Map<String, Object> updateRecord(String keyspaceName, String tableName, Map<String, Object> updateAttributes,
+                                             Map<String, Object> compositeKey, Supplier<Boolean> preCommitValidator,
+                                             Runnable onCommitFailureRollback) {
+        Map<String, Object> response = new HashMap<>();
+        try {
+            UpdateStart updateStart = QueryBuilder.update(keyspaceName, tableName);
+            UpdateWithAssignments updateWithAssignments = updateStart.set(updateAttributes.entrySet().stream()
+                    .map(entry -> Assignment.setColumn(entry.getKey(), QueryBuilder.literal(entry.getValue())))
+                    .toArray(Assignment[]::new));
+            com.datastax.oss.driver.api.querybuilder.update.Update update = updateWithAssignments.where(compositeKey.entrySet().stream()
+                    .map(entry -> Relation.column(entry.getKey()).isEqualTo(QueryBuilder.literal(entry.getValue())))
+                    .toArray(Relation[]::new));
+            SimpleStatement statement = update.build();
+
+            if (!preCommitValidator.get()) {
+                String abortMsg = String.format("Update aborted for %s: pre-commit validation failed", tableName);
+                log.error(abortMsg);
+                response.put(Constants.RESPONSE, Constants.FAILED);
+                response.put(Constants.ERROR_MESSAGE, abortMsg);
+                return response;
+            }
+
+            try {
+                connectionManager.getSession(keyspaceName).execute(statement);
+            } catch (Exception commitEx) {
+                log.error("ES_CASSANDRA_DIVERGENCE: Cassandra commit failed for {} after pre-commit validation already succeeded — attempting rollback. Cause: {}",
+                        tableName, commitEx.getMessage(), commitEx);
+                try {
+                    if (onCommitFailureRollback != null) {
+                        onCommitFailureRollback.run();
+                    }
+                } catch (Exception rollbackEx) {
+                    log.error("ES_CASSANDRA_DIVERGENCE: rollback also failed for {} — manual reconciliation required. Cause: {}",
+                            tableName, rollbackEx.getMessage(), rollbackEx);
+                }
+                throw commitEx;
+            }
             response.put(Constants.RESPONSE, Constants.SUCCESS);
         } catch (Exception e) {
             String errMsg = String.format("Exception occurred while updating record to %s: %s", tableName, e.getMessage());

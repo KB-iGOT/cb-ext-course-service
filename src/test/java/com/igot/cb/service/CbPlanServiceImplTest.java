@@ -13,6 +13,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.MockitoAnnotations;
@@ -233,11 +234,91 @@ class CbPlanServiceImplTest {
 
         Map<String, Object> updateResp = new HashMap<>();
         updateResp.put(Constants.RESPONSE, Constants.SUCCESS);
-        when(cassandraOperation.updateRecord(anyString(), anyString(), any(), any())).thenReturn(updateResp);
+        when(cassandraOperation.updateRecord(anyString(), anyString(), any(), any(), any(), any())).thenReturn(updateResp);
 
         ApiResponse response = cbPlanService.publishCbPlan(request, "orgId", "token", Arrays.asList("role"));
 
         assertNotNull(response);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void testPublishCbPlan_EsSyncFailure_AbortsCassandraCommitAndFailsApi() {
+        ApiRequest request = new ApiRequest();
+        Map<String, Object> requestMap = new HashMap<>();
+        requestMap.put("id", "planId");
+        request.setRequest(requestMap);
+
+        when(accessTokenValidator.fetchUserIdFromAccessToken(anyString(), any())).thenReturn("userId");
+
+        Map<String, Object> existingPlan = new HashMap<>();
+        existingPlan.put("createdBy", "userId");
+        existingPlan.put("status", "draft");
+        existingPlan.put("draftData", "{\"name\":\"Test\",\"endDate\":\"2024-12-31\"}");
+        when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), any(), any(), any()))
+            .thenReturn(Arrays.asList(existingPlan));
+        when(userUtilityService.readUserProfileFromDB(eq("userId"), anyList()))
+            .thenReturn(Map.of(Constants.ID, "userId", Constants.ROOT_ORG_ID, "root1"));
+        when(userUtilityService.readOrgFromDB(eq("root1"), any()))
+            .thenReturn(Map.of(Constants.IS_CCA, false));
+
+        when(esUtilService.updateDocument(anyString(), anyString(), anyString(), anyMap(), anyString()))
+            .thenReturn(null);
+
+        ArgumentCaptor<java.util.function.Supplier<Boolean>> validatorCaptor = ArgumentCaptor.forClass(java.util.function.Supplier.class);
+        Map<String, Object> abortedResp = new HashMap<>();
+        abortedResp.put(Constants.RESPONSE, Constants.FAILED);
+        abortedResp.put(Constants.ERROR_MESSAGE, "Update aborted: pre-commit validation failed");
+        when(cassandraOperation.updateRecord(anyString(), anyString(), any(), any(), validatorCaptor.capture(), any()))
+            .thenReturn(abortedResp);
+
+        ApiResponse response = cbPlanService.publishCbPlan(request, "orgId", "token", Arrays.asList("role"));
+
+        assertFalse(validatorCaptor.getValue().get());
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getResponseCode());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void testPublishCbPlan_CassandraCommitFailsAfterEsSuccess_TriggersEsRollback() {
+        ApiRequest request = new ApiRequest();
+        Map<String, Object> requestMap = new HashMap<>();
+        requestMap.put("id", "planId");
+        request.setRequest(requestMap);
+
+        when(accessTokenValidator.fetchUserIdFromAccessToken(anyString(), any())).thenReturn("userId");
+
+        Map<String, Object> existingPlan = new HashMap<>();
+        existingPlan.put("createdBy", "userId");
+        existingPlan.put("status", "draft");
+        existingPlan.put("draftData", "{\"name\":\"Test\",\"endDate\":\"2024-12-31\"}");
+        when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), any(), any(), any()))
+            .thenReturn(Arrays.asList(existingPlan));
+        when(userUtilityService.readUserProfileFromDB(eq("userId"), anyList()))
+            .thenReturn(Map.of(Constants.ID, "userId", Constants.ROOT_ORG_ID, "root1"));
+        when(userUtilityService.readOrgFromDB(eq("root1"), any()))
+            .thenReturn(Map.of(Constants.IS_CCA, false));
+
+        when(esUtilService.updateDocument(anyString(), anyString(), anyString(), anyMap(), anyString()))
+            .thenReturn("updated:Created");
+
+        ArgumentCaptor<Runnable> rollbackCaptor = ArgumentCaptor.forClass(Runnable.class);
+        Map<String, Object> failedResp = new HashMap<>();
+        failedResp.put(Constants.RESPONSE, Constants.FAILED);
+        failedResp.put(Constants.ERROR_MESSAGE, "Cassandra down");
+        when(cassandraOperation.updateRecord(anyString(), anyString(), any(), any(), any(), rollbackCaptor.capture()))
+            .thenReturn(failedResp);
+
+        ApiResponse response = cbPlanService.publishCbPlan(request, "orgId", "token", Arrays.asList("role"));
+
+        // cassandraOperation is fully mocked, so the rollback Runnable passed to it was never invoked
+        // by publishCbPlan itself — invoke it here to simulate what CassandraOperationImpl does on commit failure.
+        rollbackCaptor.getValue().run();
+
+        verify(esUtilService, times(1)).updateDocument(any(), eq(Constants.INDEX_TYPE), eq("planId"),
+                argThat(doc -> existingPlan.get("status").equals(doc.get("status"))), any());
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
     }
 
     @Test
@@ -1422,7 +1503,7 @@ class CbPlanServiceImplTest {
         Map<String, Object> updateResp = new HashMap<>();
         updateResp.put(Constants.RESPONSE, Constants.FAILED);
         updateResp.put(Constants.ERROR_MESSAGE, "DB error");
-        when(cassandraOperation.updateRecord(anyString(), anyString(), any(), any())).thenReturn(updateResp);
+        when(cassandraOperation.updateRecord(anyString(), anyString(), any(), any(), any(), any())).thenReturn(updateResp);
 
         ApiResponse response = cbPlanService.publishCbPlan(request, "orgId", "token", List.of("role"));
 

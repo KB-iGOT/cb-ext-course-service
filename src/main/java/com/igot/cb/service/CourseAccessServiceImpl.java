@@ -98,6 +98,9 @@ public class CourseAccessServiceImpl {
     @Value("${standalone.assessment.search.request}")
     private String standaloneAssessmentSearchRequest;
 
+    @Value("${lms.enrollment.details.url}")
+    private String enrollmentDetailsUrl;
+
     private final Map<String, List<String>> courseCategoryCache = new ConcurrentHashMap<>();
     private final Map<String, Long> cacheTimestamps = new ConcurrentHashMap<>();
 
@@ -338,7 +341,7 @@ public class CourseAccessServiceImpl {
                                 .filter(child -> !leafSet.contains(child))
                                 .collect(Collectors.toList());
                         contentDetails.put(Constants.COURSE_UNITS, courseUnits);
-                        contentDetails.put(Constants.END_DATE_CAMEL, (String) contentDetails.get(Constants.CHILD_NODES));
+                        contentDetails.put(Constants.END_DATE_CAMEL, (String) contentDetails.get(Constants.END_DATE_CAMEL));
 }
                     // --- End custom logic for courseUnits ---
                     userCourses.add(contentDetails);
@@ -676,7 +679,13 @@ public class CourseAccessServiceImpl {
             Map<String, Map<String, Object>> enrolmentDictionary = callEnrolmentDictionaryApi(authToken);
             List<String> caProgramIds = getFilteredCaProgramIdentifiers(userId, authToken, enrolmentDictionary);
             int caProgramCount = caProgramIds.size();
-            java.util.List<String> standaloneIds = getStandaloneAssessmentIdentifiers(enrolmentDictionary);
+            List<String> standaloneAssessmentIds = getStandaloneAssessmentIdentifiersFromSystem();
+            Map<String, Map<String, Object>> enrollmentDetails = callAssessmentEnrollmentDetailsApi(
+                            authToken,
+                            standaloneAssessmentIds);
+            List<String> standaloneIds = filterStandaloneAssessmentIdentifiers(
+                            standaloneAssessmentIds,
+                            enrollmentDetails);
             Map<String, Object> map = new HashMap<>();
             map.put(Constants.TRAINING_PLAN, trainingPlanIds.size());
             map.put(Constants.APAR, aparIds.size());
@@ -904,13 +913,6 @@ public class CourseAccessServiceImpl {
 
                 Map<String, Object> enrolment = enrolmentDictionary.get(identifier);
 
-                if (enrolment != null) {
-                    if (!isNotCompleted(enrolment)
-                            || !isActiveInProgress(enrolment)) {
-                        continue;
-                    }
-                }
-
                 if (!StringUtils.hasText(endDate)) {
                     identifiers.add(identifier);
                     continue;
@@ -920,6 +922,10 @@ public class CourseAccessServiceImpl {
 
 
                 if (contentEndDate.isBefore(today)) {
+                    continue;
+                }
+
+                if (enrolment != null && isCompleted(enrolment)) {
                     continue;
                 }
 
@@ -969,6 +975,167 @@ public class CourseAccessServiceImpl {
         }
 
         return Collections.emptyList();
+    }
+
+    private Map<String, Map<String, Object>> callAssessmentEnrollmentDetailsApi(
+            String userToken,
+            List<String> assessmentIds) {
+
+        if (CollectionUtils.isEmpty(assessmentIds)) {
+            return Collections.emptyMap();
+        }
+
+        Map<String, String> headers = new HashMap<>();
+        headers.put(X_AUTH_TOKEN, userToken);
+
+        Map<String, Object> requestBody = new HashMap<>();
+        requestBody.put("courseId", assessmentIds);
+
+        Map<String, Object> request = new HashMap<>();
+        request.put("request", requestBody);
+
+        Map<String, Object> apiResponse =
+                outboundRequestHandlerService.fetchResultUsingPost(
+                        lmsServiceHost + enrollmentDetailsUrl,
+                        request,
+                        headers);
+
+        if (MapUtils.isEmpty(apiResponse)) {
+            return Collections.emptyMap();
+        }
+
+        Map<String, Object> result =
+                (Map<String, Object>) apiResponse.get(Constants.RESULT);
+
+        if (result == null) {
+            return Collections.emptyMap();
+        }
+
+        List<Map<String, Object>> response =
+                (List<Map<String, Object>>) result.get(Constants.RESPONSE);
+
+        if (CollectionUtils.isEmpty(response)) {
+            return Collections.emptyMap();
+        }
+
+        Map<String, Map<String, Object>> enrollmentDictionary =
+                new HashMap<>();
+
+        for (Map<String, Object> enrollment : response) {
+
+            String courseId =
+                    (String) enrollment.get("courseId");
+
+            if (StringUtils.hasText(courseId)) {
+                enrollmentDictionary.put(courseId, enrollment);
+            }
+        }
+
+        return enrollmentDictionary;
+    }
+
+    private List<String> filterStandaloneAssessmentIdentifiers(
+            List<String> assessmentIds,
+            Map<String, Map<String, Object>> enrollmentDictionary) {
+
+        if (CollectionUtils.isEmpty(assessmentIds)) {
+            return Collections.emptyList();
+        }
+
+        List<String> identifiers = new ArrayList<>();
+
+        for (String identifier : assessmentIds) {
+
+            Map<String, Object> enrollment =
+                    enrollmentDictionary.get(identifier);
+
+            if (MapUtils.isEmpty(enrollment)) {
+                continue;
+            }
+
+            if (isCompleted(enrollment)) {
+                continue;
+            }
+
+            if (isBatchEndDateValidForStandalone(enrollment)) {
+                identifiers.add(identifier);
+            }
+        }
+
+        return identifiers;
+    }
+
+    private boolean isCompleted(Map<String, Object> enrollment) {
+
+        if (MapUtils.isEmpty(enrollment)) {
+            return false;
+        }
+
+        Object statusObj = enrollment.get("status");
+        Object completionPercentageObj =
+                enrollment.get("completionPercentage");
+
+        boolean completedByStatus =
+                statusObj instanceof Number
+                        && ((Number) statusObj).intValue() == 2;
+
+        boolean completedByPercentage =
+                completionPercentageObj instanceof Number
+                        && ((Number) completionPercentageObj).intValue() == 100;
+
+        return completedByStatus || completedByPercentage;
+    }
+
+    @SuppressWarnings("unchecked")
+    private boolean isBatchEndDateValidForStandalone(
+            Map<String, Object> enrollment) {
+
+        if (MapUtils.isEmpty(enrollment)) {
+            return false;
+        }
+
+        Object contentObj = enrollment.get("content");
+
+        if (!(contentObj instanceof Map)) {
+            return false;
+        }
+
+        Map<String, Object> content =
+                (Map<String, Object>) contentObj;
+
+        Object batchesObj = content.get("batches");
+
+        if (!(batchesObj instanceof List)) {
+            return false;
+        }
+
+        List<Map<String, Object>> batches =
+                (List<Map<String, Object>>) batchesObj;
+
+        LocalDate today = LocalDate.now();
+
+        for (Map<String, Object> batch : batches) {
+
+            if (MapUtils.isEmpty(batch)) {
+                continue;
+            }
+
+            Object endDateObj = batch.get("endDate");
+
+            if (!(endDateObj instanceof String)
+                    || !StringUtils.hasText((String) endDateObj)) {
+                continue;
+            }
+
+            LocalDate endDate =
+                    LocalDate.parse((String) endDateObj);
+
+            if (!endDate.isAfter(today)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
 }

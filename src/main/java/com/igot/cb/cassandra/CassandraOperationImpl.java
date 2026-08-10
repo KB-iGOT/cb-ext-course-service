@@ -136,6 +136,7 @@ public class CassandraOperationImpl implements CassandraOperation {
                                              Map<String, Object> compositeKey, Supplier<Boolean> preCommitValidator,
                                              Runnable onCommitFailureRollback) {
         Map<String, Object> response = new HashMap<>();
+        boolean validationPassed = false;
         try {
             UpdateStart updateStart = QueryBuilder.update(keyspaceName, tableName);
             UpdateWithAssignments updateWithAssignments = updateStart.set(updateAttributes.entrySet().stream()
@@ -153,24 +154,16 @@ public class CassandraOperationImpl implements CassandraOperation {
                 response.put(Constants.ERROR_MESSAGE, abortMsg);
                 return response;
             }
+            validationPassed = true;
 
-            try {
-                connectionManager.getSession(keyspaceName).execute(statement);
-            } catch (Exception commitEx) {
-                log.error("ES_CASSANDRA_DIVERGENCE: Cassandra commit failed for {} after pre-commit validation already succeeded — attempting rollback. Cause: {}",
-                        tableName, commitEx.getMessage(), commitEx);
-                try {
-                    if (onCommitFailureRollback != null) {
-                        onCommitFailureRollback.run();
-                    }
-                } catch (Exception rollbackEx) {
-                    log.error("ES_CASSANDRA_DIVERGENCE: rollback also failed for {} — manual reconciliation required. Cause: {}",
-                            tableName, rollbackEx.getMessage(), rollbackEx);
-                }
-                throw commitEx;
-            }
+            connectionManager.getSession(keyspaceName).execute(statement);
             response.put(Constants.RESPONSE, Constants.SUCCESS);
         } catch (Exception e) {
+            if (validationPassed) {
+                log.error("ES_CASSANDRA_DIVERGENCE: Cassandra commit failed for {} after pre-commit validation already succeeded — attempting rollback. Cause: {}",
+                        tableName, e.getMessage());
+                runRollbackSafely(tableName, onCommitFailureRollback);
+            }
             String errMsg = String.format("Exception occurred while updating record to %s: %s", tableName, e.getMessage());
             log.error(errMsg, e);
             response.put(Constants.RESPONSE, Constants.FAILED);
@@ -178,6 +171,18 @@ public class CassandraOperationImpl implements CassandraOperation {
             throw e;
         }
         return response;
+    }
+
+    private void runRollbackSafely(String tableName, Runnable onCommitFailureRollback) {
+        if (onCommitFailureRollback == null) {
+            return;
+        }
+        try {
+            onCommitFailureRollback.run();
+        } catch (Exception rollbackEx) {
+            log.error("ES_CASSANDRA_DIVERGENCE: rollback also failed for {} — manual reconciliation required. Cause: {}",
+                    tableName, rollbackEx.getMessage(), rollbackEx);
+        }
     }
 
     @Override

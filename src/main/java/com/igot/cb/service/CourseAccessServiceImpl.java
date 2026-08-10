@@ -1012,7 +1012,7 @@ public class CourseAccessServiceImpl {
         }
 
         List<Map<String, Object>> response =
-                (List<Map<String, Object>>) result.get(Constants.RESPONSE);
+                (List<Map<String, Object>>) result.get("courses");
 
         if (CollectionUtils.isEmpty(response)) {
             return Collections.emptyMap();

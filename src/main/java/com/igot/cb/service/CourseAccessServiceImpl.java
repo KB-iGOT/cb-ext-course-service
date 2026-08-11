@@ -699,9 +699,16 @@ public class CourseAccessServiceImpl {
             contentIds.put(LEARNING_PATHWAY_FIELD, learningPathwayIds);
             contentIds.put(STANDALONE_ASSESSMENT, standaloneIds);
             contentIds.put(CA_PROGRAM, caProgramIds);
-            List<String> moderatedContentIds = getModeratedContentIdentifiers(userId, orgId);
+            Map<String, Object> moderatedContent =
+                    getModeratedContentIdentifiers(userId, orgId);
 
-            map.put(MODERATED_CONTENT, moderatedContentIds.size());
+            List<String> moderatedContentIds =
+                    (List<String>) moderatedContent.get("identifiers");
+
+            Object moderatedContentCount =
+                    moderatedContent.get("count");
+
+            map.put(MODERATED_CONTENT, moderatedContentCount);
             contentIds.put(MODERATED_CONTENT, moderatedContentIds);
             map.put(CONTENT_IDS, contentIds);
 
@@ -709,37 +716,60 @@ public class CourseAccessServiceImpl {
             return map;
         }
 
-    private List<String> getModeratedContentIdentifiers(String userId, String orgId) throws Exception {
-        String redisKey = Constants.MODERATED_COURSE_COUNT_REDIS_KEY_PREFIX + userId;
+    private Map<String, Object> getModeratedContentIdentifiers(
+            String userId, String orgId) throws Exception {
+
+        String redisKey =
+                Constants.MODERATED_COURSE_COUNT_REDIS_KEY_PREFIX + userId;
+
         String cached = redisCacheMgr.getFromCache(redisKey);
 
         Map<String, Object> moderatedMap = new HashMap<>();
 
         if (StringUtils.hasText(cached)) {
-            moderatedMap = objectMapper.readValue(
-                    cached, new TypeReference<Map<String, Object>>() {});
 
-            if (moderatedMap.containsKey(orgId) && MapUtils.isNotEmpty(moderatedMap)) {
-                log.info("moderatedContentIdentifiers cache HIT for userId: {} orgId: {}", userId, orgId);
-                return (List<String>) moderatedMap.get(orgId);
+            moderatedMap = objectMapper.readValue(
+                    cached,
+                    new TypeReference<Map<String, Object>>() {});
+
+            if (moderatedMap.containsKey(orgId)
+                    && MapUtils.isNotEmpty(moderatedMap)) {
+
+                log.info(
+                        "moderatedContentIdentifiers cache HIT for userId: {} orgId: {}",
+                        userId, orgId);
+
+                return (Map<String, Object>) moderatedMap.get(orgId);
             }
 
-            log.info("orgId not in map for userId: {}, calling search API", userId);
+            log.info(
+                    "orgId not in map for userId: {}, calling search API",
+                    userId);
+
         } else {
-            log.info("moderatedContentIdentifiers cache MISS for userId: {}", userId);
+            log.info(
+                    "moderatedContentIdentifiers cache MISS for userId: {}",
+                    userId);
         }
 
-        List<String> identifiers = getModeratedCourseIdentifiers(orgId);
+        Map<String, Object> userProfileDetails =
+                userProfileServiceImpl.readUserProfile(userId, null);
 
-        moderatedMap.put(orgId, identifiers);
+        Map<String, Object> moderatedContent =
+                getModeratedCourseIdentifiers(
+                        orgId,
+                        userProfileDetails);
+        moderatedMap.put(orgId, moderatedContent);
 
         redisCacheMgr.putInCache(
                 redisKey,
                 objectMapper.writeValueAsString(moderatedMap));
 
-        log.info("moderatedContentIdentifiers updated in Redis for userId: {} orgId: {}", userId, orgId);
+        log.info(
+                "moderatedContentIdentifiers updated in Redis for userId: {} orgId: {}",
+                userId, orgId);
 
-        return identifiers;
+        return moderatedContent;
     }
 
     private List<String> getAssignedCourseCount(String userId, String courseCategory, String authToken) {
@@ -761,39 +791,104 @@ public class CourseAccessServiceImpl {
         return Collections.EMPTY_LIST;
     }
 
-    private List<String> getModeratedCourseIdentifiers(String orgId) {
-        try {
-            String requestBody = String.format(moderatedCourseSearchRequest, orgId);
-            Map<String, Object> requestMap = objectMapper.readValue(
-                    requestBody, new TypeReference<Map<String, Object>>() {});
+    private Map<String, Object> getModeratedCourseIdentifiers(
+            String orgId,
+            Map<String, Object> userProfileDetails) {
 
-            String searchUrl = sbSearchServiceHost + sbCompositeV4Search;
+        try {
+            String requestBody =
+                    String.format(moderatedCourseSearchRequest, orgId);
+
+            Map<String, Object> requestMap =
+                    objectMapper.readValue(
+                            requestBody,
+                            new TypeReference<Map<String, Object>>() {});
+
+            Map<String, Object> request =
+                    (Map<String, Object>) requestMap.get("request");
+
+            Map<String, Object> filters =
+                    (Map<String, Object>) request.get("filters");
+
+            Object profileDetailsObject =
+                    userProfileDetails.get("profiledetails");
+
+            Map<String, Object> profileDetails = null;
+
+            if (profileDetailsObject instanceof String
+                    && StringUtils.hasText((String) profileDetailsObject)) {
+
+                profileDetails = objectMapper.readValue(
+                        (String) profileDetailsObject,
+                        new TypeReference<Map<String, Object>>() {});
+            }
+
+            String profileStatus =
+                    profileDetails != null
+                            ? (String) profileDetails.get("profileStatus")
+                            : null;
+
+            if (profileStatus == null
+                    || profileStatus.isEmpty()
+                    || !"VERIFIED".equalsIgnoreCase(profileStatus)) {
+
+                filters.put(
+                        "secureSettings.isVerifiedKarmayogi",
+                        "No");
+            }
+
+            String searchUrl =
+                    sbSearchServiceHost + sbCompositeV4Search;
 
             Map<String, Object> searchResponse =
-                    outboundRequestHandlerService.fetchResultUsingPost(searchUrl, requestMap, null);
+                    outboundRequestHandlerService.fetchResultUsingPost(
+                            searchUrl,
+                            requestMap,
+                            null);
+
+            Map<String, Object> response = new HashMap<>();
 
             if (MapUtils.isNotEmpty(searchResponse)) {
 
                 Map<String, Object> result =
-                        (Map<String, Object>) searchResponse.get(Constants.RESULT);
+                        (Map<String, Object>) searchResponse.get(
+                                Constants.RESULT);
 
-                if (result != null && result.containsKey(Constants.CONTENT)) {
+                if (result != null
+                        && result.containsKey(Constants.CONTENT)) {
 
                     List<Map<String, Object>> contents =
-                            (List<Map<String, Object>>) result.get(Constants.CONTENT);
+                            (List<Map<String, Object>>)
+                                    result.get(Constants.CONTENT);
 
-                    return contents.stream()
-                            .map(content -> (String) content.get(Constants.IDENTIFIER))
+                    List<String> identifiers = contents.stream()
+                            .map(content ->
+                                    (String) content.get(Constants.IDENTIFIER))
                             .collect(Collectors.toList());
+
+                    response.put("identifiers", identifiers);
+                    response.put("count", result.get("count"));
+
+                    return response;
                 }
             }
 
-        } catch (Exception e) {
-            log.error("Error fetching moderated course identifiers for orgId: {}, error: {}",
-                    orgId, e.getMessage());
-        }
+            response.put("identifiers", Collections.emptyList());
+            response.put("count", 0);
 
-        return Collections.emptyList();
+            return response;
+
+        } catch (Exception e) {
+            log.error(
+                    "Error fetching moderated course identifiers for orgId: {}",
+                    orgId, e);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("identifiers", Collections.emptyList());
+            response.put("count", 0);
+
+            return response;
+        }
     }
 
     private Map<String, Map<String, Object>> callEnrolmentDictionaryApi(

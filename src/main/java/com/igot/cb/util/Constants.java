@@ -199,6 +199,10 @@ public class Constants {
     public static final String ORG_REDIX_KEY = "org:";
     public static final String ORG_ID = "orgId";
     public static final String API_POPULAR_COMMUNITY = "api.popular communities";
+    public static final String COURSE_IDS = "courseIds";
+    public static final String COURSE_COUNT = "courseCount";
+    public static final String API_ORG_ELIGIBILITY_UPSERT = "api.org.eligibility.upsert";
+    public static final String API_ORG_ELIGIBILITY_READ = "api.org.eligibility.read";
     public static final String COUNT_OF_COMMUNITIES = "countOfCommunities";
     public static final String TOPIC_IS_INACTIVE = "Topic is inactive";
     public static final String DRAFT = "draft";

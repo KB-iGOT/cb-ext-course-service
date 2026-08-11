@@ -57,6 +57,12 @@ public class EsUtilServiceImpl implements EsUtilService{
     @Override
     public String addDocument(
             String esIndexName, String type, String id, Map<String, Object> document, String JsonFilePath) {
+        return addDocument(elasticsearchClient, esIndexName, type, id, document, JsonFilePath);
+    }
+
+    @Override
+    public String addDocument(ElasticsearchClient client, String esIndexName, String type, String id,
+            Map<String, Object> document, String JsonFilePath) {
         logger.info("EsUtilServiceImpl :: addDocument");
         try {
             JsonSchemaFactory schemaFactory = JsonSchemaFactory.getInstance();
@@ -78,7 +84,7 @@ public class EsUtilServiceImpl implements EsUtilService{
                     .document(document)
                     .refresh(Refresh.True)
                     .build();
-            IndexResponse response = elasticsearchClient.index(indexRequest);
+            IndexResponse response = client.index(indexRequest);
             return "Successfully indexed document with id: " + response.result();
         } catch (Exception e) {
             logger.error("Issue while Indexing to es: {}", e.getMessage());
@@ -126,6 +132,25 @@ public class EsUtilServiceImpl implements EsUtilService{
             return (existingFound ? "updated" : "created") + ":" + response.result().jsonValue();
         } catch (Exception e) {
             log.error("Error performing merge+index update for index={}, id={}: {}", index, entityId, e.getMessage(), e);
+            return null;
+        }
+    }
+
+    @Override
+    public Map<String, Object> getDocumentById(String esIndexName, String id) {
+        return getDocumentById(elasticsearchClient, esIndexName, id);
+    }
+
+    @Override
+    public Map<String, Object> getDocumentById(ElasticsearchClient client, String esIndexName, String id) {
+        try {
+            GetResponse<Object> response = client.get(builder -> builder.index(esIndexName).id(id), Object.class);
+            if (response.found() && response.source() instanceof Map) {
+                return (Map<String, Object>) response.source();
+            }
+            return null;
+        } catch (Exception e) {
+            log.error("Error fetching document by id from ES. index={}, id={}: {}", esIndexName, id, e.getMessage(), e);
             return null;
         }
     }

@@ -620,6 +620,54 @@ public class Constants {
     public static final String COURSE_CATEGORY_INVITE_ONLY_ASSESSMENT = "Invite-Only Assessment";
     public static final String BATCH_END_DATE   = "batchEndDate";
 
+    public static final String ERR_CANNOT_CHANGE_ISAPAR = "Cannot change isApar from true to false.";
+    public static final String ERR_FIELD_CANNOT_BE_NULL = "Field '%s' cannot be null.";
+    public static final String ERR_VALIDATION_ERRORS = "Validation errors: ";
+    public static final String ERR_FAILED_TO_UPDATE_CB_PLAN = "Failed to Update CB Plan for OrgId: ";
+    public static final String ERR_PROCESSING_CB_PLAN_DATA = "Error processing existing CB Plan data";
+    public static final String ERR_SERIALIZING_CB_PLAN = "Error serializing existing CB Plan for draft storage";
+    public static final String MSG_UPDATED_AS_DRAFT = "Updated cbPlan as draft for cbPlanId: %s. Publish to make it live.";
+    public static final String TABLE_CB_PLAN_V3 = "cb_plan_v3";
+    public static final String TABLE_CB_PLAN_V3_LOOKUP_BY_ORG = "cb_plan_v3_lookup_by_org";
+    public static final String TABLE_CB_PLAN_V3_LOOKUP_BY_ALL_ORG = "cb_plan_v3_lookup_by_all_org";
+    public static final String TABLE_CB_PLAN_V3_CONTENT_LOOKUP = "cb_plan_v3_content_lookup";
+    public static final String ERR_UNAUTHORIZED_UPDATE = "User is not authorized to update this CB Plan";
+    public static final String ERR_CB_PLAN_ALREADY_RETIRED = "CB Plan %s is already retired";
+    public static final String ROLE_ADMIN = "ADMIN";
+    public static final String RESULT_DELETED = "deleted";
+    public static final String RESULT_UPDATED = "updated";
+    public static final String RESULT_SKIPPED = "skipped";
+    public static final String EXTENDED_CONTENT_READ_END_POINT = "extended-content-read-endpoint";
+    public static final String EXISTING_ROOT_ORG_IDS = "existingRootOrgIds";
+    public static final String NEW_ROOT_ORG_IDS = "newRootOrgIds";
+    public static final String EXTENDED_READ_CONTENT_CACHE_KEY_PREFIX = "extended_read_content_";
+    public static final String EXTERNAL_CONTENT_PREFIX = "ext_";
+    public static final String CONTENT_ID_COLUMN = "contentid";
+    public static final String PLAN_ID_COLUMN = "planid";
+    public static final String DATE_FORMAT_YYYY_MM_DD = "yyyy-MM-dd";
+    public static final String TIMEZONE_ASIA_KOLKATA = "Asia/Kolkata";
+    public static final String ERR_FAILED_TO_EXTRACT_USER_ID = "Failed to extract userId from token";
+    public static final String ERR_FAILED_TO_READ_USER_DETAILS = "Failed to read user details from DB. UserId: ";
+    public static final String ERR_FAILED_TO_READ_ORG_DETAILS = "Failed to read org details from DB. OrgId: ";
+    public static final String ERR_FAILED_TO_CREATE_CB_PLAN = "Failed to Create CB Plan for OrgId: ";
+    public static final String ERR_MESSAGE_SEPARATOR = " message: ";
+    public static final String ERR_VALIDATION_ERROR = "Validation error";
+    public static final String ERR_INVALID_END_DATE_FORMAT = "Invalid endDate format: ";
+    public static final String ERR_FAILED_TO_SERIALIZE_VALIDATION = "Failed to serialize validation errors";
+    public static final String ERR_REQUIRED_PARAM_ID_MISSING = "Required Param id is missing";
+    public static final String ERR_CB_PLAN_NOT_FOUND = "cbPlan is not found for id: ";
+    public static final String API_CB_PLAN_V3_READ_BY_ID = "api.cb.plan.v3.read.byId";
+    public static final String API_CBPLAN_V3_GET_USER_DICTIONARY = "api.cbplan.v3.user.list";
+    public static final String REQUEST_PARAM_PLAN_YEAR = "planYear";
+    public static final String REQUEST_PARAM_ENRICHMENT = "enrichment";
+    public static final String RESPONSE_KEY_APAR_COUNT = "aparCount";
+    public static final String RESPONSE_KEY_NON_APAR_COUNT = "nonAparCount";
+    public static final String RESPONSE_KEY_APAR_CONTENT_LIST = "aparContentList";
+    public static final String RESPONSE_KEY_NON_APAR_CONTENT_LIST = "nonAparContentList";
+    public static final String RESPONSE_KEY_ENRICHED_CONTENT_LIST = "enrichedContentList";
+    public static final String SECURE_CONTENT_SUFFIX = "_rc";
+    public static final String CACHE_FLAG_FROM_CACHE = "_fromCache";
+    public static final String EMPTY_JSON = "{}";
     private Constants() {
     }
 }

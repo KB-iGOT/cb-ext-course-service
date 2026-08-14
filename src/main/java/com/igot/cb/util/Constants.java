@@ -402,6 +402,7 @@ public class Constants {
     public static final String TABLE_USER_EXTENDED_PROFILE = "user_extended_profile";
     public static final String CONTEXT_TYPE = "contextType";
     public static final String PLAN_TYPE = "planType";
+    public static final String PLAN_TYPE_AI_CBP = "AICBP";
     public static final String ORG_ADDITIONAL_PROPERTIES = "orgAdditionalProperties";
     public static final String CONTEXT_DATA_KEY = "contextData";
     public static final String ORGANISATION_ID = "organisationId";
@@ -609,6 +610,7 @@ public class Constants {
     public static final String MODERATED_COURSE_COUNT_REDIS_KEY_PREFIX = "moderatedCourseCount_";
     public static final String API_PERSONAL_CONTENT_INFO = "api.content.user.info";
     public static final String APAR = "apar";
+    public static final String AI_CBP = "aiCbp";
     public static final String TRAINING_PLAN  = "trainingPlan";
     public static final String CA_PROGRAM = "caProgram";
     public static final String LEARNING_PATHWAY_FIELD = "learningPathway";

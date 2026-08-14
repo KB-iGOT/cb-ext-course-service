@@ -656,6 +656,7 @@ public class CourseAccessServiceImpl {
         private Map<String, Object> buildPersonalContentInfo(String userId, String orgId, String authToken) throws Exception {
             List<String> aparIds = new ArrayList<>();;
             List<String> trainingPlanIds = new ArrayList<>();
+            List<String> aiCbpIds = new ArrayList<>();
             ApiResponse cbPlanResponse = cbPlanLearnerService.getCBPlanListForUser(orgId, userId, true);
             if (cbPlanResponse != null
                     && cbPlanResponse.getResult() != null
@@ -668,8 +669,15 @@ public class CourseAccessServiceImpl {
                             .flatMap(p -> ((List<Map<String, Object>>) p.get(CONTENT_LIST)).stream())
                             .map(content -> (String) content.get(Constants.IDENTIFIER))
                             .collect(Collectors.toList());
+                     aiCbpIds = plans.stream()
+                            .filter(p -> !Boolean.TRUE.equals(p.get(Constants.IS_APAR)))
+                            .filter(p -> Constants.PLAN_TYPE_AI_CBP.equalsIgnoreCase(String.valueOf(p.get(Constants.PLAN_TYPE))))
+                            .flatMap(p -> ((List<Map<String, Object>>) p.get(CONTENT_LIST)).stream())
+                            .map(content -> (String) content.get(Constants.IDENTIFIER))
+                            .collect(Collectors.toList());
                      trainingPlanIds = plans.stream()
                             .filter(p -> !Boolean.TRUE.equals(p.get(Constants.IS_APAR)))
+                            .filter(p -> !Constants.PLAN_TYPE_AI_CBP.equalsIgnoreCase(String.valueOf(p.get(Constants.PLAN_TYPE))))
                             .flatMap(p -> ((List<Map<String, Object>>) p.get(CONTENT_LIST)).stream())
                             .map(content -> (String) content.get(Constants.IDENTIFIER))
                             .collect(Collectors.toList());
@@ -689,6 +697,7 @@ public class CourseAccessServiceImpl {
             Map<String, Object> map = new HashMap<>();
             map.put(Constants.TRAINING_PLAN, trainingPlanIds.size());
             map.put(Constants.APAR, aparIds.size());
+            map.put(Constants.AI_CBP, aiCbpIds.size());
             map.put(CA_PROGRAM, caProgramCount);
             map.put(LEARNING_PATHWAY_FIELD, learningPathwayIds.size());
             map.put(STANDALONE_ASSESSMENT, standaloneIds.size());
@@ -696,6 +705,7 @@ public class CourseAccessServiceImpl {
             Map<String, Object> contentIds = new HashMap<>();
             contentIds.put(Constants.TRAINING_PLAN, trainingPlanIds);
             contentIds.put(Constants.APAR, aparIds);
+            contentIds.put(Constants.AI_CBP, aiCbpIds);
             contentIds.put(LEARNING_PATHWAY_FIELD, learningPathwayIds);
             contentIds.put(STANDALONE_ASSESSMENT, standaloneIds);
             contentIds.put(CA_PROGRAM, caProgramIds);

@@ -410,6 +410,16 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
         }
     }
 
+    /**
+     * Prepares CB Plan data for re-publishing from draft_data.
+     * Selectively extracts only known fields to prevent type mismatches and unexpected data leakage.
+     * Aligned with V2 implementation pattern for consistency.
+     *
+     * @param existingCbPlan CB Plan record containing draft_data JSON string
+     * @param incomingRequest incoming publish request containing comment
+     * @return Map containing only validated fields from draft_data, or empty map if no draft_data
+     * @throws JsonProcessingException if draft_data JSON parsing fails
+     */
     private Map<String, Object> prepareCbPlanForRePublish(Map<String, Object> existingCbPlan,
                                                           Map<String, Object> incomingRequest) throws JsonProcessingException {
         Map<String, Object> dataInDraftObject = Objects.nonNull(existingCbPlan.get(Constants.DRAFT_DATA))
@@ -420,11 +430,11 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
         if (MapUtils.isEmpty(dataInDraftObject)) {
             return dataInDraftObject;
         }
+        Map<String, Object> extractedFields = extractDraftFields(dataInDraftObject);
         if (incomingRequest.containsKey(Constants.COMMENT)) {
-            dataInDraftObject.put(Constants.COMMENT, incomingRequest.get(Constants.COMMENT));
+            extractedFields.put(Constants.COMMENT, incomingRequest.get(Constants.COMMENT));
         }
-        dataInDraftObject.put(Constants.DRAFT_DATA, null);
-        return dataInDraftObject;
+        return extractedFields;
     }
 
     private Map<String, Object> handleLivePlanPublish(Map<String, Object> existingCbPlan,
@@ -1521,5 +1531,48 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
             log.warn("parseContextDataToJsonNode: Failed to parse contextData, returning null", e);
             return null;
         }
+    }
+
+    /**
+     * Extracts only known fields from draft_data to prevent malformed data propagation.
+     * Validates and transforms: IS_APAR, ORG_SCOPE, NAME, CONTEXT_DATA_REQUEST, END_DATE_REQUEST,
+     * ROOT_ORG_IDS_IN_CONTEXT_DATA, CONTENT_LIST, PLAN_TYPE (aligned with V2 contract).
+     *
+     * @param dataInDraftObject deserialized draft_data Map (may contain any fields/types)
+     * @return Map with only validated fields, preventing ClassCastException 
+     * @throws JsonProcessingException if CONTEXT_DATA_REQUEST serialization fails
+     */
+    private Map<String, Object> extractDraftFields(Map<String, Object> dataInDraftObject)
+            throws JsonProcessingException {
+        Map<String, Object> extractedFields = new HashMap<>();
+        if (dataInDraftObject.containsKey(Constants.IS_APAR)) {
+            extractedFields.put(Constants.IS_APAR, dataInDraftObject.get(Constants.IS_APAR));
+        }
+        if (dataInDraftObject.containsKey(Constants.ORG_SCOPE)) {
+            extractedFields.put(Constants.ORG_SCOPE, dataInDraftObject.get(Constants.ORG_SCOPE));
+        }
+        if (dataInDraftObject.containsKey(Constants.NAME)) {
+            extractedFields.put(Constants.NAME, dataInDraftObject.get(Constants.NAME));
+        }
+        if (dataInDraftObject.containsKey(Constants.CONTEXT_DATA_REQUEST)) {
+            extractedFields.put(Constants.CONTEXT_DATA_REQUEST,
+                    mapper.writeValueAsString(dataInDraftObject.get(Constants.CONTEXT_DATA_REQUEST)));
+        }
+        if (dataInDraftObject.containsKey(Constants.END_DATE_REQUEST)) {
+            extractedFields.put(Constants.END_DATE_REQUEST,
+                    dataTransformService.parseEndDate(dataInDraftObject.get(Constants.END_DATE_REQUEST)));
+        }
+        if (dataInDraftObject.containsKey(Constants.ROOT_ORG_IDS_IN_CONTEXT_DATA)) {
+            extractedFields.put(Constants.ROOT_ORG_IDS_IN_CONTEXT_DATA,
+                    dataInDraftObject.get(Constants.ROOT_ORG_IDS_IN_CONTEXT_DATA));
+        }
+        if (dataInDraftObject.containsKey(Constants.CONTENT_LIST)) {
+            extractedFields.put(Constants.CONTENT_LIST,
+                    dataInDraftObject.get(Constants.CONTENT_LIST));
+        }
+        if (dataInDraftObject.containsKey(Constants.PLAN_TYPE)) {
+            extractedFields.put(Constants.PLAN_TYPE, dataInDraftObject.get(Constants.PLAN_TYPE));
+        }
+        return extractedFields;
     }
 }

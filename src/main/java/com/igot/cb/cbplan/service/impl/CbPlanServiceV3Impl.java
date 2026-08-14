@@ -248,7 +248,7 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
     private void handleUpdateOfDraftCbPlan(ApiRequest request, String userId, String userOrgId,
                                            Map<String, Object> updatedCbPlan, Map<String, Object> existingCbPlan,
                                            boolean isCCA, ApiResponse response) throws JsonProcessingException {
-        List<String> validations = requestValidator.validateCbPlanCreateRequest(request, isCCA, userOrgId, false);
+        List<String> validations = requestValidator.validateCbPlanCreateRequestV3(request, isCCA, userOrgId, false);
         if (CollectionUtils.isNotEmpty(validations)) {
             response.getParams().setStatus(Constants.FAILED);
             response.getParams().setErr(mapper.writeValueAsString(validations));

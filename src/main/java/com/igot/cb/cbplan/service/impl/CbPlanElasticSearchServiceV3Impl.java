@@ -97,6 +97,23 @@ public class CbPlanElasticSearchServiceV3Impl {
                 sanitized.put(entry.getKey(), value);
             }
         }
+        alignKeysWithEsSchema(sanitized);
         return sanitized;
+    }
+
+    /**
+     * Renames Cassandra column keys to the camelCase field names declared in the
+     * ElasticSearch required-fields schema.
+     * EsUtilService drops any document key absent from that schema, so a key whose
+     * case differs from the schema is silently discarded instead of being indexed.
+     * The plan year is stored in Cassandra as "planyear" but declared in the schema
+     * and index mapping as "planYear";
+     *
+     * @param sanitized document being prepared for indexing, mutated in place
+     */
+    private void alignKeysWithEsSchema(Map<String, Object> sanitized) {
+        if (sanitized.containsKey(Constants.PLAN_YEAR)) {
+            sanitized.put(Constants.REQUEST_PARAM_PLAN_YEAR, sanitized.remove(Constants.PLAN_YEAR));
+        }
     }
 }

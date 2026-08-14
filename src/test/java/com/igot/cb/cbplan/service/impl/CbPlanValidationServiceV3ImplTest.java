@@ -129,7 +129,7 @@ class CbPlanValidationServiceV3ImplTest {
 
     @Test
     void testValidateRequestPassesWhenNoValidationErrors() {
-        when(requestValidator.validateCbPlanCreateRequest(any(), anyBoolean(), anyString(), anyBoolean()))
+        when(requestValidator.validateCbPlanCreateRequestV3(any(), anyBoolean(), anyString(), anyBoolean()))
                 .thenReturn(List.of());
         assertTrue(validationService.validateRequest(new ApiRequest(), true, ORG_ID, new ApiResponse()));
     }
@@ -137,7 +137,7 @@ class CbPlanValidationServiceV3ImplTest {
     @Test
     void testValidateRequestFailsWithValidationErrors() {
         ApiResponse response = new ApiResponse();
-        when(requestValidator.validateCbPlanCreateRequest(any(), anyBoolean(), anyString(), anyBoolean()))
+        when(requestValidator.validateCbPlanCreateRequestV3(any(), anyBoolean(), anyString(), anyBoolean()))
                 .thenReturn(List.of("name is required"));
         assertFalse(validationService.validateRequest(new ApiRequest(), true, ORG_ID, response));
         assertEquals(Constants.FAILED, response.getParams().getStatus());

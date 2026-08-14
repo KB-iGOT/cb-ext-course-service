@@ -147,7 +147,7 @@ class CbPlanServiceV3ImplTest {
     @Test
     void testCreateCbPlanSuccess() {
         mockValidUserAndOrg(false);
-        when(requestValidator.validateCbPlanCreateRequest(any(), anyBoolean(), anyString(), anyBoolean()))
+        when(requestValidator.validateCbPlanCreateRequestV3(any(), anyBoolean(), anyString(), anyBoolean()))
                 .thenReturn(List.of());
         when(cassandraOperation.insertRecord(anyString(), anyString(), anyMap())).thenReturn(cassandraInsertSuccess());
         Map<String, Object> requestMap = new HashMap<>();
@@ -179,7 +179,7 @@ class CbPlanServiceV3ImplTest {
     @Test
     void testCreateCbPlanFailsOnValidationErrors() {
         mockValidUserAndOrg(false);
-        when(requestValidator.validateCbPlanCreateRequest(any(), anyBoolean(), anyString(), anyBoolean()))
+        when(requestValidator.validateCbPlanCreateRequestV3(any(), anyBoolean(), anyString(), anyBoolean()))
                 .thenReturn(List.of("name is required"));
         ApiResponse response = cbPlanService.createCbPlan(apiRequest(new HashMap<>()), ORG_ID, TOKEN);
         assertEquals(Constants.FAILED, response.getParams().getStatus());
@@ -190,7 +190,7 @@ class CbPlanServiceV3ImplTest {
     @Test
     void testCreateCbPlanFailsWhenInsertFails() {
         mockValidUserAndOrg(false);
-        when(requestValidator.validateCbPlanCreateRequest(any(), anyBoolean(), anyString(), anyBoolean()))
+        when(requestValidator.validateCbPlanCreateRequestV3(any(), anyBoolean(), anyString(), anyBoolean()))
                 .thenReturn(List.of());
         ApiResponse insertFailed = new ApiResponse();
         insertFailed.put(Constants.RESPONSE, Constants.FAILED);
@@ -249,7 +249,7 @@ class CbPlanServiceV3ImplTest {
         existingCbPlan.put(Constants.CREATED_BY, USER_ID);
         existingCbPlan.put(Constants.STATUS, Constants.DRAFT);
         mockExistingPlan(existingCbPlan);
-        when(requestValidator.validateCbPlanCreateRequest(any(), anyBoolean(), anyString(), anyBoolean()))
+        when(requestValidator.validateCbPlanCreateRequestV3(any(), anyBoolean(), anyString(), anyBoolean()))
                 .thenReturn(List.of());
         when(cassandraOperation.updateRecord(anyString(), anyString(), anyMap(), anyMap()))
                 .thenReturn(Map.of(Constants.RESPONSE, Constants.SUCCESS));
@@ -265,7 +265,7 @@ class CbPlanServiceV3ImplTest {
         existingCbPlan.put(Constants.CREATED_BY, USER_ID);
         existingCbPlan.put(Constants.STATUS, Constants.DRAFT);
         mockExistingPlan(existingCbPlan);
-        when(requestValidator.validateCbPlanCreateRequest(any(), anyBoolean(), anyString(), anyBoolean()))
+        when(requestValidator.validateCbPlanCreateRequestV3(any(), anyBoolean(), anyString(), anyBoolean()))
                 .thenReturn(List.of("invalid field"));
         ApiResponse response = cbPlanService.updateCbPlan(requestWithPlanId(), ORG_ID, TOKEN, List.of());
         assertEquals(Constants.FAILED, response.getParams().getStatus());
@@ -280,7 +280,7 @@ class CbPlanServiceV3ImplTest {
         existingCbPlan.put(Constants.CREATED_BY, USER_ID);
         existingCbPlan.put(Constants.STATUS, Constants.DRAFT);
         mockExistingPlan(existingCbPlan);
-        when(requestValidator.validateCbPlanCreateRequest(any(), anyBoolean(), anyString(), anyBoolean()))
+        when(requestValidator.validateCbPlanCreateRequestV3(any(), anyBoolean(), anyString(), anyBoolean()))
                 .thenReturn(List.of());
         when(cassandraOperation.updateRecord(anyString(), anyString(), anyMap(), anyMap()))
                 .thenReturn(Map.of(Constants.RESPONSE, Constants.FAILED));

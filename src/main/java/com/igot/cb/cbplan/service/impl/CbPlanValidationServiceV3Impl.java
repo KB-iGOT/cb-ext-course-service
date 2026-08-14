@@ -101,7 +101,7 @@ public class CbPlanValidationServiceV3Impl {
      */
     public boolean validateRequest(ApiRequest request, boolean isCCA, String userOrgId, ApiResponse response) {
         try {
-            List<String> validations = requestValidator.validateCbPlanCreateRequest(request, isCCA, userOrgId, false);
+            List<String> validations = requestValidator.validateCbPlanCreateRequestV3(request, isCCA, userOrgId, false);
             if (CollectionUtils.isNotEmpty(validations)) {
                 response.getParams().setStatus(Constants.FAILED);
                 response.getParams().setErr(mapper.writeValueAsString(validations));

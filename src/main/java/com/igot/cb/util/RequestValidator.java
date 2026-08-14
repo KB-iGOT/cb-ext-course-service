@@ -22,6 +22,8 @@ import jakarta.validation.ValidatorFactory;
 public class RequestValidator {
     private final ObjectMapper mapper = new ObjectMapper();
     private final CbExtServerProperties cbExtServerProperties;
+    private static final String ERR_VALIDATION_PREFIX = "Validation Error: ";
+    private static final Validator V3_VALIDATOR = buildV3Validator();
 
     public RequestValidator(CbExtServerProperties cbExtServerProperties) {
         this.cbExtServerProperties = cbExtServerProperties;
@@ -217,5 +219,61 @@ public class RequestValidator {
         }
 
         return errors;
+    }
+
+    /**
+     * Builds the bean validator used by the V3 flows.
+     * The factory is closed as soon as the validator has been obtained; holding it open
+     * for the lifetime of the bean would leak it, and the validator does not need it.
+     *
+     * @return validator for CB Plan V3 payloads
+     */
+    private static Validator buildV3Validator() {
+        try (ValidatorFactory validatorFactory = Validation.buildDefaultValidatorFactory()) {
+            return validatorFactory.getValidator();
+        }
+    }
+
+    /**
+     * Validates a CB Plan create/update request for the V3 APIs.
+     * Behaves like {@link #validateCbPlanCreateRequest} but reports which field failed.
+     * V1/V2 flows are unaffected and continue to use the original method.
+     *
+     * @param request       API request
+     * @param isCCA         whether the logged in org is CCA
+     * @param loggedInOrgId logged in user's organization ID
+     * @param isAdmin       whether the logged in user is an admin
+     * @return list of validation errors, empty if the request is valid
+     */
+    public List<String> validateCbPlanCreateRequestV3(ApiRequest request, boolean isCCA, String loggedInOrgId,
+                                                      boolean isAdmin) {
+        Map<String, Object> rawRequest = (Map<String, Object>) request.getRequest();
+        List<String> errors = validateCbPlanRequestV3(rawRequest);
+        if (CollectionUtils.isNotEmpty(errors)) {
+            return errors;
+        }
+        return validateContextData(rawRequest, isCCA, loggedInOrgId, null, isAdmin);
+    }
+
+    /**
+     * Validates mandatory CB Plan fields for the V3 APIs.
+     * Each violation names the offending field and the list is sorted so the same
+     * payload always yields the same error order.
+     *
+     * @param request raw request map
+     * @return sorted list of validation errors, empty if the request is valid
+     */
+    public List<String> validateCbPlanRequestV3(Map<String, Object> request) {
+        CbPlanDto cbPlanDto = mapper.convertValue(request, CbPlanDto.class);
+        if (Objects.isNull(cbPlanDto.getIsApar())) {
+            cbPlanDto.setIsApar(false);
+        }
+        request.put(Constants.IS_APAR, cbPlanDto.getIsApar());
+        List<String> validationErrors = new ArrayList<>();
+        for (ConstraintViolation<CbPlanDto> violation : V3_VALIDATOR.validate(cbPlanDto)) {
+            validationErrors.add(ERR_VALIDATION_PREFIX + violation.getPropertyPath() + " " + violation.getMessage());
+        }
+        Collections.sort(validationErrors);
+        return validationErrors;
     }
 }

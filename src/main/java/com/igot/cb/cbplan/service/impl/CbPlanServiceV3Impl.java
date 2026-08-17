@@ -80,7 +80,7 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
         this.contentLookupService = new CbPlanContentLookupServiceV3Impl(cassandraOperation, redisCacheMgr, outboundRequestHandlerService);
         this.elasticSearchService = new CbPlanElasticSearchServiceV3Impl(esUtilService, serverProperties);
         this.enrichmentService = new CbPlanEnrichmentServiceV3Impl(userAndOrgService, contentService);
-        this.validationService = new CbPlanValidationServiceV3Impl(accessTokenValidator, userAndOrgService, requestValidator);
+        this.validationService = new CbPlanValidationServiceV3Impl(accessTokenValidator, userAndOrgService, requestValidator, serverProperties);
         this.dataTransformService = new CbPlanDataTransformServiceV3Impl(serverProperties);
         this.accessTokenValidator = accessTokenValidator;
         this.cassandraOperation = cassandraOperation;
@@ -337,7 +337,11 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
 
     @Override
     public ApiResponse publishCbPlan(ApiRequest request, String userOrgId, String authToken, List<String> userRoles) {
-        log.info("CbPlanServiceV3Impl.publishCbPlan: Publishing CB Plan for orgId: {}", userOrgId);
+        return publishCbPlan(request, userOrgId, authToken, userRoles, false);
+    }
+
+    public ApiResponse publishCbPlan(ApiRequest request, String userOrgId, String authToken, List<String> userRoles, boolean isAdmin) {
+        log.info("CbPlanServiceV3Impl.publishCbPlan: Publishing CB Plan for orgId: {}, isAdmin: {}", userOrgId, isAdmin);
         ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_CB_PLAN_PUBLISH);
         try {
             String userId = validationService.validateAndExtractUserId(authToken, response);
@@ -353,10 +357,10 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
             if (MapUtils.isEmpty(existingCbPlan)) {
                 return response;
             }
-            if (validationService.isUnauthorizedToUpdate(userId, existingCbPlan, userRoles, response)) {
+            if (!isAdmin && validationService.isUnauthorizedToUpdate(userId, existingCbPlan, userRoles, response)) {
                 return response;
             }
-            executePublishFlow(request, userId, userOrgId, cbPlanId, existingCbPlan, response);
+            executePublishFlow(request, userId, userOrgId, cbPlanId, existingCbPlan, isAdmin, response);
         } catch (Exception e) {
             handlePublishException(response, userOrgId, e);
         }
@@ -365,10 +369,14 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
 
     private void executePublishFlow(ApiRequest request, String userId, String userOrgId,
                                     String cbPlanId, Map<String, Object> existingCbPlan,
-                                    ApiResponse response) throws JsonProcessingException {
+                                    boolean isAdmin, ApiResponse response) throws JsonProcessingException {
         String rootOrgId = validationService.validateUserOrganization(userId, response);
         if (StringUtils.isEmpty(rootOrgId)) {
             return;
+        }
+        if (isAdmin) {
+            log.info("executePublishFlow: Admin endpoint - using targetedOrganisation={} instead of user's org", userOrgId);
+            rootOrgId = userOrgId;
         }
         boolean isCCA = validationService.validateOrgCCA(rootOrgId, response);
         if (Constants.FAILED.equalsIgnoreCase(response.getParams().getStatus())) {
@@ -378,7 +386,7 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
         String existingStatus = (String) existingCbPlan.get(Constants.STATUS);
         String planYear = (String) existingCbPlan.get(Constants.PLAN_YEAR);
         Map<String, Object> updatedRequest = preparePublishUpdate(incomingRequest, existingCbPlan,
-                existingStatus, userId, isCCA, userOrgId, response);
+                userId, isCCA, userOrgId, isAdmin, response);
         if (MapUtils.isEmpty(updatedRequest)) {
             return;
         }
@@ -387,9 +395,10 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
 
     private Map<String, Object> preparePublishUpdate(Map<String, Object> incomingRequest,
                                                      Map<String, Object> existingCbPlan,
-                                                     String existingStatus, String userId,
-                                                     boolean isCCA, String userOrgId,
+                                                     String userId, boolean isCCA,
+                                                     String userOrgId, boolean isAdmin,
                                                      ApiResponse response) throws JsonProcessingException {
+        String existingStatus = (String) existingCbPlan.get(Constants.STATUS);
         String comment = (String) incomingRequest.get(Constants.COMMENT);
         Map<String, Object> updatedRequest = new HashMap<>();
         updatedRequest.put(Constants.PUBLISHED_AT, Instant.now());
@@ -399,9 +408,9 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
         updatedRequest.put(Constants.UPDATED_BY, userId);
         if (Constants.LIVE.equalsIgnoreCase(existingStatus)) {
             return handleLivePlanPublish(existingCbPlan, incomingRequest, isCCA, userOrgId,
-                    updatedRequest, response);
+                    updatedRequest, isAdmin, response);
         } else if (Constants.DRAFT.equalsIgnoreCase(existingStatus)) {
-            return handleDraftPlanPublish(existingCbPlan, isCCA, userOrgId, updatedRequest, response);
+            return handleDraftPlanPublish(existingCbPlan, isCCA, userOrgId, updatedRequest, isAdmin, response);
         } else {
             response.getParams().setStatus(Constants.FAILED);
             response.getParams().setErr("CbPlan is in invalid state for publish. Status: " + existingStatus);
@@ -441,14 +450,14 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
                                                       Map<String, Object> incomingRequest,
                                                       boolean isCCA, String userOrgId,
                                                       Map<String, Object> updatedRequest,
-                                                      ApiResponse response) throws JsonProcessingException {
+                                                      boolean isAdmin, ApiResponse response) throws JsonProcessingException {
         Set<String> existingRootOrgIdsInCriteria = new HashSet<>();
         Set<String> rootOrgIdsInCriteria = new HashSet<>();
-        requestValidator.validateContextData(existingCbPlan, isCCA, userOrgId, existingRootOrgIdsInCriteria, false);
+        requestValidator.validateContextData(existingCbPlan, isCCA, userOrgId, existingRootOrgIdsInCriteria, isAdmin);
         updatedRequest.putAll(prepareCbPlanForRePublish(existingCbPlan, incomingRequest));
         if (updatedRequest.containsKey(Constants.CONTEXT_DATA_REQUEST)) {
             List<String> errors = requestValidator.validateContextData(updatedRequest, isCCA, userOrgId,
-                    rootOrgIdsInCriteria, false);
+                    rootOrgIdsInCriteria, isAdmin);
             if (CollectionUtils.isNotEmpty(errors)) {
                 response.getParams().setStatus(Constants.FAILED);
                 response.getParams().setErr(mapper.writeValueAsString(errors));
@@ -465,12 +474,12 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
 
     private Map<String, Object> handleDraftPlanPublish(Map<String, Object> existingCbPlan, boolean isCCA,
                                                        String userOrgId, Map<String, Object> updatedRequest,
-                                                       ApiResponse response) throws JsonProcessingException {
+                                                       boolean isAdmin, ApiResponse response) throws JsonProcessingException {
         Set<String> rootOrgIdsInCriteria = new HashSet<>();
         updatedRequest.put(Constants.STATUS, Constants.LIVE);
         updatedRequest.put(Constants.END_DATE_REQUEST, dataTransformService.parseEndDate(existingCbPlan.get(Constants.END_DATE_REQUEST)));
         List<String> errors = requestValidator.validateContextData(existingCbPlan, isCCA, userOrgId,
-                rootOrgIdsInCriteria, false);
+                rootOrgIdsInCriteria, isAdmin);
         if (CollectionUtils.isNotEmpty(errors)) {
             response.getParams().setStatus(Constants.FAILED);
             response.getParams().setErr(mapper.writeValueAsString(errors));
@@ -595,14 +604,14 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
         Object planIdObj = requestData.get(Constants.ID);
         if (Objects.isNull(planIdObj)) {
             response.getParams().setStatus(Constants.FAILED);
-            response.getParams().setErr("CbPlanId is missing.");
+            response.getParams().setErr(Constants.ERR_CB_PLAN_ID_MISSING);
             response.setResponseCode(HttpStatus.BAD_REQUEST);
             return null;
         }
         String cbPlanId = planIdObj.toString();
         if (StringUtils.isBlank(cbPlanId)) {
             response.getParams().setStatus(Constants.FAILED);
-            response.getParams().setErr("CbPlanId is missing.");
+            response.getParams().setErr(Constants.ERR_CB_PLAN_ID_MISSING);
             response.setResponseCode(HttpStatus.BAD_REQUEST);
             return null;
         }
@@ -1402,7 +1411,7 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
             if (StringUtils.isEmpty(cbPlanId)) {
                 log.warn("readCbPlan: Missing cbPlanId");
                 response.getParams().setStatus(Constants.FAILED);
-                response.getParams().setErr("CbPlanId is missing.");
+                response.getParams().setErr(Constants.ERR_CB_PLAN_ID_MISSING);
                 response.setResponseCode(HttpStatus.BAD_REQUEST);
                 return response;
             }
@@ -1574,5 +1583,75 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
             extractedFields.put(Constants.PLAN_TYPE, dataInDraftObject.get(Constants.PLAN_TYPE));
         }
         return extractedFields;
+    }
+
+    /**
+     * Creates a CB Plan through the AI CBP admin flow.
+     * Unlike {@link #createCbPlan(ApiRequest, String, String)} the organisation is supplied in the
+     * request body as targetedOrganisation rather than in a header. That value becomes both the
+     * effective userOrgId and the plan's orgIdList, and the plan is tagged planType = AICBP so
+     * downstream consumers can separate AI generated plans from manually authored ones.
+     *
+     * @param request   the API request containing CB Plan details and targetedOrganisation
+     * @param authToken the authentication token
+     * @return ApiResponse containing the created plan ID and status
+     */
+    @Override
+    public ApiResponse createCbPlanByAdmin(ApiRequest request, String authToken) {
+        String targetedOrganisation = extractTargetedOrganisation(request);
+        if (StringUtils.isBlank(targetedOrganisation)) {
+            log.warn("createCbPlanByAdmin: {}", Constants.ERR_TARGETED_ORGANISATION_REQUIRED);
+            ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_CB_PLAN_V3_AICBP_CREATE);
+            response.getParams().setStatus(Constants.FAILED);
+            response.getParams().setErr(Constants.ERR_TARGETED_ORGANISATION_REQUIRED);
+            response.setResponseCode(HttpStatus.BAD_REQUEST);
+            return response;
+        }
+        Map<String, Object> rawRequest = (Map<String, Object>) request.getRequest();
+        rawRequest.put(Constants.ORG_ID_LIST, List.of(targetedOrganisation));
+        rawRequest.put(Constants.PLAN_TYPE, Constants.PLAN_TYPE_AI_CBP);
+        log.info("createCbPlanByAdmin: Creating AI CBP plan for targetedOrganisation={}", targetedOrganisation);
+        return createCbPlan(request, targetedOrganisation, authToken);
+    }
+
+    /**
+     * Publishes a CB Plan through the AI CBP admin flow.
+     * The organisation is supplied in the request body as targetedOrganisation rather than in a
+     * header and becomes the effective userOrgId. ROLE_ADMIN is supplied as the caller's role so
+     * the creator/role check is satisfied without an x-authenticated-user-roles header, matching
+     * the legacy aicbp publish behaviour.
+     *
+     * @param request   the API request containing CB Plan ID, comment and targetedOrganisation
+     * @param authToken the authentication token
+     * @return ApiResponse containing the publish status
+     */
+    @Override
+    public ApiResponse publishCbPlanByAdmin(ApiRequest request, String authToken) {
+        String targetedOrganisation = extractTargetedOrganisation(request);
+        if (StringUtils.isBlank(targetedOrganisation)) {
+            log.warn("publishCbPlanByAdmin: {}", Constants.ERR_TARGETED_ORGANISATION_REQUIRED);
+            ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_CB_PLAN_V3_AICBP_PUBLISH);
+            response.getParams().setStatus(Constants.FAILED);
+            response.getParams().setErr(Constants.ERR_TARGETED_ORGANISATION_REQUIRED);
+            response.setResponseCode(HttpStatus.BAD_REQUEST);
+            return response;
+        }
+        log.info("publishCbPlanByAdmin: Publishing AI CBP plan for targetedOrganisation={}", targetedOrganisation);
+        return publishCbPlan(request, targetedOrganisation, authToken, Collections.emptyList(), true);
+    }
+
+    /**
+     * Reads the targeted organisation from the request body.
+     *
+     * @param request the API request
+     * @return targeted organisation ID, or null when absent
+     */
+    private String extractTargetedOrganisation(ApiRequest request) {
+        Map<String, Object> rawRequest = (Map<String, Object>) request.getRequest();
+        if (MapUtils.isEmpty(rawRequest)) {
+            return null;
+        }
+        Object value = rawRequest.get(Constants.TARGETED_ORGANISATION);
+        return Objects.nonNull(value) ? String.valueOf(value) : null;
     }
 }

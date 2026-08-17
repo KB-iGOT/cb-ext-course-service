@@ -148,4 +148,39 @@ public class CbPlanWithAccessSettingsV3 {
         ApiResponse response = cbPlanServiceV3.getCBPlanDictionaryForUser(request, token);
         return new ResponseEntity<>(response, response.getResponseCode());
     }
+
+    /**
+     * Creates a CB Plan through the AI CBP admin flow.
+     * The target organisation is supplied in the request body as targetedOrganisation instead of
+     * the x-authenticated-user-orgid header, so no org or roles header is required.
+     *
+     * @param request the API request containing CB Plan details and targetedOrganisation
+     * @param token   the authentication token
+     * @return ResponseEntity containing ApiResponse with created plan details
+     */
+    @PostMapping("/aicbp/create")
+    public ResponseEntity<ApiResponse> createCbPlanByAdmin(
+            @RequestBody ApiRequest request,
+            @RequestHeader(Constants.X_AUTH_TOKEN) String token) {
+        ApiResponse response = cbPlanServiceV3.createCbPlanByAdmin(request, token);
+        return new ResponseEntity<>(response, response.getResponseCode());
+    }
+
+    /**
+     * Publishes a CB Plan through the AI CBP admin flow.
+     * The target organisation is supplied in the request body as targetedOrganisation instead of
+     * the x-authenticated-user-orgid header, and the creator/role check is bypassed, so no org or
+     * roles header is required.
+     *
+     * @param request the API request containing CB Plan ID, comment and targetedOrganisation
+     * @param token   the authentication token
+     * @return ResponseEntity containing ApiResponse with publish status
+     */
+    @PostMapping("/aicbp/publish")
+    public ResponseEntity<ApiResponse> publishCbPlanByAdmin(
+            @RequestBody ApiRequest request,
+            @RequestHeader(Constants.X_AUTH_TOKEN) String token) {
+        ApiResponse response = cbPlanServiceV3.publishCbPlanByAdmin(request, token);
+        return new ResponseEntity<>(response, response.getResponseCode());
+    }
 }

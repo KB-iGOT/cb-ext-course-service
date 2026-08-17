@@ -84,4 +84,28 @@ public interface CbPlanServiceV3 {
      * @return ApiResponse containing the CB Plan details or error
      */
     ApiResponse readCbPlan(String cbPlanId, String userOrgId, String authUserToken);
+
+    /**
+     * Creates a CB Plan through the AI CBP admin flow.
+     * The target organisation is taken from the request body rather than a header, is used as the
+     * plan's org scope, and the plan is tagged with planType = AICBP. All other behaviour matches
+     * {@link #createCbPlan(ApiRequest, String, String)}.
+     *
+     * @param request   the API request containing CB Plan details and targetedOrganisation
+     * @param authToken the authentication token
+     * @return ApiResponse containing the created plan ID and status
+     */
+    ApiResponse createCbPlanByAdmin(ApiRequest request, String authToken);
+
+    /**
+     * Publishes a CB Plan through the AI CBP admin flow.
+     * The target organisation is taken from the request body rather than a header, and the
+     * creator/role check is bypassed so only a valid token is required. All other behaviour
+     * matches {@link #publishCbPlan(ApiRequest, String, String, List)}.
+     *
+     * @param request   the API request containing CB Plan ID, comment and targetedOrganisation
+     * @param authToken the authentication token
+     * @return ApiResponse containing the publish status
+     */
+    ApiResponse publishCbPlanByAdmin(ApiRequest request, String authToken);
 }

@@ -19,6 +19,7 @@ import com.igot.cb.model.ApiRequest;
 import com.igot.cb.model.ApiResponse;
 import com.igot.cb.service.UserAndOrgServiceImpl;
 import com.igot.cb.util.AccessTokenValidator;
+import com.igot.cb.util.CbExtServerProperties;
 import com.igot.cb.util.Constants;
 import com.igot.cb.util.RequestValidator;
 
@@ -35,14 +36,17 @@ public class CbPlanValidationServiceV3Impl {
     private final AccessTokenValidator accessTokenValidator;
     private final UserAndOrgServiceImpl userAndOrgService;
     private final RequestValidator requestValidator;
+    private final CbExtServerProperties serverProperties;
     private final ObjectMapper mapper;
 
     public CbPlanValidationServiceV3Impl(AccessTokenValidator accessTokenValidator,
                                          UserAndOrgServiceImpl userAndOrgService,
-                                         RequestValidator requestValidator) {
+                                         RequestValidator requestValidator,
+                                         CbExtServerProperties serverProperties) {
         this.accessTokenValidator = accessTokenValidator;
         this.userAndOrgService = userAndOrgService;
         this.requestValidator = requestValidator;
+        this.serverProperties = serverProperties;
         this.mapper = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
@@ -151,8 +155,9 @@ public class CbPlanValidationServiceV3Impl {
                                           List<String> userRoles, ApiResponse response) {
         String createdBy = (String) existingCbPlan.get(Constants.CREATED_BY);
         boolean isOwner = userId.equals(createdBy);
-        boolean isAdmin = CollectionUtils.isNotEmpty(userRoles) && userRoles.contains(Constants.ROLE_ADMIN);
-        if (!isOwner && !isAdmin) {
+        boolean hasAuthorizedRole = serverProperties.getCbPlanUpdatePublishAuthorizedRoles().stream()
+                .anyMatch(role -> CollectionUtils.isNotEmpty(userRoles) && userRoles.contains(role));
+        if (!isOwner && !hasAuthorizedRole) {
             response.getParams().setStatus(Constants.FAILED);
             response.getParams().setErr(Constants.ERR_UNAUTHORIZED_UPDATE);
             response.setResponseCode(HttpStatus.FORBIDDEN);

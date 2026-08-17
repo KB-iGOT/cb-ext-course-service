@@ -4,8 +4,10 @@ import com.igot.cb.model.ApiRequest;
 import com.igot.cb.model.ApiResponse;
 import com.igot.cb.service.UserAndOrgServiceImpl;
 import com.igot.cb.util.AccessTokenValidator;
+import com.igot.cb.util.CbExtServerProperties;
 import com.igot.cb.util.Constants;
 import com.igot.cb.util.RequestValidator;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -28,6 +30,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -46,8 +49,17 @@ class CbPlanValidationServiceV3ImplTest {
     @Mock
     private RequestValidator requestValidator;
 
+    @Mock
+    private CbExtServerProperties serverProperties;
+
     @InjectMocks
     private CbPlanValidationServiceV3Impl validationService;
+
+    @BeforeEach
+    void setUp() {
+        lenient().when(serverProperties.getCbPlanUpdatePublishAuthorizedRoles())
+                .thenReturn(List.of("CONTENT_CREATOR", "ADMIN"));
+    }
 
     private static ApiRequest apiRequestWithId(String planId) {
         ApiRequest request = new ApiRequest();
@@ -173,11 +185,11 @@ class CbPlanValidationServiceV3ImplTest {
     }
 
     @Test
-    void testIsUnauthorizedToUpdateAllowsAdmin() {
+    void testIsUnauthorizedToUpdateAllowsAuthorizedRole() {
         Map<String, Object> existingCbPlan = new HashMap<>();
         existingCbPlan.put(Constants.CREATED_BY, "otherUser");
         assertFalse(validationService.isUnauthorizedToUpdate(USER_ID, existingCbPlan,
-                List.of(Constants.ROLE_ADMIN), new ApiResponse()));
+                List.of("CONTENT_CREATOR"), new ApiResponse()));
     }
 
     @Test
@@ -271,6 +283,6 @@ class CbPlanValidationServiceV3ImplTest {
 
     @Test
     void testConstructor() {
-        assertNotNull(new CbPlanValidationServiceV3Impl(accessTokenValidator, userAndOrgService, requestValidator));
+        assertNotNull(new CbPlanValidationServiceV3Impl(accessTokenValidator, userAndOrgService, requestValidator, serverProperties));
     }
 }

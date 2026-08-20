@@ -52,6 +52,18 @@ class RedisConfigTest {
     }
 
     @Test
+    void testJedisPoolCreationWithPassword() {
+        when(mockPropertiesCache.getProperty(Constants.REDIS_HOST)).thenReturn("localhost");
+        when(mockPropertiesCache.getProperty(Constants.REDIS_PORT)).thenReturn("6379");
+        when(mockPropertiesCache.readProperty(Constants.REDIS_PASSWORD)).thenReturn("secret");
+
+        JedisPool jedisPool = redisConfig.jedisPool();
+
+        assertNotNull(jedisPool);
+        verify(mockPropertiesCache).readProperty(Constants.REDIS_PASSWORD);
+    }
+
+    @Test
     void testBuildPoolConfig() throws Exception {
         Method buildPoolConfigMethod = RedisConfig.class.getDeclaredMethod("buildPoolConfig");
         buildPoolConfigMethod.setAccessible(true);

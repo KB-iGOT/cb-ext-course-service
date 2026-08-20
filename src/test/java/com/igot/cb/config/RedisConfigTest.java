@@ -9,6 +9,7 @@ import java.lang.reflect.Method;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import com.igot.cb.common.ServerProperties;
 import com.igot.cb.util.Constants;
 import com.igot.cb.util.PropertiesCache;
 
@@ -19,16 +20,23 @@ class RedisConfigTest {
 
     private RedisConfig redisConfig;
     private PropertiesCache mockPropertiesCache;
+    private ServerProperties mockServerProperties;
 
     @BeforeEach
     void setUp() throws Exception {
         mockPropertiesCache = mock(PropertiesCache.class);
+        mockServerProperties = mock(ServerProperties.class);
         redisConfig = new RedisConfig();
 
         // Inject mock PropertiesCache using reflection
         Field propertiesCacheField = RedisConfig.class.getDeclaredField("propertiesCache");
         propertiesCacheField.setAccessible(true);
         propertiesCacheField.set(redisConfig, mockPropertiesCache);
+
+        // ServerProperties is @Autowired, so inject it the same way
+        Field serverPropertiesField = RedisConfig.class.getDeclaredField("serverProperties");
+        serverPropertiesField.setAccessible(true);
+        serverPropertiesField.set(redisConfig, mockServerProperties);
     }
 
     @Test

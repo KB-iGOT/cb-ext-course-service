@@ -1,5 +1,6 @@
 package com.igot.cb.config;
 
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.context.annotation.Bean;
@@ -12,6 +13,7 @@ import com.igot.cb.util.PropertiesCache;
 import lombok.extern.slf4j.Slf4j;
 import redis.clients.jedis.JedisPool;
 import redis.clients.jedis.JedisPoolConfig;
+import redis.clients.jedis.Protocol;
 
 /**
  * Configuration class for Redis connection pool.
@@ -46,8 +48,19 @@ public class RedisConfig {
         System.setProperty("org.apache.commons.pool2.registerMbeans", "false");
 
         JedisPoolConfig poolConfig = buildPoolConfig();
-        return new JedisPool(poolConfig, propertiesCache.getProperty(Constants.REDIS_HOST),
-                Integer.parseInt(propertiesCache.getProperty(Constants.REDIS_PORT)));
+        String host = propertiesCache.getProperty(Constants.REDIS_HOST);
+        int port = Integer.parseInt(propertiesCache.getProperty(Constants.REDIS_PORT));
+
+        if (!Boolean.parseBoolean(propertiesCache.readProperty(Constants.REDIS_PASSWORD_REQUIRED))) {
+            return new JedisPool(poolConfig, host, port);
+        }
+
+        String password = propertiesCache.readProperty(Constants.REDIS_PASSWORD);
+        if (StringUtils.isBlank(password)) {
+            throw new IllegalStateException(Constants.REDIS_PASSWORD_REQUIRED + " is true but " + Constants.REDIS_PASSWORD + " is not configured");
+        }
+
+        return new JedisPool(poolConfig, host, port, Protocol.DEFAULT_TIMEOUT, password);
     }
 
     /**
@@ -61,8 +74,18 @@ public class RedisConfig {
         System.setProperty("org.apache.commons.pool2.registerMbeans", "false");
 
         JedisPoolConfig poolConfig = buildPoolConfig();
-        return new JedisPool(poolConfig, serverProperties.getRedisDataHost(),
-                Integer.parseInt(serverProperties.getRedisDataPort()));
+        String host = serverProperties.getRedisDataHost();
+        int port = Integer.parseInt(serverProperties.getRedisDataPort());
+
+        if (!Boolean.parseBoolean(propertiesCache.readProperty(Constants.REDIS_PASSWORD_REQUIRED))) {
+            return new JedisPool(poolConfig, host, port);
+        }
+
+        String password = propertiesCache.readProperty(Constants.REDIS_PASSWORD);
+        if (StringUtils.isBlank(password)) {
+            throw new IllegalStateException(Constants.REDIS_PASSWORD_REQUIRED + " is true but " + Constants.REDIS_PASSWORD + " is not configured");
+        }
+        return new JedisPool(poolConfig, host, port, Protocol.DEFAULT_TIMEOUT, password);
     }
 
     private JedisPoolConfig buildPoolConfig() {

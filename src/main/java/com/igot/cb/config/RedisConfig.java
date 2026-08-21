@@ -50,10 +50,9 @@ public class RedisConfig {
     public JedisPool jedisPool() {
         System.setProperty("org.apache.commons.pool2.registerMbeans", "false");
 
-        String host = propertiesCache.getProperty(Constants.REDIS_HOST);
-        int port = Integer.parseInt(propertiesCache.getProperty(Constants.REDIS_PORT));
-        String password = propertiesCache.readProperty(Constants.REDIS_PASSWORD);
-        return buildJedisPool(host, port, password);
+        return buildJedisPool(propertiesCache.getProperty(Constants.REDIS_HOST),
+                Integer.parseInt(propertiesCache.getProperty(Constants.REDIS_PORT)),
+                propertiesCache.readProperty(Constants.REDIS_PASSWORD));
     }
 
     /**
@@ -82,6 +81,9 @@ public class RedisConfig {
         DefaultJedisClientConfig.Builder clientConfigBuilder = DefaultJedisClientConfig.builder();
         if (StringUtils.isNotBlank(password)) {
             clientConfigBuilder.password(password);
+            log.info("Connecting to Redis server at {}:{} with password authentication enabled", host, port);
+        } else {
+            log.info("Connecting to Redis server at {}:{} without password authentication", host, port);
         }
         return new JedisPool(poolConfig, new HostAndPort(host, port), clientConfigBuilder.build());
     }

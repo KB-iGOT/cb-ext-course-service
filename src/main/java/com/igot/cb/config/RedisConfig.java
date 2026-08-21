@@ -49,7 +49,8 @@ public class RedisConfig {
 
         return buildPool(propertiesCache.getProperty(Constants.REDIS_HOST),
                 Integer.parseInt(propertiesCache.getProperty(Constants.REDIS_PORT)),
-                Constants.REDIS_PASSWORD_REQUIRED, Constants.REDIS_PASSWORD);
+                Boolean.parseBoolean(propertiesCache.readProperty(Constants.REDIS_PASSWORD_REQUIRED)),
+                propertiesCache.readProperty(Constants.REDIS_PASSWORD));
     }
 
     /**
@@ -64,21 +65,22 @@ public class RedisConfig {
 
         return buildPool(serverProperties.getRedisDataHost(),
                 Integer.parseInt(serverProperties.getRedisDataPort()),
-                Constants.REDIS_DATA_PASSWORD_REQUIRED, Constants.REDIS_DATA_PASSWORD);
+                serverProperties.isRedisDataPasswordRequired(),
+                serverProperties.getRedisDataPassword());
     }
 
-    private JedisPool buildPool(String host, int port, String passwordRequiredKey, String passwordKey) {
+    private JedisPool buildPool(String host, int port, boolean passwordRequired, String password) {
         JedisPoolConfig poolConfig = buildPoolConfig();
 
-        if (!Boolean.parseBoolean(propertiesCache.readProperty(passwordRequiredKey))) {
+        if (!passwordRequired) {
+            log.warn("Redis pool for {}:{} created WITHOUT authentication - if that server has requirepass set, every operation will fail with NOAUTH and be swallowed as a cache miss", host, port);
             return new JedisPool(poolConfig, host, port);
         }
 
-        String password = propertiesCache.readProperty(passwordKey);
         if (StringUtils.isBlank(password)) {
-            throw new IllegalStateException(passwordRequiredKey + " is true but " + passwordKey + " is not configured");
+            throw new IllegalStateException("A password is required for the Redis instance at " + host + ":" + port + " but not configured");
         }
-
+        log.info("Redis pool for {}:{} created with authentication enabled", host, port);
         return new JedisPool(poolConfig, host, port, Protocol.DEFAULT_TIMEOUT, password);
     }
 

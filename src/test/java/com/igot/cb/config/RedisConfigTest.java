@@ -65,20 +65,24 @@ class RedisConfigTest {
     }
 
     /**
-     * The reason the keys are split: the two pools point at different Redis servers, so one may
-     * run with requirepass while the other does not. The open pool must not read the other's password.
+     * The reason the settings are split: the two pools point at different Redis servers, so one may
+     * run with requirepass while the other does not. They also read from different places - the
+     * data pool's credentials are Spring-bound on ServerProperties, alongside its host and port,
+     * while the cache pool's come from PropertiesCache. Neither may reach into the other's source.
      */
     @Test
     void testPoolsAuthenticateIndependently() {
         when(mockPropertiesCache.readProperty(Constants.REDIS_PASSWORD_REQUIRED)).thenReturn("false");
-        when(mockPropertiesCache.readProperty(Constants.REDIS_DATA_PASSWORD_REQUIRED)).thenReturn("true");
-        when(mockPropertiesCache.readProperty(Constants.REDIS_DATA_PASSWORD)).thenReturn("data-secret");
+        when(mockServerProperties.isRedisDataPasswordRequired()).thenReturn(true);
+        when(mockServerProperties.getRedisDataPassword()).thenReturn("data-secret");
 
         assertNotNull(redisConfig.jedisPool());
         assertNotNull(redisConfig.jedisDataPool());
 
-        verify(mockPropertiesCache, never()).readProperty(Constants.REDIS_PASSWORD);
-        verify(mockPropertiesCache).readProperty(Constants.REDIS_DATA_PASSWORD);
+        verify(mockServerProperties).getRedisDataPassword();
+        // String literals because these keys now exist only as @Value expressions on ServerProperties.
+        verify(mockPropertiesCache, never()).readProperty("redis.data.password.required");
+        verify(mockPropertiesCache, never()).readProperty("redis.data.password");
     }
 
     /**
@@ -90,7 +94,19 @@ class RedisConfigTest {
         when(mockPropertiesCache.readProperty(Constants.REDIS_PASSWORD)).thenReturn("  ");
 
         IllegalStateException ex = assertThrows(IllegalStateException.class, () -> redisConfig.jedisPool());
-        assertTrue(ex.getMessage().contains(Constants.REDIS_PASSWORD));
+        // the message must point at the cache instance (:6379), not the data one
+        assertTrue(ex.getMessage().contains("localhost:6379"), ex.getMessage());
+    }
+
+    /** The same guard on the data pool, now that its password is bound through ServerProperties. */
+    @Test
+    void testDataPoolFailsWhenPasswordRequiredButMissing() {
+        when(mockServerProperties.isRedisDataPasswordRequired()).thenReturn(true);
+        when(mockServerProperties.getRedisDataPassword()).thenReturn("  ");
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () -> redisConfig.jedisDataPool());
+        // and at the data instance (:6378) - the port is what tells the two apart
+        assertTrue(ex.getMessage().contains("localhost:6378"), ex.getMessage());
     }
 
     @Test

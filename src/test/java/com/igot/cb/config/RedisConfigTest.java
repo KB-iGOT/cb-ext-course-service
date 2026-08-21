@@ -83,6 +83,7 @@ class RedisConfigTest {
         serverProperties.setRedisDataPort("6378");
         serverProperties.setRedisDataPassword("");
         injectServerProperties(serverProperties);
+        
 
         JedisPool jedisDataPool = redisConfig.jedisDataPool();
 

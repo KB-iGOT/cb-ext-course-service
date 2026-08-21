@@ -35,7 +35,7 @@ public class ServerProperties {
     private String redisDataPort;
 
     @Value("${spring.redis.data.password:}")
-    private String redisDataPassword;
+    private String redisDataPassword; 
 
     @Value("${content.health.redis.db.index:12}")
     private int contentHealthDbIndex;

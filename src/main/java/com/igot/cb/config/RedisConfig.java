@@ -81,7 +81,7 @@ public class RedisConfig {
         JedisPoolConfig poolConfig = buildPoolConfig();
         DefaultJedisClientConfig.Builder clientConfigBuilder = DefaultJedisClientConfig.builder();
         if (StringUtils.isNotBlank(password)) {
-            clientConfigBuilder.password(password);
+            clientConfigBuilder.password(password); 
         }
         return new JedisPool(poolConfig, new HostAndPort(host, port), clientConfigBuilder.build());
     }

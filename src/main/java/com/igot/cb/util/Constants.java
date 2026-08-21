@@ -6,6 +6,7 @@ import java.util.List;
 /**
  * @author Mahesh RV
  */
+
 public class Constants {
 
     public static final String KEYSPACE_SUNBIRD = "sunbird";

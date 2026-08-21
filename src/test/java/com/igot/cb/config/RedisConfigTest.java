@@ -9,6 +9,7 @@ import java.lang.reflect.Method;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import com.igot.cb.common.ServerProperties;
 import com.igot.cb.util.Constants;
 import com.igot.cb.util.PropertiesCache;
 
@@ -49,6 +50,63 @@ class RedisConfigTest {
 
         verify(mockPropertiesCache).getProperty(Constants.REDIS_HOST);
         verify(mockPropertiesCache).getProperty(Constants.REDIS_PORT);
+    }
+
+    @Test
+    void testJedisPoolCreation_noPasswordConfigured() {
+        when(mockPropertiesCache.getProperty(Constants.REDIS_HOST)).thenReturn("localhost");
+        when(mockPropertiesCache.getProperty(Constants.REDIS_PORT)).thenReturn("6379");
+        when(mockPropertiesCache.readProperty(Constants.REDIS_PASSWORD)).thenReturn(null);
+
+        JedisPool jedisPool = redisConfig.jedisPool();
+
+        assertNotNull(jedisPool);
+        verify(mockPropertiesCache).readProperty(Constants.REDIS_PASSWORD);
+    }
+
+    @Test
+    void testJedisPoolCreation_withPasswordConfigured() {
+        when(mockPropertiesCache.getProperty(Constants.REDIS_HOST)).thenReturn("localhost");
+        when(mockPropertiesCache.getProperty(Constants.REDIS_PORT)).thenReturn("6379");
+        when(mockPropertiesCache.readProperty(Constants.REDIS_PASSWORD)).thenReturn("s3cr3t");
+
+        JedisPool jedisPool = redisConfig.jedisPool();
+
+        assertNotNull(jedisPool);
+        verify(mockPropertiesCache).readProperty(Constants.REDIS_PASSWORD);
+    }
+
+    @Test
+    void testJedisDataPoolCreation_noPasswordConfigured() throws Exception {
+        ServerProperties serverProperties = new ServerProperties();
+        serverProperties.setRedisDataHost("localhost");
+        serverProperties.setRedisDataPort("6378");
+        serverProperties.setRedisDataPassword("");
+        injectServerProperties(serverProperties);
+        
+
+        JedisPool jedisDataPool = redisConfig.jedisDataPool();
+
+        assertNotNull(jedisDataPool);
+    }
+
+    @Test
+    void testJedisDataPoolCreation_withPasswordConfigured() throws Exception {
+        ServerProperties serverProperties = new ServerProperties();
+        serverProperties.setRedisDataHost("localhost");
+        serverProperties.setRedisDataPort("6378");
+        serverProperties.setRedisDataPassword("s3cr3t");
+        injectServerProperties(serverProperties);
+
+        JedisPool jedisDataPool = redisConfig.jedisDataPool();
+
+        assertNotNull(jedisDataPool);
+    }
+
+    private void injectServerProperties(ServerProperties serverProperties) throws Exception {
+        Field serverPropertiesField = RedisConfig.class.getDeclaredField("serverProperties");
+        serverPropertiesField.setAccessible(true);
+        serverPropertiesField.set(redisConfig, serverProperties);
     }
 
     @Test

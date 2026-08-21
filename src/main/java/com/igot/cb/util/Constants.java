@@ -6,6 +6,7 @@ import java.util.List;
 /**
  * @author Mahesh RV
  */
+
 public class Constants {
 
     public static final String KEYSPACE_SUNBIRD = "sunbird";
@@ -314,6 +315,7 @@ public class Constants {
     public static final String REDIS_HOST = "redis.host";
     public static final String REDIS_PORT = "redis.port";
     public static final String REDIS_TIMEOUT = "redis.timeout";
+    public static final String REDIS_PASSWORD = "redis.password";
     public static final String COURSE_CATEGORY = "courseCategory";
     public static final String CONTEXT_ID_TYPE = "contextIdType";
     public static final String ID_MAP_CACHE_EXPIRY_TIME = "id.map.cache.expiry.time";

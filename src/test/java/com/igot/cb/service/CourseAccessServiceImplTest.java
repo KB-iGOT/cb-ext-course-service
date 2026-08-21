@@ -910,8 +910,6 @@ class CourseAccessServiceImplTest {
         
         when(cbPlanLearnerServiceImpl.getCBPlanListForUser(orgId, userId, true)).thenReturn(cbPlanResponse);
         
-        doNothing().when(redisCacheMgr).putInCache(anyString(), anyString());
-        
         ObjectMapper objectMapper = new ObjectMapper();
         ReflectionTestUtils.setField(courseAccessService, "objectMapper", objectMapper);
         

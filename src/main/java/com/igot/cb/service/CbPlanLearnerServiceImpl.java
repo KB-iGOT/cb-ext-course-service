@@ -215,6 +215,7 @@ public class CbPlanLearnerServiceImpl {
                     cbPlan.containsKey(Constants.IS_APAR) && cbPlan.get(Constants.IS_APAR) != null
                             ? cbPlan.get(Constants.IS_APAR)
                             : Boolean.FALSE);
+            cbPlanDetails.put(Constants.PLAN_TYPE, cbPlan.get(Constants.PLAN_TYPE));
 
             List<String> courses = (List<String>) cbPlan.get(Constants.CONTENT_LIST);
             List<Map<String, Object>> courseList = processCoursesForCbPlan(

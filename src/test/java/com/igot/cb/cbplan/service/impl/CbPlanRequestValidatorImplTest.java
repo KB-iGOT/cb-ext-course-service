@@ -645,14 +645,14 @@ class CbPlanRequestValidatorImplTest {
     private void mockOrgAsL0(String orgId) {
         Map<String, Object> orgMap = new HashMap<>();
         orgMap.put(Constants.ID, orgId);
-        orgMap.put(Constants.HIERARCHY_LEVEL, LEVEL_ZERO);
+        orgMap.put(Constants.MINISTRY_OR_STATETYPE, Constants.SPV);
         lenient().when(userAndOrgService.readOrgFromDB(eq(orgId), anyList())).thenReturn(orgMap);
     }
 
     private void mockOrgAsNonL0(String orgId) {
         Map<String, Object> orgMap = new HashMap<>();
         orgMap.put(Constants.ID, orgId);
-        orgMap.put(Constants.HIERARCHY_LEVEL, "other");
+        orgMap.put(Constants.MINISTRY_OR_STATETYPE, "OTHER");
         lenient().when(userAndOrgService.readOrgFromDB(eq(orgId), anyList())).thenReturn(orgMap);
     }
 }

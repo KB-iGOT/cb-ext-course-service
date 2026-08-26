@@ -707,6 +707,7 @@ public class Constants {
     public static final String MINISTRY_OR_STATE_ORG_NAME = "ministryOrStateOrgName";
     public static final String TABLE_CB_PLAN_V3_LOOKUP_BY_MINISTRY_OR_STATE_ID = "cb_plan_v3_lookup_by_ministryorstateid";
     public static final String MINISTRY_OR_STATE_ID_RQST = "ministryorstateid";
+    public static final String SPV = "SPV";
 
     private Constants() {
     }

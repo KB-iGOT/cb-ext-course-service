@@ -348,4 +348,83 @@ class CbPlanCacheMgrV3Test {
     void testConstructor() {
         assertNotNull(new CbPlanCacheMgrV3(cassandraOperation));
     }
+
+    // ---------------- getCbPlanForMinistryOrStateId ----------------
+
+    @Test
+    void testGetCbPlanForMinistryOrStateIdFetchesFromCassandra() {
+        List<Map<String, Object>> lookupEntrys = List.of(
+                lookupEntry("plan1", true, null),
+                lookupEntry("plan2", true, null)
+        );
+        when(cassandraOperation.getRecordsByProperties(
+                eq(Constants.KEYSPACE_SUNBIRD),
+                eq(Constants.TABLE_CB_PLAN_V3_LOOKUP_BY_MINISTRY_OR_STATE_ID),
+                anyMap(), any(), any())).thenReturn(lookupEntrys);
+        List<Map<String, Object>> result = cbPlanCacheMgrV3.getCbPlanForMinistryOrStateId("ORG_001", PLAN_YEAR);
+        assertEquals(2, result.size());
+        assertEquals("plan1", result.get(0).get(Constants.PLAN_ID));
+    }
+
+    @Test
+    void testGetCbPlanForMinistryOrStateIdFiltersInactivePlans() {
+        List<Map<String, Object>> lookupEntrys = List.of(
+                lookupEntry("plan1", true, null),
+                lookupEntry("plan2", false, null),
+                lookupEntry("plan3", true, null)
+        );
+        when(cassandraOperation.getRecordsByProperties(
+                eq(Constants.KEYSPACE_SUNBIRD),
+                eq(Constants.TABLE_CB_PLAN_V3_LOOKUP_BY_MINISTRY_OR_STATE_ID),
+                anyMap(), any(), any())).thenReturn(lookupEntrys);
+        List<Map<String, Object>> result = cbPlanCacheMgrV3.getCbPlanForMinistryOrStateId("ORG_001", PLAN_YEAR);
+        assertEquals(2, result.size());
+        assertEquals("plan1", result.get(0).get(Constants.PLAN_ID));
+        assertEquals("plan3", result.get(1).get(Constants.PLAN_ID));
+    }
+
+    @Test
+    void testGetCbPlanForMinistryOrStateIdHandlesCassandraReturningNull() {
+        when(cassandraOperation.getRecordsByProperties(
+                eq(Constants.KEYSPACE_SUNBIRD),
+                eq(Constants.TABLE_CB_PLAN_V3_LOOKUP_BY_MINISTRY_OR_STATE_ID),
+                anyMap(), any(), any())).thenReturn(null);
+        List<Map<String, Object>> result = cbPlanCacheMgrV3.getCbPlanForMinistryOrStateId("ORG_001", PLAN_YEAR);
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    void testGetCbPlanForMinistryOrStateIdCachesResult() {
+        List<Map<String, Object>> lookupEntrys = List.of(lookupEntry("plan1", true, null));
+        when(cassandraOperation.getRecordsByProperties(
+                eq(Constants.KEYSPACE_SUNBIRD),
+                eq(Constants.TABLE_CB_PLAN_V3_LOOKUP_BY_MINISTRY_OR_STATE_ID),
+                anyMap(), any(), any())).thenReturn(lookupEntrys);
+        cbPlanCacheMgrV3.getCbPlanForMinistryOrStateId("ORG_001", PLAN_YEAR);
+        List<Map<String, Object>> second = cbPlanCacheMgrV3.getCbPlanForMinistryOrStateId("ORG_001", PLAN_YEAR);
+        assertEquals(1, second.size());
+        verify(cassandraOperation, times(1)).getRecordsByProperties(
+                eq(Constants.KEYSPACE_SUNBIRD),
+                eq(Constants.TABLE_CB_PLAN_V3_LOOKUP_BY_MINISTRY_OR_STATE_ID),
+                anyMap(), any(), any());
+    }
+
+    @Test
+    void testGetCbPlanForMinistryOrStateIdCachesByMinistryIdAndYear() {
+        List<Map<String, Object>> lookupEntrys1 = List.of(lookupEntry("plan1", true, null));
+        List<Map<String, Object>> lookupEntrys2 = List.of(lookupEntry("plan2", true, null));
+        when(cassandraOperation.getRecordsByProperties(
+                eq(Constants.KEYSPACE_SUNBIRD),
+                eq(Constants.TABLE_CB_PLAN_V3_LOOKUP_BY_MINISTRY_OR_STATE_ID),
+                anyMap(), any(), any()))
+                .thenReturn(lookupEntrys1)
+                .thenReturn(lookupEntrys2);
+        cbPlanCacheMgrV3.getCbPlanForMinistryOrStateId("ORG_001", PLAN_YEAR);
+        List<Map<String, Object>> result2 = cbPlanCacheMgrV3.getCbPlanForMinistryOrStateId("ORG_002", PLAN_YEAR);
+        assertEquals("plan2", result2.get(0).get(Constants.PLAN_ID));
+        verify(cassandraOperation, times(2)).getRecordsByProperties(
+                eq(Constants.KEYSPACE_SUNBIRD),
+                eq(Constants.TABLE_CB_PLAN_V3_LOOKUP_BY_MINISTRY_OR_STATE_ID),
+                anyMap(), any(), any());
+    }
 }

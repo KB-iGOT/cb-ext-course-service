@@ -674,6 +674,40 @@ public class Constants {
     public static final String ERR_TARGETED_ORGANISATION_REQUIRED = "targetedOrganisation is required";
     public static final String ERR_CB_PLAN_ID_MISSING = "CbPlanId is missing.";
 
+    public static final String ERR_PREFIX = "Validation Error: ";
+    public static final String ERR_CONTEXT_DATA_MISSING = ERR_PREFIX + "contextData is missing in request";
+    public static final String ERR_CONTEXT_DATA_UNPARSEABLE = ERR_PREFIX + "Failed to parse contextData";
+    public static final String ERR_CONTEXT_DATA_INVALID_TYPE = ERR_PREFIX + "contextData is of invalid type";
+    public static final String ERR_ACCESS_CONTROL_MISSING = ERR_PREFIX + "accessControl is missing in contextData";
+    public static final String ERR_USER_GROUPS_MISSING = ERR_PREFIX + "User groups are missing in accessControl";
+    public static final String ERR_CRITERIA_LIST_MISSING = ERR_PREFIX + "criteriaList is missing in userGroup";
+    public static final String ERR_CRITERIA_LIST_EMPTY = ERR_PREFIX + "criteriaList is empty in userGroup";
+    public static final String ERR_CRITERIA_KEY_MISSING = ERR_PREFIX + "criteriaKey is missing in userGroup";
+    public static final String ERR_CRITERIA_VALUE_MISSING =
+            ERR_PREFIX + "criteriaValue is missing for criteriaKey: ";
+    public static final String ERR_CRITERIA_VALUE_UNSUPPORTED =
+            ERR_PREFIX + "Unsupported criteriaValue type for criteriaKey: ";
+    public static final String ERR_ROOT_ORG_CRITERIA_MISSING =
+            ERR_PREFIX + "ROOT_ORG_ID criteria is missing in userGroup and organization is not CCA";
+    public static final String ERR_MULTIPLE_ROOT_ORG_IDS =
+            ERR_PREFIX + "Multiple ROOT_ORG_IDs found in criteria but organization is not CCA";
+    public static final String ERR_NO_ROOT_ORG_ID =
+            ERR_PREFIX + "No ROOT_ORG_ID found in criteria but organization is not CCA";
+    public static final String ERR_ROOT_ORG_ID_MISMATCH =
+            ERR_PREFIX + "ROOT_ORG_ID in criteria does not match logged-in user's orgId";
+    public static final String ERR_ORG_NOT_L0 =
+            ERR_PREFIX + "Organization with ID %s is not a Level 0 (L0) organization. Only L0 organizations can use ministryOrStateId criteria";
+    public static final String ERR_ORG_NOT_FOUND_FOR_L0_VALIDATION =
+            ERR_PREFIX + "Organization with ID %s not found for L0 validation";
+    public static final String ERR_BOTH_ROOT_ORG_AND_MINISTRY_USED =
+            ERR_PREFIX + "Cannot use both rootOrgId and ministryOrStateId criteria in the same request. Please use only one";
+    public static final String ERR_USER_ORG_NOT_FOUND = "User organization not found";
+    public static final String HIERARCHY_LEVEL = "hierarchylevel";
+    public static final String LEVEL_ZERO = "levelZero";
+    public static final String MINISTRY_OR_STATE_ORG_NAME = "ministryOrStateOrgName";
+    public static final String TABLE_CB_PLAN_V3_LOOKUP_BY_MINISTRY_OR_STATE_ID = "cb_plan_v3_lookup_by_ministryorstateid";
+    public static final String MINISTRY_OR_STATE_ID_RQST = "ministryorstateid";
+
     private Constants() {
     }
 }

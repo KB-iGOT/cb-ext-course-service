@@ -89,4 +89,24 @@ public class CbPlanEnrichmentServiceV3Impl {
                     contentService.enrichContentInfoForCBPlan((List<String>) contentListObj));
         }
     }
+
+    /**
+     * Extracts ministry or state details from user profileDetails and populates userProfile.
+     * Enriches userProfile with ministryOrStateId and ministryOrStateOrgName.
+     *
+     * @param userProfile    target map to populate
+     * @param profileDetails source profileDetails JSON from Cassandra
+     */
+    public void extractMinistryOrStateDetails(Map<String, String> userProfile, Map<String, Object> profileDetails) {
+        Object ministryOrStateId = profileDetails.get(Constants.MINISTRY_OR_STATEID);
+        if (Objects.nonNull(ministryOrStateId) && StringUtils.isNotBlank(String.valueOf(ministryOrStateId))) {
+            userProfile.put(Constants.MINISTRY_OR_STATE_ID_RQST, String.valueOf(ministryOrStateId));
+            log.debug("extractMinistryOrStateDetails: Found ministryOrStateId={}", ministryOrStateId);
+        }
+        Object ministryOrStateOrgName = profileDetails.get(Constants.MINISTRY_OR_STATE_ORG_NAME);
+        if (Objects.nonNull(ministryOrStateOrgName) && StringUtils.isNotBlank(String.valueOf(ministryOrStateOrgName))) {
+            userProfile.put(Constants.MINISTRY_OR_STATE_ORG_NAME.toLowerCase(), String.valueOf(ministryOrStateOrgName));
+            log.debug("extractMinistryOrStateDetails: Found ministryOrStateOrgName={}", ministryOrStateOrgName);
+        }
+    }
 }

@@ -274,4 +274,95 @@ class CbPlanDataTransformServiceV3ImplTest {
         assertEquals("2026-27", result.get(Constants.PLAN_YEAR));
     }
 
+    @Test
+    void testMergePlanListsReturnsOrgPlansWhenMinistryPlansEmpty() {
+        List<Map<String, Object>> orgPlans = List.of(
+                Map.of(Constants.PLAN_ID, "plan1"),
+                Map.of(Constants.PLAN_ID, "plan2")
+        );
+        List<Map<String, Object>> result = dataTransformService.mergePlanLists(orgPlans, List.of());
+        assertEquals(2, result.size());
+        assertEquals("plan1", result.get(0).get(Constants.PLAN_ID));
+    }
+
+    @Test
+    void testMergePlanListsReturnsMinistryPlansWhenOrgPlansEmpty() {
+        List<Map<String, Object>> ministryPlans = List.of(
+                Map.of(Constants.PLAN_ID, "plan1"),
+                Map.of(Constants.PLAN_ID, "plan2")
+        );
+        List<Map<String, Object>> result = dataTransformService.mergePlanLists(List.of(), ministryPlans);
+        assertEquals(2, result.size());
+        assertEquals("plan1", result.get(0).get(Constants.PLAN_ID));
+    }
+
+    @Test
+    void testMergePlanListsDeduplicatesByPlanId() {
+        List<Map<String, Object>> orgPlans = List.of(
+                Map.of(Constants.PLAN_ID, "plan1", "source", "org"),
+                Map.of(Constants.PLAN_ID, "plan2", "source", "org")
+        );
+        List<Map<String, Object>> ministryPlans = List.of(
+                Map.of(Constants.PLAN_ID, "plan1", "source", "ministry"),
+                Map.of(Constants.PLAN_ID, "plan3", "source", "ministry")
+        );
+        List<Map<String, Object>> result = dataTransformService.mergePlanLists(orgPlans, ministryPlans);
+        assertEquals(3, result.size());
+        Map<String, Object> plan1 = result.stream()
+                .filter(p -> "plan1".equals(p.get(Constants.PLAN_ID)))
+                .findFirst()
+                .orElseThrow();
+        assertEquals("org", plan1.get("source"));
+    }
+
+    @Test
+    void testMergePlanListsFiltersNullPlanIds() {
+        List<Map<String, Object>> orgPlans = List.of(
+                Map.of("data", "value1"),
+                Map.of(Constants.PLAN_ID, "plan1")
+        );
+        List<Map<String, Object>> ministryPlans = List.of(
+                Map.of(Constants.PLAN_ID, "plan2")
+        );
+        List<Map<String, Object>> result = dataTransformService.mergePlanLists(orgPlans, ministryPlans);
+        assertEquals(2, result.size());
+        assertTrue(result.stream().allMatch(p -> p.containsKey(Constants.PLAN_ID)));
+    }
+
+    @Test
+    void testMergePlanListsPreservesInsertionOrder() {
+        List<Map<String, Object>> orgPlans = List.of(
+                Map.of(Constants.PLAN_ID, "plan1"),
+                Map.of(Constants.PLAN_ID, "plan2")
+        );
+        List<Map<String, Object>> ministryPlans = List.of(
+                Map.of(Constants.PLAN_ID, "plan3")
+        );
+        List<Map<String, Object>> result = dataTransformService.mergePlanLists(orgPlans, ministryPlans);
+        assertEquals("plan1", result.get(0).get(Constants.PLAN_ID));
+        assertEquals("plan2", result.get(1).get(Constants.PLAN_ID));
+        assertEquals("plan3", result.get(2).get(Constants.PLAN_ID));
+    }
+
+    @Test
+    void testDetermineContextDataSourceReturnsUpdatedRequestWhenContainsContextData() {
+        Map<String, Object> updatedRequest = new HashMap<>();
+        updatedRequest.put(Constants.CONTEXT_DATA_REQUEST, Map.of("data", "value"));
+        Map<String, Object> existingCbPlan = new HashMap<>();
+        existingCbPlan.put(Constants.CONTEXT_DATA_REQUEST, Map.of("old", "value"));
+        Map<String, Object> result = dataTransformService.determineContextDataSource(
+                updatedRequest, existingCbPlan);
+        assertEquals(updatedRequest, result);
+    }
+
+    @Test
+    void testDetermineContextDataSourceReturnsExistingPlanWhenUpdatedRequestMissingContextData() {
+        Map<String, Object> updatedRequest = new HashMap<>();
+        Map<String, Object> existingCbPlan = new HashMap<>();
+        existingCbPlan.put(Constants.CONTEXT_DATA_REQUEST, Map.of("data", "value"));
+        Map<String, Object> result = dataTransformService.determineContextDataSource(
+                updatedRequest, existingCbPlan);
+        assertEquals(existingCbPlan, result);
+    }
+
 }

@@ -21,7 +21,6 @@ import com.igot.cb.service.UserAndOrgServiceImpl;
 import com.igot.cb.util.AccessTokenValidator;
 import com.igot.cb.util.CbExtServerProperties;
 import com.igot.cb.util.Constants;
-import com.igot.cb.util.RequestValidator;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -35,17 +34,17 @@ import lombok.extern.slf4j.Slf4j;
 public class CbPlanValidationServiceV3Impl {
     private final AccessTokenValidator accessTokenValidator;
     private final UserAndOrgServiceImpl userAndOrgService;
-    private final RequestValidator requestValidator;
+    private final CbPlanRequestValidatorImpl cbPlanRequestValidator;
     private final CbExtServerProperties serverProperties;
     private final ObjectMapper mapper;
 
     public CbPlanValidationServiceV3Impl(AccessTokenValidator accessTokenValidator,
                                          UserAndOrgServiceImpl userAndOrgService,
-                                         RequestValidator requestValidator,
+                                         CbPlanRequestValidatorImpl cbPlanRequestValidator,
                                          CbExtServerProperties serverProperties) {
         this.accessTokenValidator = accessTokenValidator;
         this.userAndOrgService = userAndOrgService;
-        this.requestValidator = requestValidator;
+        this.cbPlanRequestValidator = cbPlanRequestValidator;
         this.serverProperties = serverProperties;
         this.mapper = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -105,7 +104,7 @@ public class CbPlanValidationServiceV3Impl {
      */
     public boolean validateRequest(ApiRequest request, boolean isCCA, String userOrgId, ApiResponse response) {
         try {
-            List<String> validations = requestValidator.validateCbPlanCreateRequestV3(request, isCCA, userOrgId, false);
+            List<String> validations = cbPlanRequestValidator.validateCbPlanCreateRequest(request, isCCA, userOrgId, false);
             if (CollectionUtils.isNotEmpty(validations)) {
                 response.getParams().setStatus(Constants.FAILED);
                 response.getParams().setErr(mapper.writeValueAsString(validations));
@@ -180,8 +179,8 @@ public class CbPlanValidationServiceV3Impl {
     public boolean validateContextDataForLivePlan(Map<String, Object> incomingRequest, boolean isCCA,
                                                   String rootOrgId, java.util.Set<String> rootOrgIdsInContextData,
                                                   ApiResponse response) {
-        List<String> errors = requestValidator.validateContextData(incomingRequest, isCCA, rootOrgId,
-                rootOrgIdsInContextData);
+        List<String> errors = cbPlanRequestValidator.validateContextData(incomingRequest, isCCA, rootOrgId,
+                rootOrgIdsInContextData, false);
         if (CollectionUtils.isNotEmpty(errors)) {
             response.getParams().setStatus(Constants.FAILED);
             response.getParams().setErr(Constants.ERR_VALIDATION_ERRORS + String.join("; ", errors));

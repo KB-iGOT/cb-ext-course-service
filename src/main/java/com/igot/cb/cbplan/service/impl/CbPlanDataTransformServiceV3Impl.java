@@ -7,6 +7,7 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.*;
 
+import org.apache.commons.collections4.CollectionUtils;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
@@ -253,5 +254,56 @@ public class CbPlanDataTransformServiceV3Impl {
             ZoneId kolkata = ZoneId.of(Constants.TIMEZONE_ASIA_KOLKATA);
             return localDate.atTime(23, 59, 59).atZone(kolkata).toInstant();
         }
+    }
+
+    /**
+     * Merges and deduplicates plan lists from org and ministry lookup tables.
+     * Org plans take precedence over ministry plans when planId duplicates exist.
+     *
+     * @param orgPlans      plans from org/all_org tables
+     * @param ministryPlans plans from ministry lookup table
+     * @return merged, deduplicated plan list
+     */
+    public List<Map<String, Object>> mergePlanLists(List<Map<String, Object>> orgPlans,
+                                                    List<Map<String, Object>> ministryPlans) {
+        if (CollectionUtils.isEmpty(ministryPlans)) {
+            return orgPlans;
+        }
+        if (CollectionUtils.isEmpty(orgPlans)) {
+            return ministryPlans;
+        }
+        Map<String, Map<String, Object>> planMap = new java.util.LinkedHashMap<>();
+        for (Map<String, Object> plan : orgPlans) {
+            String planId = (String) plan.get(Constants.PLAN_ID);
+            if (org.apache.commons.lang3.StringUtils.isNotBlank(planId)) {
+                planMap.put(planId, plan);
+            }
+        }
+        for (Map<String, Object> plan : ministryPlans) {
+            String planId = (String) plan.get(Constants.PLAN_ID);
+            if (org.apache.commons.lang3.StringUtils.isNotBlank(planId)) {
+                planMap.putIfAbsent(planId, plan);
+            }
+        }
+        return new ArrayList<>(planMap.values());
+    }
+
+    /**
+     * Determines which map contains contextData for extraction.
+     * Draft publish flow → contextData in updatedRequest
+     * Live republish flow → contextData in existingCbPlan
+     *
+     * @param updatedRequest updated request map
+     * @param existingCbPlan existing CB Plan data
+     * @return map containing contextData
+     */
+    public Map<String, Object> determineContextDataSource(Map<String, Object> updatedRequest,
+                                                          Map<String, Object> existingCbPlan) {
+        if (updatedRequest.containsKey(Constants.CONTEXT_DATA_REQUEST)) {
+            log.debug("determineContextDataSource: Using updatedRequest (draft publish flow)");
+            return updatedRequest;
+        }
+        log.debug("determineContextDataSource: Using existingCbPlan (live republish flow)");
+        return existingCbPlan;
     }
 }

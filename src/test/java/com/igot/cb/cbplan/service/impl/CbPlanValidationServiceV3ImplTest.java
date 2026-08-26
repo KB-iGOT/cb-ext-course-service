@@ -6,7 +6,6 @@ import com.igot.cb.service.UserAndOrgServiceImpl;
 import com.igot.cb.util.AccessTokenValidator;
 import com.igot.cb.util.CbExtServerProperties;
 import com.igot.cb.util.Constants;
-import com.igot.cb.util.RequestValidator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -47,7 +46,7 @@ class CbPlanValidationServiceV3ImplTest {
     private UserAndOrgServiceImpl userAndOrgService;
 
     @Mock
-    private RequestValidator requestValidator;
+    private CbPlanRequestValidatorImpl requestValidator;
 
     @Mock
     private CbExtServerProperties serverProperties;
@@ -141,7 +140,7 @@ class CbPlanValidationServiceV3ImplTest {
 
     @Test
     void testValidateRequestPassesWhenNoValidationErrors() {
-        when(requestValidator.validateCbPlanCreateRequestV3(any(), anyBoolean(), anyString(), anyBoolean()))
+        when(requestValidator.validateCbPlanCreateRequest(any(), anyBoolean(), anyString(), anyBoolean()))
                 .thenReturn(List.of());
         assertTrue(validationService.validateRequest(new ApiRequest(), true, ORG_ID, new ApiResponse()));
     }
@@ -149,7 +148,7 @@ class CbPlanValidationServiceV3ImplTest {
     @Test
     void testValidateRequestFailsWithValidationErrors() {
         ApiResponse response = new ApiResponse();
-        when(requestValidator.validateCbPlanCreateRequestV3(any(), anyBoolean(), anyString(), anyBoolean()))
+        when(requestValidator.validateCbPlanCreateRequest(any(), anyBoolean(), anyString(), anyBoolean()))
                 .thenReturn(List.of("name is required"));
         assertFalse(validationService.validateRequest(new ApiRequest(), true, ORG_ID, response));
         assertEquals(Constants.FAILED, response.getParams().getStatus());
@@ -213,7 +212,7 @@ class CbPlanValidationServiceV3ImplTest {
 
     @Test
     void testValidateContextDataForLivePlanPasses() {
-        when(requestValidator.validateContextData(any(), anyBoolean(), anyString(), any())).thenReturn(List.of());
+        when(requestValidator.validateContextData(any(), anyBoolean(), anyString(), any(), anyBoolean())).thenReturn(List.of());
         assertTrue(validationService.validateContextDataForLivePlan(new HashMap<>(), true, ORG_ID,
                 new HashSet<>(), new ApiResponse()));
     }
@@ -221,7 +220,7 @@ class CbPlanValidationServiceV3ImplTest {
     @Test
     void testValidateContextDataForLivePlanFails() {
         ApiResponse response = new ApiResponse();
-        when(requestValidator.validateContextData(any(), anyBoolean(), anyString(), any()))
+        when(requestValidator.validateContextData(any(), anyBoolean(), anyString(), any(), anyBoolean()))
                 .thenReturn(List.of("bad context"));
         assertFalse(validationService.validateContextDataForLivePlan(new HashMap<>(), true, ORG_ID,
                 new HashSet<>(), response));
@@ -233,7 +232,7 @@ class CbPlanValidationServiceV3ImplTest {
     @Test
     void testValidateContextDataForLivePlanPopulatesOrgIdsFromValidator() {
         Set<String> rootOrgIds = new HashSet<>();
-        when(requestValidator.validateContextData(any(), anyBoolean(), anyString(), any()))
+        when(requestValidator.validateContextData(any(), anyBoolean(), anyString(), any(), anyBoolean()))
                 .thenAnswer(invocation -> {
                     Set<String> target = invocation.getArgument(3);
                     target.add(ORG_ID);

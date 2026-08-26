@@ -35,6 +35,16 @@ class CbPlanOrgLookupServiceV3ImplTest {
 
     private static final String PLAN_ID = "plan1";
     private static final String PLAN_YEAR = "2026-27";
+    private static final String ORG_1 = "org1";
+    private static final String ORG_2 = "org2";
+    private static final String MINISTRY_ORG_001 = "ORG_001";
+    private static final String MINISTRY_ORG_002 = "ORG_002";
+    private static final String DB_ERROR_MSG = "db error";
+    private static final String END_DATE_COLUMN = "enddate";
+    private static final String PLAN_ID_COLUMN = "planid";
+    private static final String MINISTRY_ID_COLUMN = "ministryorstateid";
+    private static final String TEST_END_DATE_STR = "2026-12-31T18:29:59Z";
+    private static final String INVALID_JSON = "not-valid-json";
 
     @Mock
     private CassandraOperation cassandraOperation;
@@ -74,33 +84,33 @@ class CbPlanOrgLookupServiceV3ImplTest {
     void testUpsertCustomOrgLookupSuccess() {
         when(cassandraOperation.insertBulkRecord(anyString(), anyString(), anyList())).thenReturn(cassandraSuccess());
         ApiResponse response = orgLookupService.upsertCustomOrgLookup(
-                PLAN_ID, PLAN_YEAR, Set.of("org1"), null, true);
+                PLAN_ID, PLAN_YEAR, Set.of(ORG_1), null, true);
         assertEquals(Constants.SUCCESS, response.getParams().getStatus());
     }
 
     @Test
     void testUpsertCustomOrgLookupBuildsOneRowPerOrgWithEndDate() {
         when(cassandraOperation.insertBulkRecord(anyString(), anyString(), anyList())).thenReturn(cassandraSuccess());
-        Instant endDate = Instant.parse("2026-12-31T18:29:59Z");
-        orgLookupService.upsertCustomOrgLookup(PLAN_ID, PLAN_YEAR, Set.of("org1", "org2"), endDate, true);
+        Instant endDate = Instant.parse(TEST_END_DATE_STR);
+        orgLookupService.upsertCustomOrgLookup(PLAN_ID, PLAN_YEAR, Set.of(ORG_1, ORG_2), endDate, true);
         ArgumentCaptor<List<Map<String, Object>>> captor = ArgumentCaptor.forClass(List.class);
         verify(cassandraOperation).insertBulkRecord(
                 eq(Constants.KEYSPACE_SUNBIRD), eq(Constants.TABLE_CB_PLAN_V3_LOOKUP_BY_ORG), captor.capture());
         List<Map<String, Object>> rows = captor.getValue();
         assertEquals(2, rows.size());
         assertEquals(PLAN_YEAR, rows.get(0).get("planyear"));
-        assertEquals(PLAN_ID, rows.get(0).get("planid"));
-        assertEquals(endDate, rows.get(0).get("enddate"));
+        assertEquals(PLAN_ID, rows.get(0).get(PLAN_ID_COLUMN));
+        assertEquals(endDate, rows.get(0).get(END_DATE_COLUMN));
         assertEquals(true, rows.get(0).get("isactive"));
     }
 
     @Test
     void testUpsertCustomOrgLookupOmitsEndDateWhenNull() {
         when(cassandraOperation.insertBulkRecord(anyString(), anyString(), anyList())).thenReturn(cassandraSuccess());
-        orgLookupService.upsertCustomOrgLookup(PLAN_ID, PLAN_YEAR, Set.of("org1"), null, false);
+        orgLookupService.upsertCustomOrgLookup(PLAN_ID, PLAN_YEAR, Set.of(ORG_1), null, false);
         ArgumentCaptor<List<Map<String, Object>>> captor = ArgumentCaptor.forClass(List.class);
         verify(cassandraOperation).insertBulkRecord(anyString(), anyString(), captor.capture());
-        assertTrue(!captor.getValue().get(0).containsKey("enddate"));
+        assertTrue(!captor.getValue().get(0).containsKey(END_DATE_COLUMN));
         assertEquals(false, captor.getValue().get(0).get("isactive"));
     }
 
@@ -116,18 +126,18 @@ class CbPlanOrgLookupServiceV3ImplTest {
     void testUpsertCustomOrgLookupPropagatesInsertFailure() {
         when(cassandraOperation.insertBulkRecord(anyString(), anyString(), anyList())).thenReturn(cassandraFailure());
         ApiResponse response = orgLookupService.upsertCustomOrgLookup(
-                PLAN_ID, PLAN_YEAR, Set.of("org1"), null, true);
+                PLAN_ID, PLAN_YEAR, Set.of(ORG_1), null, true);
         assertEquals(Constants.FAILED, response.getParams().getStatus());
     }
 
     @Test
     void testUpsertCustomOrgLookupHandlesException() {
         when(cassandraOperation.insertBulkRecord(anyString(), anyString(), anyList()))
-                .thenThrow(new RuntimeException("db error"));
+                .thenThrow(new RuntimeException(DB_ERROR_MSG));
         ApiResponse response = orgLookupService.upsertCustomOrgLookup(
-                PLAN_ID, PLAN_YEAR, Set.of("org1"), null, true);
+                PLAN_ID, PLAN_YEAR, Set.of(ORG_1), null, true);
         assertEquals(Constants.FAILED, response.getParams().getStatus());
-        assertTrue(response.getParams().getErr().contains("db error"));
+        assertTrue(response.getParams().getErr().contains(DB_ERROR_MSG));
     }
 
     @Test
@@ -140,7 +150,7 @@ class CbPlanOrgLookupServiceV3ImplTest {
     @Test
     void testUpsertAllOrgLookupHandlesException() {
         when(cassandraOperation.insertRecord(anyString(), anyString(), any()))
-                .thenThrow(new RuntimeException("db error"));
+                .thenThrow(new RuntimeException(DB_ERROR_MSG));
         ApiResponse response = orgLookupService.upsertAllOrgLookup(PLAN_ID, PLAN_YEAR, null, true);
         assertEquals(Constants.FAILED, response.getParams().getStatus());
         assertEquals(Constants.FAILED, response.get(Constants.RESPONSE));
@@ -149,8 +159,8 @@ class CbPlanOrgLookupServiceV3ImplTest {
     @Test
     void testHandleOrgLookupChangesNoopWhenExistingEmpty() {
         ApiResponse response = new ApiResponse();
-        orgLookupService.handleOrgLookupChanges(PLAN_ID, PLAN_YEAR, new HashSet<>(), Set.of("org1"),
-                Constants.CUSTOM, response);
+        orgLookupService.handleOrgLookupChanges(PLAN_ID, PLAN_YEAR, new HashSet<>(), Set.of(ORG_1),
+                Constants.CUSTOM, false, response);
         verify(cassandraOperation, never()).insertBulkRecord(anyString(), anyString(), anyList());
         assertNotEquals(Constants.FAILED, response.getParams().getStatus());
     }
@@ -158,8 +168,8 @@ class CbPlanOrgLookupServiceV3ImplTest {
     @Test
     void testHandleOrgLookupChangesNoopWhenNewEmpty() {
         ApiResponse response = new ApiResponse();
-        orgLookupService.handleOrgLookupChanges(PLAN_ID, PLAN_YEAR, Set.of("org1"), new HashSet<>(),
-                Constants.CUSTOM, response);
+        orgLookupService.handleOrgLookupChanges(PLAN_ID, PLAN_YEAR, Set.of(ORG_1), new HashSet<>(),
+                Constants.CUSTOM, false, response);
         verify(cassandraOperation, never()).insertBulkRecord(anyString(), anyString(), anyList());
     }
 
@@ -167,12 +177,12 @@ class CbPlanOrgLookupServiceV3ImplTest {
     void testHandleOrgLookupChangesDeactivatesRemovedOrgsForCustomScope() {
         when(cassandraOperation.insertBulkRecord(anyString(), anyString(), anyList())).thenReturn(cassandraSuccess());
         ApiResponse response = new ApiResponse();
-        orgLookupService.handleOrgLookupChanges(PLAN_ID, PLAN_YEAR, Set.of("org1", "org2"), Set.of("org1"),
-                Constants.CUSTOM, response);
+        orgLookupService.handleOrgLookupChanges(PLAN_ID, PLAN_YEAR, Set.of(ORG_1, ORG_2), Set.of(ORG_1),
+                Constants.CUSTOM, false, response);
         ArgumentCaptor<List<Map<String, Object>>> captor = ArgumentCaptor.forClass(List.class);
         verify(cassandraOperation).insertBulkRecord(anyString(), anyString(), captor.capture());
         assertEquals(1, captor.getValue().size());
-        assertEquals("org2", captor.getValue().get(0).get("orgid"));
+        assertEquals(ORG_2, captor.getValue().get(0).get("orgid"));
         assertEquals(false, captor.getValue().get(0).get("isactive"));
     }
 
@@ -180,8 +190,8 @@ class CbPlanOrgLookupServiceV3ImplTest {
     void testHandleOrgLookupChangesReportsFailureOnRemovalError() {
         when(cassandraOperation.insertBulkRecord(anyString(), anyString(), anyList())).thenReturn(cassandraFailure());
         ApiResponse response = new ApiResponse();
-        orgLookupService.handleOrgLookupChanges(PLAN_ID, PLAN_YEAR, Set.of("org1", "org2"), Set.of("org1"),
-                Constants.SINGLE, response);
+        orgLookupService.handleOrgLookupChanges(PLAN_ID, PLAN_YEAR, Set.of(ORG_1, ORG_2), Set.of(ORG_1),
+                Constants.SINGLE, false, response);
         assertEquals(Constants.FAILED, response.getParams().getStatus());
         assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getResponseCode());
     }
@@ -190,9 +200,19 @@ class CbPlanOrgLookupServiceV3ImplTest {
     void testHandleOrgLookupChangesDeactivatesAllScopeWhenOrgsAdded() {
         when(cassandraOperation.insertRecord(anyString(), anyString(), any())).thenReturn(cassandraSuccess());
         ApiResponse response = new ApiResponse();
-        orgLookupService.handleOrgLookupChanges(PLAN_ID, PLAN_YEAR, Set.of("org1"), Set.of("org1", "org2"),
-                Constants.ALL, response);
+        orgLookupService.handleOrgLookupChanges(PLAN_ID, PLAN_YEAR, Set.of(ORG_1), Set.of(ORG_1, ORG_2),
+                Constants.ALL, false, response);
         verify(cassandraOperation).insertRecord(anyString(), anyString(), any());
+        assertNotEquals(Constants.FAILED, response.getParams().getStatus());
+    }
+
+    @Test
+    void testHandleOrgLookupChangesSkippedWhenPlanUsesMinistryOrStateId() {
+        ApiResponse response = new ApiResponse();
+        orgLookupService.handleOrgLookupChanges(PLAN_ID, PLAN_YEAR, Set.of(ORG_1, ORG_2), Set.of(ORG_1),
+                Constants.CUSTOM, true, response);
+        verify(cassandraOperation, never()).insertBulkRecord(anyString(), anyString(), anyList());
+        verify(cassandraOperation, never()).insertRecord(anyString(), anyString(), any());
         assertNotEquals(Constants.FAILED, response.getParams().getStatus());
     }
 
@@ -202,7 +222,7 @@ class CbPlanOrgLookupServiceV3ImplTest {
         Map<String, Object> existingCbPlan = new HashMap<>();
         existingCbPlan.put(Constants.ORG_SCOPE, Constants.SINGLE);
         existingCbPlan.put(Constants.CONTEXT_DATA_REQUEST,
-                contextDataWithOrgs(Constants.ROOT_ORG_ID, List.of("org1")));
+                contextDataWithOrgs(Constants.ROOT_ORG_ID, List.of(ORG_1)));
         ApiResponse response = new ApiResponse();
         orgLookupService.deactivateOrgLookupEntries(PLAN_ID, PLAN_YEAR, existingCbPlan, response);
         verify(cassandraOperation).insertBulkRecord(anyString(), anyString(), anyList());
@@ -238,8 +258,8 @@ class CbPlanOrgLookupServiceV3ImplTest {
     void testExtractUniqueRootOrgIdsFromMapContextData() {
         Map<String, Object> rawRequest = new HashMap<>();
         rawRequest.put(Constants.CONTEXT_DATA_REQUEST,
-                contextDataWithOrgs(Constants.TARGETED_ORGANISATION, List.of("org1", "org2")));
-        assertEquals(Set.of("org1", "org2"), orgLookupService.extractUniqueRootOrgIds(rawRequest));
+                contextDataWithOrgs(Constants.TARGETED_ORGANISATION, List.of(ORG_1, ORG_2)));
+        assertEquals(Set.of(ORG_1, ORG_2), orgLookupService.extractUniqueRootOrgIds(rawRequest));
     }
 
     @Test
@@ -248,13 +268,13 @@ class CbPlanOrgLookupServiceV3ImplTest {
         rawRequest.put(Constants.CONTEXT_DATA_REQUEST,
                 "{\"accessControl\":{\"userGroups\":[{\"userGroupCriteriaList\":"
                         + "[{\"criteriaKey\":\"rootOrgId\",\"criteriaValue\":[\"org1\"]}]}]}}");
-        assertEquals(Set.of("org1"), orgLookupService.extractUniqueRootOrgIds(rawRequest));
+        assertEquals(Set.of(ORG_1), orgLookupService.extractUniqueRootOrgIds(rawRequest));
     }
 
     @Test
     void testExtractUniqueRootOrgIdsReturnsEmptyForMalformedJson() {
         Map<String, Object> rawRequest = new HashMap<>();
-        rawRequest.put(Constants.CONTEXT_DATA_REQUEST, "not-valid-json");
+        rawRequest.put(Constants.CONTEXT_DATA_REQUEST, INVALID_JSON);
         assertTrue(orgLookupService.extractUniqueRootOrgIds(rawRequest).isEmpty());
     }
 
@@ -269,10 +289,10 @@ class CbPlanOrgLookupServiceV3ImplTest {
     void testExtractOrgIdsFromCriteriaCollectsRootOrgId() {
         Map<String, Object> criteria = new HashMap<>();
         criteria.put(Constants.CRITERIA_KEY, Constants.ROOT_ORG_ID);
-        criteria.put(Constants.CRITERIA_VALUE, List.of("org1"));
+        criteria.put(Constants.CRITERIA_VALUE, List.of(ORG_1));
         Set<String> orgIdSet = new HashSet<>();
         orgLookupService.extractOrgIdsFromCriteria(List.of(criteria), orgIdSet);
-        assertEquals(Set.of("org1"), orgIdSet);
+        assertEquals(Set.of(ORG_1), orgIdSet);
     }
 
     @Test
@@ -298,5 +318,132 @@ class CbPlanOrgLookupServiceV3ImplTest {
     @Test
     void testConstructor() {
         assertNotNull(new CbPlanOrgLookupServiceV3Impl(cassandraOperation));
+    }
+
+    @Test
+    void testExtractMinistryOrStateIdsReturnsEmptyForMissingContextData() {
+        assertTrue(orgLookupService.extractMinistryOrStateIds(new HashMap<>()).isEmpty());
+    }
+
+    @Test
+    void testExtractMinistryOrStateIdsFromMapContextData() {
+        Map<String, Object> rawRequest = new HashMap<>();
+        rawRequest.put(Constants.CONTEXT_DATA_REQUEST,
+                contextDataWithOrgs(Constants.MINISTRY_OR_STATEID, List.of(MINISTRY_ORG_001, MINISTRY_ORG_002)));
+        assertEquals(Set.of(MINISTRY_ORG_001, MINISTRY_ORG_002), orgLookupService.extractMinistryOrStateIds(rawRequest));
+    }
+
+    @Test
+    void testExtractMinistryOrStateIdsFromStringContextData() {
+        Map<String, Object> rawRequest = new HashMap<>();
+        rawRequest.put(Constants.CONTEXT_DATA_REQUEST,
+                "{\"accessControl\":{\"userGroups\":[{\"userGroupCriteriaList\":"
+                        + "[{\"criteriaKey\":\"ministryOrStateId\",\"criteriaValue\":[\"ORG_001\"]}]}]}}");
+        assertEquals(Set.of(MINISTRY_ORG_001), orgLookupService.extractMinistryOrStateIds(rawRequest));
+    }
+
+    @Test
+    void testExtractMinistryOrStateIdsReturnsEmptyForMalformedJson() {
+        Map<String, Object> rawRequest = new HashMap<>();
+        rawRequest.put(Constants.CONTEXT_DATA_REQUEST, INVALID_JSON);
+        assertTrue(orgLookupService.extractMinistryOrStateIds(rawRequest).isEmpty());
+    }
+
+    @Test
+    void testExtractMinistryOrStateIdsIgnoresOtherCriteria() {
+        Map<String, Object> rawRequest = new HashMap<>();
+        rawRequest.put(Constants.CONTEXT_DATA_REQUEST,
+                contextDataWithOrgs(Constants.ROOT_ORG_ID, List.of(ORG_1)));
+        assertTrue(orgLookupService.extractMinistryOrStateIds(rawRequest).isEmpty());
+    }
+
+    @Test
+    void testUpsertMinistryOrStateIdLookupSuccess() {
+        when(cassandraOperation.insertBulkRecord(anyString(), anyString(), anyList())).thenReturn(cassandraSuccess());
+        ApiResponse response = orgLookupService.upsertMinistryOrStateIdLookup(
+                PLAN_ID, PLAN_YEAR, Set.of(MINISTRY_ORG_001), null, true);
+        assertEquals(Constants.SUCCESS, response.getParams().getStatus());
+    }
+
+    @Test
+    void testUpsertMinistryOrStateIdLookupBuildsOneRowPerMinistryId() {
+        when(cassandraOperation.insertBulkRecord(anyString(), anyString(), anyList())).thenReturn(cassandraSuccess());
+        Instant endDate = Instant.parse(TEST_END_DATE_STR);
+        orgLookupService.upsertMinistryOrStateIdLookup(
+                PLAN_ID, PLAN_YEAR, Set.of(MINISTRY_ORG_001, MINISTRY_ORG_002), endDate, true);
+        ArgumentCaptor<List<Map<String, Object>>> captor = ArgumentCaptor.forClass(List.class);
+        verify(cassandraOperation).insertBulkRecord(
+                eq(Constants.KEYSPACE_SUNBIRD),
+                eq(Constants.TABLE_CB_PLAN_V3_LOOKUP_BY_MINISTRY_OR_STATE_ID),
+                captor.capture());
+        List<Map<String, Object>> rows = captor.getValue();
+        assertEquals(2, rows.size());
+        assertEquals(PLAN_YEAR, rows.get(0).get(Constants.PLAN_YEAR));
+        assertEquals(PLAN_ID, rows.get(0).get(PLAN_ID_COLUMN));
+        assertEquals(endDate, rows.get(0).get(END_DATE_COLUMN));
+        assertEquals(true, rows.get(0).get(Constants.IS_ACTIVE));
+        assertTrue(Set.of(MINISTRY_ORG_001, MINISTRY_ORG_002).contains(rows.get(0).get(MINISTRY_ID_COLUMN)));
+    }
+
+    @Test
+    void testUpsertMinistryOrStateIdLookupSucceedsForEmptySet() {
+        ApiResponse response = orgLookupService.upsertMinistryOrStateIdLookup(
+                PLAN_ID, PLAN_YEAR, new HashSet<>(), null, true);
+        assertEquals(Constants.SUCCESS, response.getParams().getStatus());
+        verify(cassandraOperation, never()).insertBulkRecord(anyString(), anyString(), anyList());
+    }
+
+    @Test
+    void testUpsertMinistryOrStateIdLookupHandlesException() {
+        when(cassandraOperation.insertBulkRecord(anyString(), anyString(), anyList()))
+                .thenThrow(new RuntimeException(DB_ERROR_MSG));
+        ApiResponse response = orgLookupService.upsertMinistryOrStateIdLookup(
+                PLAN_ID, PLAN_YEAR, Set.of(MINISTRY_ORG_001), null, true);
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertTrue(response.getParams().getErr().contains(DB_ERROR_MSG));
+    }
+
+    @Test
+    void testHandleMinistryOrStateIdLookupChangesNoopWhenExistingEmpty() {
+        ApiResponse response = new ApiResponse();
+        orgLookupService.handleMinistryOrStateIdLookupChanges(
+                PLAN_ID, PLAN_YEAR, new HashSet<>(), Set.of(MINISTRY_ORG_001), null, response);
+        verify(cassandraOperation, never()).insertBulkRecord(anyString(), anyString(), anyList());
+        assertNotEquals(Constants.FAILED, response.getParams().getStatus());
+    }
+
+    @Test
+    void testHandleMinistryOrStateIdLookupChangesDeactivatesWhenNewEmpty() {
+        when(cassandraOperation.insertBulkRecord(anyString(), anyString(), anyList())).thenReturn(cassandraSuccess());
+        ApiResponse response = new ApiResponse();
+        orgLookupService.handleMinistryOrStateIdLookupChanges(
+                PLAN_ID, PLAN_YEAR, Set.of(MINISTRY_ORG_001), new HashSet<>(), null, response);
+        verify(cassandraOperation).insertBulkRecord(anyString(), anyString(), anyList());
+        assertNotEquals(Constants.FAILED, response.getParams().getStatus());
+    }
+
+    @Test
+    void testHandleMinistryOrStateIdLookupChangesDeactivatesRemovedIds() {
+        when(cassandraOperation.insertBulkRecord(anyString(), anyString(), anyList())).thenReturn(cassandraSuccess());
+        Instant endDate = Instant.parse(TEST_END_DATE_STR);
+        ApiResponse response = new ApiResponse();
+        orgLookupService.handleMinistryOrStateIdLookupChanges(
+                PLAN_ID, PLAN_YEAR, Set.of(MINISTRY_ORG_001, MINISTRY_ORG_002), Set.of(MINISTRY_ORG_001), endDate, response);
+        ArgumentCaptor<List<Map<String, Object>>> captor = ArgumentCaptor.forClass(List.class);
+        verify(cassandraOperation).insertBulkRecord(anyString(), anyString(), captor.capture());
+        assertEquals(1, captor.getValue().size());
+        assertEquals(MINISTRY_ORG_002, captor.getValue().get(0).get(MINISTRY_ID_COLUMN));
+        assertEquals(false, captor.getValue().get(0).get(Constants.IS_ACTIVE));
+        assertEquals(endDate, captor.getValue().get(0).get(END_DATE_COLUMN));
+    }
+
+    @Test
+    void testHandleMinistryOrStateIdLookupChangesReportsFailureOnDeactivationError() {
+        when(cassandraOperation.insertBulkRecord(anyString(), anyString(), anyList())).thenReturn(cassandraFailure());
+        ApiResponse response = new ApiResponse();
+        orgLookupService.handleMinistryOrStateIdLookupChanges(
+                PLAN_ID, PLAN_YEAR, Set.of(MINISTRY_ORG_001, MINISTRY_ORG_002), Set.of(MINISTRY_ORG_001), null, response);
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getResponseCode());
     }
 }

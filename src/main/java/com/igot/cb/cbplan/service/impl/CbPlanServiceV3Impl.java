@@ -38,7 +38,6 @@ import com.igot.cb.util.AccessTokenValidator;
 import com.igot.cb.util.CbExtServerProperties;
 import com.igot.cb.util.Constants;
 import com.igot.cb.util.ProjectUtil;
-import com.igot.cb.util.RequestValidator;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -54,10 +53,10 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
     private final CassandraOperation cassandraOperation;
     private final CbExtServerProperties serverProperties;
     private final EsUtilService esUtilService;
-    private final RequestValidator requestValidator;
     private final ContentInfoServiceImpl contentService;
     private final ObjectMapper mapper;
     private final CbPlanValidationServiceV3Impl validationService;
+    private final CbPlanRequestValidatorImpl cbPlanRequestValidator;
     private final CbPlanDataTransformServiceV3Impl dataTransformService;
     private final CbPlanOrgLookupServiceV3Impl orgLookupService;
     private final CbPlanContentLookupServiceV3Impl contentLookupService;
@@ -71,22 +70,21 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
                                CbExtServerProperties serverProperties,
                                UserAndOrgServiceImpl userAndOrgService,
                                EsUtilService esUtilService,
-                               RequestValidator requestValidator,
                                ContentInfoServiceImpl contentService,
                                OutboundRequestHandlerServiceImpl outboundRequestHandlerService,
                                CbPlanCacheMgrV3 cbPlanCacheMgrV3,
                                RedisCacheMgr redisCacheMgr) {
+        this.cbPlanRequestValidator = new CbPlanRequestValidatorImpl(userAndOrgService, serverProperties);
         this.orgLookupService = new CbPlanOrgLookupServiceV3Impl(cassandraOperation);
         this.contentLookupService = new CbPlanContentLookupServiceV3Impl(cassandraOperation, redisCacheMgr, outboundRequestHandlerService);
         this.elasticSearchService = new CbPlanElasticSearchServiceV3Impl(esUtilService, serverProperties);
         this.enrichmentService = new CbPlanEnrichmentServiceV3Impl(userAndOrgService, contentService);
-        this.validationService = new CbPlanValidationServiceV3Impl(accessTokenValidator, userAndOrgService, requestValidator, serverProperties);
+        this.validationService = new CbPlanValidationServiceV3Impl(accessTokenValidator, userAndOrgService, cbPlanRequestValidator, serverProperties);
         this.dataTransformService = new CbPlanDataTransformServiceV3Impl(serverProperties);
         this.accessTokenValidator = accessTokenValidator;
         this.cassandraOperation = cassandraOperation;
         this.serverProperties = serverProperties;
         this.esUtilService = esUtilService;
-        this.requestValidator = requestValidator;
         this.contentService = contentService;
         this.cbPlanCacheMgrV3 = cbPlanCacheMgrV3;
         this.redisCacheMgr = redisCacheMgr;
@@ -99,25 +97,31 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
     public ApiResponse createCbPlan(ApiRequest request, String userOrgId, String authToken) {
         log.info("CbPlanServiceV3Impl.createCbPlan: Creating CB Plan for orgId: {}", userOrgId);
         ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_CB_PLAN_CREATE);
+        String userRootOrgId = null;
         try {
             String userId = validationService.validateAndExtractUserId(authToken, response);
             if (StringUtils.isEmpty(userId)) {
                 return response;
             }
-            String rootOrgId = validationService.validateUserOrganization(userId, response);
-            if (StringUtils.isEmpty(rootOrgId)) {
+            Map<String, String> userProfile = buildUserProfile(userId, response);
+            userRootOrgId = userProfile.get(Constants.USER_ROOT_ORG_ID);
+            if (StringUtils.isEmpty(userRootOrgId)) {
+                response.getParams().setStatus(Constants.FAILED);
+                response.getParams().setErr(Constants.ERR_USER_ORG_NOT_FOUND);
+                response.setResponseCode(HttpStatus.BAD_REQUEST);
                 return response;
             }
-            boolean isCCA = validationService.validateOrgCCA(rootOrgId, response);
+            log.info("CbPlanServiceV3Impl.createCbPlan: Creating CB Plan for userId: {}, orgId: {}", userId, userRootOrgId);
+            boolean isCCA = validationService.validateOrgCCA(userRootOrgId, response);
             if (Constants.FAILED.equalsIgnoreCase(response.getParams().getStatus())) {
                 return response;
             }
-            if (!validationService.validateRequest(request, isCCA, userOrgId, response)) {
+            if (!validationService.validateRequest(request, isCCA, userRootOrgId, response)) {
                 return response;
             }
-            executePlanCreation(request, userId, userOrgId, response);
+            executePlanCreation(request, userId, userRootOrgId, response);
         } catch (Exception e) {
-            handleException(response, userOrgId, e);
+            handleException(response, userRootOrgId, e);
         }
         return response;
     }
@@ -183,17 +187,30 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
     public ApiResponse updateCbPlan(ApiRequest request, String userOrgId, String authToken, List<String> userRoles) {
         log.info("CbPlanServiceV3Impl.updateCbPlan: Updating CB Plan for orgId: {}", userOrgId);
         ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_CB_PLAN_UPDATE);
+        String userRootOrgId = null;
         try {
             String userId = validationService.validateAndExtractUserId(authToken, response);
             if (StringUtils.isEmpty(userId)) {
                 return response;
             }
+            Map<String, String> userProfile = buildUserProfile(userId, response);
+            if (userProfile.isEmpty()) {
+                return response;
+            }
+            userRootOrgId = userProfile.get(Constants.USER_ROOT_ORG_ID);
+            if (StringUtils.isEmpty(userRootOrgId)) {
+                response.getParams().setStatus(Constants.FAILED);
+                response.getParams().setErr(Constants.ERR_USER_ORG_NOT_FOUND);
+                response.setResponseCode(HttpStatus.BAD_REQUEST);
+                return response;
+            }
+            log.info("CbPlanServiceV3Impl.updateCbPlan: Updating CB Plan for userId: {}, orgId: {}", userId, userRootOrgId);
             if (!validationService.validatePlanIdExists(request, response)) {
                 return response;
             }
-            executeUpdateFlow(request, userId, userOrgId, userRoles, response);
+            executeUpdateFlow(request, userId, userRootOrgId, userRoles, response);
         } catch (Exception e) {
-            handleUpdateException(response, userOrgId, e);
+            handleUpdateException(response, userRootOrgId, e);
         }
         return response;
     }
@@ -248,7 +265,7 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
     private void handleUpdateOfDraftCbPlan(ApiRequest request, String userId, String userOrgId,
                                            Map<String, Object> updatedCbPlan, Map<String, Object> existingCbPlan,
                                            boolean isCCA, ApiResponse response) throws JsonProcessingException {
-        List<String> validations = requestValidator.validateCbPlanCreateRequestV3(request, isCCA, userOrgId, false);
+        List<String> validations = cbPlanRequestValidator.validateCbPlanCreateRequest(request, isCCA, userOrgId, false);
         if (CollectionUtils.isNotEmpty(validations)) {
             response.getParams().setStatus(Constants.FAILED);
             response.getParams().setErr(mapper.writeValueAsString(validations));
@@ -343,11 +360,25 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
     public ApiResponse publishCbPlan(ApiRequest request, String userOrgId, String authToken, List<String> userRoles, boolean isAdmin) {
         log.info("CbPlanServiceV3Impl.publishCbPlan: Publishing CB Plan for orgId: {}, isAdmin: {}", userOrgId, isAdmin);
         ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_CB_PLAN_PUBLISH);
+        String userRootOrgId = null;
         try {
             String userId = validationService.validateAndExtractUserId(authToken, response);
             if (StringUtils.isEmpty(userId)) {
                 return response;
             }
+            Map<String, String> userProfile = buildUserProfile(userId, response);
+            if (userProfile.isEmpty()) {
+                return response;
+            }
+            userRootOrgId = userProfile.get(Constants.USER_ROOT_ORG_ID);
+            if (StringUtils.isEmpty(userRootOrgId)) {
+                response.getParams().setStatus(Constants.FAILED);
+                response.getParams().setErr(Constants.ERR_USER_ORG_NOT_FOUND);
+                response.setResponseCode(HttpStatus.BAD_REQUEST);
+                return response;
+            }
+            log.info("CbPlanServiceV3Impl.publishCbPlan: Publishing CB Plan for userId: {}, orgId: {}, isAdmin: {}",
+                    userId, userRootOrgId, isAdmin);
             Map<String, Object> incomingRequest = (Map<String, Object>) request.getRequest();
             String cbPlanId = validationService.validateAndExtractPlanId(incomingRequest, response);
             if (StringUtils.isEmpty(cbPlanId)) {
@@ -360,9 +391,9 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
             if (!isAdmin && validationService.isUnauthorizedToUpdate(userId, existingCbPlan, userRoles, response)) {
                 return response;
             }
-            executePublishFlow(request, userId, userOrgId, cbPlanId, existingCbPlan, isAdmin, response);
+            executePublishFlow(request, userId, userRootOrgId, cbPlanId, existingCbPlan, isAdmin, response);
         } catch (Exception e) {
-            handlePublishException(response, userOrgId, e);
+            handlePublishException(response, userRootOrgId, e);
         }
         return response;
     }
@@ -424,7 +455,7 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
      * Selectively extracts only known fields to prevent type mismatches and unexpected data leakage.
      * Aligned with V2 implementation pattern for consistency.
      *
-     * @param existingCbPlan CB Plan record containing draft_data JSON string
+     * @param existingCbPlan  CB Plan record containing draft_data JSON string
      * @param incomingRequest incoming publish request containing comment
      * @return Map containing only validated fields from draft_data, or empty map if no draft_data
      * @throws JsonProcessingException if draft_data JSON parsing fails
@@ -453,10 +484,10 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
                                                       boolean isAdmin, ApiResponse response) throws JsonProcessingException {
         Set<String> existingRootOrgIdsInCriteria = new HashSet<>();
         Set<String> rootOrgIdsInCriteria = new HashSet<>();
-        requestValidator.validateContextData(existingCbPlan, isCCA, userOrgId, existingRootOrgIdsInCriteria, isAdmin);
+        cbPlanRequestValidator.validateContextData(existingCbPlan, isCCA, userOrgId, existingRootOrgIdsInCriteria, isAdmin);
         updatedRequest.putAll(prepareCbPlanForRePublish(existingCbPlan, incomingRequest));
         if (updatedRequest.containsKey(Constants.CONTEXT_DATA_REQUEST)) {
-            List<String> errors = requestValidator.validateContextData(updatedRequest, isCCA, userOrgId,
+            List<String> errors = cbPlanRequestValidator.validateContextData(updatedRequest, isCCA, userOrgId,
                     rootOrgIdsInCriteria, isAdmin);
             if (CollectionUtils.isNotEmpty(errors)) {
                 response.getParams().setStatus(Constants.FAILED);
@@ -478,7 +509,7 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
         Set<String> rootOrgIdsInCriteria = new HashSet<>();
         updatedRequest.put(Constants.STATUS, Constants.LIVE);
         updatedRequest.put(Constants.END_DATE_REQUEST, dataTransformService.parseEndDate(existingCbPlan.get(Constants.END_DATE_REQUEST)));
-        List<String> errors = requestValidator.validateContextData(existingCbPlan, isCCA, userOrgId,
+        List<String> errors = cbPlanRequestValidator.validateContextData(existingCbPlan, isCCA, userOrgId,
                 rootOrgIdsInCriteria, isAdmin);
         if (CollectionUtils.isNotEmpty(errors)) {
             response.getParams().setStatus(Constants.FAILED);
@@ -531,33 +562,27 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
     private void updateOrgLookupTables(String cbPlanId, String planYear, Map<String, Object> updatedRequest,
                                        Map<String, Object> existingCbPlan, String existingStatus,
                                        ApiResponse response) {
-        String orgScope = (String) updatedRequest.getOrDefault(Constants.ORG_SCOPE,
-                existingCbPlan.get(Constants.ORG_SCOPE));
-        Instant endDate = (Instant) updatedRequest.getOrDefault(Constants.END_DATE_REQUEST,
-                existingCbPlan.get(Constants.END_DATE_REQUEST));
+        String orgScope = (String) updatedRequest.getOrDefault(Constants.ORG_SCOPE, existingCbPlan.get(Constants.ORG_SCOPE));
+        Instant endDate = (Instant) updatedRequest.getOrDefault(Constants.END_DATE_REQUEST, existingCbPlan.get(Constants.END_DATE_REQUEST));
         Set<String> newRootOrgIds = (Set<String>) updatedRequest.get(Constants.NEW_ROOT_ORG_IDS);
         Set<String> existingRootOrgIds = (Set<String>) updatedRequest.get(Constants.EXISTING_ROOT_ORG_IDS);
-        String existingOrgScope = (String) existingCbPlan.get(Constants.ORG_SCOPE);
-        if (Constants.SINGLE.equalsIgnoreCase(orgScope) || Constants.CUSTOM.equalsIgnoreCase(orgScope)) {
-            ApiResponse lookupResp = orgLookupService.upsertCustomOrgLookup(cbPlanId, planYear, newRootOrgIds, endDate, true);
-            if (!Constants.SUCCESS.equals(lookupResp.get(Constants.RESPONSE))) {
-                response.getParams().setStatus(Constants.FAILED);
-                response.getParams().setErr(lookupResp.getParams().getErr());
-                response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
-                return;
-            }
-        } else if (Constants.ALL.equalsIgnoreCase(orgScope)) {
-            ApiResponse allResp = orgLookupService.upsertAllOrgLookup(cbPlanId, planYear, endDate, true);
-            if (!Constants.SUCCESS.equals(allResp.get(Constants.RESPONSE))) {
-                response.getParams().setStatus(Constants.FAILED);
-                response.getParams().setErr(allResp.getParams().getErr());
-                response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
-                return;
-            }
+        Map<String, Object> contextDataSource = dataTransformService.determineContextDataSource(updatedRequest, existingCbPlan);
+        Set<String> newMinistryOrStateIds = orgLookupService.extractMinistryOrStateIds(contextDataSource);
+        Set<String> existingMinistryOrStateIds = orgLookupService.extractMinistryOrStateIds(existingCbPlan);
+        boolean hasMinistryOrStateId = CollectionUtils.isNotEmpty(newMinistryOrStateIds)
+                || CollectionUtils.isNotEmpty(existingMinistryOrStateIds);
+        log.debug("updateOrgLookupTables: cbPlanId={}, orgScope={}, hasMinistryOrStateId={}, existingStatus={}",
+                cbPlanId, orgScope, hasMinistryOrStateId, existingStatus);
+        upsertOrgScopeLookupTables(cbPlanId, planYear, orgScope, newRootOrgIds, endDate, hasMinistryOrStateId, response);
+        if (CollectionUtils.isNotEmpty(newMinistryOrStateIds)) {
+            insertMinistryOrStateIdLookup(cbPlanId, planYear, newMinistryOrStateIds, endDate, response);
         }
         if (Constants.LIVE.equalsIgnoreCase(existingStatus)) {
+            log.info("updateOrgLookupTables: Handling LIVE plan republish - cbPlanId={}, processing lookup changes", cbPlanId);
             orgLookupService.handleOrgLookupChanges(cbPlanId, planYear, existingRootOrgIds, newRootOrgIds,
-                    existingOrgScope, response);
+                    (String) existingCbPlan.get(Constants.ORG_SCOPE), hasMinistryOrStateId, response);
+            orgLookupService.handleMinistryOrStateIdLookupChanges(cbPlanId, planYear, existingMinistryOrStateIds,
+                    newMinistryOrStateIds, endDate, response);
         }
     }
 
@@ -572,11 +597,24 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
     public ApiResponse retireCbPlan(ApiRequest request, String userOrgId, String authToken, List<String> userRoles) {
         log.info("CbPlanServiceV3Impl.retireCbPlan: Archiving CB Plan for orgId: {}", userOrgId);
         ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_CB_PLAN_RETIRE);
+        String userRootOrgId = null;
         try {
             String userId = validationService.validateAndExtractUserId(authToken, response);
             if (StringUtils.isEmpty(userId)) {
                 return response;
             }
+            Map<String, String> userProfile = buildUserProfile(userId, response);
+            if (userProfile.isEmpty()) {
+                return response;
+            }
+            userRootOrgId = userProfile.get(Constants.USER_ROOT_ORG_ID);
+            if (StringUtils.isEmpty(userRootOrgId)) {
+                response.getParams().setStatus(Constants.FAILED);
+                response.getParams().setErr(Constants.ERR_USER_ORG_NOT_FOUND);
+                response.setResponseCode(HttpStatus.BAD_REQUEST);
+                return response;
+            }
+            log.info("CbPlanServiceV3Impl.retireCbPlan: Archiving CB Plan for userId: {}, orgId: {}", userId, userRootOrgId);
             Map<String, Object> requestData = (Map<String, Object>) request.getRequest();
             String cbPlanId = extractPlanIdFromRequest(requestData, response);
             if (StringUtils.isEmpty(cbPlanId)) {
@@ -595,7 +633,7 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
             }
             executeArchiveFlow(cbPlanId, comment, userId, existingCbPlan, response);
         } catch (Exception e) {
-            handleArchiveException(response, userOrgId, e);
+            handleArchiveException(response, userRootOrgId, e);
         }
         return response;
     }
@@ -861,6 +899,7 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
         userProfile.put(Constants.PROFILE_STATUS_LOWER_KEY,
                 (String) profileDetails.get(Constants.PROFILE_STATUS_KEY));
         extractCadreDetails(userProfile, profileDetails);
+        enrichmentService.extractMinistryOrStateDetails(userProfile, profileDetails);
         extractExtendedProfile(userProfile, (String) userBasicProfile.get(Constants.ID),
                 (String) userBasicProfile.get(Constants.ROOT_ORG_ID));
     }
@@ -1307,15 +1346,14 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
     private CbPlanDictionaryCacheEntry computeDictionaryFromPlans(String userId, String userOrgId, String planYear,
                                                                   String redisCacheKey, ApiResponse response)
             throws JsonProcessingException {
-        AtomicBoolean isCacheEnabled = new AtomicBoolean(false);
-        List<Map<String, Object>> activeCbPlans = cbPlanCacheMgrV3.getCbPlanForAllAndOrgId(
-                userOrgId, planYear, isCacheEnabled);
-        if (CollectionUtils.isEmpty(activeCbPlans)) {
-            return cacheEmptyDictionary(userId, planYear, redisCacheKey);
-        }
         Map<String, String> userProfile = buildUserProfile(userId, response);
         if (userProfile.isEmpty()) {
             return null;
+        }
+        AtomicBoolean isCacheEnabled = new AtomicBoolean(false);
+        List<Map<String, Object>> activeCbPlans = fetchPlansForUser(userProfile, userOrgId, planYear, isCacheEnabled);
+        if (CollectionUtils.isEmpty(activeCbPlans)) {
+            return cacheEmptyDictionary(userId, planYear, redisCacheKey);
         }
         return processPlanGroupingAndCache(activeCbPlans, userProfile, userOrgId, userId, planYear,
                 redisCacheKey, isCacheEnabled.get());
@@ -1548,7 +1586,7 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
      * ROOT_ORG_IDS_IN_CONTEXT_DATA, CONTENT_LIST, PLAN_TYPE (aligned with V2 contract).
      *
      * @param dataInDraftObject deserialized draft_data Map (may contain any fields/types)
-     * @return Map with only validated fields, preventing ClassCastException 
+     * @return Map with only validated fields, preventing ClassCastException
      * @throws JsonProcessingException if CONTEXT_DATA_REQUEST serialization fails
      */
     private Map<String, Object> extractDraftFields(Map<String, Object> dataInDraftObject)
@@ -1611,7 +1649,7 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
         rawRequest.put(Constants.ORG_ID_LIST, List.of(targetedOrganisation));
         rawRequest.put(Constants.PLAN_TYPE, Constants.PLAN_TYPE_AI_CBP);
         log.info("createCbPlanByAdmin: Creating AI CBP plan for targetedOrganisation={}", targetedOrganisation);
-        return createCbPlan(request, targetedOrganisation, authToken);
+        return aiCBPCreateCbPlan(request, targetedOrganisation, authToken);
     }
 
     /**
@@ -1637,7 +1675,7 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
             return response;
         }
         log.info("publishCbPlanByAdmin: Publishing AI CBP plan for targetedOrganisation={}", targetedOrganisation);
-        return publishCbPlan(request, targetedOrganisation, authToken, Collections.emptyList(), true);
+        return aiCBPPublishCbPlan(request, targetedOrganisation, authToken, Collections.emptyList(), true);
     }
 
     /**
@@ -1653,5 +1691,144 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
         }
         Object value = rawRequest.get(Constants.TARGETED_ORGANISATION);
         return Objects.nonNull(value) ? String.valueOf(value) : null;
+    }
+
+    /**
+     * Creates a CB Plan through AI CBP admin flow.
+     * This method is used by the AI CBP wrapper API where the target organization
+     * is provided explicitly in the request body instead of being derived from the
+     * authenticated user's organization.
+     *
+     * @param request   API request containing CB Plan details
+     * @param userOrgId target organization ID (from request body, not from user token)
+     * @param authToken authentication token for user validation
+     * @return ApiResponse with creation status and plan ID
+     */
+    public ApiResponse aiCBPCreateCbPlan(ApiRequest request, String userOrgId, String authToken) {
+        log.info("CbPlanServiceV3Impl.createCbPlan: Creating CB Plan for orgId: {}", userOrgId);
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_CB_PLAN_CREATE);
+        try {
+            String userId = validationService.validateAndExtractUserId(authToken, response);
+            if (StringUtils.isEmpty(userId)) {
+                return response;
+            }
+            String rootOrgId = validationService.validateUserOrganization(userId, response);
+            if (StringUtils.isEmpty(rootOrgId)) {
+                return response;
+            }
+            boolean isCCA = validationService.validateOrgCCA(rootOrgId, response);
+            if (Constants.FAILED.equalsIgnoreCase(response.getParams().getStatus())) {
+                return response;
+            }
+            if (!validationService.validateRequest(request, isCCA, userOrgId, response)) {
+                return response;
+            }
+            executePlanCreation(request, userId, userOrgId, response);
+        } catch (Exception e) {
+            handleException(response, userOrgId, e);
+        }
+        return response;
+    }
+
+    /**
+     * Publishes a CB Plan through AI CBP admin flow.
+     * This method is used by the AI CBP wrapper API where the target organization
+     * is provided explicitly in the request body. The isAdmin flag bypasses creator
+     * and role-based authorization checks, allowing admin users to publish plans
+     * created for any organization.
+     *
+     * @param request   API request containing plan ID and comment
+     * @param userOrgId target organization ID (from request body, not from user token)
+     * @param authToken authentication token for user validation
+     * @param userRoles user roles (can be empty for admin flow)
+     * @param isAdmin   flag to bypass authorization checks (always true for AI CBP flow)
+     * @return ApiResponse with publish status and updated plan details
+     */
+    public ApiResponse aiCBPPublishCbPlan(ApiRequest request, String userOrgId, String authToken, List<String> userRoles, boolean isAdmin) {
+        log.info("CbPlanServiceV3Impl.publishCbPlan: Publishing CB Plan for orgId: {}, isAdmin: {}", userOrgId, isAdmin);
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_CB_PLAN_PUBLISH);
+        try {
+            String userId = validationService.validateAndExtractUserId(authToken, response);
+            if (StringUtils.isEmpty(userId)) {
+                return response;
+            }
+            Map<String, Object> incomingRequest = (Map<String, Object>) request.getRequest();
+            String cbPlanId = validationService.validateAndExtractPlanId(incomingRequest, response);
+            if (StringUtils.isEmpty(cbPlanId)) {
+                return response;
+            }
+            Map<String, Object> existingCbPlan = fetchExistingPlan(cbPlanId, response);
+            if (MapUtils.isEmpty(existingCbPlan)) {
+                return response;
+            }
+            if (!isAdmin && validationService.isUnauthorizedToUpdate(userId, existingCbPlan, userRoles, response)) {
+                return response;
+            }
+            executePublishFlow(request, userId, userOrgId, cbPlanId, existingCbPlan, isAdmin, response);
+        } catch (Exception e) {
+            handlePublishException(response, userOrgId, e);
+        }
+        return response;
+    }
+
+    /**
+     * Inserts ministry or state ID lookup entries.
+     *
+     * @param cbPlanId           CB Plan ID
+     * @param planYear           plan year
+     * @param ministryOrStateIds set of ministry or state IDs to insert
+     * @param endDate            end date
+     * @param response           API response object
+     */
+    private void insertMinistryOrStateIdLookup(String cbPlanId, String planYear,
+                                               Set<String> ministryOrStateIds,
+                                               Instant endDate, ApiResponse response) {
+        log.info("CbPlanServiceV3Impl.insertMinistryOrStateIdLookup: Inserting {} ministryOrStateId(s) for CB Plan: {}",
+                ministryOrStateIds.size(), cbPlanId);
+        ApiResponse ministryLookupResp = orgLookupService.upsertMinistryOrStateIdLookup(
+                cbPlanId, planYear, ministryOrStateIds, endDate, true);
+        if (!Constants.SUCCESS.equals(ministryLookupResp.getParams().getStatus())) {
+            response.getParams().setStatus(Constants.FAILED);
+            response.getParams().setErr(ministryLookupResp.getParams().getErr());
+            response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
+            log.error("CbPlanServiceV3Impl.insertMinistryOrStateIdLookup: Failed to insert ministryOrStateId lookup for CB Plan: {}",
+                    cbPlanId);
+        }
+    }
+    private void upsertOrgScopeLookupTables(String cbPlanId, String planYear, String orgScope,
+                                            Set<String> newRootOrgIds, Instant endDate,
+                                            boolean hasMinistryOrStateId, ApiResponse response) {
+        ApiResponse lookupResp = null;
+        if (Constants.SINGLE.equalsIgnoreCase(orgScope) || Constants.CUSTOM.equalsIgnoreCase(orgScope)) {
+            log.info("upsertOrgScopeLookupTables: Upserting CUSTOM/SINGLE org lookup - cbPlanId={}, orgCount={}",
+                    cbPlanId, CollectionUtils.isNotEmpty(newRootOrgIds) ? newRootOrgIds.size() : 0);
+            lookupResp = orgLookupService.upsertCustomOrgLookup(cbPlanId, planYear, newRootOrgIds, endDate, true);
+        } else if (Constants.ALL.equalsIgnoreCase(orgScope) && !hasMinistryOrStateId) {
+            log.info("upsertOrgScopeLookupTables: Upserting ALL org lookup - cbPlanId={}", cbPlanId);
+            lookupResp = orgLookupService.upsertAllOrgLookup(cbPlanId, planYear, endDate, true);
+        } else if (hasMinistryOrStateId) {
+            log.info("upsertOrgScopeLookupTables: Skipping org/all_org tables (using ministryOrStateId) - cbPlanId={}", cbPlanId);
+        }
+        if (Objects.nonNull(lookupResp) && !Constants.SUCCESS.equals(lookupResp.get(Constants.RESPONSE))) {
+            response.getParams().setStatus(Constants.FAILED);
+            response.getParams().setErr(lookupResp.getParams().getErr());
+            response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
+            log.error("upsertOrgScopeLookupTables: Failed for cbPlanId={}, error={}", cbPlanId, lookupResp.getParams().getErr());
+        }
+    }
+
+
+    private List<Map<String, Object>> fetchPlansForUser(Map<String, String> userProfile, String userOrgId,
+                                                        String planYear, AtomicBoolean isCacheEnabled) {
+        List<Map<String, Object>> orgPlans = cbPlanCacheMgrV3.getCbPlanForAllAndOrgId(
+                userOrgId, planYear, isCacheEnabled);
+        String ministryOrStateId = userProfile.get(Constants.MINISTRY_OR_STATE_ID_RQST);
+        if (StringUtils.isBlank(ministryOrStateId)) {
+            return orgPlans;
+        }
+        log.info("fetchPlansForUser: User has ministryOrStateId={}, fetching ministry-specific plans", ministryOrStateId);
+        List<Map<String, Object>> ministryPlans = cbPlanCacheMgrV3.getCbPlanForMinistryOrStateId(
+                ministryOrStateId, planYear);
+        return dataTransformService.mergePlanLists(orgPlans, ministryPlans);
     }
 }

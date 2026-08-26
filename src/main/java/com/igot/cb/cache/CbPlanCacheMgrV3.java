@@ -274,4 +274,44 @@ public class CbPlanCacheMgrV3 {
             }
         }
     }
+
+    /**
+     * Gets CB Plans for a specific ministry or state ID and plan year.
+     *
+     * @param ministryOrStateId the ministry or state ID
+     * @param planYear          the plan year (e.g., "2026-27")
+     * @return list of active CB Plans for this ministry/state, or empty list if none
+     */
+    public List<Map<String, Object>> getCbPlanForMinistryOrStateId(String ministryOrStateId, String planYear) {
+        String cacheKey = "ministry:" + ministryOrStateId + "-lookup:" + planYear;
+        List<Map<String, Object>> cbPlanList = cbPlanCache.getIfPresent(cacheKey);
+        if (Objects.isNull(cbPlanList)) {
+            log.debug("getCbPlanForMinistryOrStateId: Caffeine cache miss - ministryOrStateId={}, planYear={}",
+                    ministryOrStateId, planYear);
+            Map<String, Object> propertiesMap = Map.of(
+                    "ministryorstateid", ministryOrStateId,
+                    Constants.PLAN_YEAR, planYear);
+            cbPlanList = cassandraOperation.getRecordsByProperties(
+                    Constants.KEYSPACE_SUNBIRD,
+                    Constants.TABLE_CB_PLAN_V3_LOOKUP_BY_MINISTRY_OR_STATE_ID,
+                    propertiesMap,
+                    List.of(),
+                    null);
+            if (Objects.isNull(cbPlanList)) {
+                log.warn("getCbPlanForMinistryOrStateId: Cassandra returned null - ministryOrStateId={}, planYear={}",
+                        ministryOrStateId, planYear);
+                cbPlanList = new ArrayList<>();
+            }
+            cbPlanList = cbPlanList.stream()
+                    .filter(plan -> Boolean.TRUE.equals(plan.get(Constants.IS_ACTIVE)))
+                    .toList();
+            cbPlanCache.put(cacheKey, cbPlanList);
+            log.info("getCbPlanForMinistryOrStateId: Loaded from Cassandra - ministryOrStateId={}, planYear={}, activeCount={}",
+                    ministryOrStateId, planYear, cbPlanList.size());
+        } else {
+            log.debug("getCbPlanForMinistryOrStateId: Caffeine cache hit - ministryOrStateId={}, planYear={}, count={}",
+                    ministryOrStateId, planYear, cbPlanList.size());
+        }
+        return cbPlanList;
+    }
 }

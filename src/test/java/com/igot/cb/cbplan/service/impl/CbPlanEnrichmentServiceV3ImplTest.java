@@ -139,4 +139,77 @@ class CbPlanEnrichmentServiceV3ImplTest {
     void testConstructor() {
         assertNotNull(new CbPlanEnrichmentServiceV3Impl(userAndOrgService, contentService));
     }
+
+    @Test
+    void testExtractMinistryOrStateDetailsExtractsMinistryId() {
+        Map<String, String> userProfile = new HashMap<>();
+        Map<String, Object> profileDetails = new HashMap<>();
+        profileDetails.put(Constants.MINISTRY_OR_STATEID, "ORG_001");
+        enrichmentService.extractMinistryOrStateDetails(userProfile, profileDetails);
+        assertEquals("ORG_001", userProfile.get(Constants.MINISTRY_OR_STATE_ID_RQST));
+    }
+
+    @Test
+    void testExtractMinistryOrStateDetailsExtractsMinistryOrgName() {
+        Map<String, String> userProfile = new HashMap<>();
+        Map<String, Object> profileDetails = new HashMap<>();
+        profileDetails.put(Constants.MINISTRY_OR_STATE_ORG_NAME, "Ministry of Example");
+        enrichmentService.extractMinistryOrStateDetails(userProfile, profileDetails);
+        assertEquals("Ministry of Example", userProfile.get(Constants.MINISTRY_OR_STATE_ORG_NAME.toLowerCase()));
+    }
+
+    @Test
+    void testExtractMinistryOrStateDetailsExtractsBothFields() {
+        Map<String, String> userProfile = new HashMap<>();
+        Map<String, Object> profileDetails = new HashMap<>();
+        profileDetails.put(Constants.MINISTRY_OR_STATEID, "ORG_001");
+        profileDetails.put(Constants.MINISTRY_OR_STATE_ORG_NAME, "Ministry of Example");
+        enrichmentService.extractMinistryOrStateDetails(userProfile, profileDetails);
+        assertEquals("ORG_001", userProfile.get(Constants.MINISTRY_OR_STATE_ID_RQST));
+        assertEquals("Ministry of Example", userProfile.get(Constants.MINISTRY_OR_STATE_ORG_NAME.toLowerCase()));
+    }
+
+    @Test
+    void testExtractMinistryOrStateDetailsSkipsNullMinistryId() {
+        Map<String, String> userProfile = new HashMap<>();
+        Map<String, Object> profileDetails = new HashMap<>();
+        profileDetails.put(Constants.MINISTRY_OR_STATEID, null);
+        enrichmentService.extractMinistryOrStateDetails(userProfile, profileDetails);
+        assertFalse(userProfile.containsKey(Constants.MINISTRY_OR_STATE_ID_RQST));
+    }
+
+    @Test
+    void testExtractMinistryOrStateDetailsSkipsBlankMinistryId() {
+        Map<String, String> userProfile = new HashMap<>();
+        Map<String, Object> profileDetails = new HashMap<>();
+        profileDetails.put(Constants.MINISTRY_OR_STATEID, "   ");
+        enrichmentService.extractMinistryOrStateDetails(userProfile, profileDetails);
+        assertFalse(userProfile.containsKey(Constants.MINISTRY_OR_STATE_ID_RQST));
+    }
+
+    @Test
+    void testExtractMinistryOrStateDetailsSkipsNullOrgName() {
+        Map<String, String> userProfile = new HashMap<>();
+        Map<String, Object> profileDetails = new HashMap<>();
+        profileDetails.put(Constants.MINISTRY_OR_STATE_ORG_NAME, null);
+        enrichmentService.extractMinistryOrStateDetails(userProfile, profileDetails);
+        assertFalse(userProfile.containsKey(Constants.MINISTRY_OR_STATE_ORG_NAME.toLowerCase()));
+    }
+
+    @Test
+    void testExtractMinistryOrStateDetailsSkipsBlankOrgName() {
+        Map<String, String> userProfile = new HashMap<>();
+        Map<String, Object> profileDetails = new HashMap<>();
+        profileDetails.put(Constants.MINISTRY_OR_STATE_ORG_NAME, "");
+        enrichmentService.extractMinistryOrStateDetails(userProfile, profileDetails);
+        assertFalse(userProfile.containsKey(Constants.MINISTRY_OR_STATE_ORG_NAME.toLowerCase()));
+    }
+
+    @Test
+    void testExtractMinistryOrStateDetailsHandlesEmptyProfileDetails() {
+        Map<String, String> userProfile = new HashMap<>();
+        Map<String, Object> profileDetails = new HashMap<>();
+        enrichmentService.extractMinistryOrStateDetails(userProfile, profileDetails);
+        assertTrue(userProfile.isEmpty());
+    }
 }

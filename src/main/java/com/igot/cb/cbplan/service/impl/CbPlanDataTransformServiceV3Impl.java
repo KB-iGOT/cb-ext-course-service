@@ -195,9 +195,9 @@ public class CbPlanDataTransformServiceV3Impl {
     private void populateUpdateFields(Map<String, Object> updatedRequest, Map<String, Object> incomingRequest)
             throws JsonProcessingException {
         updatedRequest.put(Constants.IS_APAR, incomingRequest.getOrDefault(Constants.IS_APAR, false));
-        updatedRequest.put(Constants.ORG_ID_LIST, incomingRequest.get(Constants.ORG_ID_LIST));
+        updatedRequest.put(Constants.ORG_ID_LIST, filterNullsFromList(incomingRequest.get(Constants.ORG_ID_LIST)));
         updatedRequest.put(Constants.ORG_SCOPE, incomingRequest.get(Constants.ORG_SCOPE));
-        updatedRequest.put(Constants.CONTENT_LIST, incomingRequest.get(Constants.CONTENT_LIST));
+        updatedRequest.put(Constants.CONTENT_LIST, filterNullsFromList(incomingRequest.get(Constants.CONTENT_LIST)));
         updatedRequest.put(Constants.NAME, incomingRequest.get(Constants.NAME));
         updatedRequest.put(Constants.COMMENT, incomingRequest.get(Constants.COMMENT));
         updatedRequest.put(Constants.CONTENT_TYPE, incomingRequest.get(Constants.CONTENT_TYPE));
@@ -305,5 +305,24 @@ public class CbPlanDataTransformServiceV3Impl {
         }
         log.debug("determineContextDataSource: Using existingCbPlan (live republish flow)");
         return existingCbPlan;
+    }
+
+    /**
+     * Filters null values from a list.
+     * Cassandra does not allow null values in collections.
+     *
+     * @param obj object to filter (expected to be a List)
+     * @return filtered list without nulls, or original object if not a list
+     */
+    @SuppressWarnings("unchecked")
+    private Object filterNullsFromList(Object obj) {
+        if (obj instanceof List) {
+            List<Object> list = (List<Object>) obj;
+            if (CollectionUtils.isEmpty(list)) {
+                return list;
+            }
+            return list.stream().filter(Objects::nonNull).toList();
+        }
+        return obj;
     }
 }

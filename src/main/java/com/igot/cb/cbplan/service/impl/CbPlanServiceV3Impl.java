@@ -949,9 +949,7 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
 
     private void extractExtendedProfile(Map<String, String> userProfile, String userId, String rootOrgId) {
         try {
-            Map<String, Object> propertiesMap = Map.of(
-                    Constants.USER_ID, userId,
-                    Constants.USER_ROOT_ORG_ID, rootOrgId);
+            Map<String, Object> propertiesMap = Map.of(Constants.USER_ID, userId);
             List<Map<String, Object>> extendedProfileList = cassandraOperation.getRecordsByProperties(
                     Constants.KEYSPACE_SUNBIRD, Constants.TABLE_USER_EXTENDED_PROFILE, propertiesMap, List.of(),
                     serverProperties.getCassandraQueryLimitUserExtendedProfile());

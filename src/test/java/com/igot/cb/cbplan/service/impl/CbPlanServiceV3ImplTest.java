@@ -633,10 +633,6 @@ class CbPlanServiceV3ImplTest {
         plan.put(Constants.CONTENT_LIST, List.of("course1"));
         plan.put(Constants.CREATED_BY, USER_ID);
         mockExistingPlan(plan);
-        List<Map<String, Object>> enriched = List.of(Map.of("identifier", "course1"));
-        String cachedJson = "{\"identifier\":\"course1\",\"status\":\"Live\"}";
-        when(redisCacheMgr.getFromCache("extended_read_content_course1")).thenReturn(cachedJson);
-        when(serverProperties.getCbPlanEnrichedContentFieldsList()).thenReturn(List.of("identifier"));
         ApiResponse response = cbPlanService.readCbPlan(PLAN_ID, ORG_ID, TOKEN);
         CbPlanReadResponseDto dto = (CbPlanReadResponseDto) response.getResult().get(Constants.CONTENT);
         assertEquals(PLAN_ID, dto.getId());
@@ -646,7 +642,7 @@ class CbPlanServiceV3ImplTest {
         assertTrue(dto.getIsApar());
         assertEquals(Constants.DRAFT, dto.getStatus());
         assertEquals(USER_ID, dto.getCreatedBy());
-        assertEquals(enriched, dto.getContentList());
+        assertEquals(List.of("course1"), dto.getContentList());
     }
 
     @Test
@@ -659,15 +655,12 @@ class CbPlanServiceV3ImplTest {
         plan.put(Constants.DRAFT_DATA,
                 "{\"name\":\"draftName\",\"contentList\":[\"courseDraft\"],\"isApar\":true,\"endDate\":\"2026-12-31\"}");
         mockExistingPlan(plan);
-        String cachedJson = "{\"identifier\":\"courseDraft\",\"status\":\"Live\"}";
-        when(redisCacheMgr.getFromCache("extended_read_content_courseDraft")).thenReturn(cachedJson);
-        when(serverProperties.getCbPlanEnrichedContentFieldsList()).thenReturn(List.of("identifier"));
         ApiResponse response = cbPlanService.readCbPlan(PLAN_ID, ORG_ID, TOKEN);
         CbPlanReadResponseDto dto = (CbPlanReadResponseDto) response.getResult().get(Constants.CONTENT);
         assertEquals("draftName", dto.getName());
         assertTrue(dto.getIsApar());
         assertNotNull(dto.getEndDate());
-        assertEquals(1, dto.getContentList().size());
+        assertEquals(List.of("courseDraft"), dto.getContentList());
     }
 
     @Test
@@ -678,13 +671,10 @@ class CbPlanServiceV3ImplTest {
         plan.put(Constants.DRAFT_DATA, "{}");
         plan.put(Constants.CONTENT_LIST, List.of("courseLive"));
         mockExistingPlan(plan);
-        String cachedJson = "{\"identifier\":\"courseLive\",\"status\":\"Live\"}";
-        when(redisCacheMgr.getFromCache("extended_read_content_courseLive")).thenReturn(cachedJson);
-        when(serverProperties.getCbPlanEnrichedContentFieldsList()).thenReturn(List.of("identifier"));
         ApiResponse response = cbPlanService.readCbPlan(PLAN_ID, ORG_ID, TOKEN);
         CbPlanReadResponseDto dto = (CbPlanReadResponseDto) response.getResult().get(Constants.CONTENT);
         assertEquals("liveName", dto.getName());
-        assertEquals(1, dto.getContentList().size());
+        assertEquals(List.of("courseLive"), dto.getContentList());
     }
 
     @Test
@@ -693,7 +683,6 @@ class CbPlanServiceV3ImplTest {
         plan.put(Constants.STATUS, Constants.DRAFT);
         plan.put(Constants.CONTEXT_DATA_REQUEST, "{\"accessControl\":{\"userGroups\":[]}}");
         mockExistingPlan(plan);
-        when(serverProperties.getCbPlanEnrichedContentFieldsList()).thenReturn(List.of("identifier"));
         ApiResponse response = cbPlanService.readCbPlan(PLAN_ID, ORG_ID, TOKEN);
         CbPlanReadResponseDto dto = (CbPlanReadResponseDto) response.getResult().get(Constants.CONTENT);
         assertNotNull(dto.getContextData());
@@ -706,7 +695,6 @@ class CbPlanServiceV3ImplTest {
         plan.put(Constants.STATUS, Constants.DRAFT);
         plan.put(Constants.CONTEXT_DATA_REQUEST, "not-valid-json");
         mockExistingPlan(plan);
-        when(serverProperties.getCbPlanEnrichedContentFieldsList()).thenReturn(List.of("identifier"));
         ApiResponse response = cbPlanService.readCbPlan(PLAN_ID, ORG_ID, TOKEN);
         CbPlanReadResponseDto dto = (CbPlanReadResponseDto) response.getResult().get(Constants.CONTENT);
         assertNotNull(dto);

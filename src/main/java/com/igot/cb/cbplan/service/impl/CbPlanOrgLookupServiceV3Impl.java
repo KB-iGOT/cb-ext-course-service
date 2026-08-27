@@ -316,7 +316,7 @@ public class CbPlanOrgLookupServiceV3Impl {
             if (Constants.MINISTRY_OR_STATEID.equalsIgnoreCase(criteriaKey)) {
                 List<String> values = (List<String>) criteria.get(Constants.CRITERIA_VALUE);
                 if (CollectionUtils.isNotEmpty(values)) {
-                    ministryOrStateIdSet.addAll(values);
+                    values.stream().filter(Objects::nonNull).forEach(ministryOrStateIdSet::add);
                 }
             }
         }

@@ -900,8 +900,7 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
                 (String) profileDetails.get(Constants.PROFILE_STATUS_KEY));
         extractCadreDetails(userProfile, profileDetails);
         enrichmentService.extractMinistryOrStateDetails(userProfile, profileDetails);
-        extractExtendedProfile(userProfile, (String) userBasicProfile.get(Constants.ID),
-                (String) userBasicProfile.get(Constants.ROOT_ORG_ID));
+        extractExtendedProfile(userProfile, (String) userBasicProfile.get(Constants.ID));
     }
 
     private Map<String, Object> parseProfileDetails(Object rawValue) throws JsonProcessingException {
@@ -947,11 +946,9 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
         userProfile.put(Constants.CENTRAL_DEPUTATION_LOWER_KEY, String.valueOf(centralDeputation));
     }
 
-    private void extractExtendedProfile(Map<String, String> userProfile, String userId, String rootOrgId) {
+    private void extractExtendedProfile(Map<String, String> userProfile, String userId) {
         try {
-            Map<String, Object> propertiesMap = Map.of(
-                    Constants.USER_ID, userId,
-                    Constants.USER_ROOT_ORG_ID, rootOrgId);
+            Map<String, Object> propertiesMap = Map.of(Constants.USER_ID, userId);
             List<Map<String, Object>> extendedProfileList = cassandraOperation.getRecordsByProperties(
                     Constants.KEYSPACE_SUNBIRD, Constants.TABLE_USER_EXTENDED_PROFILE, propertiesMap, List.of(),
                     serverProperties.getCassandraQueryLimitUserExtendedProfile());

@@ -1784,7 +1784,7 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
                 ministryOrStateIds.size(), cbPlanId);
         ApiResponse ministryLookupResp = orgLookupService.upsertMinistryOrStateIdLookup(
                 cbPlanId, planYear, ministryOrStateIds, endDate, true);
-        if (!Constants.SUCCESS.equals(ministryLookupResp.getParams().getStatus())) {
+        if (!Constants.SUCCESS.equals(ministryLookupResp.get(Constants.RESPONSE))) {
             response.getParams().setStatus(Constants.FAILED);
             response.getParams().setErr(ministryLookupResp.getParams().getErr());
             response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);

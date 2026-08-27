@@ -119,7 +119,8 @@ public class CbPlanOrgLookupServiceV3Impl {
                     Constants.KEYSPACE_SUNBIRD,
                     Constants.TABLE_CB_PLAN_V3_LOOKUP_BY_ORG,
                     lookupMaps);
-            if (!Constants.SUCCESS.equals(response.getParams().getStatus())) {
+            if (!Constants.SUCCESS.equals(response.get(Constants.RESPONSE))) {
+                response.getParams().setStatus(Constants.FAILED);
                 return response;
             }
             response.getParams().setStatus(Constants.SUCCESS);
@@ -359,9 +360,10 @@ public class CbPlanOrgLookupServiceV3Impl {
                     Constants.KEYSPACE_SUNBIRD,
                     Constants.TABLE_CB_PLAN_V3_LOOKUP_BY_MINISTRY_OR_STATE_ID,
                     lookupMaps);
-            if (!Constants.SUCCESS.equals(response.getParams().getStatus())) {
+            if (!Constants.SUCCESS.equals(response.get(Constants.RESPONSE))) {
                 log.error("CbPlanOrgLookupService.upsertMinistryOrStateIdLookup: Failed to insert lookup entries for CB Plan: {}",
                         cbPlanId);
+                response.getParams().setStatus(Constants.FAILED);
                 return response;
             }
             response.getParams().setStatus(Constants.SUCCESS);

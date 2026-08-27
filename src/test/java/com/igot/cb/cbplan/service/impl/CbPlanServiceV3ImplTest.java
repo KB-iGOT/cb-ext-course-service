@@ -42,7 +42,6 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyMap;
@@ -634,8 +633,6 @@ class CbPlanServiceV3ImplTest {
         plan.put(Constants.CONTENT_LIST, List.of("course1"));
         plan.put(Constants.CREATED_BY, USER_ID);
         mockExistingPlan(plan);
-        List<Map<String, Object>> enriched = List.of(Map.of("identifier", "course1"));
-        when(contentService.enrichContentInfoForCBPlan(anyList())).thenReturn(enriched);
         ApiResponse response = cbPlanService.readCbPlan(PLAN_ID, ORG_ID, TOKEN);
         CbPlanReadResponseDto dto = (CbPlanReadResponseDto) response.getResult().get(Constants.CONTENT);
         assertEquals(PLAN_ID, dto.getId());
@@ -645,7 +642,7 @@ class CbPlanServiceV3ImplTest {
         assertTrue(dto.getIsApar());
         assertEquals(Constants.DRAFT, dto.getStatus());
         assertEquals(USER_ID, dto.getCreatedBy());
-        assertEquals(enriched, dto.getContentList());
+        assertEquals(List.of("course1"), dto.getContentList());
     }
 
     @Test
@@ -658,13 +655,12 @@ class CbPlanServiceV3ImplTest {
         plan.put(Constants.DRAFT_DATA,
                 "{\"name\":\"draftName\",\"contentList\":[\"courseDraft\"],\"isApar\":true,\"endDate\":\"2026-12-31\"}");
         mockExistingPlan(plan);
-        when(contentService.enrichContentInfoForCBPlan(anyList())).thenReturn(List.of());
         ApiResponse response = cbPlanService.readCbPlan(PLAN_ID, ORG_ID, TOKEN);
         CbPlanReadResponseDto dto = (CbPlanReadResponseDto) response.getResult().get(Constants.CONTENT);
         assertEquals("draftName", dto.getName());
         assertTrue(dto.getIsApar());
         assertNotNull(dto.getEndDate());
-        verify(contentService).enrichContentInfoForCBPlan(List.of("courseDraft"));
+        assertEquals(List.of("courseDraft"), dto.getContentList());
     }
 
     @Test
@@ -675,11 +671,10 @@ class CbPlanServiceV3ImplTest {
         plan.put(Constants.DRAFT_DATA, "{}");
         plan.put(Constants.CONTENT_LIST, List.of("courseLive"));
         mockExistingPlan(plan);
-        when(contentService.enrichContentInfoForCBPlan(anyList())).thenReturn(List.of());
         ApiResponse response = cbPlanService.readCbPlan(PLAN_ID, ORG_ID, TOKEN);
         CbPlanReadResponseDto dto = (CbPlanReadResponseDto) response.getResult().get(Constants.CONTENT);
         assertEquals("liveName", dto.getName());
-        verify(contentService).enrichContentInfoForCBPlan(List.of("courseLive"));
+        assertEquals(List.of("courseLive"), dto.getContentList());
     }
 
     @Test
@@ -688,7 +683,6 @@ class CbPlanServiceV3ImplTest {
         plan.put(Constants.STATUS, Constants.DRAFT);
         plan.put(Constants.CONTEXT_DATA_REQUEST, "{\"accessControl\":{\"userGroups\":[]}}");
         mockExistingPlan(plan);
-        when(contentService.enrichContentInfoForCBPlan(anyList())).thenReturn(List.of());
         ApiResponse response = cbPlanService.readCbPlan(PLAN_ID, ORG_ID, TOKEN);
         CbPlanReadResponseDto dto = (CbPlanReadResponseDto) response.getResult().get(Constants.CONTENT);
         assertNotNull(dto.getContextData());
@@ -701,7 +695,6 @@ class CbPlanServiceV3ImplTest {
         plan.put(Constants.STATUS, Constants.DRAFT);
         plan.put(Constants.CONTEXT_DATA_REQUEST, "not-valid-json");
         mockExistingPlan(plan);
-        when(contentService.enrichContentInfoForCBPlan(anyList())).thenReturn(List.of());
         ApiResponse response = cbPlanService.readCbPlan(PLAN_ID, ORG_ID, TOKEN);
         CbPlanReadResponseDto dto = (CbPlanReadResponseDto) response.getResult().get(Constants.CONTENT);
         assertNotNull(dto);

@@ -460,7 +460,7 @@ public class CbPlanRequestValidatorImpl {
             log.warn("CbPlanValidationService.checkUserOrgIsL0: Organization not found for userOrgId: {}", userOrgId);
             return false;
         }
-        String ministryOrStateType = (String) orgMap.get(Constants.MINISTRY_OR_STATETYPE);
+        String ministryOrStateType = (String) orgMap.get(Constants.MINISTRY_OR_STATETYPE_DB);
         boolean isL0 = Constants.SPV.equalsIgnoreCase(ministryOrStateType);
         log.debug("CbPlanValidationService.checkUserOrgIsL0: userOrgId={}, ministryOrStateType={}, isL0={}",
                 userOrgId, ministryOrStateType, isL0);
@@ -485,7 +485,7 @@ public class CbPlanRequestValidatorImpl {
                 Map<String, Object> orgMap = userAndOrgService.readOrgFromDB(orgId,
                         Arrays.asList(Constants.ID, Constants.MINISTRY_OR_STATETYPE));
                 if (MapUtils.isNotEmpty(orgMap)) {
-                    String ministryOrStateType = (String) orgMap.get(Constants.MINISTRY_OR_STATETYPE);
+                    String ministryOrStateType = (String) orgMap.get(Constants.MINISTRY_OR_STATETYPE_DB);
                     orgMinistryTypeMap.put(orgId, ministryOrStateType);
                 }
             }

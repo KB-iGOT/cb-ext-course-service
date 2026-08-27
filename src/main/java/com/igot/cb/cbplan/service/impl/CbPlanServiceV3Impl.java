@@ -951,7 +951,7 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
         try {
             Map<String, Object> propertiesMap = Map.of(
                     Constants.USER_ID, userId,
-                    Constants.ROOT_ORG_ID, rootOrgId);
+                    Constants.USER_ROOT_ORG_ID, rootOrgId);
             List<Map<String, Object>> extendedProfileList = cassandraOperation.getRecordsByProperties(
                     Constants.KEYSPACE_SUNBIRD, Constants.TABLE_USER_EXTENDED_PROFILE, propertiesMap, List.of(),
                     serverProperties.getCassandraQueryLimitUserExtendedProfile());
@@ -1537,7 +1537,7 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
                 .createdBy((String) cbPlan.get(Constants.CREATED_BY))
                 .createdByName(StringUtils.EMPTY)
                 .contextData(parseContextDataToJsonNode(cbPlan.get(Constants.CONTEXT_DATA_REQUEST)))
-                .contentList(contentService.enrichContentInfoForCBPlan(contentIdList))
+                .contentList(contentIdList)
                 .build();
     }
 
@@ -1831,4 +1831,5 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
                 ministryOrStateId, planYear);
         return dataTransformService.mergePlanLists(orgPlans, ministryPlans);
     }
+
 }

@@ -23,7 +23,7 @@ class CbPlanReadResponseDtoTest {
         Instant publishedAt = Instant.parse("2026-02-01T00:00:00Z");
         Instant endDate = Instant.parse("2026-12-31T18:29:59Z");
         JsonNode contextData = MAPPER.readTree("{\"accessControl\":{\"userGroups\":[]}}");
-        List<Map<String, Object>> contentList = List.of(Map.of("identifier", "course1"));
+        List<String> contentList = List.of("course1");
         CbPlanReadResponseDto dto = CbPlanReadResponseDto.builder()
                 .id("plan123")
                 .name("My Plan")

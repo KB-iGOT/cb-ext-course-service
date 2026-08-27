@@ -275,6 +275,107 @@ class CbPlanContentLookupServiceV3ImplTest {
     }
 
     @Test
+    void testEnrichContentListForReadWithEmptyList() {
+        List<Map<String, Object>> result = contentLookupService.enrichContentListForRead(List.of(), List.of("name", "identifier"));
+        assertNotNull(result);
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    void testEnrichContentListForReadWithLiveContent() {
+        String contentId = "do_123";
+        String cachedJson = "{\"identifier\":\"do_123\",\"name\":\"Test Course\",\"status\":\"Live\",\"description\":\"Desc\"}";
+        when(redisCacheMgr.getFromCache("extended_read_content_" + contentId)).thenReturn(cachedJson);
+
+        List<String> allowedFields = List.of("identifier", "name", "status");
+        List<Map<String, Object>> result = contentLookupService.enrichContentListForRead(
+                List.of(contentId), allowedFields);
+
+        assertEquals(1, result.size());
+        Map<String, Object> enriched = result.get(0);
+        assertEquals("do_123", enriched.get("identifier"));
+        assertEquals("Test Course", enriched.get("name"));
+        assertEquals("Live", enriched.get("status"));
+        assertTrue(!enriched.containsKey("description"), "Should not contain non-allowed field");
+    }
+
+    @Test
+    void testEnrichContentListForReadFiltersNonLiveContent() {
+        String contentId = "do_456";
+        String cachedJson = "{\"identifier\":\"do_456\",\"name\":\"Draft Course\",\"status\":\"Draft\"}";
+        when(redisCacheMgr.getFromCache("extended_read_content_" + contentId)).thenReturn(cachedJson);
+
+        List<Map<String, Object>> result = contentLookupService.enrichContentListForRead(
+                List.of(contentId), List.of("identifier", "name"));
+
+        assertTrue(result.isEmpty(), "Should filter out non-LIVE content");
+    }
+
+    @Test
+    void testEnrichContentListForReadSkipsContentNotFound() {
+        String contentId = "do_missing";
+        when(redisCacheMgr.getFromCache("extended_read_content_" + contentId)).thenReturn(null);
+        when(outboundRequestHandlerService.fetchResult(anyString())).thenReturn(Map.of(
+                Constants.RESPONSE_CODE, "CLIENT_ERROR"
+        ));
+
+        List<Map<String, Object>> result = contentLookupService.enrichContentListForRead(
+                List.of(contentId), List.of("identifier"));
+
+        assertTrue(result.isEmpty(), "Should skip content not found");
+    }
+
+    @Test
+    void testEnrichContentListForReadMixedContent() {
+        String liveContentId = "do_live";
+        String draftContentId = "do_draft";
+        String missingContentId = "do_missing";
+
+        String liveCachedJson = "{\"identifier\":\"do_live\",\"name\":\"Live Course\",\"status\":\"Live\"}";
+        String draftCachedJson = "{\"identifier\":\"do_draft\",\"name\":\"Draft Course\",\"status\":\"Draft\"}";
+
+        when(redisCacheMgr.getFromCache("extended_read_content_" + liveContentId)).thenReturn(liveCachedJson);
+        when(redisCacheMgr.getFromCache("extended_read_content_" + draftContentId)).thenReturn(draftCachedJson);
+        when(redisCacheMgr.getFromCache("extended_read_content_" + missingContentId)).thenReturn(null);
+        when(outboundRequestHandlerService.fetchResult(anyString())).thenReturn(Map.of(
+                Constants.RESPONSE_CODE, "CLIENT_ERROR"
+        ));
+
+        List<Map<String, Object>> result = contentLookupService.enrichContentListForRead(
+                List.of(liveContentId, draftContentId, missingContentId),
+                List.of("identifier", "name"));
+
+        assertEquals(1, result.size(), "Should only include LIVE content");
+        assertEquals("do_live", result.get(0).get("identifier"));
+    }
+
+    @Test
+    void testEnrichContentListForReadHandlesExceptions() {
+        String contentId = "do_error";
+        when(redisCacheMgr.getFromCache(anyString())).thenThrow(new RuntimeException("Redis error"));
+
+        List<Map<String, Object>> result = contentLookupService.enrichContentListForRead(
+                List.of(contentId), List.of("identifier"));
+
+        assertTrue(result.isEmpty(), "Should handle exceptions gracefully");
+    }
+
+    @Test
+    void testEnrichContentListForReadWithAllowedFieldsEmpty() {
+        String contentId = "do_123";
+        String cachedJson = "{\"identifier\":\"do_123\",\"name\":\"Test Course\",\"status\":\"Live\"}";
+        when(redisCacheMgr.getFromCache("extended_read_content_" + contentId)).thenReturn(cachedJson);
+
+        List<Map<String, Object>> result = contentLookupService.enrichContentListForRead(
+                List.of(contentId), List.of());
+
+        assertEquals(1, result.size(), "Should return all fields when allowedFields is empty");
+        Map<String, Object> enriched = result.get(0);
+        assertTrue(enriched.containsKey("identifier"));
+        assertTrue(enriched.containsKey("name"));
+    }
+
+    @Test
     void testConstructor() {
         assertNotNull(new CbPlanContentLookupServiceV3Impl(
                 cassandraOperation, redisCacheMgr, outboundRequestHandlerService));

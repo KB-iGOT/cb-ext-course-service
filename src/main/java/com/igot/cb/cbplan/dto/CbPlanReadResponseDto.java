@@ -92,8 +92,8 @@ public class CbPlanReadResponseDto {
     private JsonNode contextData;
 
     /**
-     * List of enriched content items with metadata.
-     * Each map contains content details like identifier, name, description, etc.
+     * List of content identifiers.
+     * UI team will handle content enrichment.
      */
-    private List<Map<String, Object>> contentList;
+    private List<String> contentList;
 }

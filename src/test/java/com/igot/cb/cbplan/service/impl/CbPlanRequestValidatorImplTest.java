@@ -25,7 +25,6 @@ class CbPlanRequestValidatorImplTest {
     private static final String ORG_ID = "org1";
     private static final String ORG_ID_2 = "org2";
     private static final String MINISTRY_ORG = "MIN_001";
-    private static final String LEVEL_ZERO = "levelZero";
     private static final String ALL_ORG_MSG = "All org restriction message";
 
     @Mock
@@ -645,14 +644,14 @@ class CbPlanRequestValidatorImplTest {
     private void mockOrgAsL0(String orgId) {
         Map<String, Object> orgMap = new HashMap<>();
         orgMap.put(Constants.ID, orgId);
-        orgMap.put(Constants.MINISTRY_OR_STATETYPE, Constants.SPV);
+        orgMap.put(Constants.MINISTRY_OR_STATETYPE_DB, Constants.SPV);
         lenient().when(userAndOrgService.readOrgFromDB(eq(orgId), anyList())).thenReturn(orgMap);
     }
 
     private void mockOrgAsNonL0(String orgId) {
         Map<String, Object> orgMap = new HashMap<>();
         orgMap.put(Constants.ID, orgId);
-        orgMap.put(Constants.MINISTRY_OR_STATETYPE, "OTHER");
+        orgMap.put(Constants.MINISTRY_OR_STATETYPE_DB, "OTHER");
         lenient().when(userAndOrgService.readOrgFromDB(eq(orgId), anyList())).thenReturn(orgMap);
     }
 }

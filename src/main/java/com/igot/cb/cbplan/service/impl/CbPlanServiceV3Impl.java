@@ -951,7 +951,7 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
         try {
             Map<String, Object> propertiesMap = Map.of(
                     Constants.USER_ID, userId,
-                    Constants.ROOT_ORG_ID, rootOrgId);
+                    Constants.USER_ROOT_ORG_ID, rootOrgId);
             List<Map<String, Object>> extendedProfileList = cassandraOperation.getRecordsByProperties(
                     Constants.KEYSPACE_SUNBIRD, Constants.TABLE_USER_EXTENDED_PROFILE, propertiesMap, List.of(),
                     serverProperties.getCassandraQueryLimitUserExtendedProfile());
@@ -1537,7 +1537,7 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
                 .createdBy((String) cbPlan.get(Constants.CREATED_BY))
                 .createdByName(StringUtils.EMPTY)
                 .contextData(parseContextDataToJsonNode(cbPlan.get(Constants.CONTEXT_DATA_REQUEST)))
-                .contentList(contentService.enrichContentInfoForCBPlan(contentIdList))
+                .contentList(enrichContentInfoForRead(contentIdList))
                 .build();
     }
 
@@ -1830,5 +1830,18 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
         List<Map<String, Object>> ministryPlans = cbPlanCacheMgrV3.getCbPlanForMinistryOrStateId(
                 ministryOrStateId, planYear);
         return dataTransformService.mergePlanLists(orgPlans, ministryPlans);
+    }
+
+    /**
+     * Enriches content list using extended content read API with Redis caching.
+     * Delegates to CbPlanContentLookupServiceV3Impl which checks Redis first, falls back to extended API.
+     * Only returns LIVE status content with allowed fields filtered.
+     *
+     * @param contentIdList list of content IDs to enrich
+     * @return list of enriched content maps with filtered fields
+     */
+    private List<Map<String, Object>> enrichContentInfoForRead(List<String> contentIdList) {
+        List<String> allowedFields = serverProperties.getCbPlanEnrichedContentFieldsList();
+        return contentLookupService.enrichContentListForRead(contentIdList, allowedFields);
     }
 }

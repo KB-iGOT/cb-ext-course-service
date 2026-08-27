@@ -3,6 +3,7 @@ package com.igot.cb.cbplan.service.impl;
 import java.util.*;
 
 import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
 
@@ -423,5 +424,84 @@ public class CbPlanContentLookupServiceV3Impl {
         return propertiesCache.getProperty(Constants.CB_PORES_SERVICE_HOST) +
                 propertiesCache.getProperty(Constants.EXTERNAL_CONTENT_READ_END_POINT) +
                 "/" + contentId;
+    }
+
+    /**
+     * Enriches content list using extended content read API with Redis caching.
+     * Checks Redis first (key: extended_read_content_{contentId}), falls back to extended API.
+     * Only returns LIVE status content with allowed fields filtered.
+     *
+     * @param contentIdList list of content IDs to enrich
+     * @param allowedFields list of fields to include in enriched response
+     * @return list of enriched content maps with filtered fields
+     */
+    public List<Map<String, Object>> enrichContentListForRead(List<String> contentIdList, List<String> allowedFields) {
+        if (CollectionUtils.isEmpty(contentIdList)) {
+            log.debug("enrichContentListForRead: Empty content list");
+            return Collections.emptyList();
+        }
+        log.debug("enrichContentListForRead: Enriching {} content item(s)", contentIdList.size());
+
+        List<Map<String, Object>> enrichedList = new ArrayList<>();
+        for (String contentId : contentIdList) {
+            Map<String, Object> enrichedContent = enrichSingleContent(contentId, allowedFields);
+            if (MapUtils.isNotEmpty(enrichedContent)) {
+                enrichedList.add(enrichedContent);
+            }
+        }
+
+        log.info("enrichContentListForRead: Successfully enriched {} out of {} content item(s)",
+                enrichedList.size(), contentIdList.size());
+        return enrichedList;
+    }
+
+    /**
+     * Enriches a single content item with metadata and filtering.
+     *
+     * @param contentId     content ID to enrich
+     * @param allowedFields list of fields to include
+     * @return enriched content map, or null if content not found or not LIVE
+     */
+    private Map<String, Object> enrichSingleContent(String contentId, List<String> allowedFields) {
+        try {
+            Map<String, Object> contentDetails = getContentMetadata(contentId);
+            if (MapUtils.isEmpty(contentDetails)) {
+                log.warn("enrichSingleContent: Content metadata not found - contentId={}", contentId);
+                return Collections.emptyMap();
+            }
+
+            String status = (String) contentDetails.get(Constants.STATUS);
+            if (!Constants.LIVE.equalsIgnoreCase(status)) {
+                log.warn("enrichSingleContent: Content not LIVE - contentId={}, status={}", contentId, status);
+                return Collections.emptyMap();
+            }
+
+            Map<String, Object> filteredDetails = filterContentFields(contentDetails, allowedFields);
+            return MapUtils.isNotEmpty(filteredDetails) ? filteredDetails : Collections.emptyMap();
+        } catch (Exception e) {
+            log.error("enrichSingleContent: Failed to enrich content - contentId={}", contentId, e);
+            return Collections.emptyMap();
+        }
+    }
+
+    /**
+     * Filters content details to include only allowed fields.
+     *
+     * @param contentDetails full content metadata map
+     * @param allowedFields  list of fields to include
+     * @return filtered content map with only allowed fields
+     */
+    private Map<String, Object> filterContentFields(Map<String, Object> contentDetails, List<String> allowedFields) {
+        if (MapUtils.isEmpty(contentDetails) || CollectionUtils.isEmpty(allowedFields)) {
+            return contentDetails;
+        }
+
+        Map<String, Object> filteredMap = new LinkedHashMap<>();
+        for (String field : allowedFields) {
+            if (contentDetails.containsKey(field)) {
+                filteredMap.put(field, contentDetails.get(field));
+            }
+        }
+        return filteredMap;
     }
 }

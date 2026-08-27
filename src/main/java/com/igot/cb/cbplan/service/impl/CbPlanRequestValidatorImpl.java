@@ -325,7 +325,7 @@ public class CbPlanRequestValidatorImpl {
 
     /**
      * Validates and collects ministry or state organization IDs.
-     * Each organization must be a Level 0 (L0) organization.
+     * Each organization must be a Level 0 (L0) organization (ministryOrStateType = "SPV").
      * Uses batch fetching to minimize DB calls.
      *
      * @param criteriaValues list of organization IDs to validate
@@ -339,20 +339,20 @@ public class CbPlanRequestValidatorImpl {
             return true;
         }
         Set<String> orgIdsToValidate = new HashSet<>(criteriaValues);
-        Map<String, String> orgHierarchyMap = batchFetchOrgHierarchyLevels(orgIdsToValidate);
+        Map<String, String> orgMinistryTypeMap = batchFetchOrgMinistryOrStateTypes(orgIdsToValidate);
         for (String orgId : criteriaValues) {
-            if (!orgHierarchyMap.containsKey(orgId)) {
+            if (!orgMinistryTypeMap.containsKey(orgId)) {
                 String errorMsg = String.format(Constants.ERR_ORG_NOT_FOUND_FOR_L0_VALIDATION, orgId);
                 errors.add(errorMsg);
                 log.error("CbPlanValidationService.validateAndCollectMinistryOrStateIds: {}", errorMsg);
                 return false;
             }
-            String hierarchyLevel = orgHierarchyMap.get(orgId);
-            if (!Constants.LEVEL_ZERO.equalsIgnoreCase(hierarchyLevel)) {
+            String ministryOrStateType = orgMinistryTypeMap.get(orgId);
+            if (!Constants.SPV.equalsIgnoreCase(ministryOrStateType)) {
                 String errorMsg = String.format(Constants.ERR_ORG_NOT_L0, orgId);
                 errors.add(errorMsg);
-                log.warn("CbPlanValidationService.validateAndCollectMinistryOrStateIds: Org {} has hierarchyLevel={}, expected {}",
-                        orgId, hierarchyLevel, Constants.LEVEL_ZERO);
+                log.warn("CbPlanValidationService.validateAndCollectMinistryOrStateIds: Org {} has ministryOrStateType={}, expected {}",
+                        orgId, ministryOrStateType, Constants.SPV);
                 return false;
             }
             criteriaOrgIds.add(orgId);
@@ -447,52 +447,53 @@ public class CbPlanRequestValidatorImpl {
     /**
      * Checks if the user's organization is a Level 0 (L0) organization.
      * Called once at the start of validation to avoid repeated DB calls.
+     * An organization is considered L0 if its ministryOrStateType is "SPV".
      *
      * @param userOrgId user's organization ID
-     * @return true when the organization is L0, false otherwise
+     * @return true when the organization is L0 (ministryOrStateType = SPV), false otherwise
      */
     private boolean checkUserOrgIsL0(String userOrgId) {
         log.debug("CbPlanValidationService.checkUserOrgIsL0: Checking L0 status for userOrgId: {}", userOrgId);
         Map<String, Object> orgMap = userAndOrgService.readOrgFromDB(userOrgId,
-                Arrays.asList(Constants.ID, Constants.HIERARCHY_LEVEL));
+                Arrays.asList(Constants.ID, Constants.MINISTRY_OR_STATETYPE));
         if (MapUtils.isEmpty(orgMap)) {
             log.warn("CbPlanValidationService.checkUserOrgIsL0: Organization not found for userOrgId: {}", userOrgId);
             return false;
         }
-        String hierarchyLevel = (String) orgMap.get(Constants.HIERARCHY_LEVEL);
-        boolean isL0 = Constants.LEVEL_ZERO.equalsIgnoreCase(hierarchyLevel);
-        log.debug("CbPlanValidationService.checkUserOrgIsL0: userOrgId={}, hierarchyLevel={}, isL0={}",
-                userOrgId, hierarchyLevel, isL0);
+        String ministryOrStateType = (String) orgMap.get(Constants.MINISTRY_OR_STATETYPE);
+        boolean isL0 = Constants.SPV.equalsIgnoreCase(ministryOrStateType);
+        log.debug("CbPlanValidationService.checkUserOrgIsL0: userOrgId={}, ministryOrStateType={}, isL0={}",
+                userOrgId, ministryOrStateType, isL0);
         return isL0;
     }
 
     /**
-     * Batch fetches hierarchy levels for multiple organization IDs in a single DB call.
-     * Returns a map of orgId to hierarchyLevel for efficient L0 validation.
+     * Batch fetches ministryOrStateType values for multiple organization IDs.
+     * Returns a map of orgId to ministryOrStateType for efficient L0 validation.
      *
      * @param orgIds set of organization IDs to fetch
-     * @return map of orgId to hierarchyLevel, empty map if fetch fails
+     * @return map of orgId to ministryOrStateType, empty map if fetch fails
      */
-    private Map<String, String> batchFetchOrgHierarchyLevels(Set<String> orgIds) {
+    private Map<String, String> batchFetchOrgMinistryOrStateTypes(Set<String> orgIds) {
         if (CollectionUtils.isEmpty(orgIds)) {
             return Collections.emptyMap();
         }
-        log.debug("CbPlanValidationService.batchFetchOrgHierarchyLevels: Fetching hierarchy for {} org(s)", orgIds.size());
+        log.debug("CbPlanValidationService.batchFetchOrgMinistryOrStateTypes: Fetching ministryOrStateType for {} org(s)", orgIds.size());
         try {
-            Map<String, String> orgHierarchyMap = new HashMap<>();
+            Map<String, String> orgMinistryTypeMap = new HashMap<>();
             for (String orgId : orgIds) {
                 Map<String, Object> orgMap = userAndOrgService.readOrgFromDB(orgId,
-                        Arrays.asList(Constants.ID, Constants.HIERARCHY_LEVEL));
+                        Arrays.asList(Constants.ID, Constants.MINISTRY_OR_STATETYPE));
                 if (MapUtils.isNotEmpty(orgMap)) {
-                    String hierarchyLevel = (String) orgMap.get(Constants.HIERARCHY_LEVEL);
-                    orgHierarchyMap.put(orgId, hierarchyLevel);
+                    String ministryOrStateType = (String) orgMap.get(Constants.MINISTRY_OR_STATETYPE);
+                    orgMinistryTypeMap.put(orgId, ministryOrStateType);
                 }
             }
-            log.debug("CbPlanValidationService.batchFetchOrgHierarchyLevels: Fetched {} hierarchy level(s)",
-                    orgHierarchyMap.size());
-            return orgHierarchyMap;
+            log.debug("CbPlanValidationService.batchFetchOrgMinistryOrStateTypes: Fetched {} ministryOrStateType value(s)",
+                    orgMinistryTypeMap.size());
+            return orgMinistryTypeMap;
         } catch (Exception e) {
-            log.error("CbPlanValidationService.batchFetchOrgHierarchyLevels: Failed to fetch org hierarchy levels", e);
+            log.error("CbPlanValidationService.batchFetchOrgMinistryOrStateTypes: Failed to fetch org ministryOrStateType values", e);
             return Collections.emptyMap();
         }
     }

@@ -360,6 +360,60 @@ class AccessSettingRuleCacheMgrTest {
         assertNull(result);
     }
 
+    @Test
+    void testCreateBitSetForAttribute_withLargeAndNegativeValues() {
+        // Valid values, negative value, and large out-of-bounds value (e.g. 1145607574)
+        List<Integer> values = List.of(1, 5, -1, 1145607574, 2000000000);
+        BitSet bitSet = cacheMgr.createBitSetForAttribute(values);
+
+        assertNotNull(bitSet);
+        assertTrue(bitSet.get(1));
+        assertTrue(bitSet.get(5));
+        assertFalse(bitSet.get(0));
+        assertFalse(bitSet.get(2));
+        // Verify large values were skipped without throwing OOM
+        assertEquals(2, bitSet.cardinality());
+    }
+
+    @Test
+    void testProcessContextData_withLargeValues_skipsSafely() throws Exception {
+        String ruleWithLargeValues = """
+        {
+          "accessControlId": {
+            "version": 1,
+            "userGroups": [
+              {
+                "userGroupId": "group-123",
+                "userGroupName": "Test Group",
+                "userGroupCriteriaList": [
+                  {
+                    "criteriaKey": "designation",
+                    "criteriaValue": [1, 2, "1145607574", -5, "invalid_number"]
+                  }
+                ]
+              }
+            ]
+          }
+        }
+        """;
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        Map<String, Object> contextData = mapper.readValue(ruleWithLargeValues, new com.fasterxml.jackson.core.type.TypeReference<>() {});
+
+        var method = AccessSettingRuleCacheMgr.class.getDeclaredMethod("processContextData", String.class, Map.class);
+        method.setAccessible(true);
+        assertDoesNotThrow(() -> method.invoke(cacheMgr, "do_123|Course", contextData));
+
+        Map<String, Object> accessControlId = (Map<String, Object>) contextData.get("accessControlId");
+        List<Map<String, Object>> userGroups = (List<Map<String, Object>>) accessControlId.get("userGroups");
+        List<Map<String, Object>> criteriaList = (List<Map<String, Object>>) userGroups.get(0).get("userGroupCriteriaList");
+        BitSet bitSet = (BitSet) criteriaList.get(0).get("criteriaValue");
+
+        assertNotNull(bitSet);
+        assertTrue(bitSet.get(1));
+        assertTrue(bitSet.get(2));
+        assertEquals(2, bitSet.cardinality());
+    }
+
     @SuppressWarnings("unchecked")
     private void mockForEachAccessRules(List<Map<String, Object>> records) {
         doAnswer(invocation -> {

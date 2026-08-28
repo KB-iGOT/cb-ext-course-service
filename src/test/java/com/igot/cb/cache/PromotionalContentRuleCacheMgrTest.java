@@ -161,6 +161,33 @@ class PromotionalContentRuleCacheMgrTest {
         assertEquals(3, result.cardinality());
     }
 
+    @Test
+    void testCreateBitSetForAttribute_OutRangeAndNegativeValues() {
+        List<Integer> values = Arrays.asList(1, -1, 1145607574, 2000000000, 3);
+        BitSet result = cacheMgr.createBitSetForAttribute(values);
+        assertNotNull(result);
+        assertTrue(result.get(1));
+        assertTrue(result.get(3));
+        assertEquals(2, result.cardinality());
+    }
+
+    @Test
+    void testProcessAndCacheRule_WithLargeValues_SkipsGracefully() {
+        String contextData = "{\"accessControlId\":{\"version\":1,\"userGroups\":[{\"userGroupId\":\"group-1\",\"userGroupName\":\"Group 1\",\"userGroupCriteriaList\":[{\"criteriaKey\":\"designation\",\"criteriaValue\":[\"1\",\"1145607574\",\"-5\",\"invalid\"]}]}]}}";
+        List<Map<String, Object>> records = List.of(createCassandraRecord("do_promo_1", "Course", contextData));
+        mockForEachPromoRules(records);
+        Collection<CachedAccessSettingRule> result = cacheMgr.getAccessSettingRules();
+        assertEquals(1, result.size());
+        CachedAccessSettingRule rule = result.iterator().next();
+        Map<String, Object> accessControl = (Map<String, Object>) rule.getContextData().get("accessControlId");
+        List<Map<String, Object>> userGroups = (List<Map<String, Object>>) accessControl.get("userGroups");
+        List<Map<String, Object>> criteriaList = (List<Map<String, Object>>) userGroups.get(0).get("userGroupCriteriaList");
+        BitSet bitSet = (BitSet) criteriaList.get(0).get("criteriaValue");
+        assertNotNull(bitSet);
+        assertTrue(bitSet.get(1));
+        assertEquals(1, bitSet.cardinality());
+    }
+
     private List<Map<String, Object>> createCassandraRecords(int count) {
         List<Map<String, Object>> records = new ArrayList<>();
         for (int i = 0; i < count; i++) {

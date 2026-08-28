@@ -15,8 +15,12 @@ public class BitSetDeserializer extends JsonDeserializer<BitSet> {
         List<Integer> bits = p.readValueAs(new TypeReference<List<Integer>>() {
         });
         BitSet bitSet = new BitSet();
-        for (Integer bit : bits) {
-            bitSet.set(bit);
+        if (bits != null) {
+            for (Integer bit : bits) {
+                if (bit != null && bit >= 0 && bit <= Constants.MAX_BITSET_INDEX) {
+                    bitSet.set(bit);
+                }
+            }
         }
         return bitSet;
     }

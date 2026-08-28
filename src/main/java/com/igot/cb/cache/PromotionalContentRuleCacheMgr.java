@@ -208,11 +208,17 @@ public class PromotionalContentRuleCacheMgr {
     }
 
     /**
-     * Parses a string to Integer, returns null if parsing fails.
+     * Parses a string to Integer, returns null if parsing fails or value is out of bounds.
      */
     private Integer parseIntegerValue(String val, String criteriaKey, String cacheKey) {
         try {
-            return Integer.parseInt(val);
+            int parsedVal = Integer.parseInt(val);
+            if (parsedVal < 0 || parsedVal > Constants.MAX_BITSET_INDEX) {
+                log.warn("Criteria value '{}' for key {} in rule {} is out of valid BitSet range [0, {}] - skipping to avoid heap exhaustion",
+                        val, criteriaKey, cacheKey, Constants.MAX_BITSET_INDEX);
+                return null;
+            }
+            return parsedVal;
         } catch (NumberFormatException e) {
             log.warn("Non-integer criteria value '{}' for key {} in rule {}", val, criteriaKey, cacheKey);
             return null;
@@ -225,12 +231,18 @@ public class PromotionalContentRuleCacheMgr {
      */
     BitSet createBitSetForAttribute(Collection<Integer> attributeValues) {
         BitSet bitSet = new BitSet();
+        if (CollectionUtils.isEmpty(attributeValues)) {
+            return bitSet;
+        }
         for (Integer part : attributeValues) {
+            if (part == null || part < 0 || part > Constants.MAX_BITSET_INDEX) {
+                log.warn("Skipping invalid or out-of-range bit index: {}", part);
+                continue;
+            }
             try {
                 bitSet.set(part);
-            } catch (Exception ex) {
-                log.error("Failed to set the bit map positing for value: {}", part, ex);
-                throw ex;
+            } catch (Throwable ex) {
+                log.error("Failed to set the bit map position for value: {}", part, ex);
             }
         }
         return bitSet;

@@ -106,5 +106,13 @@
         "type": "date"
       }
     }
+  },
+  "planYear": {
+    "type": "text",
+    "fields": {
+      "keyword": {
+        "type": "keyword"
+      }
+    }
   }
 }

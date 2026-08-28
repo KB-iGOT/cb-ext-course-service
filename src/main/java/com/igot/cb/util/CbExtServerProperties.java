@@ -136,4 +136,28 @@ public class CbExtServerProperties {
     @Value("${external.training.batch.size}")
     private int externalTrainingBatchSize;
 
+    @Value("${cbplan.enriched.content.fields}")
+    private String cbPlanEnrichedContentFields;
+
+    @Value("${cb.plan.v3.batch.size}")
+    private int cbPlanV3BatchSize;
+
+    @Value("${cb.plan.v3.cache.ttl.minutes}")
+    private int cbPlanV3CacheTtlMinutes;
+
+    @Value("${cb.plan.v3.caffine.cache.max.size}")
+    private int cbPlanV3CaffineCacheMaxSize;
+
+    @Value("${cb.plan.v3.redis.cache.ttl.seconds}")
+    private int cbPlanV3RedisCacheTtlSeconds;
+
+    @Value("${cassandra.query.limit.primary.key}")
+    private int cassandraQueryLimitPrimaryKey;
+
+    @Value("${cassandra.query.limit.user.extended.profile}")
+    private int cassandraQueryLimitUserExtendedProfile;
+
+    public List<String> getCbPlanEnrichedContentFieldsList() {
+        return Arrays.asList(cbPlanEnrichedContentFields.split(",", -1));
+    }
 }

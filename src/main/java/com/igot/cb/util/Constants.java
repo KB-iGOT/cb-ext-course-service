@@ -674,7 +674,6 @@ public class Constants {
     public static final String SECURE_CONTENT_SUFFIX = "_rc";
     public static final String CACHE_FLAG_FROM_CACHE = "_fromCache";
     public static final String EMPTY_JSON = "{}";
-    public static final String PLAN_TYPE_AI_CBP = "AICBP";
     public static final String API_CB_PLAN_V3_AICBP_CREATE = "api.cb.plan.v3.aicbp.create";
     public static final String API_CB_PLAN_V3_AICBP_PUBLISH = "api.cb.plan.v3.aicbp.publish";
     public static final String ERR_TARGETED_ORGANISATION_REQUIRED = "targetedOrganisation is required";

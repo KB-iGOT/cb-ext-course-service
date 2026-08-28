@@ -315,9 +315,10 @@ public class CbPlanContentLookupServiceV3Impl {
         String cacheKey = Constants.EXTENDED_READ_CONTENT_CACHE_KEY_PREFIX + contentId;
         String cachedContent = redisCacheMgr.getFromCache(cacheKey);
         if (StringUtils.isNotBlank(cachedContent)) {
-            log.debug("getContentMetadata: Redis cache hit - contentId={}, cacheKey={}", contentId, cacheKey);
-            return mapper.readValue(cachedContent, new TypeReference<Map<String, Object>>() {
+            log.info("getContentMetadata: Redis cache hit - contentId={}, cacheKey={}", contentId, cacheKey);
+            Map<String, Object> cachedData = mapper.readValue(cachedContent, new TypeReference<Map<String, Object>>() {
             });
+            return extractContentFromCachedResponse(cachedData);
         }
         log.debug("getContentMetadata: Redis cache miss, calling extended content read API - contentId={}, cacheKey={}",
                 contentId, cacheKey);
@@ -503,5 +504,15 @@ public class CbPlanContentLookupServiceV3Impl {
             }
         }
         return filteredMap;
+    }
+
+    private Map<String, Object> extractContentFromCachedResponse(Map<String, Object> cachedData) {
+        if (cachedData.containsKey(Constants.RESULT)) {
+            Map<String, Object> result = (Map<String, Object>) cachedData.get(Constants.RESULT);
+            if (Objects.nonNull(result) && result.containsKey(Constants.CONTENT)) {
+                return (Map<String, Object>) result.get(Constants.CONTENT);
+            }
+        }
+        return cachedData;
     }
 }

@@ -1277,8 +1277,9 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
         String cachedContent = redisCacheMgr.getFromCache(cacheKey);
         if (StringUtils.isNotBlank(cachedContent)) {
             log.debug("getContentMetadata: Redis cache hit - contentId={}, cacheKey={}", contentId, cacheKey);
-            Map<String, Object> contentDetails = mapper.readValue(cachedContent, new TypeReference<Map<String, Object>>() {
+            Map<String, Object> cachedData = mapper.readValue(cachedContent, new TypeReference<Map<String, Object>>() {
             });
+            Map<String, Object> contentDetails = extractContentFromCachedResponse(cachedData);
             contentDetails.put("_fromCache", true);
             return contentDetails;
         }
@@ -1286,6 +1287,16 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
                 contentId, cacheKey);
         Map<String, Object> contentDetails = contentLookupService.getContentMetadata(contentId);
         return Objects.nonNull(contentDetails) ? contentDetails : new HashMap<>();
+    }
+
+    private Map<String, Object> extractContentFromCachedResponse(Map<String, Object> cachedData) {
+        if (cachedData.containsKey(Constants.RESULT)) {
+            Map<String, Object> result = (Map<String, Object>) cachedData.get(Constants.RESULT);
+            if (Objects.nonNull(result) && result.containsKey(Constants.CONTENT)) {
+                return (Map<String, Object>) result.get(Constants.CONTENT);
+            }
+        }
+        return cachedData;
     }
 
     private void populateEmptyDictionaryResponse(ApiResponse response) {

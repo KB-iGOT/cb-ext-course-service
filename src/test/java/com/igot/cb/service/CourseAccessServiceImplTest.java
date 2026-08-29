@@ -4,6 +4,8 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import java.util.*;
+
+import org.roaringbitmap.RoaringBitmap;
 import java.lang.reflect.Field;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -168,11 +170,11 @@ class CourseAccessServiceImplTest {
         when(redisCacheMgr.getFromCache(Constants.ACCESS_KEY + "user123")).thenReturn(null);
         when(mockUserProfileService.getUserProfile("user123")).thenReturn(Map.of());
         
-        // Create a BitSet for criteria value
-        BitSet criteriaValue = new BitSet();
-        criteriaValue.set(1); // Set bit 1 to true
+        // Create a RoaringBitmap for criteria value
+        RoaringBitmap criteriaValue = new RoaringBitmap();
+        criteriaValue.add(1); // Add id 1
         
-        // Create the rule with proper BitSet in contextData
+        // Create the rule with proper RoaringBitmap in contextData
         Map<String, Object> contextData = new HashMap<>();
         Map<String, Object> accessControlId = new HashMap<>();
         List<Map<String, Object>> userGroups = new ArrayList<>();
@@ -206,11 +208,11 @@ class CourseAccessServiceImplTest {
         when(redisCacheMgr.getFromCache(Constants.ACCESS_KEY + "user123")).thenReturn(null);
         when(mockUserProfileService.getUserProfile("user123")).thenReturn(Map.of("cadre", 1));
         
-        // Create a BitSet for criteria value
-        BitSet criteriaValue = new BitSet();
-        criteriaValue.set(1); // Set bit 1 to true to match user's cadre value
+        // Create a RoaringBitmap for criteria value
+        RoaringBitmap criteriaValue = new RoaringBitmap();
+        criteriaValue.add(1); // Add id 1 to match user's cadre value
         
-        // Create the rule with proper BitSet in contextData
+        // Create the rule with proper RoaringBitmap in contextData
         Map<String, Object> contextData = new HashMap<>();
         Map<String, Object> accessControlId = new HashMap<>();
         List<Map<String, Object>> userGroups = new ArrayList<>();
@@ -367,8 +369,8 @@ class CourseAccessServiceImplTest {
                 .thenReturn("u1");
         when(redisCacheMgr.getFromCache(Constants.ACCESS_KEY + "u1")).thenReturn(null);
         when(mockUserProfileService.getUserProfile("u1")).thenReturn(Map.of("cadre", 1));
-        BitSet bit = new BitSet();
-        bit.set(1);
+        RoaringBitmap bit = new RoaringBitmap();
+        bit.add(1);
         Map<String, Object> contextData = new HashMap<>();
         Map<String, Object> ac = new HashMap<>();
         Map<String, Object> ug = new HashMap<>();
@@ -497,8 +499,8 @@ class CourseAccessServiceImplTest {
                                 List.of(Map.of(Constants.IDENTIFIER, "C1")))));
         ReflectionTestUtils.setField(courseAccessService, "cacheTtlMs", 99999999L);
         ReflectionTestUtils.setField(courseAccessService, "accessCacheTtlSecods", 600); // Set TTL to avoid NPE
-        BitSet bit = new BitSet();
-        bit.set(1);
+        RoaringBitmap bit = new RoaringBitmap();
+        bit.add(1);
         Map<String,Object> accessControl = Map.of(
                 Constants.USER_GROUPS,
                 List.of(
@@ -591,8 +593,8 @@ class CourseAccessServiceImplTest {
 
     @Test
     void testEvaluateAccessSettingRule_FullMatchTrue() {
-        BitSet bs = new BitSet();
-        bs.set(1);
+        RoaringBitmap bs = new RoaringBitmap();
+        bs.add(1);
         Map<String,Object> group = Map.of(
                 Constants.USER_GROUP_ID, "g1",
                 Constants.USER_GROUP_CRITERIA_LIST,
@@ -609,8 +611,8 @@ class CourseAccessServiceImplTest {
     }
     @Test
     void testEvaluateAccessSettingRule_False() {
-        BitSet bs = new BitSet();
-        bs.set(1);
+        RoaringBitmap bs = new RoaringBitmap();
+        bs.add(1);
         Map<String,Object> group = Map.of(
                 Constants.USER_GROUP_ID, "g1",
                 Constants.USER_GROUP_CRITERIA_LIST,
@@ -629,8 +631,8 @@ class CourseAccessServiceImplTest {
 
     @Test
     void testRetrieveUserCourses_RuleMatches() {
-        BitSet bs = new BitSet();
-        bs.set(1);
+        RoaringBitmap bs = new RoaringBitmap();
+        bs.add(1);
         Map<String,Object> ruleData = Map.of(Constants.ACCESS_CONTROL_ID,
                 Map.of(Constants.USER_GROUPS,
                         List.of(Map.of(Constants.USER_GROUP_ID,"G1",
@@ -665,8 +667,8 @@ class CourseAccessServiceImplTest {
         ReflectionTestUtils.setField(courseAccessService, "cacheTimestamps",
                 new HashMap<>(Map.of("access_settings_enabled_partner1", System.currentTimeMillis())));
         ReflectionTestUtils.setField(courseAccessService, "cacheTtlMs", 99999999L);
-        BitSet bit = new BitSet();
-        bit.set(1);
+        RoaringBitmap bit = new RoaringBitmap();
+        bit.add(1);
         Map<String, Object> ug = new HashMap<>();
         ug.put(Constants.USER_GROUP_CRITERIA_LIST, List.of(Map.of(Constants.CRITERIA_KEY, "cadre", Constants.CRITERIA_VALUE, bit)));
         Map<String, Object> accessControl = Map.of(Constants.USER_GROUPS, List.of(ug));

@@ -9,7 +9,6 @@ import java.util.List;
 public class Constants {
 
     public static final String KEYSPACE_SUNBIRD = "sunbird";
-    public static final int MAX_BITSET_INDEX = 1_000_000;
     public static final String CORE_CONNECTIONS_PER_HOST_FOR_LOCAL = "coreConnectionsPerHostForLocal";
     public static final String CORE_CONNECTIONS_PER_HOST_FOR_REMOTE = "coreConnectionsPerHostForRemote";
     public static final String MAX_CONNECTIONS_PER_HOST_FOR_LOCAL = "maxConnectionsPerHostForLocal";

@@ -4,6 +4,8 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import java.util.*;
+
+import org.roaringbitmap.RoaringBitmap;
 import java.lang.reflect.Field;
 import java.util.function.Consumer;
 
@@ -267,16 +269,16 @@ class AccessSettingRuleCacheMgrTest {
     }
 
     @Test
-    void testCreateBitSetForAttribute() {
+    void testCreateBitmapForAttribute() {
         Collection<Integer> values = Arrays.asList(1, 3, 5);
         
-        BitSet result = cacheMgr.createBitSetForAttribute(values);
+        RoaringBitmap result = cacheMgr.createBitmapForAttribute(values);
         
-        assertTrue(result.get(1));
-        assertTrue(result.get(3));
-        assertTrue(result.get(5));
-        assertFalse(result.get(2));
-        assertFalse(result.get(4));
+        assertTrue(result.contains(1));
+        assertTrue(result.contains(3));
+        assertTrue(result.contains(5));
+        assertFalse(result.contains(2));
+        assertFalse(result.contains(4));
     }
 
     @Test
@@ -361,22 +363,25 @@ class AccessSettingRuleCacheMgrTest {
     }
 
     @Test
-    void testCreateBitSetForAttribute_withLargeAndNegativeValues() {
-        // Valid values, negative value, and large out-of-bounds value (e.g. 1145607574)
-        List<Integer> values = List.of(1, 5, -1, 1145607574, 2000000000);
-        BitSet bitSet = cacheMgr.createBitSetForAttribute(values);
+    void testCreateBitmapForAttribute_withLargeAndNegativeValues() {
+        // Valid values, a negative value (skipped) and large ids that must be retained
+        List<Integer> values = List.of(1, 5, -1, 40000000, 1145607574, 2000000000);
+        RoaringBitmap bitSet = cacheMgr.createBitmapForAttribute(values);
 
         assertNotNull(bitSet);
-        assertTrue(bitSet.get(1));
-        assertTrue(bitSet.get(5));
-        assertFalse(bitSet.get(0));
-        assertFalse(bitSet.get(2));
-        // Verify large values were skipped without throwing OOM
-        assertEquals(2, bitSet.cardinality());
+        assertTrue(bitSet.contains(1));
+        assertTrue(bitSet.contains(5));
+        assertTrue(bitSet.contains(40000000));
+        assertTrue(bitSet.contains(1145607574));
+        assertTrue(bitSet.contains(2000000000));
+        assertFalse(bitSet.contains(0));
+        assertFalse(bitSet.contains(2));
+        assertFalse(bitSet.contains(-1));
+        assertEquals(5, bitSet.getCardinality());
     }
 
     @Test
-    void testProcessContextData_withLargeValues_skipsSafely() throws Exception {
+    void testProcessContextData_withLargeValues_retainsLargeIds() throws Exception {
         String ruleWithLargeValues = """
         {
           "accessControlId": {
@@ -406,12 +411,13 @@ class AccessSettingRuleCacheMgrTest {
         Map<String, Object> accessControlId = (Map<String, Object>) contextData.get("accessControlId");
         List<Map<String, Object>> userGroups = (List<Map<String, Object>>) accessControlId.get("userGroups");
         List<Map<String, Object>> criteriaList = (List<Map<String, Object>>) userGroups.get(0).get("userGroupCriteriaList");
-        BitSet bitSet = (BitSet) criteriaList.get(0).get("criteriaValue");
+        RoaringBitmap bitSet = (RoaringBitmap) criteriaList.get(0).get("criteriaValue");
 
         assertNotNull(bitSet);
-        assertTrue(bitSet.get(1));
-        assertTrue(bitSet.get(2));
-        assertEquals(2, bitSet.cardinality());
+        assertTrue(bitSet.contains(1));
+        assertTrue(bitSet.contains(2));
+        assertTrue(bitSet.contains(1145607574));
+        assertEquals(3, bitSet.getCardinality());
     }
 
     @SuppressWarnings("unchecked")

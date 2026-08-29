@@ -5,6 +5,8 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
+import org.roaringbitmap.RoaringBitmap;
+
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -242,9 +244,9 @@ public class CourseAccessServiceImpl {
             }
             for (Map<String, Object> criteria : criteriaList) {
                 String criteriaKey = criteria.get(Constants.CRITERIA_KEY).toString().toLowerCase();
-                BitSet criteriaValue = (BitSet) criteria.get(Constants.CRITERIA_VALUE);
+                RoaringBitmap criteriaValue = (RoaringBitmap) criteria.get(Constants.CRITERIA_VALUE);
                 Integer userCriteriaValue = userProfile.get(criteriaKey);
-                if (userCriteriaValue == null || !criteriaValue.get(userCriteriaValue)) {
+                if (userCriteriaValue == null || !criteriaValue.contains(userCriteriaValue)) {
                     log.info("User profile does not contain criteria key: {} in userGroup: {}", criteriaKey,
                             userGroupId);
                     isUserHasAccess = false;

@@ -12,6 +12,7 @@ import com.igot.cb.cassandra.CassandraOperation;
 import jakarta.annotation.PostConstruct;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections.MapUtils;
+import org.roaringbitmap.RoaringBitmap;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -203,23 +204,23 @@ public class AccessSettingRuleCacheMgr {
                         .map(val -> {
                             try {
                                 int parsedVal = Integer.parseInt(val);
-                                if (parsedVal < 0 || parsedVal > Constants.MAX_BITSET_INDEX) {
-                                    log.warn("Criteria value '{}' for key {} in rule {} is out of valid BitSet range [0, {}] - skipping to avoid heap exhaustion",
-                                            val, criteriaKey, cacheKey, Constants.MAX_BITSET_INDEX);
+                                if (parsedVal < 0) {
+                                    log.error("Negative criteria value '{}' for key {} in rule {} - skipping", val,
+                                            criteriaKey, cacheKey);
                                     return null;
                                 }
                                 return parsedVal;
                             } catch (NumberFormatException e) {
-                                log.warn("Non-integer criteria value '{}' for key {} in rule {}", val, criteriaKey, cacheKey);
+                                log.error("Non-integer criteria value '{}' for key {} in rule {} - skipping", val,
+                                        criteriaKey, cacheKey);
                                 return null;
                             }
                         })
                         .filter(Objects::nonNull)
                         .collect(Collectors.toList());
 
-                // Convert to BitSet and update the input object
-                BitSet bitSet = createBitSetForAttribute(intValues);
-                criteria.put(Constants.CRITERIA_VALUE, bitSet);
+                // Convert to RoaringBitmap and update the input object
+                criteria.put(Constants.CRITERIA_VALUE, createBitmapForAttribute(intValues));
                 // Save to in-memory cache or use as needed
             }
         }
@@ -227,23 +228,19 @@ public class AccessSettingRuleCacheMgr {
 
 
 
-    BitSet createBitSetForAttribute(Collection<Integer> attributeValues) {
-        BitSet bitSet = new BitSet();
+    RoaringBitmap createBitmapForAttribute(Collection<Integer> attributeValues) {
+        RoaringBitmap bitmap = new RoaringBitmap();
         if (org.apache.commons.collections4.CollectionUtils.isEmpty(attributeValues)) {
-            return bitSet;
+            return bitmap;
         }
         for (Integer part : attributeValues) {
-            if (part == null || part < 0 || part > Constants.MAX_BITSET_INDEX) {
-                log.warn("Skipping invalid or out-of-range bit index: {}", part);
+            if (part == null || part < 0) {
+                log.error("Skipping invalid criteria value: {}", part);
                 continue;
             }
-            try {
-                bitSet.set(part);
-            } catch (Throwable ex) {
-                log.error("Failed to set the bit map position for value: {}", part, ex);
-            }
+            bitmap.add(part);
         }
-        return bitSet;
+        return bitmap;
     }
 
     public CachedAccessSettingRule getOrLoadAccessSettingRule(String courseId, String contextId) {

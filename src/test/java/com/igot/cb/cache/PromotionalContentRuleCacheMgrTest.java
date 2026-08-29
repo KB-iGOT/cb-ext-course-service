@@ -4,6 +4,8 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import java.util.*;
+
+import org.roaringbitmap.RoaringBitmap;
 import java.util.function.Consumer;
 
 import com.igot.cb.cassandra.CassandraOperation;
@@ -95,11 +97,11 @@ class PromotionalContentRuleCacheMgrTest {
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> criteriaList = (List<Map<String, Object>>) userGroups.get(0).get("userGroupCriteriaList");
         Object criteriaValue = criteriaList.get(0).get("criteriaValue");
-        assertInstanceOf(BitSet.class, criteriaValue);
-        BitSet bitSet = (BitSet) criteriaValue;
-        assertTrue(bitSet.get(1));
-        assertTrue(bitSet.get(2));
-        assertTrue(bitSet.get(3));
+        assertInstanceOf(RoaringBitmap.class, criteriaValue);
+        RoaringBitmap bitSet = (RoaringBitmap) criteriaValue;
+        assertTrue(bitSet.contains(1));
+        assertTrue(bitSet.contains(2));
+        assertTrue(bitSet.contains(3));
     }
 
     @Test
@@ -116,11 +118,11 @@ class PromotionalContentRuleCacheMgrTest {
         List<Map<String, Object>> userGroups = (List<Map<String, Object>>) accessControl.get("userGroups");
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> criteriaList = (List<Map<String, Object>>) userGroups.get(0).get("userGroupCriteriaList");
-        BitSet bitSet = (BitSet) criteriaList.get(0).get("criteriaValue");
-        assertTrue(bitSet.get(1));
-        assertTrue(bitSet.get(3));
-        assertTrue(bitSet.get(5));
-        assertEquals(3, bitSet.cardinality());
+        RoaringBitmap bitSet = (RoaringBitmap) criteriaList.get(0).get("criteriaValue");
+        assertTrue(bitSet.contains(1));
+        assertTrue(bitSet.contains(3));
+        assertTrue(bitSet.contains(5));
+        assertEquals(3, bitSet.getCardinality());
     }
 
     @Test
@@ -132,47 +134,50 @@ class PromotionalContentRuleCacheMgrTest {
     }
 
     @Test
-    void testCreateBitSetForAttribute_ValidIntegers() {
+    void testCreateBitmapForAttribute_ValidIntegers() {
         List<Integer> values = Arrays.asList(1, 3, 5, 10);
-        BitSet result = cacheMgr.createBitSetForAttribute(values);
+        RoaringBitmap result = cacheMgr.createBitmapForAttribute(values);
         assertNotNull(result);
-        assertTrue(result.get(1));
-        assertTrue(result.get(3));
-        assertTrue(result.get(5));
-        assertTrue(result.get(10));
+        assertTrue(result.contains(1));
+        assertTrue(result.contains(3));
+        assertTrue(result.contains(5));
+        assertTrue(result.contains(10));
     }
 
     @Test
-    void testCreateBitSetForAttribute_EmptyCollection() {
+    void testCreateBitmapForAttribute_EmptyCollection() {
         List<Integer> values = List.of();
-        BitSet result = cacheMgr.createBitSetForAttribute(values);
+        RoaringBitmap result = cacheMgr.createBitmapForAttribute(values);
         assertNotNull(result);
         assertTrue(result.isEmpty());
     }
 
     @Test
-    void testCreateBitSetForAttribute_DuplicateValues() {
+    void testCreateBitmapForAttribute_DuplicateValues() {
         List<Integer> values = Arrays.asList(1, 1, 2, 2, 3);
-        BitSet result = cacheMgr.createBitSetForAttribute(values);
+        RoaringBitmap result = cacheMgr.createBitmapForAttribute(values);
         assertNotNull(result);
-        assertTrue(result.get(1));
-        assertTrue(result.get(2));
-        assertTrue(result.get(3));
-        assertEquals(3, result.cardinality());
+        assertTrue(result.contains(1));
+        assertTrue(result.contains(2));
+        assertTrue(result.contains(3));
+        assertEquals(3, result.getCardinality());
     }
 
     @Test
-    void testCreateBitSetForAttribute_OutRangeAndNegativeValues() {
+    void testCreateBitmapForAttribute_LargeAndNegativeValues() {
         List<Integer> values = Arrays.asList(1, -1, 1145607574, 2000000000, 3);
-        BitSet result = cacheMgr.createBitSetForAttribute(values);
+        RoaringBitmap result = cacheMgr.createBitmapForAttribute(values);
         assertNotNull(result);
-        assertTrue(result.get(1));
-        assertTrue(result.get(3));
-        assertEquals(2, result.cardinality());
+        assertTrue(result.contains(1));
+        assertTrue(result.contains(3));
+        assertTrue(result.contains(1145607574));
+        assertTrue(result.contains(2000000000));
+        assertFalse(result.contains(-1));
+        assertEquals(4, result.getCardinality());
     }
 
     @Test
-    void testProcessAndCacheRule_WithLargeValues_SkipsGracefully() {
+    void testProcessAndCacheRule_WithLargeValues_RetainsLargeIds() {
         String contextData = "{\"accessControlId\":{\"version\":1,\"userGroups\":[{\"userGroupId\":\"group-1\",\"userGroupName\":\"Group 1\",\"userGroupCriteriaList\":[{\"criteriaKey\":\"designation\",\"criteriaValue\":[\"1\",\"1145607574\",\"-5\",\"invalid\"]}]}]}}";
         List<Map<String, Object>> records = List.of(createCassandraRecord("do_promo_1", "Course", contextData));
         mockForEachPromoRules(records);
@@ -182,10 +187,11 @@ class PromotionalContentRuleCacheMgrTest {
         Map<String, Object> accessControl = (Map<String, Object>) rule.getContextData().get("accessControlId");
         List<Map<String, Object>> userGroups = (List<Map<String, Object>>) accessControl.get("userGroups");
         List<Map<String, Object>> criteriaList = (List<Map<String, Object>>) userGroups.get(0).get("userGroupCriteriaList");
-        BitSet bitSet = (BitSet) criteriaList.get(0).get("criteriaValue");
+        RoaringBitmap bitSet = (RoaringBitmap) criteriaList.get(0).get("criteriaValue");
         assertNotNull(bitSet);
-        assertTrue(bitSet.get(1));
-        assertEquals(1, bitSet.cardinality());
+        assertTrue(bitSet.contains(1));
+        assertTrue(bitSet.contains(1145607574));
+        assertEquals(2, bitSet.getCardinality());
     }
 
     private List<Map<String, Object>> createCassandraRecords(int count) {

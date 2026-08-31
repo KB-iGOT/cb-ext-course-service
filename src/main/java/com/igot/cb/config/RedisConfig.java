@@ -13,7 +13,6 @@ import com.igot.cb.util.PropertiesCache;
 import lombok.extern.slf4j.Slf4j;
 import redis.clients.jedis.JedisPool;
 import redis.clients.jedis.JedisPoolConfig;
-import redis.clients.jedis.Protocol;
 
 /**
  * Configuration class for Redis connection pool.
@@ -50,6 +49,7 @@ public class RedisConfig {
         return buildPool(propertiesCache.getProperty(Constants.REDIS_HOST),
                 Integer.parseInt(propertiesCache.getProperty(Constants.REDIS_PORT)),
                 Boolean.parseBoolean(propertiesCache.readProperty(Constants.REDIS_PASSWORD_REQUIRED)),
+                propertiesCache.readProperty(Constants.REDIS_USERNAME),
                 propertiesCache.readProperty(Constants.REDIS_PASSWORD));
     }
 
@@ -66,22 +66,32 @@ public class RedisConfig {
         return buildPool(serverProperties.getRedisDataHost(),
                 Integer.parseInt(serverProperties.getRedisDataPort()),
                 serverProperties.isRedisDataPasswordRequired(),
+                serverProperties.getRedisDataUsername(),
                 serverProperties.getRedisDataPassword());
     }
 
-    private JedisPool buildPool(String host, int port, boolean passwordRequired, String password) {
+    /**
+     * Builds one pool, authenticated or not, for whichever of the two Redis servers the arguments
+     * describe. The two servers are configured independently, so one may require credentials while
+     * the other does not.
+     */
+    private JedisPool buildPool(String host, int port, boolean passwordRequired, String username, String password) {
         JedisPoolConfig poolConfig = buildPoolConfig();
 
         if (!passwordRequired) {
             log.warn("Redis pool for {}:{} created WITHOUT authentication - if that server has requirepass set, every operation will fail with NOAUTH and be swallowed as a cache miss", host, port);
             return new JedisPool(poolConfig, host, port);
         }
-
+        if (StringUtils.isBlank(username)) {
+            throw new IllegalStateException("A username is required for the Redis instance at " + host + ":" + port + " but not configured");
+        }
         if (StringUtils.isBlank(password)) {
             throw new IllegalStateException("A password is required for the Redis instance at " + host + ":" + port + " but not configured");
         }
-        log.info("Redis pool for {}:{} created with authentication enabled", host, port);
-        return new JedisPool(poolConfig, host, port, Protocol.DEFAULT_TIMEOUT, password);
+        // The username is safe to log and is what makes an ACL misconfiguration diagnosable from the
+        // startup line alone; the password must never appear here.
+        log.info("Redis pool for {}:{} created with authentication enabled for user '{}'", host, port, username);
+        return new JedisPool(poolConfig, host, port, username, password);
     }
 
     private JedisPoolConfig buildPoolConfig() {

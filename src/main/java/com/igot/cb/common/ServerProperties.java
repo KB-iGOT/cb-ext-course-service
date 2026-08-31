@@ -37,6 +37,9 @@ public class ServerProperties {
     @Value("${redis.data.password.required:false}")
     private boolean redisDataPasswordRequired;
 
+    @Value("${redis.data.username:}")
+    private String redisDataUsername;
+
     @Value("${redis.data.password:}")
     private String redisDataPassword;
 

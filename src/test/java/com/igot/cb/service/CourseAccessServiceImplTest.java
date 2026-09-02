@@ -11,6 +11,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.igot.cb.cache.IdMapCacheMgr;
 import com.igot.cb.cassandra.CassandraOperation;
+import com.igot.cb.cbplan.service.CbPlanServiceV3;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -61,13 +62,16 @@ class CourseAccessServiceImplTest {
     @Mock
     private CassandraOperation cassandraOperation;
 
+    @Mock
+    private CbPlanServiceV3 cbPlanServiceV3;
+
 
     @BeforeEach
     void setUp() throws Exception {
         courseAccessService = new CourseAccessServiceImpl(
-            mockAccessTokenValidator, 
+            mockAccessTokenValidator,
             mockUserProfileService,
-            mockAccessSettingRuleCacheMgr, contentInfoService, outboundRequestHandlerService, cbPlanLearnerServiceImpl, cassandraOperation
+            mockAccessSettingRuleCacheMgr, contentInfoService, outboundRequestHandlerService, cbPlanLearnerServiceImpl, cassandraOperation, cbPlanServiceV3
         );
         
         // Inject the mocked RedisCacheMgr using reflection
@@ -730,9 +734,12 @@ class CourseAccessServiceImplTest {
         when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
         
         ApiResponse cbPlanResponse = new ApiResponse();
-        cbPlanResponse.setResult(new HashMap<>());
-        when(cbPlanLearnerServiceImpl.getCBPlanListForUser(orgId, userId, true)).thenReturn(cbPlanResponse);
-        
+        Map<String, Object> cbPlanResult = new HashMap<>();
+        cbPlanResult.put("aparContentList", new HashMap<>());
+        cbPlanResult.put("nonAparContentList", new HashMap<>());
+        cbPlanResponse.setResult(cbPlanResult);
+        when(cbPlanServiceV3.getCBPlanDictionaryForUser(any(), anyString())).thenReturn(cbPlanResponse);
+
         doNothing().when(redisCacheMgr).putInCache(anyString(), anyString());
         
         ApiResponse result = courseAccessService.getPersonalContentInfo(authToken);
@@ -835,9 +842,11 @@ class CourseAccessServiceImplTest {
         
         ApiResponse cbPlanResponse = new ApiResponse();
         Map<String, Object> cbPlanResult = new HashMap<>();
+        cbPlanResult.put("aparContentList", new HashMap<>());
+        cbPlanResult.put("nonAparContentList", new HashMap<>());
         cbPlanResponse.setResult(cbPlanResult);
-        when(cbPlanLearnerServiceImpl.getCBPlanListForUser(orgId, userId, true)).thenReturn(cbPlanResponse);
-        
+        when(cbPlanServiceV3.getCBPlanDictionaryForUser(any(), anyString())).thenReturn(cbPlanResponse);
+
         doNothing().when(redisCacheMgr).putInCache(anyString(), anyString());
         
         ObjectMapper objectMapper = new ObjectMapper();
@@ -868,9 +877,12 @@ class CourseAccessServiceImplTest {
         when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
         
         ApiResponse cbPlanResponse = new ApiResponse();
-        cbPlanResponse.setResult(new HashMap<>());
-        when(cbPlanLearnerServiceImpl.getCBPlanListForUser(orgId, userId, true)).thenReturn(cbPlanResponse);
-        
+        Map<String, Object> cbPlanResult = new HashMap<>();
+        cbPlanResult.put("aparContentList", new HashMap<>());
+        cbPlanResult.put("nonAparContentList", new HashMap<>());
+        cbPlanResponse.setResult(cbPlanResult);
+        when(cbPlanServiceV3.getCBPlanDictionaryForUser(any(), anyString())).thenReturn(cbPlanResponse);
+
         doNothing().when(redisCacheMgr).putInCache(anyString(), anyString());
         
         ReflectionTestUtils.setField(courseAccessService, "objectMapper", objectMapper);
@@ -895,21 +907,12 @@ class CourseAccessServiceImplTest {
         
         ApiResponse cbPlanResponse = new ApiResponse();
         Map<String, Object> cbPlanResult = new HashMap<>();
-        
-        List<Map<String, Object>> plans = new ArrayList<>();
-        Map<String, Object> plan1 = new HashMap<>();
-        plan1.put(Constants.IS_APAR, true);
-        plans.add(plan1);
-        
-        Map<String, Object> plan2 = new HashMap<>();
-        plan2.put(Constants.IS_APAR, false);
-        plans.add(plan2);
-        
-        cbPlanResult.put(Constants.CONTENT, plans);
+        cbPlanResult.put("aparContentList", new HashMap<>());
+        cbPlanResult.put("nonAparContentList", new HashMap<>());
         cbPlanResponse.setResult(cbPlanResult);
-        
-        when(cbPlanLearnerServiceImpl.getCBPlanListForUser(orgId, userId, true)).thenReturn(cbPlanResponse);
-        
+
+        when(cbPlanServiceV3.getCBPlanDictionaryForUser(any(), anyString())).thenReturn(cbPlanResponse);
+
         ObjectMapper objectMapper = new ObjectMapper();
         ReflectionTestUtils.setField(courseAccessService, "objectMapper", objectMapper);
         
@@ -933,9 +936,12 @@ class CourseAccessServiceImplTest {
         when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
         
         ApiResponse cbPlanResponse = new ApiResponse();
-        cbPlanResponse.setResult(new HashMap<>());
-        when(cbPlanLearnerServiceImpl.getCBPlanListForUser(orgId, userId, true)).thenReturn(cbPlanResponse);
-        
+        Map<String, Object> cbPlanResult = new HashMap<>();
+        cbPlanResult.put("aparContentList", new HashMap<>());
+        cbPlanResult.put("nonAparContentList", new HashMap<>());
+        cbPlanResponse.setResult(cbPlanResult);
+        when(cbPlanServiceV3.getCBPlanDictionaryForUser(any(), anyString())).thenReturn(cbPlanResponse);
+
         doNothing().when(redisCacheMgr).putInCache(anyString(), anyString());
         
         ObjectMapper objectMapper = new ObjectMapper();

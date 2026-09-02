@@ -30,4 +30,10 @@ public class CbPlanContentOccurrence {
      */
     @JsonProperty("endDate")
     private Instant endDate;
+
+    /**
+     * Type of the plan (e.g., AICBP).
+     */
+    @JsonProperty("planType")
+    private String planType;
 }

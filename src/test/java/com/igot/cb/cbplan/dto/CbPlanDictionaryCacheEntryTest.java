@@ -24,7 +24,7 @@ class CbPlanDictionaryCacheEntryTest {
     void testNoArgsConstructorAndSetters() {
         CbPlanDictionaryCacheEntry entry = new CbPlanDictionaryCacheEntry();
         Map<String, List<CbPlanContentOccurrence>> aparMap = new LinkedHashMap<>();
-        aparMap.put("content1", List.of(new CbPlanContentOccurrence("plan1", Instant.EPOCH)));
+        aparMap.put("content1", List.of(new CbPlanContentOccurrence("plan1", Instant.EPOCH, "Mandatory")));
         Map<String, List<CbPlanContentOccurrence>> nonAparMap = new LinkedHashMap<>();
         entry.setAparContentList(aparMap);
         entry.setNonAparContentList(nonAparMap);
@@ -63,7 +63,7 @@ class CbPlanDictionaryCacheEntryTest {
     @Test
     void testJsonRoundTripMatchesRedisCacheContract() throws Exception {
         Map<String, List<CbPlanContentOccurrence>> aparMap = new LinkedHashMap<>();
-        aparMap.put("course1", List.of(new CbPlanContentOccurrence("plan1", Instant.parse("2026-08-12T10:15:30Z"))));
+        aparMap.put("course1", List.of(new CbPlanContentOccurrence("plan1", Instant.parse("2026-08-12T10:15:30Z"), "Mandatory")));
         CbPlanDictionaryCacheEntry original =
                 new CbPlanDictionaryCacheEntry(aparMap, new LinkedHashMap<>(), 1, 0);
         String json = MAPPER.writeValueAsString(original);

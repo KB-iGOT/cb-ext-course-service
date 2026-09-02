@@ -38,7 +38,7 @@ class CbPlanContentOccurrenceTest {
     @Test
     void testAllArgsConstructor() {
         Instant endDate = Instant.now();
-        CbPlanContentOccurrence occurrence = new CbPlanContentOccurrence("plan456", endDate);
+        CbPlanContentOccurrence occurrence = new CbPlanContentOccurrence("plan456", endDate, "Mandatory");
         assertEquals("plan456", occurrence.getPlanId());
         assertEquals(endDate, occurrence.getEndDate());
     }
@@ -46,9 +46,9 @@ class CbPlanContentOccurrenceTest {
     @Test
     void testEqualsAndHashCode() {
         Instant endDate = Instant.now();
-        CbPlanContentOccurrence first = new CbPlanContentOccurrence("plan789", endDate);
-        CbPlanContentOccurrence second = new CbPlanContentOccurrence("plan789", endDate);
-        CbPlanContentOccurrence different = new CbPlanContentOccurrence("planOther", endDate);
+        CbPlanContentOccurrence first = new CbPlanContentOccurrence("plan789", endDate, "Mandatory");
+        CbPlanContentOccurrence second = new CbPlanContentOccurrence("plan789", endDate, "Mandatory");
+        CbPlanContentOccurrence different = new CbPlanContentOccurrence("planOther", endDate, "Mandatory");
         assertEquals(first, second);
         assertEquals(first.hashCode(), second.hashCode());
         assertNotEquals(first, different);
@@ -56,14 +56,14 @@ class CbPlanContentOccurrenceTest {
 
     @Test
     void testToStringContainsPlanId() {
-        CbPlanContentOccurrence occurrence = new CbPlanContentOccurrence("plan123", Instant.EPOCH);
+        CbPlanContentOccurrence occurrence = new CbPlanContentOccurrence("plan123", Instant.EPOCH, "Mandatory");
         assertNotNull(occurrence.toString());
     }
 
     @Test
     void testJsonRoundTripPreservesValues() throws Exception {
         Instant endDate = Instant.parse("2026-08-12T10:15:30Z");
-        CbPlanContentOccurrence original = new CbPlanContentOccurrence("plan123", endDate);
+        CbPlanContentOccurrence original = new CbPlanContentOccurrence("plan123", endDate, "Mandatory");
         String json = MAPPER.writeValueAsString(original);
         CbPlanContentOccurrence restored = MAPPER.readValue(json, CbPlanContentOccurrence.class);
         assertEquals(original, restored);

@@ -1017,16 +1017,17 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
             String planId = (String) cbPlan.get(Constants.PLAN_ID);
             Instant endDate = (Instant) cbPlan.get(Constants.END_DATE_KEY);
             boolean isApar = Boolean.TRUE.equals(cbPlan.get(Constants.IS_APAR));
+            String planType = (String) cbPlan.get(Constants.PLAN_TYPE);
             List<String> contentList = (List<String>) cbPlan.get(Constants.CONTENT_LIST);
             if (CollectionUtils.isEmpty(contentList)) {
                 log.debug("processSinglePlan: Empty content list - planId={}", planId);
                 return;
             }
             plansToCache.add(planId);
-            log.debug("processSinglePlan: Processing content - planId={}, isApar={}, contentCount={}",
-                    planId, isApar, contentList.size());
+            log.debug("processSinglePlan: Processing content - planId={}, isApar={}, planType={}, contentCount={}",
+                    planId, isApar, planType, contentList.size());
             ContentProcessingContext context = new ContentProcessingContext(
-                    planId, endDate, isApar, userProfile, userOrgId,
+                    planId, endDate, isApar, planType, userProfile, userOrgId,
                     aparContentMap, nonAparContentMap, aparContentIds);
             processContentList(contentList, context);
         } catch (Exception e) {
@@ -1057,7 +1058,7 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
      * @param context   processing context with accumulator maps
      */
     private void addContentOccurrence(String contentId, ContentProcessingContext context) {
-        CbPlanContentOccurrence occurrence = new CbPlanContentOccurrence(context.planId, context.endDate);
+        CbPlanContentOccurrence occurrence = new CbPlanContentOccurrence(context.planId, context.endDate, context.planType);
         if (context.aparContentIds.contains(contentId)) {
             context.aparContentMap.computeIfAbsent(contentId, k -> new ArrayList<>()).add(occurrence);
         } else if (context.isApar) {
@@ -1079,6 +1080,7 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
             String planId,
             Instant endDate,
             boolean isApar,
+            String planType,
             Map<String, String> userProfile,
             String userOrgId,
             Map<String, List<CbPlanContentOccurrence>> aparContentMap,

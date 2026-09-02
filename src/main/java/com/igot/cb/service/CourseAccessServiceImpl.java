@@ -22,6 +22,9 @@ import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 
 import com.igot.cb.cache.AccessSettingRuleCacheMgr;
+import com.igot.cb.cbplan.dto.CbPlanContentOccurrence;
+import com.igot.cb.cbplan.service.CbPlanServiceV3;
+import com.igot.cb.model.ApiRequest;
 import com.igot.cb.model.ApiResponse;
 import com.igot.cb.model.CachedAccessSettingRule;
 import com.igot.cb.util.AccessTokenValidator;
@@ -44,6 +47,7 @@ public class CourseAccessServiceImpl {
     private final OutboundRequestHandlerServiceImpl outboundRequestHandlerService;
     private final ObjectMapper objectMapper;
     private final CbPlanLearnerServiceImpl cbPlanLearnerService;
+    private final CbPlanServiceV3 cbPlanServiceV3;
     private final CassandraOperation cassandraOperation;
 
     @Autowired
@@ -114,7 +118,7 @@ public class CourseAccessServiceImpl {
      * @param accessSettingRuleCacheMgr Cache manager for access setting rules.
      */
     public CourseAccessServiceImpl(AccessTokenValidator accessTokenValidator,
-                                   UserAndOrgServiceImpl userProfileServiceImpl, AccessSettingRuleCacheMgr accessSettingRuleCacheMgr, ContentInfoServiceImpl contentService, OutboundRequestHandlerServiceImpl outboundRequestHandlerService1, CbPlanLearnerServiceImpl cbPlanLearnerService, CassandraOperation cassandraOperation) {
+                                   UserAndOrgServiceImpl userProfileServiceImpl, AccessSettingRuleCacheMgr accessSettingRuleCacheMgr, ContentInfoServiceImpl contentService, OutboundRequestHandlerServiceImpl outboundRequestHandlerService1, CbPlanLearnerServiceImpl cbPlanLearnerService, CassandraOperation cassandraOperation, CbPlanServiceV3 cbPlanServiceV3) {
         this.accessTokenValidator = accessTokenValidator;
         this.userProfileServiceImpl = userProfileServiceImpl;
         this.accessSettingRuleCacheMgr = accessSettingRuleCacheMgr;
@@ -123,6 +127,7 @@ public class CourseAccessServiceImpl {
         this.objectMapper = new ObjectMapper();
         this.cbPlanLearnerService = cbPlanLearnerService;
         this.cassandraOperation = cassandraOperation;
+        this.cbPlanServiceV3 = cbPlanServiceV3;
     }
 
     /**
@@ -647,7 +652,7 @@ public class CourseAccessServiceImpl {
             return objectMapper.readValue(cached, new TypeReference<Map<String, Object>>() {});
         }
         log.info("personalContentInfo cache MISS for userId: {}", userId);
-        Map<String, Object> contentInfoMap = buildPersonalContentInfo(userId, orgId, authToken);
+        Map<String, Object> contentInfoMap = buildPersonalContentInfoV2(userId, orgId, authToken);
         redisCacheMgr.putInCache(redisKey, objectMapper.writeValueAsString(contentInfoMap));
         log.info("personalContentInfo cached for userId: {}", userId);
         return contentInfoMap;
@@ -1241,6 +1246,128 @@ public class CourseAccessServiceImpl {
         }
 
         return false;
+    }
+
+    private Map<String, Object> buildPersonalContentInfoV2(String userId, String orgId, String authToken) throws Exception {
+        List<String> aparIds = new ArrayList<>();
+        List<String> trainingPlanIds = new ArrayList<>();
+        List<String> aiCbpIds = new ArrayList<>();
+        ApiResponse cbPlanResponse = fetchCbPlanDictionary(authToken);
+        if (cbPlanResponse != null && cbPlanResponse.getResult() != null) {
+            Map<String, List<CbPlanContentOccurrence>> aparContentList =
+                (Map<String, List<CbPlanContentOccurrence>>) cbPlanResponse.getResult().get(Constants.RESPONSE_KEY_APAR_CONTENT_LIST);
+            Map<String, List<CbPlanContentOccurrence>> nonAparContentList =
+                (Map<String, List<CbPlanContentOccurrence>>) cbPlanResponse.getResult().get(Constants.RESPONSE_KEY_NON_APAR_CONTENT_LIST);
+            Set<String> aiCbpContentIds = extractAiCbpContentIds(aparContentList, nonAparContentList);
+            aparIds = filterNonAiCbpContent(aparContentList, aiCbpContentIds);
+            trainingPlanIds = filterNonAiCbpContent(nonAparContentList, aiCbpContentIds);
+            aiCbpIds = new ArrayList<>(aiCbpContentIds);
+        }
+        List<String> learningPathwayIds = getAssignedCourseCount(userId, Constants.LEARNING_PATHWAY, authToken);
+        Map<String, Map<String, Object>> enrolmentDictionary = callEnrolmentDictionaryApi(authToken);
+        List<String> caProgramIds = getFilteredCaProgramIdentifiers(userId, authToken, enrolmentDictionary);
+        int caProgramCount = caProgramIds.size();
+        List<String> standaloneAssessmentIds = getStandaloneAssessmentIdentifiersFromSystem();
+        Map<String, Map<String, Object>> enrollmentDetails = callAssessmentEnrollmentDetailsApi(
+                authToken,
+                standaloneAssessmentIds);
+        List<String> standaloneIds = filterStandaloneAssessmentIdentifiers(
+                standaloneAssessmentIds,
+                enrollmentDetails);
+        Map<String, Object> map = new HashMap<>();
+        map.put(Constants.TRAINING_PLAN, trainingPlanIds.size());
+        map.put(Constants.APAR, aparIds.size());
+        map.put(Constants.AI_CBP, aiCbpIds.size());
+        map.put(CA_PROGRAM, caProgramCount);
+        map.put(LEARNING_PATHWAY_FIELD, learningPathwayIds.size());
+        map.put(STANDALONE_ASSESSMENT, standaloneIds.size());
+        Map<String, Object> contentIds = new HashMap<>();
+        contentIds.put(Constants.TRAINING_PLAN, trainingPlanIds);
+        contentIds.put(Constants.APAR, aparIds);
+        contentIds.put(Constants.AI_CBP, aiCbpIds);
+        contentIds.put(LEARNING_PATHWAY_FIELD, learningPathwayIds);
+        contentIds.put(STANDALONE_ASSESSMENT, standaloneIds);
+        contentIds.put(CA_PROGRAM, caProgramIds);
+        Map<String, Object> moderatedContent =
+                getModeratedContentIdentifiers(userId, orgId);
+        List<String> moderatedContentIds =
+                (List<String>) moderatedContent.get("identifiers");
+        Object moderatedContentCount =
+                moderatedContent.get("count");
+        map.put(MODERATED_CONTENT, moderatedContentCount);
+        contentIds.put(MODERATED_CONTENT, moderatedContentIds);
+        map.put(CONTENT_IDS, contentIds);
+        return map;
+    }
+
+    /**
+     * Fetches CB Plan dictionary from V3 API without content enrichment.
+     * Creates and sends an API request with enrichment disabled for performance.
+     *
+     * @param authToken authentication token for the user
+     * @return ApiResponse containing CB Plan dictionary with APAR and non-APAR content lists
+     */
+    private ApiResponse fetchCbPlanDictionary(String authToken) {
+        Map<String, Object> request = new HashMap<>();
+        request.put(Constants.REQUEST_PARAM_ENRICHMENT, false);
+        ApiRequest apiRequest = new ApiRequest();
+        apiRequest.setRequest(request);
+        return cbPlanServiceV3.getCBPlanDictionaryForUser(apiRequest, authToken);
+    }
+
+    /**
+     * Extracts all content IDs that belong to AI-CBP type plans from both APAR and non-APAR content lists.
+     * A content is considered AI-CBP if at least one of its plan occurrences has planType = "AI-CBP".
+     *
+     * @param aparContentList map of APAR content IDs to their plan occurrences
+     * @param nonAparContentList map of non-APAR content IDs to their plan occurrences
+     * @return set of content IDs that appear in at least one AI-CBP plan
+     */
+    private Set<String> extractAiCbpContentIds(Map<String, List<CbPlanContentOccurrence>> aparContentList,
+                                                Map<String, List<CbPlanContentOccurrence>> nonAparContentList) {
+        Set<String> aiCbpContentIds = new HashSet<>();
+        collectAiCbpContentIds(aparContentList, aiCbpContentIds);
+        collectAiCbpContentIds(nonAparContentList, aiCbpContentIds);
+        return aiCbpContentIds;
+    }
+
+    /**
+     * Collects content IDs from a content list that have at least one AI-CBP plan occurrence.
+     * Iterates through content entries and checks if any occurrence has planType matching "AI-CBP".
+     *
+     * @param contentList map of content IDs to their plan occurrences (can be null or empty)
+     * @param aiCbpContentIds mutable set to accumulate AI-CBP content IDs
+     */
+    private void collectAiCbpContentIds(Map<String, List<CbPlanContentOccurrence>> contentList,
+                                        Set<String> aiCbpContentIds) {
+        if (CollectionUtils.isEmpty(contentList)) {
+            return;
+        }
+        for (Map.Entry<String, List<CbPlanContentOccurrence>> entry : contentList.entrySet()) {
+            boolean hasAiCbpPlan = entry.getValue().stream()
+                .anyMatch(occ -> Constants.PLAN_TYPE_AI_CBP.equalsIgnoreCase(occ.getPlanType()));
+            if (hasAiCbpPlan) {
+                aiCbpContentIds.add(entry.getKey());
+            }
+        }
+    }
+
+    /**
+     * Filters content list to exclude AI-CBP content IDs.
+     * Returns all content IDs from the input list that are NOT in the AI-CBP exclusion set.
+     *
+     * @param contentList map of content IDs to their plan occurrences (can be null or empty)
+     * @param aiCbpContentIds set of content IDs to exclude (AI-CBP content)
+     * @return immutable list of content IDs excluding AI-CBP content, empty list if input is empty
+     */
+    private List<String> filterNonAiCbpContent(Map<String, List<CbPlanContentOccurrence>> contentList,
+                                               Set<String> aiCbpContentIds) {
+        if (CollectionUtils.isEmpty(contentList)) {
+            return new ArrayList<>();
+        }
+        return contentList.keySet().stream()
+            .filter(contentId -> !aiCbpContentIds.contains(contentId))
+            .toList();
     }
 
 }

@@ -733,7 +733,7 @@ class CbPlanServiceV3ImplTest {
     void testGetCBPlanDictionaryReturnsCachedEntryOnRedisHit() throws Exception {
         mockAuthenticatedUser();
         Map<String, List<CbPlanContentOccurrence>> aparMap = new LinkedHashMap<>();
-        aparMap.put("course1", List.of(new CbPlanContentOccurrence(PLAN_ID, Instant.EPOCH)));
+        aparMap.put("course1", List.of(new CbPlanContentOccurrence(PLAN_ID, Instant.EPOCH, "Mandatory")));
         CbPlanDictionaryCacheEntry cacheEntry =
                 new CbPlanDictionaryCacheEntry(aparMap, new LinkedHashMap<>(), 1, 0);
         when(redisCacheMgr.getFromCache(DICT_CACHE_KEY)).thenReturn(MAPPER.writeValueAsString(cacheEntry));
@@ -875,7 +875,7 @@ class CbPlanServiceV3ImplTest {
     void testGetCBPlanDictionaryEnrichesContentWhenRequested() throws Exception {
         mockAuthenticatedUser();
         Map<String, List<CbPlanContentOccurrence>> nonAparMap = new LinkedHashMap<>();
-        nonAparMap.put("course1", List.of(new CbPlanContentOccurrence(PLAN_ID, Instant.EPOCH)));
+        nonAparMap.put("course1", List.of(new CbPlanContentOccurrence(PLAN_ID, Instant.EPOCH, "Mandatory")));
         CbPlanDictionaryCacheEntry cacheEntry =
                 new CbPlanDictionaryCacheEntry(new LinkedHashMap<>(), nonAparMap, 0, 1);
         when(redisCacheMgr.getFromCache(DICT_CACHE_KEY)).thenReturn(MAPPER.writeValueAsString(cacheEntry));

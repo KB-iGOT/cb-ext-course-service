@@ -289,14 +289,17 @@ class AccessSettingRuleCacheMgrTest {
             field.setAccessible(true);
             Cache<String, CachedAccessSettingRule> cache =
                 (Cache<String, CachedAccessSettingRule>) field.get(cacheMgr);
+            assertNotNull(cache, "Cache should be initialized");
             cache.put("do_123|Course", rule);
+            CachedAccessSettingRule verifyPut = cache.getIfPresent("do_123|Course");
+            assertNotNull(verifyPut, "Entry should be in cache after put");
         } catch (Exception e) {
             fail("Reflection failed: " + e.getMessage());
         }
 
         CachedAccessSettingRule result = cacheMgr.getOrLoadAccessSettingRule("do_123", "Course");
 
-        assertNotNull(result);
+        assertNotNull(result, "getOrLoadAccessSettingRule should return cached entry");
         assertEquals("do_123", result.getContextId());
         assertEquals("Course", result.getContextIdType());
         verifyNoInteractions(cassandraOperation);

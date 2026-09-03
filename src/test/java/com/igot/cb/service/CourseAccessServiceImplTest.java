@@ -15,7 +15,6 @@ import com.igot.cb.cbplan.service.CbPlanServiceV3;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentMatchers;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -23,14 +22,36 @@ import org.springframework.http.HttpStatus;
 
 import com.igot.cb.cache.AccessSettingRuleCacheMgr;
 import com.igot.cb.cache.RedisCacheMgr;
+import com.igot.cb.cbplan.dto.CbPlanContentOccurrence;
+import com.igot.cb.model.ApiRequest;
 import com.igot.cb.model.ApiResponse;
 import com.igot.cb.model.CachedAccessSettingRule;
 import com.igot.cb.util.AccessTokenValidator;
 import com.igot.cb.util.Constants;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.lang.reflect.Method;
+import java.time.Instant;
+
 @ExtendWith(MockitoExtension.class)
 class CourseAccessServiceImplTest {
+
+    private static final String TEST_TOKEN = "testToken123";
+    private static final String PLAN_TYPE_AICBP = "AICBP";
+    private static final String PLAN_TYPE_MANDATORY = "Mandatory";
+    private static final String PLAN_TYPE_VOLUNTARY = "Voluntary";
+    private static final String CONTENT_ID_1 = "content1";
+    private static final String CONTENT_ID_2 = "content2";
+    private static final String CONTENT_ID_3 = "content3";
+    private static final String CONTENT_ID_4 = "content4";
+    private static final String PLAN_ID_1 = "plan1";
+    private static final String PLAN_ID_2 = "plan2";
+    private static final String PLAN_ID_3 = "plan3";
+    private static final String PLAN_ID_4 = "plan4";
+    private static final String METHOD_FETCH_CB_PLAN_DICTIONARY = "fetchCbPlanDictionary";
+    private static final String METHOD_EXTRACT_AI_CBP_CONTENT_IDS = "extractAiCbpContentIds";
+    private static final String METHOD_COLLECT_AI_CBP_CONTENT_IDS = "collectAiCbpContentIds";
+    private static final String METHOD_FILTER_NON_AI_CBP_CONTENT = "filterNonAiCbpContent";
 
     private CourseAccessServiceImpl courseAccessService;
     
@@ -953,6 +974,230 @@ class CourseAccessServiceImplTest {
         assertNotNull(result.getParams());
         assertNotNull(result.getResponseCode());
         assertNotNull(result.getResult());
+    }
+
+    @Test
+    void testFetchCbPlanDictionary_CreatesCorrectApiRequest() throws ReflectiveOperationException {
+        ApiResponse expectedResponse = new ApiResponse();
+        Map<String, Object> result = new HashMap<>();
+        result.put(Constants.RESPONSE_KEY_APAR_CONTENT_LIST, new HashMap<>());
+        expectedResponse.setResult(result);
+        when(cbPlanServiceV3.getCBPlanDictionaryForUser(any(ApiRequest.class), eq(TEST_TOKEN)))
+                .thenReturn(expectedResponse);
+        Method method = CourseAccessServiceImpl.class.getDeclaredMethod(METHOD_FETCH_CB_PLAN_DICTIONARY, String.class);
+        method.setAccessible(true);
+        ApiResponse response = (ApiResponse) method.invoke(courseAccessService, TEST_TOKEN);
+        assertNotNull(response);
+        assertEquals(expectedResponse, response);
+        verify(cbPlanServiceV3).getCBPlanDictionaryForUser(any(ApiRequest.class), eq(TEST_TOKEN));
+    }
+
+    @Test
+    void testExtractAiCbpContentIds_BothListsHaveAiCbpContent() throws ReflectiveOperationException {
+        Map<String, List<CbPlanContentOccurrence>> aparList = new HashMap<>();
+        aparList.put(CONTENT_ID_1, List.of(new CbPlanContentOccurrence(PLAN_ID_1, Instant.EPOCH, PLAN_TYPE_AICBP)));
+        aparList.put(CONTENT_ID_2, List.of(new CbPlanContentOccurrence(PLAN_ID_2, Instant.EPOCH, PLAN_TYPE_MANDATORY)));
+        Map<String, List<CbPlanContentOccurrence>> nonAparList = new HashMap<>();
+        nonAparList.put(CONTENT_ID_3, List.of(new CbPlanContentOccurrence(PLAN_ID_3, Instant.EPOCH, PLAN_TYPE_AICBP)));
+        nonAparList.put(CONTENT_ID_4, List.of(new CbPlanContentOccurrence(PLAN_ID_4, Instant.EPOCH, PLAN_TYPE_VOLUNTARY)));
+        Method method = CourseAccessServiceImpl.class.getDeclaredMethod(METHOD_EXTRACT_AI_CBP_CONTENT_IDS,
+                Map.class, Map.class);
+        method.setAccessible(true);
+        Set<String> aiCbpIds = (Set<String>) method.invoke(courseAccessService, aparList, nonAparList);
+        assertEquals(2, aiCbpIds.size());
+        assertTrue(aiCbpIds.contains(CONTENT_ID_1));
+        assertTrue(aiCbpIds.contains(CONTENT_ID_3));
+        assertFalse(aiCbpIds.contains(CONTENT_ID_2));
+        assertFalse(aiCbpIds.contains(CONTENT_ID_4));
+    }
+
+    @Test
+    void testExtractAiCbpContentIds_OnlyAparHasAiCbpContent() throws ReflectiveOperationException {
+        Map<String, List<CbPlanContentOccurrence>> aparList = new HashMap<>();
+        aparList.put(CONTENT_ID_1, List.of(new CbPlanContentOccurrence(PLAN_ID_1, Instant.EPOCH, PLAN_TYPE_AICBP)));
+        Map<String, List<CbPlanContentOccurrence>> nonAparList = new HashMap<>();
+        nonAparList.put(CONTENT_ID_2, List.of(new CbPlanContentOccurrence(PLAN_ID_2, Instant.EPOCH, PLAN_TYPE_MANDATORY)));
+        Method method = CourseAccessServiceImpl.class.getDeclaredMethod(METHOD_EXTRACT_AI_CBP_CONTENT_IDS,
+                Map.class, Map.class);
+        method.setAccessible(true);
+        Set<String> aiCbpIds = (Set<String>) method.invoke(courseAccessService, aparList, nonAparList);
+        assertEquals(1, aiCbpIds.size());
+        assertTrue(aiCbpIds.contains(CONTENT_ID_1));
+    }
+
+    @Test
+    void testExtractAiCbpContentIds_NullLists() throws ReflectiveOperationException {
+        Method method = CourseAccessServiceImpl.class.getDeclaredMethod(METHOD_EXTRACT_AI_CBP_CONTENT_IDS,
+                Map.class, Map.class);
+        method.setAccessible(true);
+        Set<String> aiCbpIds = (Set<String>) method.invoke(courseAccessService, null, null);
+        assertNotNull(aiCbpIds);
+        assertTrue(aiCbpIds.isEmpty());
+    }
+
+    @Test
+    void testExtractAiCbpContentIds_EmptyLists() throws ReflectiveOperationException {
+        Map<String, List<CbPlanContentOccurrence>> aparList = new HashMap<>();
+        Map<String, List<CbPlanContentOccurrence>> nonAparList = new HashMap<>();
+        Method method = CourseAccessServiceImpl.class.getDeclaredMethod(METHOD_EXTRACT_AI_CBP_CONTENT_IDS,
+                Map.class, Map.class);
+        method.setAccessible(true);
+        Set<String> aiCbpIds = (Set<String>) method.invoke(courseAccessService, aparList, nonAparList);
+        assertNotNull(aiCbpIds);
+        assertTrue(aiCbpIds.isEmpty());
+    }
+
+    @Test
+    void testExtractAiCbpContentIds_MixedPlanTypesInSameContent() throws ReflectiveOperationException {
+        Map<String, List<CbPlanContentOccurrence>> aparList = new HashMap<>();
+        aparList.put(CONTENT_ID_1, List.of(
+                new CbPlanContentOccurrence(PLAN_ID_1, Instant.EPOCH, PLAN_TYPE_MANDATORY),
+                new CbPlanContentOccurrence(PLAN_ID_2, Instant.EPOCH, PLAN_TYPE_AICBP)
+        ));
+        Method method = CourseAccessServiceImpl.class.getDeclaredMethod(METHOD_EXTRACT_AI_CBP_CONTENT_IDS,
+                Map.class, Map.class);
+        method.setAccessible(true);
+        Set<String> aiCbpIds = (Set<String>) method.invoke(courseAccessService, aparList, null);
+        assertEquals(1, aiCbpIds.size());
+        assertTrue(aiCbpIds.contains(CONTENT_ID_1));
+    }
+
+    @Test
+    void testCollectAiCbpContentIds_NullContentList() throws ReflectiveOperationException {
+        Set<String> aiCbpIds = new HashSet<>();
+        Method method = CourseAccessServiceImpl.class.getDeclaredMethod(METHOD_COLLECT_AI_CBP_CONTENT_IDS,
+                Map.class, Set.class);
+        method.setAccessible(true);
+        method.invoke(courseAccessService, null, aiCbpIds);
+        assertTrue(aiCbpIds.isEmpty());
+    }
+
+    @Test
+    void testCollectAiCbpContentIds_EmptyContentList() throws ReflectiveOperationException {
+        Map<String, List<CbPlanContentOccurrence>> contentList = new HashMap<>();
+        Set<String> aiCbpIds = new HashSet<>();
+        Method method = CourseAccessServiceImpl.class.getDeclaredMethod(METHOD_COLLECT_AI_CBP_CONTENT_IDS,
+                Map.class, Set.class);
+        method.setAccessible(true);
+        method.invoke(courseAccessService, contentList, aiCbpIds);
+        assertTrue(aiCbpIds.isEmpty());
+    }
+
+    @Test
+    void testCollectAiCbpContentIds_WithAiCbpContent() throws ReflectiveOperationException {
+        Map<String, List<CbPlanContentOccurrence>> contentList = new HashMap<>();
+        contentList.put(CONTENT_ID_1, List.of(new CbPlanContentOccurrence(PLAN_ID_1, Instant.EPOCH, PLAN_TYPE_AICBP)));
+        contentList.put(CONTENT_ID_2, List.of(new CbPlanContentOccurrence(PLAN_ID_2, Instant.EPOCH, "aicbp")));
+        Set<String> aiCbpIds = new HashSet<>();
+        Method method = CourseAccessServiceImpl.class.getDeclaredMethod(METHOD_COLLECT_AI_CBP_CONTENT_IDS,
+                Map.class, Set.class);
+        method.setAccessible(true);
+        method.invoke(courseAccessService, contentList, aiCbpIds);
+        assertEquals(2, aiCbpIds.size());
+        assertTrue(aiCbpIds.contains(CONTENT_ID_1));
+        assertTrue(aiCbpIds.contains(CONTENT_ID_2));
+    }
+
+    @Test
+    void testCollectAiCbpContentIds_WithNonAiCbpContent() throws ReflectiveOperationException {
+        Map<String, List<CbPlanContentOccurrence>> contentList = new HashMap<>();
+        contentList.put(CONTENT_ID_1, List.of(new CbPlanContentOccurrence(PLAN_ID_1, Instant.EPOCH, PLAN_TYPE_MANDATORY)));
+        contentList.put(CONTENT_ID_2, List.of(new CbPlanContentOccurrence(PLAN_ID_2, Instant.EPOCH, PLAN_TYPE_VOLUNTARY)));
+        Set<String> aiCbpIds = new HashSet<>();
+        Method method = CourseAccessServiceImpl.class.getDeclaredMethod(METHOD_COLLECT_AI_CBP_CONTENT_IDS,
+                Map.class, Set.class);
+        method.setAccessible(true);
+        method.invoke(courseAccessService, contentList, aiCbpIds);
+        assertTrue(aiCbpIds.isEmpty());
+    }
+
+    @Test
+    void testCollectAiCbpContentIds_WithMixedContent() throws ReflectiveOperationException {
+        Map<String, List<CbPlanContentOccurrence>> contentList = new HashMap<>();
+        contentList.put(CONTENT_ID_1, List.of(new CbPlanContentOccurrence(PLAN_ID_1, Instant.EPOCH, PLAN_TYPE_AICBP)));
+        contentList.put(CONTENT_ID_2, List.of(new CbPlanContentOccurrence(PLAN_ID_2, Instant.EPOCH, PLAN_TYPE_MANDATORY)));
+        contentList.put(CONTENT_ID_3, List.of(
+                new CbPlanContentOccurrence(PLAN_ID_3, Instant.EPOCH, PLAN_TYPE_VOLUNTARY),
+                new CbPlanContentOccurrence(PLAN_ID_4, Instant.EPOCH, PLAN_TYPE_AICBP)
+        ));
+        Set<String> aiCbpIds = new HashSet<>();
+        Method method = CourseAccessServiceImpl.class.getDeclaredMethod(METHOD_COLLECT_AI_CBP_CONTENT_IDS,
+                Map.class, Set.class);
+        method.setAccessible(true);
+        method.invoke(courseAccessService, contentList, aiCbpIds);
+        assertEquals(2, aiCbpIds.size());
+        assertTrue(aiCbpIds.contains(CONTENT_ID_1));
+        assertTrue(aiCbpIds.contains(CONTENT_ID_3));
+        assertFalse(aiCbpIds.contains(CONTENT_ID_2));
+    }
+
+    @Test
+    void testFilterNonAiCbpContent_NullContentList() throws ReflectiveOperationException {
+        Set<String> aiCbpIds = Set.of(CONTENT_ID_1);
+        Method method = CourseAccessServiceImpl.class.getDeclaredMethod(METHOD_FILTER_NON_AI_CBP_CONTENT,
+                Map.class, Set.class);
+        method.setAccessible(true);
+        List<String> filtered = (List<String>) method.invoke(courseAccessService, null, aiCbpIds);
+        assertNotNull(filtered);
+        assertTrue(filtered.isEmpty());
+    }
+
+    @Test
+    void testFilterNonAiCbpContent_EmptyContentList() throws ReflectiveOperationException {
+        Map<String, List<CbPlanContentOccurrence>> contentList = new HashMap<>();
+        Set<String> aiCbpIds = Set.of(CONTENT_ID_1);
+        Method method = CourseAccessServiceImpl.class.getDeclaredMethod(METHOD_FILTER_NON_AI_CBP_CONTENT,
+                Map.class, Set.class);
+        method.setAccessible(true);
+        List<String> filtered = (List<String>) method.invoke(courseAccessService, contentList, aiCbpIds);
+        assertNotNull(filtered);
+        assertTrue(filtered.isEmpty());
+    }
+
+    @Test
+    void testFilterNonAiCbpContent_AllAiCbpContent() throws ReflectiveOperationException {
+        Map<String, List<CbPlanContentOccurrence>> contentList = new HashMap<>();
+        contentList.put(CONTENT_ID_1, List.of(new CbPlanContentOccurrence(PLAN_ID_1, Instant.EPOCH, PLAN_TYPE_AICBP)));
+        contentList.put(CONTENT_ID_2, List.of(new CbPlanContentOccurrence(PLAN_ID_2, Instant.EPOCH, PLAN_TYPE_AICBP)));
+        Set<String> aiCbpIds = Set.of(CONTENT_ID_1, CONTENT_ID_2);
+        Method method = CourseAccessServiceImpl.class.getDeclaredMethod(METHOD_FILTER_NON_AI_CBP_CONTENT,
+                Map.class, Set.class);
+        method.setAccessible(true);
+        List<String> filtered = (List<String>) method.invoke(courseAccessService, contentList, aiCbpIds);
+        assertNotNull(filtered);
+        assertTrue(filtered.isEmpty());
+    }
+
+    @Test
+    void testFilterNonAiCbpContent_NoAiCbpContent() throws ReflectiveOperationException {
+        Map<String, List<CbPlanContentOccurrence>> contentList = new HashMap<>();
+        contentList.put(CONTENT_ID_1, List.of(new CbPlanContentOccurrence(PLAN_ID_1, Instant.EPOCH, PLAN_TYPE_MANDATORY)));
+        contentList.put(CONTENT_ID_2, List.of(new CbPlanContentOccurrence(PLAN_ID_2, Instant.EPOCH, PLAN_TYPE_VOLUNTARY)));
+        Set<String> aiCbpIds = Set.of();
+        Method method = CourseAccessServiceImpl.class.getDeclaredMethod(METHOD_FILTER_NON_AI_CBP_CONTENT,
+                Map.class, Set.class);
+        method.setAccessible(true);
+        List<String> filtered = (List<String>) method.invoke(courseAccessService, contentList, aiCbpIds);
+        assertEquals(2, filtered.size());
+        assertTrue(filtered.contains(CONTENT_ID_1));
+        assertTrue(filtered.contains(CONTENT_ID_2));
+    }
+
+    @Test
+    void testFilterNonAiCbpContent_MixedContent() throws ReflectiveOperationException {
+        Map<String, List<CbPlanContentOccurrence>> contentList = new HashMap<>();
+        contentList.put(CONTENT_ID_1, List.of(new CbPlanContentOccurrence(PLAN_ID_1, Instant.EPOCH, PLAN_TYPE_AICBP)));
+        contentList.put(CONTENT_ID_2, List.of(new CbPlanContentOccurrence(PLAN_ID_2, Instant.EPOCH, PLAN_TYPE_MANDATORY)));
+        contentList.put(CONTENT_ID_3, List.of(new CbPlanContentOccurrence(PLAN_ID_3, Instant.EPOCH, PLAN_TYPE_VOLUNTARY)));
+        Set<String> aiCbpIds = Set.of(CONTENT_ID_1);
+        Method method = CourseAccessServiceImpl.class.getDeclaredMethod(METHOD_FILTER_NON_AI_CBP_CONTENT,
+                Map.class, Set.class);
+        method.setAccessible(true);
+        List<String> filtered = (List<String>) method.invoke(courseAccessService, contentList, aiCbpIds);
+        assertEquals(2, filtered.size());
+        assertTrue(filtered.contains(CONTENT_ID_2));
+        assertTrue(filtered.contains(CONTENT_ID_3));
+        assertFalse(filtered.contains(CONTENT_ID_1));
     }
 
 }

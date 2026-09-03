@@ -7,7 +7,6 @@ import java.util.*;
 import java.lang.reflect.Field;
 import java.util.function.Consumer;
 
-import com.github.benmanes.caffeine.cache.Cache;
 import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.model.CachedAccessSettingRule;
 
@@ -42,8 +41,12 @@ class AccessSettingRuleCacheMgrTest {
             Field ttlField = AccessSettingRuleCacheMgr.class.getDeclaredField("ttlMinutes");
             ttlField.setAccessible(true);
             ttlField.setInt(cacheMgr, 10);
+
+            Field maxSizeField = AccessSettingRuleCacheMgr.class.getDeclaredField("maxCacheSize");
+            maxSizeField.setAccessible(true);
+            maxSizeField.setInt(cacheMgr, 5000);
         } catch (Exception e) {
-            throw new RuntimeException("Failed to set ttlMinutes in test", e);
+            throw new RuntimeException("Failed to set cache configuration in test", e);
         }
         try {
             var method = AccessSettingRuleCacheMgr.class.getDeclaredMethod("initCache");
@@ -281,28 +284,29 @@ class AccessSettingRuleCacheMgrTest {
 
     @Test
     void testGetOrLoadAccessSettingRule_cacheHit() {
-        // Use reflection to insert an entry into the Caffeine cache
-        CachedAccessSettingRule rule = new CachedAccessSettingRule("do_123", "Course", "{}", false);
+        // Mock Cassandra to return a valid record as fallback
+        Map<String, Object> cassRecord = new HashMap<>();
+        cassRecord.put(Constants.CONTEXT_ID_KEY, "do_123");
+        cassRecord.put(Constants.CONTEXT_ID_TYPE, "Course");
+        cassRecord.put(Constants.CONTEXT_DATA_KEY, "{}");
+        cassRecord.put(Constants.IS_ARCHIVED, false);
+        when(cassandraOperation.getRecordsByProperties(
+                anyString(), anyString(), any(), any(), any()))
+                .thenReturn(List.of(cassRecord));
 
-        try {
-            Field field = AccessSettingRuleCacheMgr.class.getDeclaredField("accessSettingsCache");
-            field.setAccessible(true);
-            Cache<String, CachedAccessSettingRule> cache =
-                (Cache<String, CachedAccessSettingRule>) field.get(cacheMgr);
-            assertNotNull(cache, "Cache should be initialized");
-            cache.put("do_123|Course", rule);
-            CachedAccessSettingRule verifyPut = cache.getIfPresent("do_123|Course");
-            assertNotNull(verifyPut, "Entry should be in cache after put");
-        } catch (Exception e) {
-            fail("Reflection failed: " + e.getMessage());
-        }
+        // Pre-load cache by calling the method once
+        CachedAccessSettingRule firstCall = cacheMgr.getOrLoadAccessSettingRule("do_123", "Course");
+        assertNotNull(firstCall, "First call should load from Cassandra");
+        verify(cassandraOperation, times(1)).getRecordsByProperties(anyString(), anyString(), any(), any(), any());
 
+        // Second call should hit cache
         CachedAccessSettingRule result = cacheMgr.getOrLoadAccessSettingRule("do_123", "Course");
 
-        assertNotNull(result, "getOrLoadAccessSettingRule should return cached entry");
+        assertNotNull(result, "Second call should return cached entry");
         assertEquals("do_123", result.getContextId());
         assertEquals("Course", result.getContextIdType());
-        verifyNoInteractions(cassandraOperation);
+        // Verify Cassandra was only called once (from first call)
+        verify(cassandraOperation, times(1)).getRecordsByProperties(anyString(), anyString(), any(), any(), any());
     }
 
     @Test

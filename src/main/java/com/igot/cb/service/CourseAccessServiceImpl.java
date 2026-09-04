@@ -1258,10 +1258,14 @@ public class CourseAccessServiceImpl {
                 (Map<String, List<CbPlanContentOccurrence>>) cbPlanResponse.getResult().get(Constants.RESPONSE_KEY_APAR_CONTENT_LIST);
             Map<String, List<CbPlanContentOccurrence>> nonAparContentList =
                 (Map<String, List<CbPlanContentOccurrence>>) cbPlanResponse.getResult().get(Constants.RESPONSE_KEY_NON_APAR_CONTENT_LIST);
+            // Step 1: Extract AI-CBP content from BOTH lists (planType = "aicbp")
+            // AI-CBP takes precedence - these will be excluded from apar and trainingPlan
             Set<String> aiCbpContentIds = extractAiCbpContentIds(aparContentList, nonAparContentList);
-            aparIds = filterNonAiCbpContent(aparContentList, aiCbpContentIds);
-            trainingPlanIds = filterNonAiCbpContent(nonAparContentList, aiCbpContentIds);
             aiCbpIds = new ArrayList<>(aiCbpContentIds);
+            // Step 2: APAR = aparContentList MINUS AI-CBP content
+            aparIds = filterNonAiCbpContent(aparContentList, aiCbpContentIds);
+            // Step 3: Training Plan = nonAparContentList MINUS AI-CBP content
+            trainingPlanIds = filterNonAiCbpContent(nonAparContentList, aiCbpContentIds);
         }
         List<String> learningPathwayIds = getAssignedCourseCount(userId, Constants.LEARNING_PATHWAY, authToken);
         Map<String, Map<String, Object>> enrolmentDictionary = callEnrolmentDictionaryApi(authToken);

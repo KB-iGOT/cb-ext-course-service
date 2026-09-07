@@ -1,0 +1,55 @@
+{
+  "orgid": {
+    "type": "keyword"
+  },
+  "usergroupid": {
+    "type": "keyword"
+  },
+  "usergroupname": {
+    "type": "text",
+    "analyzer": "cs_index_analyzer",
+    "search_analyzer": "cs_search_analyzer",
+    "fields": {
+      "keyword": {
+        "type": "keyword",
+        "normalizer": "case_insensitive"
+      }
+    }
+  },
+  "createdby": {
+    "type": "keyword"
+  },
+  "createddate": {
+    "type": "date",
+    "fields": {
+      "raw": {
+        "type": "date"
+      }
+    }
+  },
+  "updatedby": {
+    "type": "keyword"
+  },
+  "updateddate": {
+    "type": "date",
+    "fields": {
+      "raw": {
+        "type": "date"
+      }
+    }
+  },
+  "criteria": {
+    "type": "nested",
+    "properties": {
+      "criteriaKey": {
+        "type": "keyword"
+      },
+      "criteriaValue": {
+        "type": "keyword"
+      }
+    }
+  },
+  "status": {
+    "type": "keyword"
+  }
+}

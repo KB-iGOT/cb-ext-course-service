@@ -157,6 +157,9 @@ public class CbExtServerProperties {
     @Value("${cassandra.query.limit.user.extended.profile}")
     private int cassandraQueryLimitUserExtendedProfile;
 
+    @Value("${usergroup.update.authorized.role}")
+    private String userGroupUpdateAuthorizedRole;
+
     public List<String> getCbPlanEnrichedContentFieldsList() {
         return Arrays.asList(cbPlanEnrichedContentFields.split(",", -1));
     }

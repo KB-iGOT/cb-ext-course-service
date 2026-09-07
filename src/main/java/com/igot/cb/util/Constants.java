@@ -538,6 +538,8 @@ public class Constants {
     public static final String LEARNING_PATHWAY = "Learning Pathway";
     public static final String TABLE_USER_ROLES = "user_roles";
     public static final String ROLE = "role";
+    public static final String ROLES = "roles";
+    public static final String SCOPE = "scope";
     public static final String BATCHES = "batches";
     public static final String SPV_PUBLISHER = "SPV_PUBLISHER";
 
@@ -564,6 +566,7 @@ public class Constants {
     public static final String TOTAL_RECORDS = "totalRecords";
     public static final String SUCCESSFUL_RECORDS_COUNT = "successfulRecordsCount";
     public static final String FAILED_RECORDS_COUNT = "failedRecordsCount";
+    public static final String SUCCESSFUL = "SUCCESSFUL";
     public static final String SUCCESSFUL_UPPERCASE = "SUCCESSFUL";
     public static final String FAILED_UPPERCASE = "FAILED";
     public static final String STATUS_IN_PROGRESS_UPPERCASE = "IN-PROGRESS";
@@ -714,6 +717,47 @@ public class Constants {
     public static final String MINISTRY_OR_STATE_ID_RQST = "ministryorstateid";
     public static final String SPV = "SPV";
     public static final String MINISTRY_OR_STATETYPE_DB = "ministryorstatetype";
+
+    // User Groups Constants
+    public static final String TABLE_USER_GROUP_INFO = "user_group_info";
+    public static final String ES_INDEX_USER_GROUP_INFO = "user_group_info";
+    public static final String COL_ORGID = "orgid";
+    public static final String COL_USERGROUPID = "usergroupid";
+    public static final String COL_USERGROUPNAME = "usergroupname";
+    public static final String COL_CREATEDBY = "createdby";
+    public static final String COL_CREATEDDATE = "createddate";
+    public static final String COL_UPDATEDBY = "updatedby";
+    public static final String COL_UPDATEDDATE = "updateddate";
+    public static final String COL_CRITERIA = "criteria";
+    public static final String COL_STATUS = "status";
+    public static final String ARCHIVED = "archived";
+    public static final String DESC = "desc";
+
+    // User Groups API IDs
+    public static final String API_USER_GROUP_CREATE = "api.user.group.v1.create";
+    public static final String API_USER_GROUP_READ = "api.user.group.v1.read";
+    public static final String API_USER_GROUP_UPDATE = "api.user.group.v1.update";
+    public static final String API_USER_GROUP_DELETE = "api.user.group.v1.delete";
+    public static final String API_USER_GROUP_SEARCH = "api.user.group.v1.search";
+
+    // User Groups Error Messages
+    public static final String MSG_USERGROUPNAME_REQUIRED = "usergroupname is required and cannot be blank";
+    public static final String MSG_CRITERIA_REQUIRED = "criteria is required and must have at least one entry";
+    public static final String MSG_CRITERIA_EMPTY = "criteria cannot be empty when provided";
+    public static final String MSG_USERGROUPID_REQUIRED = "usergroupid is required";
+    public static final String MSG_USER_GROUP_NOT_FOUND = "User group not found";
+    public static final String MSG_CRITERIA_VALUE_EMPTY = "criteriaValue must not be empty";
+    public static final String MSG_USER_GROUP_ARCHIVED = "User group archived successfully";
+    public static final String MSG_CRITERIA_KEY_BLANK = "criteriaKey cannot be blank";
+    public static final String MSG_CRITERIA_KEY_NULL = "criteriaKey cannot be null or blank";
+    public static final String MSG_CRITERIA_VALUE_NULL = "criteriaValue cannot be null or empty";
+    public static final String MSG_USER_NOT_AUTHORIZED = "User not authorized to update this user group";
+    public static final String MSG_USER_MISSING_ROLE = "User does not have required role to update this user group";
+    public static final String MSG_INVALID_REQUEST_FORMAT = "Invalid request format";
+    public static final String MSG_FAILED_CREATE_USER_GROUP = "Failed to create user group";
+    public static final String MSG_FAILED_FETCH_USER_GROUP = "Failed to fetch user group";
+    public static final String MSG_FAILED_UPDATE_USER_GROUP = "Failed to update user group";
+    public static final String ES_USERGROUP_FIELDS_JSON_PATH = "EsRequiredFields/EsRequiredFieldsUserGroup.json";
 
     private Constants() {
     }

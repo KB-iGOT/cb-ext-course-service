@@ -84,15 +84,15 @@ public class UserGroupServiceImpl implements UserGroupService {
                 return response;
             }
 
-            String usergroupname = userGroupRequest.usergroupname();
+            String userGroupName = userGroupRequest.userGroupName();
             List<CriteriaItem> criteria = userGroupRequest.criteria();
 
-            if (!validationService.validateCreateRequest(usergroupname, criteria, response)) {
+            if (!validationService.validateCreateRequest(userGroupName, criteria, response)) {
                 return response;
             }
 
             String userGroupId = UUID.randomUUID().toString();
-            UserGroupEntity entity = dataTransformService.buildEntityForCreate(userGroupId, usergroupname, criteria, userRootOrgId, userId);
+            UserGroupEntity entity = dataTransformService.buildEntityForCreate(userGroupId, userGroupName, criteria, userRootOrgId, userId);
 
             if (!insertUserGroupInCassandra(entity, response)) {
                 return response;
@@ -139,11 +139,9 @@ public class UserGroupServiceImpl implements UserGroupService {
             if (entity == null) {
                 return response;
             }
-
-            Map<String, Object> responseMap = dataTransformService.entityToResponseMap(entity);
             response.getParams().setStatus(Constants.SUCCESSFUL);
             response.setResponseCode(HttpStatus.OK);
-            response.putAll(responseMap);
+            response.putAll( dataTransformService.entityToResponseMap(entity));
         } catch (Exception e) {
             handleException(response, e);
         }
@@ -177,10 +175,10 @@ public class UserGroupServiceImpl implements UserGroupService {
                 return response;
             }
 
-            String usergroupname = userGroupRequest.usergroupname();
+            String userGroupName = userGroupRequest.userGroupName();
             List<CriteriaItem> criteria = userGroupRequest.criteria();
 
-            if (!validationService.validateUpdateRequest(userGroupId, usergroupname, criteria, response)) {
+            if (!validationService.validateUpdateRequest(userGroupId, userGroupName, criteria, response)) {
                 return response;
             }
 
@@ -191,11 +189,11 @@ public class UserGroupServiceImpl implements UserGroupService {
 
             if (!validationService.validateUpdateAuthorization(
                     userId, userRootOrgId, userRoles,
-                    existingEntity.getCreatedby(), existingEntity.getOrgid(), response)) {
+                    existingEntity.getCreatedBy(), existingEntity.getOrgId(), response)) {
                 return response;
             }
 
-            Map<String, Object> updateProps = dataTransformService.buildUpdateProperties(usergroupname, criteria, userId);
+            Map<String, Object> updateProps = dataTransformService.buildUpdateProperties(userGroupName, criteria, userId);
             if (!updateUserGroupInCassandra(userGroupId, userRootOrgId, updateProps, response)) {
                 return response;
             }
@@ -242,12 +240,12 @@ public class UserGroupServiceImpl implements UserGroupService {
                 return response;
             }
 
-            Map<String, Object> updateProps = Map.of(Constants.COL_STATUS, Constants.ARCHIVED);
-            if (!updateUserGroupInCassandra(userGroupId, userRootOrgId, updateProps, response)) {
+            if (!updateUserGroupInCassandra(userGroupId, userRootOrgId,
+                    Map.of(Constants.COL_STATUS, Constants.ARCHIVED), response)) {
                 return response;
             }
 
-            esService.updateUserGroup(userGroupId, updateProps);
+            esService.updateUserGroup(userGroupId, Map.of(Constants.COL_STATUS, Constants.ARCHIVED));
 
             log.info("User group archived successfully: usergroupid={}", userGroupId);
             response.getParams().setStatus(Constants.SUCCESSFUL);
@@ -323,13 +321,13 @@ public class UserGroupServiceImpl implements UserGroupService {
     private boolean insertUserGroupInCassandra(UserGroupEntity entity, ApiResponse response) {
         try {
             Map<String, Object> insertMap = new HashMap<>();
-            insertMap.put(Constants.COL_ORGID, entity.getOrgid());
-            insertMap.put(Constants.COL_USERGROUPID, entity.getUsergroupid());
-            insertMap.put(Constants.COL_USERGROUPNAME, entity.getUsergroupname());
-            insertMap.put(Constants.COL_CREATEDBY, entity.getCreatedby());
-            insertMap.put(Constants.COL_CREATEDDATE, entity.getCreateddate());
-            insertMap.put(Constants.COL_UPDATEDBY, entity.getUpdatedby());
-            insertMap.put(Constants.COL_UPDATEDDATE, entity.getUpdateddate());
+            insertMap.put(Constants.COL_ORGID, entity.getOrgId());
+            insertMap.put(Constants.COL_USERGROUPID, entity.getUserGroupId());
+            insertMap.put(Constants.COL_USERGROUPNAME, entity.getUserGroupName());
+            insertMap.put(Constants.COL_CREATEDBY, entity.getCreatedBy());
+            insertMap.put(Constants.COL_CREATEDDATE, entity.getCreatedDate());
+            insertMap.put(Constants.COL_UPDATEDBY, entity.getUpdatedBy());
+            insertMap.put(Constants.COL_UPDATEDDATE, entity.getUpdatedDate());
             insertMap.put(Constants.COL_CRITERIA, entity.getCriteria());
             insertMap.put(Constants.COL_STATUS, entity.getStatus());
 
@@ -338,10 +336,10 @@ public class UserGroupServiceImpl implements UserGroupService {
                     Constants.TABLE_USER_GROUP_INFO,
                     insertMap
             );
-            log.debug("Inserted user group in Cassandra: usergroupid={}", entity.getUsergroupid());
+            log.debug("Inserted user group in Cassandra: usergroupid={}", entity.getUserGroupId());
             return true;
         } catch (Exception e) {
-            log.error("Failed to insert user group in Cassandra: usergroupid={}", entity.getUsergroupid(), e);
+            log.error("Failed to insert user group in Cassandra: usergroupid={}", entity.getUserGroupId(), e);
             response.getParams().setStatus(Constants.FAILED);
             response.getParams().setErr(Constants.MSG_FAILED_CREATE_USER_GROUP);
             response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
@@ -358,15 +356,10 @@ public class UserGroupServiceImpl implements UserGroupService {
      */
     private UserGroupEntity fetchUserGroupById(String userGroupId, String userOrgId, ApiResponse response) {
         try {
-            Map<String, Object> compositeKey = Map.of(
-                    Constants.COL_ORGID, userOrgId,
-                    Constants.COL_USERGROUPID, userGroupId
-            );
-
             List<Map<String, Object>> results = cassandraOperation.getRecordsByProperties(
                     Constants.KEYSPACE_SUNBIRD,
                     Constants.TABLE_USER_GROUP_INFO,
-                    compositeKey,
+                    Map.of(Constants.COL_ORGID, userOrgId, Constants.COL_USERGROUPID, userGroupId),
                     List.of(),
                     null
             );
@@ -398,16 +391,11 @@ public class UserGroupServiceImpl implements UserGroupService {
      */
     private boolean updateUserGroupInCassandra(String userGroupId, String userOrgId, Map<String, Object> updateProps, ApiResponse response) {
         try {
-            Map<String, Object> compositeKey = Map.of(
-                    Constants.COL_ORGID, userOrgId,
-                    Constants.COL_USERGROUPID, userGroupId
-            );
-
             cassandraOperation.updateRecord(
                     Constants.KEYSPACE_SUNBIRD,
                     Constants.TABLE_USER_GROUP_INFO,
                     updateProps,
-                    compositeKey
+                    Map.of(Constants.COL_ORGID, userOrgId, Constants.COL_USERGROUPID, userGroupId)
             );
             log.debug("Updated user group in Cassandra: usergroupid={}", userGroupId);
             return true;
@@ -428,13 +416,13 @@ public class UserGroupServiceImpl implements UserGroupService {
      */
     private UserGroupEntity mapToEntity(Map<String, Object> row) {
         return UserGroupEntity.builder()
-                .orgid((String) row.get(Constants.COL_ORGID))
-                .usergroupid((String) row.get(Constants.COL_USERGROUPID))
-                .usergroupname((String) row.get(Constants.COL_USERGROUPNAME))
-                .createdby((String) row.get(Constants.COL_CREATEDBY))
-                .createddate((String) row.get(Constants.COL_CREATEDDATE))
-                .updatedby((String) row.get(Constants.COL_UPDATEDBY))
-                .updateddate((String) row.get(Constants.COL_UPDATEDDATE))
+                .orgId((String) row.get(Constants.COL_ORGID))
+                .userGroupId((String) row.get(Constants.COL_USERGROUPID))
+                .userGroupName((String) row.get(Constants.COL_USERGROUPNAME))
+                .createdBy((String) row.get(Constants.COL_CREATEDBY))
+                .createdDate((String) row.get(Constants.COL_CREATEDDATE))
+                .updatedBy((String) row.get(Constants.COL_UPDATEDBY))
+                .updatedDate((String) row.get(Constants.COL_UPDATEDDATE))
                 .criteria((List<Map<String, List<String>>>) row.get(Constants.COL_CRITERIA))
                 .status((String) row.get(Constants.COL_STATUS))
                 .build();

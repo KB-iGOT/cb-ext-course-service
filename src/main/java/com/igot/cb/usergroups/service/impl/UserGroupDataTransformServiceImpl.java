@@ -66,13 +66,13 @@ public class UserGroupDataTransformServiceImpl {
         List<CriteriaItem> criteria = dbFormatToCriteriaItems(entity.getCriteria());
 
         Map<String, Object> response = new LinkedHashMap<>();
-        response.put(Constants.COL_ORGID, entity.getOrgid());
-        response.put(Constants.COL_USERGROUPID, entity.getUsergroupid());
-        response.put(Constants.COL_USERGROUPNAME, entity.getUsergroupname());
-        response.put(Constants.COL_CREATEDBY, entity.getCreatedby());
-        response.put(Constants.COL_CREATEDDATE, entity.getCreateddate());
-        response.put(Constants.COL_UPDATEDBY, entity.getUpdatedby());
-        response.put(Constants.COL_UPDATEDDATE, entity.getUpdateddate());
+        response.put(Constants.COL_ORGID, entity.getOrgId());
+        response.put(Constants.COL_USERGROUPID, entity.getUserGroupId());
+        response.put(Constants.COL_USERGROUPNAME, entity.getUserGroupName());
+        response.put(Constants.COL_CREATEDBY, entity.getCreatedBy());
+        response.put(Constants.COL_CREATEDDATE, entity.getCreatedDate());
+        response.put(Constants.COL_UPDATEDBY, entity.getUpdatedBy());
+        response.put(Constants.COL_UPDATEDDATE, entity.getUpdatedDate());
         response.put(Constants.COL_STATUS, entity.getStatus());
         response.put(Constants.COL_CRITERIA, criteria);
 
@@ -83,26 +83,26 @@ public class UserGroupDataTransformServiceImpl {
      * Builds UserGroupEntity for create operation.
      *
      * @param userGroupId   generated user group ID
-     * @param usergroupname user group name
+     * @param userGroupName user group name
      * @param criteriaItems API criteria list
      * @param userOrgId     organization ID
      * @param userId        user ID
      * @return user group entity
      */
-    public UserGroupEntity buildEntityForCreate(String userGroupId, String usergroupname,
+    public UserGroupEntity buildEntityForCreate(String userGroupId, String userGroupName,
                                                 List<CriteriaItem> criteriaItems,
                                                 String userOrgId, String userId) {
         String now = Instant.now().toString();
         List<Map<String, List<String>>> dbCriteria = criteriaItemsToDbFormat(criteriaItems);
 
         return UserGroupEntity.builder()
-                .orgid(userOrgId)
-                .usergroupid(userGroupId)
-                .usergroupname(usergroupname)
-                .createdby(userId)
-                .createddate(now)
-                .updatedby(userId)
-                .updateddate(now)
+                .orgId(userOrgId)
+                .userGroupId(userGroupId)
+                .userGroupName(userGroupName)
+                .createdBy(userId)
+                .createdDate(now)
+                .updatedBy(userId)
+                .updatedDate(now)
                 .criteria(dbCriteria)
                 .status(Constants.ACTIVE)
                 .build();
@@ -111,12 +111,12 @@ public class UserGroupDataTransformServiceImpl {
     /**
      * Builds update properties map from request data.
      *
-     * @param usergroupname user group name (optional)
+     * @param userGroupName user group name (optional)
      * @param criteriaItems criteria list (optional)
      * @param userId        user ID
      * @return update properties map
      */
-    public Map<String, Object> buildUpdateProperties(String usergroupname,
+    public Map<String, Object> buildUpdateProperties(String userGroupName,
                                                      List<CriteriaItem> criteriaItems,
                                                      String userId) {
         String now = Instant.now().toString();
@@ -125,8 +125,8 @@ public class UserGroupDataTransformServiceImpl {
         updateProps.put(Constants.COL_UPDATEDBY, userId);
         updateProps.put(Constants.COL_UPDATEDDATE, now);
 
-        if (StringUtils.isNotBlank(usergroupname)) {
-            updateProps.put(Constants.COL_USERGROUPNAME, usergroupname);
+        if (StringUtils.isNotBlank(userGroupName)) {
+            updateProps.put(Constants.COL_USERGROUPNAME, userGroupName);
         }
 
         if (CollectionUtils.isNotEmpty(criteriaItems)) {

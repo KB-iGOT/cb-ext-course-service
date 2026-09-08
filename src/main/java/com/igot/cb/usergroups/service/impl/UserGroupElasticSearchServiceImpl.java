@@ -49,13 +49,13 @@ public class UserGroupElasticSearchServiceImpl {
             esUtilService.addDocument(
                     Constants.ES_INDEX_USER_GROUP_INFO,
                     Constants.INDEX_TYPE,
-                    entity.getUsergroupid(),
+                    entity.getUserGroupId(),
                     document,
                     Constants.ES_USERGROUP_FIELDS_JSON_PATH
             );
-            log.info("Indexed user group in ES: usergroupid={}", entity.getUsergroupid());
+            log.info("Indexed user group in ES: usergroupid={}", entity.getUserGroupId());
         } catch (Exception e) {
-            log.error("Failed to index user group in ES: usergroupid={}", entity.getUsergroupid(), e);
+            log.error("Failed to index user group in ES: usergroupid={}", entity.getUserGroupId(), e);
         }
     }
 

@@ -263,13 +263,13 @@ class UserGroupServiceImplTest {
 
     private UserGroupEntity createUserGroupEntity() {
         return UserGroupEntity.builder()
-                .orgid(TEST_ORG_ID)
-                .usergroupid(TEST_USER_GROUP_ID)
-                .usergroupname(TEST_USER_GROUP_NAME)
-                .createdby(TEST_USER_ID)
-                .createddate(String.valueOf(System.currentTimeMillis()))
-                .updatedby(TEST_USER_ID)
-                .updateddate(String.valueOf(System.currentTimeMillis()))
+                .orgId(TEST_ORG_ID)
+                .userGroupId(TEST_USER_GROUP_ID)
+                .userGroupName(TEST_USER_GROUP_NAME)
+                .createdBy(TEST_USER_ID)
+                .createdDate(String.valueOf(System.currentTimeMillis()))
+                .updatedBy(TEST_USER_ID)
+                .updatedDate(String.valueOf(System.currentTimeMillis()))
                 .criteria(List.of())
                 .status("ACTIVE")
                 .build();

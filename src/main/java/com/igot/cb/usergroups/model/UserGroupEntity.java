@@ -17,13 +17,13 @@ import java.util.Map;
 @NoArgsConstructor
 @AllArgsConstructor
 public class UserGroupEntity {
-    private String orgid;
-    private String usergroupid;
-    private String usergroupname;
-    private String createdby;
-    private String createddate;
-    private String updatedby;
-    private String updateddate;
+    private String orgId;
+    private String userGroupId;
+    private String userGroupName;
+    private String createdBy;
+    private String createdDate;
+    private String updatedBy;
+    private String updatedDate;
     private List<Map<String, List<String>>> criteria;
     private String status;
 }

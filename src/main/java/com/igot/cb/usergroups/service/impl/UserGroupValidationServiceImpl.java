@@ -29,12 +29,12 @@ public class UserGroupValidationServiceImpl {
         this.serverProperties = serverProperties;
     }
 
-    public boolean validateCreateRequest(String usergroupname, List<CriteriaItem> criteria, ApiResponse response) {
-        log.debug("validateCreateRequest: usergroupname={}, criteriaCount={}",
-                usergroupname, CollectionUtils.isNotEmpty(criteria) ? criteria.size() : 0);
+    public boolean validateCreateRequest(String userGroupName, List<CriteriaItem> criteria, ApiResponse response) {
+        log.debug("validateCreateRequest: userGroupName={}, criteriaCount={}",
+                userGroupName, CollectionUtils.isNotEmpty(criteria) ? criteria.size() : 0);
 
-        if (StringUtils.isBlank(usergroupname)) {
-            log.warn("Validation failed: usergroupname is required");
+        if (StringUtils.isBlank(userGroupName)) {
+            log.warn("Validation failed: userGroupName is required");
             response.getParams().setStatus(Constants.FAILED);
             response.getParams().setErr(Constants.MSG_USERGROUPNAME_REQUIRED);
             response.setResponseCode(HttpStatus.BAD_REQUEST);
@@ -44,19 +44,19 @@ public class UserGroupValidationServiceImpl {
         return validateCriteria(criteria, response);
     }
 
-    public boolean validateUpdateRequest(String userGroupId, String usergroupname, List<CriteriaItem> criteria, ApiResponse response) {
+    public boolean validateUpdateRequest(String userGroupId, String userGroupName, List<CriteriaItem> criteria, ApiResponse response) {
         log.debug("validateUpdateRequest: userGroupId={}", userGroupId);
 
         if (StringUtils.isBlank(userGroupId)) {
-            log.warn("Validation failed: usergroupid is required");
+            log.warn("Validation failed: userGroupId is required");
             response.getParams().setStatus(Constants.FAILED);
             response.getParams().setErr(Constants.MSG_USERGROUPID_REQUIRED);
             response.setResponseCode(HttpStatus.BAD_REQUEST);
             return false;
         }
 
-        if (StringUtils.isNotEmpty(usergroupname) && StringUtils.isBlank(usergroupname)) {
-            log.warn("Validation failed: usergroupname cannot be blank when provided");
+        if (StringUtils.isNotEmpty(userGroupName) && StringUtils.isBlank(userGroupName)) {
+            log.warn("Validation failed: userGroupName cannot be blank when provided");
             response.getParams().setStatus(Constants.FAILED);
             response.getParams().setErr(Constants.MSG_USERGROUPNAME_REQUIRED);
             response.setResponseCode(HttpStatus.BAD_REQUEST);

@@ -91,13 +91,13 @@ class UserGroupDataTransformServiceImplTest {
     @Test
     void entityToResponseMap_withValidEntity_shouldConvertCorrectly() {
         UserGroupEntity entity = UserGroupEntity.builder()
-                .orgid(TEST_ORG_ID)
-                .usergroupid(TEST_USER_GROUP_ID)
-                .usergroupname(TEST_USER_GROUP_NAME)
-                .createdby(TEST_USER_ID)
-                .createddate("1234567890")
-                .updatedby(TEST_USER_ID)
-                .updateddate("1234567890")
+                .orgId(TEST_ORG_ID)
+                .userGroupId(TEST_USER_GROUP_ID)
+                .userGroupName(TEST_USER_GROUP_NAME)
+                .createdBy(TEST_USER_ID)
+                .createdDate("1234567890")
+                .updatedBy(TEST_USER_ID)
+                .updatedDate("1234567890")
                 .criteria(List.of(
                         Map.of(
                                 Constants.CRITERIA_KEY, List.of("department"),
@@ -132,15 +132,15 @@ class UserGroupDataTransformServiceImplTest {
         );
 
         assertNotNull(result);
-        assertEquals(TEST_USER_GROUP_ID, result.getUsergroupid());
-        assertEquals(TEST_USER_GROUP_NAME, result.getUsergroupname());
-        assertEquals(TEST_ORG_ID, result.getOrgid());
-        assertEquals(TEST_USER_ID, result.getCreatedby());
-        assertEquals(TEST_USER_ID, result.getUpdatedby());
+        assertEquals(TEST_USER_GROUP_ID, result.getUserGroupId());
+        assertEquals(TEST_USER_GROUP_NAME, result.getUserGroupName());
+        assertEquals(TEST_ORG_ID, result.getOrgId());
+        assertEquals(TEST_USER_ID, result.getCreatedBy());
+        assertEquals(TEST_USER_ID, result.getUpdatedBy());
         assertEquals(Constants.ACTIVE, result.getStatus());
-        assertNotNull(result.getCreateddate());
-        assertNotNull(result.getUpdateddate());
-        assertEquals(result.getCreateddate(), result.getUpdateddate());
+        assertNotNull(result.getCreatedDate());
+        assertNotNull(result.getUpdatedDate());
+        assertEquals(result.getCreatedDate(), result.getUpdatedDate());
     }
 
     @Test

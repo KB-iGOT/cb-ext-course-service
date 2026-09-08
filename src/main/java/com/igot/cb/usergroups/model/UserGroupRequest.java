@@ -7,10 +7,10 @@ import java.util.List;
 /**
  * Immutable request record for User Group create/update operations.
  *
- * @param usergroupname user group name (required for create)
+ * @param userGroupName user group name (required for create)
  * @param criteria      list of criteria items (required, min 1 entry)
  */
-public record UserGroupRequest(String usergroupname, List<CriteriaItem> criteria) {
+public record UserGroupRequest(String userGroupName, List<CriteriaItem> criteria) {
 
     public UserGroupRequest {
         // Defensive copy for immutability

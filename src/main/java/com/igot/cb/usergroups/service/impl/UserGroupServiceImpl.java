@@ -302,7 +302,6 @@ public class UserGroupServiceImpl implements UserGroupService {
      *
      * @param request API request
      * @return parsed UserGroupRequest
-     * @throws ResponseStatusException if request format is invalid
      */
     private UserGroupRequest parseRequest(ApiRequest request, ApiResponse response) {
         try {
@@ -320,7 +319,6 @@ public class UserGroupServiceImpl implements UserGroupService {
      * Inserts user group entity into Cassandra.
      *
      * @param entity user group entity to insert
-     * @throws ResponseStatusException if insert fails
      */
     private boolean insertUserGroupInCassandra(UserGroupEntity entity, ApiResponse response) {
         try {
@@ -357,7 +355,6 @@ public class UserGroupServiceImpl implements UserGroupService {
      * @param userGroupId user group ID
      * @param userOrgId   organization ID
      * @return user group entity
-     * @throws ResponseStatusException if user group not found
      */
     private UserGroupEntity fetchUserGroupById(String userGroupId, String userOrgId, ApiResponse response) {
         try {
@@ -398,7 +395,6 @@ public class UserGroupServiceImpl implements UserGroupService {
      * @param userGroupId user group ID
      * @param userOrgId   organization ID
      * @param updateProps properties to update
-     * @throws ResponseStatusException if update fails
      */
     private boolean updateUserGroupInCassandra(String userGroupId, String userOrgId, Map<String, Object> updateProps, ApiResponse response) {
         try {
@@ -424,7 +420,6 @@ public class UserGroupServiceImpl implements UserGroupService {
         }
     }
 
-    @SuppressWarnings("unchecked")
     /**
      * Maps Cassandra row to UserGroupEntity.
      *
@@ -445,7 +440,6 @@ public class UserGroupServiceImpl implements UserGroupService {
                 .build();
     }
 
-    @SuppressWarnings("unchecked")
     /**
      * Extracts search filters from request and adds organization filter.
      *
@@ -470,7 +464,6 @@ public class UserGroupServiceImpl implements UserGroupService {
         return filters;
     }
 
-    @SuppressWarnings("unchecked")
     /**
      * Extracts page size from request with default value.
      *
@@ -485,7 +478,6 @@ public class UserGroupServiceImpl implements UserGroupService {
         return 20;
     }
 
-    @SuppressWarnings("unchecked")
     /**
      * Extracts page number from request with default value.
      *
@@ -500,7 +492,6 @@ public class UserGroupServiceImpl implements UserGroupService {
         return 0;
     }
 
-    @SuppressWarnings("unchecked")
     /**
      * Extracts sort field from request with default value.
      *
@@ -515,7 +506,6 @@ public class UserGroupServiceImpl implements UserGroupService {
         return Constants.COL_UPDATEDDATE;
     }
 
-    @SuppressWarnings("unchecked")
     /**
      * Extracts sort order from request with default value.
      *

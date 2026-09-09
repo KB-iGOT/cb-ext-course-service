@@ -1,4 +1,4 @@
-FROM openjdk:17-jdk-slim
+FROM eclipse-temurin:17-jre
 
 RUN useradd -ms /bin/bash appuser
 

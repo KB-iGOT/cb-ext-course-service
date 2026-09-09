@@ -16,6 +16,7 @@ RUN apt-get update \
 COPY cb-ext-course-service-0.0.1-SNAPSHOT.jar /opt/
 
 RUN chown -R appuser:appuser /opt
+
 USER appuser
 WORKDIR /opt
 

@@ -1,7 +1,6 @@
-FROM openjdk:17.0.1-jdk-slim
-
-RUN apt update && apt install maven -y
+FROM maven:3.9.9-eclipse-temurin-17
 
 COPY . /opt
 WORKDIR /opt
+
 RUN mvn clean install

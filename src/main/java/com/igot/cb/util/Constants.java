@@ -757,7 +757,7 @@ public class Constants {
     public static final String MSG_FAILED_CREATE_USER_GROUP = "Failed to create user group";
     public static final String MSG_FAILED_FETCH_USER_GROUP = "Failed to fetch user group";
     public static final String MSG_FAILED_UPDATE_USER_GROUP = "Failed to update user group";
-    public static final String ES_USERGROUP_FIELDS_JSON_PATH = "EsRequiredFields/EsRequiredFieldsUserGroup.json";
+    public static final String ES_USERGROUP_FIELDS_JSON_PATH = "/EsRequiredFields/EsRequiredFieldsUserGroup.json";
 
     private Constants() {
     }

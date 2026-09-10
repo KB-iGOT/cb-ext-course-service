@@ -80,6 +80,7 @@ class UserGroupServiceImplTest {
         when(validationService.validateCreateRequest(anyString(), anyList(), any())).thenReturn(true);
         when(cassandraOperation.insertRecord(anyString(), anyString(), anyMap())).thenReturn(null);
         doNothing().when(esService).indexUserGroup(any());
+        when(dataTransformService.entityToResponseMap(entity)).thenReturn(Map.of(Constants.COL_USERGROUPID, TEST_USER_GROUP_ID));
 
         // Act
         ApiResponse response = userGroupService.createUserGroup(request, TEST_AUTH_TOKEN);
@@ -88,7 +89,7 @@ class UserGroupServiceImplTest {
         assertNotNull(response);
         assertEquals(Constants.SUCCESSFUL, response.getParams().getStatus());
         assertEquals(HttpStatus.CREATED, response.getResponseCode());
-        assertNotNull(response.get(Constants.ID));
+        assertEquals(TEST_USER_GROUP_ID, response.get(Constants.COL_USERGROUPID));
         verify(cassandraOperation, times(1)).insertRecord(anyString(), anyString(), anyMap());
         verify(esService, times(1)).indexUserGroup(any());
     }
@@ -185,6 +186,7 @@ class UserGroupServiceImplTest {
         when(validationService.validateUpdateAuthorization(anyString(), anyString(), anyString(), anyString(), anyString(), any())).thenReturn(true);
         when(cassandraOperation.updateRecord(anyString(), anyString(), anyMap(), anyMap())).thenReturn(new HashMap<>());
         doNothing().when(esService).updateUserGroup(anyString(), anyMap());
+        when(dataTransformService.entityToResponseMap(any())).thenReturn(Map.of(Constants.COL_USERGROUPID, TEST_USER_GROUP_ID));
 
         // Act
         ApiResponse response = userGroupService.updateUserGroup(TEST_USER_GROUP_ID, request, TEST_AUTH_TOKEN);
@@ -193,7 +195,7 @@ class UserGroupServiceImplTest {
         assertNotNull(response);
         assertEquals(Constants.SUCCESSFUL, response.getParams().getStatus());
         assertEquals(HttpStatus.OK, response.getResponseCode());
-        assertEquals(TEST_USER_GROUP_ID, response.get(Constants.ID));
+        assertEquals(TEST_USER_GROUP_ID, response.get(Constants.COL_USERGROUPID));
         verify(cassandraOperation, times(1)).updateRecord(anyString(), anyString(), anyMap(), anyMap());
         verify(esService, times(1)).updateUserGroup(anyString(), anyMap());
     }
@@ -284,12 +286,12 @@ class UserGroupServiceImplTest {
 
     private Map<String, Object> createCassandraRow() {
         Map<String, Object> row = new HashMap<>();
-        row.put(Constants.COL_ORGID, TEST_ORG_ID);
+        row.put(Constants.ORG_ID, TEST_ORG_ID);
         row.put(Constants.COL_USERGROUPID, TEST_USER_GROUP_ID);
         row.put(Constants.COL_USERGROUPNAME, TEST_USER_GROUP_NAME);
-        row.put(Constants.COL_CREATEDBY, TEST_USER_ID);
+        row.put(Constants.CREATED_BY, TEST_USER_ID);
         row.put(Constants.COL_CREATEDDATE, String.valueOf(System.currentTimeMillis()));
-        row.put(Constants.COL_UPDATEDBY, TEST_USER_ID);
+        row.put(Constants.UPDATED_BY, TEST_USER_ID);
         row.put(Constants.COL_UPDATEDDATE, String.valueOf(System.currentTimeMillis()));
         row.put(Constants.COL_CRITERIA, List.of());
         row.put(Constants.COL_STATUS, "ACTIVE");

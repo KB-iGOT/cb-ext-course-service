@@ -103,7 +103,7 @@ public class UserGroupServiceImpl implements UserGroupService {
             log.info("User group created successfully: usergroupid={}", userGroupId);
             response.getParams().setStatus(Constants.SUCCESSFUL);
             response.setResponseCode(HttpStatus.CREATED);
-            response.put(Constants.ID, userGroupId);
+            response.putAll(dataTransformService.entityToResponseMap(entity));
         } catch (Exception e) {
             handleException(response, e);
         }
@@ -203,7 +203,8 @@ public class UserGroupServiceImpl implements UserGroupService {
             log.info("User group updated successfully: usergroupid={}", userGroupId);
             response.getParams().setStatus(Constants.SUCCESSFUL);
             response.setResponseCode(HttpStatus.OK);
-            response.put(Constants.ID, userGroupId);
+            UserGroupEntity updatedEntity = applyUpdateProps(existingEntity, updateProps);
+            response.putAll(dataTransformService.entityToResponseMap(updatedEntity));
         } catch (Exception e) {
             handleException(response, e);
         }
@@ -409,19 +410,49 @@ public class UserGroupServiceImpl implements UserGroupService {
     }
 
     /**
+     * Builds the post-update entity in-memory from the pre-update entity and the applied
+     * update properties, avoiding a second Cassandra read to return the updated state.
+     *
+     * @param existingEntity entity as it was before the update
+     * @param updateProps    properties actually written by updateUserGroupInCassandra
+     * @return entity reflecting the updated state
+     */
+    private UserGroupEntity applyUpdateProps(UserGroupEntity existingEntity, Map<String, Object> updateProps) {
+        return UserGroupEntity.builder()
+                .orgId(existingEntity.getOrgId())
+                .userGroupId(existingEntity.getUserGroupId())
+                .userGroupName(updateProps.containsKey(Constants.COL_USERGROUPNAME)
+                        ? (String) updateProps.get(Constants.COL_USERGROUPNAME)
+                        : existingEntity.getUserGroupName())
+                .createdBy(existingEntity.getCreatedBy())
+                .createdDate(existingEntity.getCreatedDate())
+                .updatedBy((String) updateProps.get(Constants.COL_UPDATEDBY))
+                .updatedDate((String) updateProps.get(Constants.COL_UPDATEDDATE))
+                .criteria(updateProps.containsKey(Constants.COL_CRITERIA)
+                        ? (List<Map<String, List<String>>>) updateProps.get(Constants.COL_CRITERIA)
+                        : existingEntity.getCriteria())
+                .status(existingEntity.getStatus())
+                .build();
+    }
+
+    /**
      * Maps Cassandra row to UserGroupEntity.
+     * orgid/createdby/updatedby are read back via Constants.ORG_ID/CREATED_BY/UPDATED_BY
+     * (not the lowercase COL_* constants) because CassandraUtil's shared column mapping
+     * renames those three columns to camelCase for every table; the other columns have
+     * no entry in cassandratablecolumn.properties so they stay lowercase.
      *
      * @param row Cassandra row data
      * @return user group entity
      */
     private UserGroupEntity mapToEntity(Map<String, Object> row) {
         return UserGroupEntity.builder()
-                .orgId((String) row.get(Constants.COL_ORGID))
+                .orgId((String) row.get(Constants.ORG_ID))
                 .userGroupId((String) row.get(Constants.COL_USERGROUPID))
                 .userGroupName((String) row.get(Constants.COL_USERGROUPNAME))
-                .createdBy((String) row.get(Constants.COL_CREATEDBY))
+                .createdBy((String) row.get(Constants.CREATED_BY))
                 .createdDate((String) row.get(Constants.COL_CREATEDDATE))
-                .updatedBy((String) row.get(Constants.COL_UPDATEDBY))
+                .updatedBy((String) row.get(Constants.UPDATED_BY))
                 .updatedDate((String) row.get(Constants.COL_UPDATEDDATE))
                 .criteria((List<Map<String, List<String>>>) row.get(Constants.COL_CRITERIA))
                 .status((String) row.get(Constants.COL_STATUS))

@@ -149,8 +149,7 @@ public class UserGroupServiceImpl implements UserGroupService {
     }
 
     @Override
-    public ApiResponse updateUserGroup(String userGroupId, ApiRequest request, String authToken) {
-        log.info("updateUserGroup: userGroupId={}", userGroupId);
+    public ApiResponse updateUserGroup(ApiRequest request, String authToken) {
         ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_USER_GROUP_UPDATE);
 
         try {
@@ -175,8 +174,10 @@ public class UserGroupServiceImpl implements UserGroupService {
                 return response;
             }
 
+            String userGroupId = userGroupRequest.userGroupId();
             String userGroupName = userGroupRequest.userGroupName();
             List<CriteriaItem> criteria = userGroupRequest.criteria();
+            log.info("updateUserGroup: userGroupId={}", userGroupId);
 
             if (!validationService.validateUpdateRequest(userGroupId, userGroupName, criteria, response)) {
                 return response;

@@ -96,10 +96,10 @@ class UserGroupControllerTest {
         ApiResponse response = createSuccessResponse(HttpStatus.OK);
         response.put(Constants.ID, TEST_USER_GROUP_ID);
 
-        when(userGroupService.updateUserGroup(anyString(), any(ApiRequest.class), anyString()))
+        when(userGroupService.updateUserGroup(any(ApiRequest.class), anyString()))
                 .thenReturn(response);
 
-        mockMvc.perform(patch(BASE_URL + "/update/" + TEST_USER_GROUP_ID)
+        mockMvc.perform(patch(BASE_URL + "/update")
                         .header(Constants.X_AUTH_TOKEN, TEST_AUTH_TOKEN)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
@@ -107,7 +107,7 @@ class UserGroupControllerTest {
                 .andExpect(jsonPath("$.result.id").value(TEST_USER_GROUP_ID));
 
         verify(userGroupService, times(1))
-                .updateUserGroup(eq(TEST_USER_GROUP_ID), any(ApiRequest.class), eq(TEST_AUTH_TOKEN));
+                .updateUserGroup(any(ApiRequest.class), eq(TEST_AUTH_TOKEN));
     }
 
     @Test

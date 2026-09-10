@@ -54,17 +54,15 @@ public class UserGroupController {
     /**
      * Updates an existing user group.
      *
-     * @param userGroupId user group ID
-     * @param request     API request with update details
-     * @param token       authentication token
+     * @param request API request with update details (including userGroupId in payload)
+     * @param token   authentication token
      * @return API response with update status
      */
-    @PatchMapping("/update/{userGroupId}")
+    @PatchMapping("/update")
     public ResponseEntity<ApiResponse> updateUserGroup(
-            @PathVariable String userGroupId,
             @RequestBody ApiRequest request,
             @RequestHeader(Constants.X_AUTH_TOKEN) String token) {
-        ApiResponse response = userGroupService.updateUserGroup(userGroupId, request, token);
+        ApiResponse response = userGroupService.updateUserGroup(request, token);
         return new ResponseEntity<>(response, response.getResponseCode());
     }
 

@@ -28,13 +28,13 @@ public interface UserGroupService {
 
     /**
      * Updates an existing user group.
+     * userGroupId must be provided in the request payload.
      *
-     * @param userGroupId user group ID
-     * @param request     API request containing update details
-     * @param authToken   authentication token
+     * @param request   API request containing update details (including userGroupId)
+     * @param authToken authentication token
      * @return API response with update status
      */
-    ApiResponse updateUserGroup(String userGroupId, ApiRequest request, String authToken);
+    ApiResponse updateUserGroup(ApiRequest request, String authToken);
 
     /**
      * Deletes a user group (soft delete - sets status to ARCHIVED).

@@ -69,7 +69,7 @@ class UserGroupServiceImplTest {
     void createUserGroup_withValidRequest_shouldReturnCreatedResponse() {
         // Arrange
         ApiRequest request = createApiRequest();
-        UserGroupRequest userGroupRequest = new UserGroupRequest(TEST_USER_GROUP_NAME, createCriteriaList());
+        UserGroupRequest userGroupRequest = new UserGroupRequest(null, TEST_USER_GROUP_NAME, createCriteriaList());
         UserGroupEntity entity = createUserGroupEntity();
 
         when(accessTokenValidator.fetchUserIdFromAccessToken(eq(TEST_AUTH_TOKEN), any())).thenReturn(TEST_USER_ID);
@@ -172,7 +172,7 @@ class UserGroupServiceImplTest {
     void updateUserGroup_withValidRequest_shouldReturnSuccess() {
         // Arrange
         ApiRequest request = createApiRequest();
-        UserGroupRequest userGroupRequest = new UserGroupRequest(TEST_USER_GROUP_NAME, createCriteriaList());
+        UserGroupRequest userGroupRequest = new UserGroupRequest(TEST_USER_GROUP_ID, TEST_USER_GROUP_NAME, createCriteriaList());
         Map<String, Object> cassandraRow = createCassandraRow();
         Map<String, Object> updateProps = new HashMap<>();
 
@@ -189,7 +189,7 @@ class UserGroupServiceImplTest {
         when(dataTransformService.entityToResponseMap(any())).thenReturn(Map.of(Constants.COL_USERGROUPID, TEST_USER_GROUP_ID));
 
         // Act
-        ApiResponse response = userGroupService.updateUserGroup(TEST_USER_GROUP_ID, request, TEST_AUTH_TOKEN);
+        ApiResponse response = userGroupService.updateUserGroup(request, TEST_AUTH_TOKEN);
 
         // Assert
         assertNotNull(response);

@@ -1,0 +1,161 @@
+package com.igot.cb.cbplan.service.impl.v4;
+
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+
+import org.apache.commons.lang3.StringUtils;
+import org.springframework.stereotype.Service;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.igot.cb.cbplan.dto.CbPlanReadResponseDto;
+import com.igot.cb.model.CbPlanDto;
+import com.igot.cb.util.Constants;
+
+import lombok.extern.slf4j.Slf4j;
+
+/**
+ * Builds CB Plan V4 read responses. Renders contextData exactly as stored,
+ * matching V3's read behaviour: a V3-created plan's inline userGroupName is
+ * returned as-is, and a V4-created plan's userGroupId reference is returned
+ * as-is, with no enrichment or lookup performed on read.
+ *
+ * @version 4.0
+ */
+@Service
+@Slf4j
+public class CbPlanReadServiceV4Impl {
+    private final ObjectMapper mapper;
+
+    public CbPlanReadServiceV4Impl() {
+        this.mapper = new ObjectMapper()
+                .registerModule(new JavaTimeModule())
+                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+    }
+
+    /**
+     * Builds CB Plan read data from a raw Cassandra record.
+     * Extracts plan details from either draftData (for LIVE plans with draft)
+     * or direct fields, and returns contextData exactly as stored.
+     *
+     * @param cbPlan   raw CB Plan record from Cassandra
+     * @param cbPlanId CB Plan ID
+     * @return plan data DTO
+     * @throws JsonProcessingException if draft_data JSON parsing fails
+     */
+    public CbPlanReadResponseDto buildEnrichedPlanData(Map<String, Object> cbPlan, String cbPlanId)
+            throws JsonProcessingException {
+        log.debug("CbPlanReadServiceV4.buildEnrichedPlanData: Entry - cbPlanId={}", cbPlanId);
+        String draftData = (String) cbPlan.get(Constants.DRAFT_DATA);
+        String status = (String) cbPlan.get(Constants.STATUS);
+        boolean hasDraftData = StringUtils.isNotBlank(draftData) && !Constants.EMPTY_JSON.equals(draftData);
+        boolean isLiveStatus = Constants.LIVE.equalsIgnoreCase(status);
+        if (hasDraftData && isLiveStatus) {
+            log.debug("CbPlanReadServiceV4.buildEnrichedPlanData: Reading from pending draftData - cbPlanId={}", cbPlanId);
+        }
+        PlanFields fields = hasDraftData && isLiveStatus ? extractFromDraft(draftData) : extractFromRecord(cbPlan);
+        return buildDto(cbPlan, cbPlanId, status, fields);
+    }
+
+    /**
+     * Extracts plan fields from a pending draftData blob (LIVE plan with an unpublished update).
+     *
+     * @param draftData draftData JSON string
+     * @return extracted plan fields
+     * @throws JsonProcessingException if draftData is not valid CbPlanDto JSON
+     */
+    private PlanFields extractFromDraft(String draftData) throws JsonProcessingException {
+        CbPlanDto cbPlanDto = mapper.readValue(draftData, CbPlanDto.class);
+        Instant endDate = Objects.nonNull(cbPlanDto.getEndDate()) ? cbPlanDto.getEndDate().toInstant() : null;
+        boolean isApar = Objects.nonNull(cbPlanDto.getIsApar()) && cbPlanDto.getIsApar();
+        return new PlanFields(cbPlanDto.getName(), endDate, isApar, cbPlanDto.getContentList());
+    }
+
+    /**
+     * Extracts plan fields directly from the Cassandra record's own columns.
+     *
+     * @param cbPlan raw CB Plan record from Cassandra
+     * @return extracted plan fields
+     */
+    private PlanFields extractFromRecord(Map<String, Object> cbPlan) {
+        String name = (String) cbPlan.get(Constants.NAME);
+        Instant endDate = (Instant) cbPlan.get(Constants.END_DATE_REQUEST);
+        boolean isApar = Boolean.TRUE.equals(cbPlan.get(Constants.IS_APAR));
+        return new PlanFields(name, endDate, isApar, extractContentList(cbPlan.get(Constants.CONTENT_LIST)));
+    }
+
+    /**
+     * Converts the raw contentList column value to a list of content ID strings.
+     *
+     * @param contentListObj raw contentList value from Cassandra
+     * @return content IDs, empty list when absent or not a list
+     */
+    private List<String> extractContentList(Object contentListObj) {
+        if (contentListObj instanceof List<?> list) {
+            List<String> contentIds = new ArrayList<>();
+            for (Object item : list) {
+                contentIds.add(Objects.nonNull(item) ? String.valueOf(item) : null);
+            }
+            return contentIds;
+        }
+        return new ArrayList<>();
+    }
+
+    /**
+     * Assembles the final read response DTO from the raw record, resolved status,
+     * and the fields extracted from either draftData or the record itself.
+     *
+     * @param cbPlan   raw CB Plan record from Cassandra
+     * @param cbPlanId CB Plan ID
+     * @param status   plan status
+     * @param fields   fields extracted by {@link #extractFromDraft} or {@link #extractFromRecord}
+     * @return assembled read response DTO
+     */
+    private CbPlanReadResponseDto buildDto(Map<String, Object> cbPlan, String cbPlanId, String status,
+                                           PlanFields fields) {
+        return CbPlanReadResponseDto.builder()
+                .id(cbPlanId)
+                .name(fields.name())
+                .planYear((String) cbPlan.get(Constants.PLAN_YEAR))
+                .endDate(fields.endDate())
+                .isApar(fields.isApar())
+                .contentType((String) cbPlan.get(Constants.CONTENT_TYPE))
+                .planType((String) cbPlan.get(Constants.PLAN_TYPE))
+                .createdAt((Instant) cbPlan.get(Constants.CREATED_AT_REQ))
+                .cbPublishedAt((Instant) cbPlan.get(Constants.CB_PUBLISHED_AT))
+                .status(status)
+                .createdBy((String) cbPlan.get(Constants.CREATED_BY))
+                .createdByName(StringUtils.EMPTY)
+                .contextData(parseContextDataToJsonNode(cbPlan.get(Constants.CONTEXT_DATA_REQUEST)))
+                .contentList(fields.contentList())
+                .build();
+    }
+
+    /**
+     * Parses contextData from the Cassandra object to a JsonNode, unmodified.
+     *
+     * @param contextData raw contextData from Cassandra
+     * @return JsonNode representation, or null if absent/unparseable
+     */
+    private JsonNode parseContextDataToJsonNode(Object contextData) {
+        if (Objects.isNull(contextData)) {
+            return null;
+        }
+        try {
+            return mapper.readTree(contextData.toString());
+        } catch (JsonProcessingException e) {
+            log.warn("CbPlanReadServiceV4: Failed to parse contextData, returning null", e);
+            return null;
+        }
+    }
+
+    private record PlanFields(String name, Instant endDate, boolean isApar, List<String> contentList) {
+    }
+}

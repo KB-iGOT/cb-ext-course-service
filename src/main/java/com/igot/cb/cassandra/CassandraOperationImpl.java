@@ -325,4 +325,43 @@ public class CassandraOperationImpl implements CassandraOperation {
         }
     }
 
+    @Override
+    public List<Map<String, Object>> getRecordsByIdsWithGivenPartitionKey(BatchQueryParams params) {
+        List<Map<String, Object>> response = new ArrayList<>();
+        try {
+            if (CollectionUtils.isEmpty(params.getClusteringValues())) {
+                log.debug("getRecordsByIdsWithGivenPartitionKey: Empty clusteringValues for {}.{}",
+                        params.getKeyspaceName(), params.getTableName());
+                return response;
+            }
+            Select select;
+            if (CollectionUtils.isNotEmpty(params.getFields())) {
+                select = QueryBuilder.selectFrom(params.getKeyspaceName(), params.getTableName())
+                        .columns(params.getFields());
+            } else {
+                select = QueryBuilder.selectFrom(params.getKeyspaceName(), params.getTableName()).all();
+            }
+            select = select.whereColumn(params.getPartitionKeyColumn())
+                    .isEqualTo(QueryBuilder.literal(params.getPartitionKeyValue()));
+            List<Term> terms = params.getClusteringValues().stream()
+                    .map(QueryBuilder::literal)
+                    .collect(Collectors.toList());
+            select = select.whereColumn(params.getClusteringColumn()).in(terms);
+            if (Objects.nonNull(params.getLimit())) {
+                select = select.limit(params.getLimit());
+            }
+            String queryString = select.toString();
+            log.debug("getRecordsByIdsWithGivenPartitionKey: Executing query: {}", queryString);
+            SimpleStatement statement = SimpleStatement.newInstance(queryString);
+            ResultSet results = connectionManager.getSession(params.getKeyspaceName()).execute(statement);
+            response = CassandraUtil.createResponse(results);
+            log.debug("getRecordsByIdsWithGivenPartitionKey: Fetched {} records from {}.{}",
+                    response.size(), params.getKeyspaceName(), params.getTableName());
+        } catch (Exception e) {
+            log.error("getRecordsByIdsWithGivenPartitionKey: Error fetching records from {}.{}: {}",
+                    params.getKeyspaceName(), params.getTableName(), e.getMessage(), e);
+        }
+        return response;
+    }
+
 }

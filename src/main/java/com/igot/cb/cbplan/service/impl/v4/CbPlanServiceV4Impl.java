@@ -177,6 +177,7 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
      */
     private void executePlanCreation(ApiRequest request, String userId, String userOrgId, ApiResponse response) {
         try {
+            serializeContentListInRequest(request);
             Map<String, Object> planData = dataTransformService.prepareCbPlanForInsert(request, userId);
             ApiResponse insertResponse = insertPlanToDatabase(planData);
 
@@ -327,6 +328,7 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
      */
     private void executeUpdateFlow(ApiRequest request, String userId, String userOrgId,
                                    List<String> userRoles, ApiResponse response) throws JsonProcessingException {
+        serializeContentListInRequest(request);
         Map<String, Object> updatedCbPlan = (Map<String, Object>) request.getRequest();
         String cbPlanId = (String) updatedCbPlan.get(Constants.ID);
         Map<String, Object> existingCbPlan = fetchExistingPlan(cbPlanId, response);
@@ -1146,5 +1148,70 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
     private boolean isDraftPlan(Map<String, Object> cbPlan) {
         String status = (String) cbPlan.get(Constants.STATUS);
         return Constants.DRAFT.equalsIgnoreCase(status);
+    }
+
+    /**
+     * Serializes contentList in the API request from V4 format to JSON strings.
+     * Modifies the request in place: replaces the contentList with JSON-serialized strings.
+     * V4 format: [{"identifier": "do_123", "mandatory": true}]
+     * Stored format: ['{"identifier":"do_123","mandatory":true}']
+     *
+     * @param request API request containing the CB Plan data
+     */
+    private void serializeContentListInRequest(ApiRequest request) {
+        if (Objects.isNull(request) || Objects.isNull(request.getRequest())) {
+            return;
+        }
+
+        Map<String, Object> requestBody = (Map<String, Object>) request.getRequest();
+        if (!requestBody.containsKey(Constants.CONTENT_LIST)) {
+            return;
+        }
+
+        Object contentListObj = requestBody.get(Constants.CONTENT_LIST);
+        if (Objects.isNull(contentListObj)) {
+            return;
+        }
+
+        if (contentListObj instanceof List) {
+            List<?> rawList = (List<?>) contentListObj;
+            if (CollectionUtils.isEmpty(rawList)) {
+                return;
+            }
+
+            Object firstItem = rawList.get(0);
+            if (firstItem instanceof Map) {
+                List<Map<String, Object>> contentListV4 = (List<Map<String, Object>>) contentListObj;
+                List<String> serialized = serializeContentListToJson(contentListV4);
+                requestBody.put(Constants.CONTENT_LIST, serialized);
+                log.debug("CbPlanServiceV4Impl.serializeContentListInRequest: Serialized {} content items to JSON",
+                        serialized.size());
+            }
+        }
+    }
+
+    /**
+     * Serializes V4 contentList objects to JSON strings for Cassandra storage.
+     * Converts from: [{"identifier": "do_123", "mandatory": true}]
+     * To: ['{"identifier":"do_123","mandatory":true}']
+     *
+     * @param contentList V4 contentList with identifier and mandatory fields
+     * @return list of JSON strings, empty list if input is null/empty
+     */
+    private List<String> serializeContentListToJson(List<Map<String, Object>> contentList) {
+        if (CollectionUtils.isEmpty(contentList)) {
+            return Collections.emptyList();
+        }
+
+        List<String> jsonList = new java.util.ArrayList<>();
+        for (Map<String, Object> item : contentList) {
+            try {
+                String json = mapper.writeValueAsString(item);
+                jsonList.add(json);
+            } catch (JsonProcessingException e) {
+                log.error("CbPlanServiceV4Impl.serializeContentListToJson: Failed to serialize item: {}", item, e);
+            }
+        }
+        return jsonList;
     }
 }

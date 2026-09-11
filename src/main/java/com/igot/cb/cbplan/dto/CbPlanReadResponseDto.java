@@ -92,8 +92,9 @@ public class CbPlanReadResponseDto {
     private JsonNode contextData;
 
     /**
-     * List of content identifiers.
-     * UI team will handle content enrichment.
+     * List of content items.
+     * V4 format: [{"identifier": "do_123", "mandatory": true}, ...]
+     * V3 format: ["do_123", "do_456"] (backward compatible - returned as-is)
      */
-    private List<String> contentList;
+    private Object contentList;
 }

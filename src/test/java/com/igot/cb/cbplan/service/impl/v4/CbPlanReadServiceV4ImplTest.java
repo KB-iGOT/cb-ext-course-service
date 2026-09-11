@@ -133,7 +133,7 @@ class CbPlanReadServiceV4ImplTest {
         CbPlanReadResponseDto dto = readService.buildEnrichedPlanData(plan, PLAN_ID);
 
         assertNotNull(dto.getContentList());
-        assertTrue(dto.getContentList().isEmpty());
+        assertTrue(((List<?>) dto.getContentList()).isEmpty());
     }
 
     @Test
@@ -153,7 +153,7 @@ class CbPlanReadServiceV4ImplTest {
 
         CbPlanReadResponseDto dto = readService.buildEnrichedPlanData(plan, PLAN_ID);
 
-        assertTrue(dto.getContentList().isEmpty());
+        assertTrue(((List<?>) dto.getContentList()).isEmpty());
     }
 
     @Test
@@ -221,6 +221,6 @@ class CbPlanReadServiceV4ImplTest {
         CbPlanReadResponseDto dto = readService.buildEnrichedPlanData(plan, PLAN_ID);
 
         assertNotNull(dto.getContentList());
-        assertTrue(dto.getContentList().isEmpty());
+        assertTrue(((List<?>) dto.getContentList()).isEmpty());
     }
 }

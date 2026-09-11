@@ -63,4 +63,26 @@ public interface CbPlanServiceV4 {
      * @return ApiResponse containing the CB Plan details or error
      */
     ApiResponse readCbPlanAdmin(String cbPlanId, String authUserToken);
+
+    /**
+     * Searches CB Plans. Client controls all filtering via the request body.
+     * Backend constructs SearchCriteria from the generic request.
+     * User org ID is extracted from the authentication token.
+     *
+     * @param request   the API request containing search parameters (query, filters, pagination, etc.)
+     * @param authToken the authentication token
+     * @return ApiResponse containing search results
+     */
+    ApiResponse searchCbPlan(ApiRequest request, String authToken);
+
+    /**
+     * Archives (retires) a CB Plan V4.
+     * Delegates to V3 implementation as the archive logic is version-agnostic.
+     * User org ID and roles are extracted from the authentication token.
+     *
+     * @param request   the API request containing CB Plan ID and optional comment
+     * @param authToken the authentication token
+     * @return ApiResponse containing the archive status
+     */
+    ApiResponse retireCbPlan(ApiRequest request, String authToken);
 }

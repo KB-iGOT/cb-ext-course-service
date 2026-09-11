@@ -163,6 +163,12 @@ public class CbExtServerProperties {
     @Value("${cb.plan.v4.usergroup.batch.size}")
     private int cbPlanV4UserGroupBatchSize;
 
+    @Value("${user.group.index}")
+    private String userGroupIndex;
+
+    @Value("${elastic.required.field.user.group.json.path}")
+    private String elasticUserGroupJsonPath;
+
     public List<String> getCbPlanEnrichedContentFieldsList() {
         return Arrays.asList(cbPlanEnrichedContentFields.split(",", -1));
     }

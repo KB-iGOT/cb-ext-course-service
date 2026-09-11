@@ -782,6 +782,8 @@ public class Constants {
     public static final String NEW_MINISTRY_OR_STATE_IDS = "newMinistryOrStateIds";
     public static final String API_CB_PLAN_V4_ADMIN_READ = "api.cb.plan.v4.admin.read.byId";
     public static final String ERR_DRAFT_PLAN_NOT_ACCESSIBLE = "Draft plans are not accessible via public read API. Use admin read API instead.";
+    public static final String CA_LINKED_ID = "caLinkedId";
+    public static final String CA_LINKED_ID_DB = "calinkedid";
 
     private Constants() {
     }

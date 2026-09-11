@@ -11,6 +11,7 @@ import com.igot.cb.elasticsearch.dto.SearchCriteria;
 import com.igot.cb.elasticsearch.dto.SearchResult;
 import com.igot.cb.elasticsearch.service.EsUtilService;
 import com.igot.cb.usergroups.model.UserGroupEntity;
+import com.igot.cb.util.CbExtServerProperties;
 import com.igot.cb.util.Constants;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -34,6 +35,9 @@ class UserGroupElasticSearchServiceImplTest {
     private UserGroupDataTransformServiceImpl dataTransformService;
 
     @Mock
+    private CbExtServerProperties serverProperties;
+
+    @Mock
     private ObjectMapper objectMapper;
 
     private UserGroupElasticSearchServiceImpl esService;
@@ -41,7 +45,9 @@ class UserGroupElasticSearchServiceImplTest {
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
-        esService = new UserGroupElasticSearchServiceImpl(esUtilService, dataTransformService, objectMapper);
+        lenient().when(serverProperties.getUserGroupIndex()).thenReturn("user_group_info");
+        lenient().when(serverProperties.getElasticUserGroupJsonPath()).thenReturn("/EsRequiredFields/EsRequiredFieldsUserGroup.json");
+        esService = new UserGroupElasticSearchServiceImpl(esUtilService, dataTransformService, serverProperties, objectMapper);
     }
 
     @Test
@@ -57,7 +63,7 @@ class UserGroupElasticSearchServiceImplTest {
 
         verify(dataTransformService, times(1)).entityToResponseMap(entity);
         verify(esUtilService, times(1)).addDocument(
-                eq(Constants.ES_INDEX_USER_GROUP_INFO),
+                eq("user_group_info"),
                 eq(Constants.INDEX_TYPE),
                 eq(TEST_USER_GROUP_ID),
                 eq(document),
@@ -87,7 +93,7 @@ class UserGroupElasticSearchServiceImplTest {
         assertDoesNotThrow(() -> esService.updateUserGroup(TEST_USER_GROUP_ID, updateProps));
 
         verify(esUtilService, times(1)).updateDocument(
-                eq(Constants.ES_INDEX_USER_GROUP_INFO),
+                eq("user_group_info"),
                 eq(Constants.INDEX_TYPE),
                 eq(TEST_USER_GROUP_ID),
                 eq(updateProps),
@@ -125,7 +131,7 @@ class UserGroupElasticSearchServiceImplTest {
         assertTrue(result.containsKey("content"));
         assertTrue(result.containsKey("count"));
         verify(esUtilService, times(1)).searchDocuments(
-                eq(Constants.ES_INDEX_USER_GROUP_INFO),
+                eq("user_group_info"),
                 any(SearchCriteria.class),
                 anyString()
         );
@@ -149,7 +155,7 @@ class UserGroupElasticSearchServiceImplTest {
         esService.searchUserGroups(filters, 20, 1, "usergroupname", "asc");
 
         verify(esUtilService, times(1)).searchDocuments(
-                eq(Constants.ES_INDEX_USER_GROUP_INFO),
+                eq("user_group_info"),
                 any(SearchCriteria.class),
                 anyString()
         );

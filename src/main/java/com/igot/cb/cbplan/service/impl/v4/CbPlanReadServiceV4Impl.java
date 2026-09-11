@@ -144,6 +144,7 @@ public class CbPlanReadServiceV4Impl {
                 .createdByName(StringUtils.EMPTY)
                 .contextData(parseContextDataToJsonNode(cbPlan.get(Constants.CONTEXT_DATA_REQUEST)))
                 .contentList(fields.contentList())
+                .caLinkedId((String) cbPlan.get(Constants.CA_LINKED_ID_DB))
                 .build();
     }
 

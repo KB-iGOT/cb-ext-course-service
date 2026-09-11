@@ -6,7 +6,6 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
 import java.util.List;
-import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -83,11 +82,12 @@ class CbPlanReadResponseDtoTest {
     void testAllArgsConstructor() {
         CbPlanReadResponseDto dto = new CbPlanReadResponseDto("plan1", "name", "2026-27",
                 Instant.EPOCH, false, "Course", "type", Instant.EPOCH, Instant.EPOCH,
-                "Live", "user1", "John", null, List.of());
+                "Live", "user1", "John", null, List.of(), "ca_123");
         assertEquals("plan1", dto.getId());
         assertEquals("2026-27", dto.getPlanYear());
         assertNull(dto.getContextData());
         assertTrue(((List<?>) dto.getContentList()).isEmpty());
+        assertEquals("ca_123", dto.getCaLinkedId());
     }
 
     @Test

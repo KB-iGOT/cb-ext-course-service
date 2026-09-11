@@ -1,6 +1,7 @@
 package com.igot.cb.cbplan.controller;
 
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -109,6 +110,40 @@ public class CbPlanWithAccessSettingsV4 {
             @PathVariable("cbPlanId") String cbPlanId,
             @RequestHeader(Constants.X_AUTH_TOKEN) String token) {
         ApiResponse response = cbPlanServiceV4.readCbPlanAdmin(cbPlanId, token);
+        return new ResponseEntity<>(response, response.getResponseCode());
+    }
+
+    /**
+     * Searches CB Plans. Client controls all filtering via the request body.
+     * Backend constructs SearchCriteria from the generic request.
+     * User org ID is extracted from the authentication token.
+     *
+     * @param request the API request containing search parameters
+     * @param token   the authentication token
+     * @return ResponseEntity containing ApiResponse with search results
+     */
+    @PostMapping("/search")
+    public ResponseEntity<ApiResponse> searchCbPlan(
+            @RequestBody ApiRequest request,
+            @RequestHeader(Constants.X_AUTH_TOKEN) String token) {
+        ApiResponse response = cbPlanServiceV4.searchCbPlan(request, token);
+        return new ResponseEntity<>(response, response.getResponseCode());
+    }
+
+    /**
+     * Archives (retires) a CB Plan V4.
+     * Delegates to V3 implementation as the archive logic is version-agnostic.
+     * User org ID and roles are extracted from the authentication token.
+     *
+     * @param request the API request containing CB Plan ID and optional comment
+     * @param token   the authentication token
+     * @return ResponseEntity containing ApiResponse with archive status
+     */
+    @DeleteMapping("/archive")
+    public ResponseEntity<ApiResponse> retireCbPlan(
+            @RequestBody ApiRequest request,
+            @RequestHeader(Constants.X_AUTH_TOKEN) String token) {
+        ApiResponse response = cbPlanServiceV4.retireCbPlan(request, token);
         return new ResponseEntity<>(response, response.getResponseCode());
     }
 }

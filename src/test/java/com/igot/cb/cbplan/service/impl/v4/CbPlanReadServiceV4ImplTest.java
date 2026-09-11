@@ -223,4 +223,24 @@ class CbPlanReadServiceV4ImplTest {
         assertNotNull(dto.getContentList());
         assertTrue(((List<?>) dto.getContentList()).isEmpty());
     }
+
+    @Test
+    void buildEnrichedPlanData_withCaLinkedId_mapsFieldCorrectly() throws JsonProcessingException {
+        Map<String, Object> plan = basePlan(Constants.LIVE);
+        plan.put(Constants.CA_LINKED_ID_DB, "ca_assessment_123");
+
+        CbPlanReadResponseDto dto = readService.buildEnrichedPlanData(plan, PLAN_ID);
+
+        assertNotNull(dto.getCaLinkedId());
+        assertEquals("ca_assessment_123", dto.getCaLinkedId());
+    }
+
+    @Test
+    void buildEnrichedPlanData_withoutCaLinkedId_returnsNullField() throws JsonProcessingException {
+        Map<String, Object> plan = basePlan(Constants.LIVE);
+
+        CbPlanReadResponseDto dto = readService.buildEnrichedPlanData(plan, PLAN_ID);
+
+        assertNull(dto.getCaLinkedId());
+    }
 }

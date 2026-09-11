@@ -75,7 +75,8 @@ public class CbPlanReadServiceV4Impl {
         CbPlanDto cbPlanDto = mapper.readValue(draftData, CbPlanDto.class);
         Instant endDate = Objects.nonNull(cbPlanDto.getEndDate()) ? cbPlanDto.getEndDate().toInstant() : null;
         boolean isApar = Objects.nonNull(cbPlanDto.getIsApar()) && cbPlanDto.getIsApar();
-        return new PlanFields(cbPlanDto.getName(), endDate, isApar, cbPlanDto.getContentList());
+        Object contentList = extractContentList(cbPlanDto.getContentList());
+        return new PlanFields(cbPlanDto.getName(), endDate, isApar, contentList);
     }
 
     /**
@@ -92,20 +93,27 @@ public class CbPlanReadServiceV4Impl {
     }
 
     /**
-     * Converts the raw contentList column value to a list of content ID strings.
+     * Extracts contentList from Cassandra and returns it as-is for backward compatibility.
+     * V3 format (plain IDs): returns List<String> as-is
+     * V4 format (JSON strings): parses and returns List<Map<String, Object>>
      *
      * @param contentListObj raw contentList value from Cassandra
-     * @return content IDs, empty list when absent or not a list
+     * @return contentList in original format (V3 or V4), empty list when absent
      */
-    private List<String> extractContentList(Object contentListObj) {
-        if (contentListObj instanceof List<?> list) {
-            List<String> contentIds = new ArrayList<>();
-            for (Object item : list) {
-                contentIds.add(Objects.nonNull(item) ? String.valueOf(item) : null);
-            }
-            return contentIds;
+    private Object extractContentList(Object contentListObj) {
+        if (!(contentListObj instanceof List<?> list) || list.isEmpty()) {
+            return new ArrayList<>();
         }
-        return new ArrayList<>();
+
+        Object firstItem = list.get(0);
+        if (Objects.isNull(firstItem)) {
+            return list;
+        }
+
+        if (isV4Format(firstItem)) {
+            return parseV4ContentList(list);
+        }
+        return list;
     }
 
     /**
@@ -156,6 +164,55 @@ public class CbPlanReadServiceV4Impl {
         }
     }
 
-    private record PlanFields(String name, Instant endDate, boolean isApar, List<String> contentList) {
+    private record PlanFields(String name, Instant endDate, boolean isApar, Object contentList) {
+    }
+
+    /**
+     * Checks if a content item is in V4 format (JSON string) by attempting to parse it.
+     *
+     * @param item content item from Cassandra
+     * @return true if item is a valid JSON object string (V4 format), false otherwise (V3 format)
+     */
+    private boolean isV4Format(Object item) {
+        if (Objects.isNull(item)) {
+            return false;
+        }
+
+        String itemStr = String.valueOf(item);
+        if (StringUtils.isBlank(itemStr)) {
+            return false;
+        }
+
+        try {
+            Object parsed = mapper.readValue(itemStr, Object.class);
+            return parsed instanceof Map;
+        } catch (JsonProcessingException e) {
+            return false;
+        }
+    }
+
+    /**
+     * Parses V4 contentList format (JSON strings) to List<Map<String, Object>>.
+     *
+     * @param contentListFromDb list of JSON strings from Cassandra
+     * @return list of V4 content objects with identifier and mandatory fields
+     */
+    private List<Map<String, Object>> parseV4ContentList(List<?> contentListFromDb) {
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Object item : contentListFromDb) {
+            if (Objects.isNull(item)) {
+                continue;
+            }
+
+            String itemStr = String.valueOf(item);
+            try {
+                Map<String, Object> parsed = mapper.readValue(itemStr,
+                    new TypeReference<Map<String, Object>>() {});
+                result.add(parsed);
+            } catch (JsonProcessingException e) {
+                log.warn("CbPlanReadServiceV4.parseV4ContentList: Failed to parse V4 content item, skipping: {}", itemStr, e);
+            }
+        }
+        return result;
     }
 }

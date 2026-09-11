@@ -87,7 +87,7 @@ class CbPlanReadResponseDtoTest {
         assertEquals("plan1", dto.getId());
         assertEquals("2026-27", dto.getPlanYear());
         assertNull(dto.getContextData());
-        assertTrue(dto.getContentList().isEmpty());
+        assertTrue(((List<?>) dto.getContentList()).isEmpty());
     }
 
     @Test

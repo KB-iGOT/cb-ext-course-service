@@ -759,6 +759,28 @@ public class Constants {
     public static final String MSG_FAILED_UPDATE_USER_GROUP = "Failed to update user group";
     public static final String ES_USERGROUP_FIELDS_JSON_PATH = "/EsRequiredFields/EsRequiredFieldsUserGroup.json";
 
+    // CB Plan V4 API Constants (V4 uses V3 tables)
+    public static final String API_CB_PLAN_V4_CREATE = "api.cb.plan.v4.create";
+    public static final String API_CB_PLAN_V4_UPDATE = "api.cb.plan.v4.update";
+    public static final String API_CB_PLAN_V4_PUBLISH = "api.cb.plan.v4.publish";
+    public static final String ERR_CB_PLAN_INVALID_STATE_FOR_PUBLISH = "CbPlan is in invalid state for publish. Status: ";
+    public static final String ERR_USER_GROUP_NOT_FOUND = "User group not found: ";
+    public static final String ERR_USER_GROUP_NOT_ACTIVE = "User group is not active: ";
+    public static final String ERR_USER_GROUP_MIXED_FORMAT = "Cannot mix V3 format (userGroupCriteriaList/userGroupName) and V4 format (userGroupId) in the same request";
+    public static final String ERR_USER_GROUP_NO_FORMAT = "Each userGroup must have either userGroupId (V4) or userGroupCriteriaList (V3)";
+    public static final String ERR_USER_GROUP_ID_REQUIRED = "userGroupId is required when using V4 format";
+    public static final String ERR_USER_GROUP_ID_INVALID_FORMAT = "userGroupId must be a valid UUID";
+    public static final String MANDATORY = "mandatory";
+    public static final String ERR_CONTENTS_REQUIRED = "contents field is required";
+    public static final String ERR_CONTENTS_EMPTY = "contents cannot be empty";
+    public static final String ERR_CONTENT_ID_REQUIRED = "Each content must have an 'identifier' field";
+    public static final String ERR_CONTENT_MANDATORY_REQUIRED = "Each content must have a 'mandatory' field";
+    public static final String ERR_CONTENT_MANDATORY_INVALID = "Content 'mandatory' must be a boolean (true or false)";
+    public static final String ERR_FORMAT_AT_INDEX = "%s at index %d";
+    public static final String API_CB_PLAN_V4_READ = "api.cb.plan.v4.read.byId";
+    public static final String EXISTING_MINISTRY_OR_STATE_IDS = "existingMinistryOrStateIds";
+    public static final String NEW_MINISTRY_OR_STATE_IDS = "newMinistryOrStateIds";
+
     private Constants() {
     }
 }

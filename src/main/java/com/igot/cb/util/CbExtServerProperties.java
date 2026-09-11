@@ -160,6 +160,9 @@ public class CbExtServerProperties {
     @Value("${usergroup.update.authorized.role}")
     private String userGroupUpdateAuthorizedRole;
 
+    @Value("${cb.plan.v4.usergroup.batch.size}")
+    private int cbPlanV4UserGroupBatchSize;
+
     public List<String> getCbPlanEnrichedContentFieldsList() {
         return Arrays.asList(cbPlanEnrichedContentFields.split(",", -1));
     }

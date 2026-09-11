@@ -75,5 +75,13 @@ public interface CassandraOperation {
                                    Map<String, Object> propertyMap, List<String> fields,
                                    Integer pageSize, Integer maxRows, Consumer<Map<String, Object>> rowConsumer);
 
+    /**
+     * Fetches records using an IN clause for a clustering column, with a fixed partition key.
+     * Executes: SELECT * FROM keyspace.table WHERE partitionKey=? AND clusteringColumn IN (?, ?, ...)
+     *
+     * @param params batch query parameters encapsulating all query details
+     * @return list of matching rows
+     */
+    List<Map<String, Object>> getRecordsByIdsWithGivenPartitionKey(BatchQueryParams params);
 
 }

@@ -613,9 +613,9 @@ class CbPlanServiceV4ImplTest {
     }
 
     @Test
-    void readCbPlan_success_delegatesToReadServiceAndReturnsContent() throws JsonProcessingException {
+    void readCbPlan_livePlan_delegatesToReadServiceAndReturnsContent() throws JsonProcessingException {
         Map<String, Object> plan = new HashMap<>();
-        plan.put(Constants.STATUS, Constants.DRAFT);
+        plan.put(Constants.STATUS, Constants.LIVE);
         mockExistingPlan(plan);
         CbPlanReadResponseDto dto = CbPlanReadResponseDto.builder().id(PLAN_ID).build();
         when(readService.buildEnrichedPlanData(plan, PLAN_ID)).thenReturn(dto);
@@ -649,5 +649,32 @@ class CbPlanServiceV4ImplTest {
 
         assertEquals(Constants.FAILED, response.getParams().getStatus());
         assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getResponseCode());
+    }
+
+    @Test
+    void readCbPlan_draftPlan_returnsErrorMessage() {
+        Map<String, Object> plan = new HashMap<>();
+        plan.put(Constants.STATUS, Constants.DRAFT);
+        mockExistingPlan(plan);
+
+        ApiResponse response = cbPlanService.readCbPlan(PLAN_ID, TOKEN);
+
+        assertEquals(HttpStatus.OK, response.getResponseCode());
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(Constants.ERR_DRAFT_PLAN_NOT_ACCESSIBLE, response.getParams().getErr());
+    }
+
+    @Test
+    void readCbPlanAdmin_draftPlan_delegatesToReadServiceAndReturnsContent() throws JsonProcessingException {
+        Map<String, Object> plan = new HashMap<>();
+        plan.put(Constants.STATUS, Constants.DRAFT);
+        mockExistingPlan(plan);
+        CbPlanReadResponseDto dto = CbPlanReadResponseDto.builder().id(PLAN_ID).build();
+        when(readService.buildEnrichedPlanData(plan, PLAN_ID)).thenReturn(dto);
+
+        ApiResponse response = cbPlanService.readCbPlanAdmin(PLAN_ID, TOKEN);
+
+        assertEquals(dto, response.getResult().get(Constants.CONTENT));
+        assertNotEquals(Constants.FAILED, response.getParams().getStatus());
     }
 }

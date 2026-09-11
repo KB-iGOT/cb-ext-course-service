@@ -1049,6 +1049,13 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
         if (MapUtils.isEmpty(cbPlan)) {
             return;
         }
+        if (isDraftPlan(cbPlan)) {
+            log.warn("CbPlanServiceV4Impl.readCbPlan: DRAFT plan not accessible via public read API - cbPlanId={}", cbPlanId);
+            response.getParams().setStatus(Constants.FAILED);
+            response.getParams().setErr(Constants.ERR_DRAFT_PLAN_NOT_ACCESSIBLE);
+            response.setResponseCode(HttpStatus.OK);
+            return;
+        }
         CbPlanReadResponseDto enrichedData = readService.buildEnrichedPlanData(cbPlan, cbPlanId);
         response.getResult().put(Constants.CONTENT, enrichedData);
         log.info("CbPlanServiceV4Impl.readCbPlan: Successfully retrieved CB Plan - cbPlanId={}", cbPlanId);
@@ -1080,5 +1087,64 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
         response.getParams().setStatus(Constants.FAILED);
         response.getParams().setErr(e.getMessage());
         response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    /**
+     * Admin read: Reads a CB Plan by ID regardless of status (DRAFT or LIVE).
+     * Returns contextData exactly as stored, so it works for plans created by
+     * either V3 (inline userGroupName) or V4 (userGroupId reference).
+     *
+     * @param cbPlanId      the CB Plan ID to retrieve
+     * @param authUserToken the authentication token (not currently used)
+     * @return ApiResponse containing the CB Plan details or error
+     */
+    @Override
+    public ApiResponse readCbPlanAdmin(String cbPlanId, String authUserToken) {
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_CB_PLAN_V4_ADMIN_READ);
+        log.info("CbPlanServiceV4Impl.readCbPlanAdmin: Starting - cbPlanId={}", cbPlanId);
+        try {
+            executeReadFlowAdmin(cbPlanId, response);
+        } catch (JsonProcessingException e) {
+            handleReadJsonException(e, cbPlanId, response);
+        } catch (Exception e) {
+            handleReadException(e, cbPlanId, response);
+        }
+        return response;
+    }
+
+    /**
+     * Validates the plan ID, fetches the plan row, and builds the admin read response.
+     * Unlike regular read, this allows reading DRAFT plans (no status check).
+     *
+     * @param cbPlanId CB Plan ID
+     * @param response API response object, populated with the plan data or an error
+     * @throws JsonProcessingException if draftData parsing fails downstream
+     */
+    private void executeReadFlowAdmin(String cbPlanId, ApiResponse response) throws JsonProcessingException {
+        if (StringUtils.isEmpty(cbPlanId)) {
+            log.warn("CbPlanServiceV4Impl.readCbPlanAdmin: Missing cbPlanId");
+            response.getParams().setStatus(Constants.FAILED);
+            response.getParams().setErr(Constants.ERR_CB_PLAN_ID_MISSING);
+            response.setResponseCode(HttpStatus.BAD_REQUEST);
+            return;
+        }
+        Map<String, Object> cbPlan = fetchExistingPlan(cbPlanId, response);
+        if (MapUtils.isEmpty(cbPlan)) {
+            return;
+        }
+        CbPlanReadResponseDto enrichedData = readService.buildEnrichedPlanData(cbPlan, cbPlanId);
+        response.getResult().put(Constants.CONTENT, enrichedData);
+        log.info("CbPlanServiceV4Impl.readCbPlanAdmin: Successfully retrieved CB Plan - cbPlanId={}", cbPlanId);
+    }
+
+    /**
+     * Checks if a CB Plan is in DRAFT status.
+     *
+     * @param cbPlan CB Plan record from Cassandra
+     * @return true if status is DRAFT, false otherwise
+     */
+    private boolean isDraftPlan(Map<String, Object> cbPlan) {
+        String status = (String) cbPlan.get(Constants.STATUS);
+        return Constants.DRAFT.equalsIgnoreCase(status);
     }
 }

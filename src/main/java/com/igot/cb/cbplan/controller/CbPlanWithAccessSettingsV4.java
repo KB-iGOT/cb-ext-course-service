@@ -78,19 +78,37 @@ public class CbPlanWithAccessSettingsV4 {
     }
 
     /**
-     * Reads a CB Plan by ID. Returns contextData exactly as stored, so it
-     * works for plans created by either V3 (inline userGroupName) or V4
-     * (userGroupId reference) without transforming either shape.
+     * Reads a CB Plan by ID. Only allows reading LIVE plans.
+     * Draft plans return 200 OK with error status and message in response body.
+     * Returns contextData exactly as stored, so it works for plans created by
+     * either V3 (inline userGroupName) or V4 (userGroupId reference).
      *
      * @param cbPlanId the CB Plan ID to retrieve
      * @param token    the authentication token
-     * @return ResponseEntity containing ApiResponse with CB Plan details
+     * @return ResponseEntity containing ApiResponse with CB Plan details or error message
      */
     @GetMapping("/read/{cbPlanId}")
     public ResponseEntity<ApiResponse> readCbPlan(
             @PathVariable("cbPlanId") String cbPlanId,
             @RequestHeader(Constants.X_AUTH_TOKEN) String token) {
         ApiResponse response = cbPlanServiceV4.readCbPlan(cbPlanId, token);
+        return new ResponseEntity<>(response, response.getResponseCode());
+    }
+
+    /**
+     * Admin read: Reads a CB Plan by ID regardless of status (DRAFT or LIVE).
+     * Returns contextData exactly as stored, so it works for plans created by
+     * either V3 (inline userGroupName) or V4 (userGroupId reference).
+     *
+     * @param cbPlanId the CB Plan ID to retrieve
+     * @param token    the authentication token
+     * @return ResponseEntity containing ApiResponse with CB Plan details
+     */
+    @GetMapping("/admin/read/{cbPlanId}")
+    public ResponseEntity<ApiResponse> readCbPlanAdmin(
+            @PathVariable("cbPlanId") String cbPlanId,
+            @RequestHeader(Constants.X_AUTH_TOKEN) String token) {
+        ApiResponse response = cbPlanServiceV4.readCbPlanAdmin(cbPlanId, token);
         return new ResponseEntity<>(response, response.getResponseCode());
     }
 }

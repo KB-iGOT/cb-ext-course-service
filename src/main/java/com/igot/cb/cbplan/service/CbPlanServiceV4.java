@@ -42,14 +42,25 @@ public interface CbPlanServiceV4 {
     ApiResponse publishCbPlan(ApiRequest request, String authToken);
 
     /**
-     * Reads a CB Plan by ID. Returns contextData exactly as stored, so it
-     * works for plans created by either V3 (inline userGroupName) or V4
-     * (userGroupId reference) without transforming either shape.
-     * User org ID is extracted from the authentication token.
+     * Reads a CB Plan by ID. Only allows reading LIVE plans.
+     * Draft plans return 200 OK with error status and message in response body.
+     * Returns contextData exactly as stored, so it works for plans created by
+     * either V3 (inline userGroupName) or V4 (userGroupId reference).
+     *
+     * @param cbPlanId      the CB Plan ID to retrieve
+     * @param authUserToken the authentication token
+     * @return ApiResponse containing the CB Plan details or error message for DRAFT plans
+     */
+    ApiResponse readCbPlan(String cbPlanId, String authUserToken);
+
+    /**
+     * Admin read: Reads a CB Plan by ID regardless of status (DRAFT or LIVE).
+     * Returns contextData exactly as stored, so it works for plans created by
+     * either V3 (inline userGroupName) or V4 (userGroupId reference).
      *
      * @param cbPlanId      the CB Plan ID to retrieve
      * @param authUserToken the authentication token
      * @return ApiResponse containing the CB Plan details or error
      */
-    ApiResponse readCbPlan(String cbPlanId, String authUserToken);
+    ApiResponse readCbPlanAdmin(String cbPlanId, String authUserToken);
 }

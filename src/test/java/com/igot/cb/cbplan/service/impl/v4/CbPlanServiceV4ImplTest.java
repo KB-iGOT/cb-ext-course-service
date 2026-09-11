@@ -146,7 +146,7 @@ class CbPlanServiceV4ImplTest {
         assertEquals(HttpStatus.CREATED, response.getResponseCode());
         assertEquals(Constants.CREATED, response.getResult().get(Constants.STATUS));
         assertEquals(PLAN_ID, response.getResult().get(Constants.ID));
-        verify(contentLookupService).updateContentLookup(PLAN_ID, planData);
+        verify(contentLookupService).updateContentLookup(eq(PLAN_ID), anyMap());
         verify(elasticSearchService).indexToElasticSearch(PLAN_ID, planData);
     }
 

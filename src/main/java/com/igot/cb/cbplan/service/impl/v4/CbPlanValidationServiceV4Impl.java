@@ -256,43 +256,23 @@ public class CbPlanValidationServiceV4Impl {
             validations.add(Constants.ERR_CONTENTS_REQUIRED);
             return validations;
         }
-        List<Map<String, Object>> contentList = (List<Map<String, Object>>) contentListObj;
+        List<?> contentList = (List<?>) contentListObj;
         if (CollectionUtils.isEmpty(contentList)) {
             validations.add(Constants.ERR_CONTENTS_EMPTY);
             return validations;
         }
-        for (int i = 0; i < contentList.size(); i++) {
-            Map<String, Object> content = contentList.get(i);
-            validateSingleContent(content, i, validations);
+        // Auto-detect format: V3 (plain strings) or V4 (objects)
+        Object firstItem = contentList.get(0);
+        if (firstItem instanceof String) {
+            // V3 format: ["do_123", "do_456"] - validate as plain IDs
+            return validateV3Format((List<String>) contentList, validations);
+        } else if (firstItem instanceof Map) {
+            // V4 format: [{"identifier":"do_123","mandatory":true}] - validate objects
+            return validateV4Format((List<Map<String, Object>>) contentList, validations);
+        } else {
+            validations.add("Content list items must be either strings (V3) or objects (V4)");
+            return validations;
         }
-        // Normalize regardless of per-item errors: downstream DTO binding must never see the
-        // raw {identifier, mandatory} objects, even when this list is itself invalid (the request is
-        // rejected either way once validations is non-empty).
-        requestMap.put(Constants.CONTENT_LIST, extractContentIds(contentList));
-        return validations;
-    }
-
-    /**
-     * Reduces the {@code {identifier, mandatory}} contentList to a flat list of content IDs before it
-     * reaches CbPlanDto's DTO binding or persistence. cb_plan_v3.contentlist and the shared
-     * content-lookup table both expect a plain list of ID strings, matching V3's shape;
-     * mandatory is a request-time attribute only and is not persisted. Runs even when some
-     * entries are individually invalid, since {@code content} may be malformed here.
-     *
-     * @param contentList contentList entries, possibly containing invalid ones
-     * @return content IDs in the same order, null for entries with no usable identifier
-     */
-    private List<String> extractContentIds(List<Map<String, Object>> contentList) {
-        List<String> contentIds = new ArrayList<>();
-        for (Map<String, Object> content : contentList) {
-            if (MapUtils.isEmpty(content)) {
-                contentIds.add(null);
-            } else {
-                Object identifier = content.get(Constants.IDENTIFIER);
-                contentIds.add(Objects.nonNull(identifier) ? identifier.toString() : null);
-            }
-        }
-        return contentIds;
     }
 
     /**
@@ -320,5 +300,29 @@ public class CbPlanValidationServiceV4Impl {
                 validations.add(String.format(Constants.ERR_FORMAT_AT_INDEX, Constants.ERR_CONTENT_MANDATORY_INVALID, index));
             }
         }
+    }
+
+    /**
+     * Validates V3 format contentList (plain string identifiers).
+     */
+    private List<String> validateV3Format(List<String> contentList, List<String> validations) {
+        for (int i = 0; i < contentList.size(); i++) {
+            String contentId = contentList.get(i);
+            if (StringUtils.isBlank(contentId)) {
+                validations.add(String.format("Content ID at index %d is blank", i));
+            }
+        }
+        return validations;
+    }
+
+    /**
+     * Validates V4 format contentList (objects with identifier and mandatory).
+     */
+    private List<String> validateV4Format(List<Map<String, Object>> contentList, List<String> validations) {
+        for (int i = 0; i < contentList.size(); i++) {
+            Map<String, Object> content = contentList.get(i);
+            validateSingleContent(content, i, validations);
+        }
+        return validations;
     }
 }

@@ -214,7 +214,13 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
     private void processSuccessfulCreation(Map<String, Object> planData, ApiResponse response) {
         String planId = String.valueOf(planData.get(Constants.PLAN_ID));
 
-        contentLookupService.updateContentLookup(planId, planData);
+        // Extract identifiers from V4 JSON strings for content lookup
+        List<String> contentListRaw = (List<String>) planData.get(Constants.CONTENT_LIST);
+        List<String> identifiers = readService.extractIdentifiers(contentListRaw);
+        Map<String, Object> planDataWithIds = new HashMap<>(planData);
+        planDataWithIds.put(Constants.CONTENT_LIST, identifiers);
+
+        contentLookupService.updateContentLookup(planId, planDataWithIds);
         elasticSearchService.indexToElasticSearch(planId, planData);
 
         populateSuccessResponse(response, planId);

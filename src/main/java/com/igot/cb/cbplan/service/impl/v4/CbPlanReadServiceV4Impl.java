@@ -2,6 +2,7 @@ package com.igot.cb.cbplan.service.impl.v4;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -214,5 +215,40 @@ public class CbPlanReadServiceV4Impl {
             }
         }
         return result;
+    }
+
+    /**
+     * Extracts identifiers from V4 serialized contentList for content lookup service.
+     * V4 format: ['{"identifier":"do_123","mandatory":true}'] - extracts "do_123"
+     * V3 format: ['do_123'] - returns as-is
+     *
+     * @param contentListRaw raw contentList from Cassandra (V3 or V4 format)
+     * @return list of content identifiers
+     */
+    public List<String> extractIdentifiers(List<String> contentListRaw) {
+        if (Objects.isNull(contentListRaw) || contentListRaw.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        List<String> identifiers = new ArrayList<>();
+        for (String item : contentListRaw) {
+            if (StringUtils.isBlank(item)) {
+                continue;
+            }
+            try {
+                // Try to parse as V4 JSON format
+                Map<String, Object> parsed = mapper.readValue(item, new TypeReference<Map<String, Object>>() {});
+                Object identifier = parsed.get(Constants.IDENTIFIER);
+                if (Objects.nonNull(identifier)) {
+                    identifiers.add(identifier.toString());
+                } else {
+                    identifiers.add(item);
+                }
+            } catch (JsonProcessingException e) {
+                // Not JSON - V3 plain identifier
+                identifiers.add(item);
+            }
+        }
+        return identifiers;
     }
 }

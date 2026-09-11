@@ -215,7 +215,10 @@ class CbPlanValidationServiceV4ImplTest {
 
         validationService.validateRequest(request, false, ORG_ID, new ApiResponse());
 
-        assertEquals(List.of("do_1"), requestMap.get(Constants.CONTENT_LIST));
+        // contentList remains as objects (not normalized)
+        List<Map<String, Object>> resultList = (List<Map<String, Object>>) requestMap.get(Constants.CONTENT_LIST);
+        assertEquals(1, resultList.size());
+        assertEquals("do_1", resultList.get(0).get(Constants.IDENTIFIER));
         verify(cbPlanRequestValidator).validateMandatoryFields(requestMap);
     }
 
@@ -261,11 +264,14 @@ class CbPlanValidationServiceV4ImplTest {
         List<String> errors = validationService.validateAndNormalizeContentList(requestMap);
 
         assertTrue(errors.isEmpty());
-        assertEquals(List.of("do_1", "do_2"), requestMap.get(Constants.CONTENT_LIST));
+        // contentList remains as objects (not normalized anymore)
+        List<Map<String, Object>> resultList = (List<Map<String, Object>>) requestMap.get(Constants.CONTENT_LIST);
+        assertEquals(2, resultList.size());
+        assertEquals("do_1", resultList.get(0).get(Constants.IDENTIFIER));
     }
 
     @Test
-    void validateAndNormalizeContentList_missingId_returnsErrorButStillNormalizes() {
+    void validateAndNormalizeContentList_missingId_returnsError() {
         Map<String, Object> content = new HashMap<>();
         content.put(Constants.MANDATORY, true);
         Map<String, Object> requestMap = new HashMap<>();
@@ -274,7 +280,9 @@ class CbPlanValidationServiceV4ImplTest {
         List<String> errors = validationService.validateAndNormalizeContentList(requestMap);
 
         assertTrue(errors.stream().anyMatch(e -> e.contains(Constants.ERR_CONTENT_ID_REQUIRED)));
-        assertEquals(Collections.singletonList(null), requestMap.get(Constants.CONTENT_LIST));
+        // contentList remains as objects (not normalized)
+        List<Map<String, Object>> resultList = (List<Map<String, Object>>) requestMap.get(Constants.CONTENT_LIST);
+        assertEquals(1, resultList.size());
     }
 
     @Test

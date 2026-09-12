@@ -3,6 +3,7 @@ package com.igot.cb.cbplan.service.impl.v4;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.cbplan.dto.CbPlanReadResponseDto;
+import com.igot.cb.cbplan.service.CbPlanServiceV3;
 import com.igot.cb.cbplan.service.impl.CbPlanContentLookupServiceV3Impl;
 import com.igot.cb.cbplan.service.impl.CbPlanDataTransformServiceV3Impl;
 import com.igot.cb.cbplan.service.impl.CbPlanElasticSearchServiceV3Impl;
@@ -71,6 +72,12 @@ class CbPlanServiceV4ImplTest {
 
     @Mock
     private CbPlanReadServiceV4Impl readService;
+
+    @Mock
+    private CbPlanSearchServiceV4Impl searchService;
+
+    @Mock
+    private CbPlanServiceV3 cbPlanServiceV3;
 
     @Mock
     private EsUtilService esUtilService;
@@ -676,5 +683,95 @@ class CbPlanServiceV4ImplTest {
 
         assertEquals(dto, response.getResult().get(Constants.CONTENT));
         assertNotEquals(Constants.FAILED, response.getParams().getStatus());
+    }
+
+    @Test
+    void searchCbPlan_withValidRequest_delegatesToSearchService() {
+        ApiRequest request = requestWithPlanId();
+        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(TOKEN), any(ApiResponse.class))).thenReturn(USER_ID);
+        Map<String, String> userProfile = new HashMap<>();
+        userProfile.put(Constants.USER_ROOT_ORG_ID, ORG_ID);
+        userProfile.put(Constants.ROLES, "MDO_LEADER");
+        when(userProfileUtil.buildUserProfile(eq(USER_ID), any(ApiResponse.class))).thenReturn(userProfile);
+
+        ApiResponse searchResponse = new ApiResponse();
+        searchResponse.setResponseCode(HttpStatus.OK);
+        when(searchService.searchCbPlan(request, ORG_ID, TOKEN)).thenReturn(searchResponse);
+
+        ApiResponse response = cbPlanService.searchCbPlan(request, TOKEN);
+
+        assertEquals(HttpStatus.OK, response.getResponseCode());
+        verify(searchService).searchCbPlan(request, ORG_ID, TOKEN);
+    }
+
+    @Test
+    void searchCbPlan_missingOrgId_returnsError() {
+        ApiRequest request = requestWithPlanId();
+        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(TOKEN), any(ApiResponse.class))).thenReturn(USER_ID);
+        Map<String, String> userProfile = new HashMap<>();
+        userProfile.put(Constants.USER_ROOT_ORG_ID, null);
+        when(userProfileUtil.buildUserProfile(eq(USER_ID), any(ApiResponse.class))).thenReturn(userProfile);
+
+        ApiResponse response = cbPlanService.searchCbPlan(request, TOKEN);
+
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(Constants.ERR_USER_ORG_NOT_FOUND, response.getParams().getErr());
+        verify(searchService, never()).searchCbPlan(any(), anyString(), anyString());
+    }
+
+    @Test
+    void retireCbPlan_withValidRequest_delegatesToV3Service() {
+        ApiRequest request = requestWithPlanId();
+        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(TOKEN), any(ApiResponse.class))).thenReturn(USER_ID);
+        Map<String, String> userProfile = new HashMap<>();
+        userProfile.put(Constants.USER_ROOT_ORG_ID, ORG_ID);
+        userProfile.put(Constants.ROLES, "MDO_LEADER,USER");
+        when(userProfileUtil.buildUserProfile(eq(USER_ID), any(ApiResponse.class))).thenReturn(userProfile);
+
+        ApiResponse retireResponse = new ApiResponse();
+        retireResponse.setResponseCode(HttpStatus.OK);
+        when(cbPlanServiceV3.retireCbPlan(request, ORG_ID, TOKEN, List.of("MDO_LEADER", "USER")))
+                .thenReturn(retireResponse);
+
+        ApiResponse response = cbPlanService.retireCbPlan(request, TOKEN);
+
+        assertEquals(HttpStatus.OK, response.getResponseCode());
+        verify(cbPlanServiceV3).retireCbPlan(request, ORG_ID, TOKEN, List.of("MDO_LEADER", "USER"));
+    }
+
+    @Test
+    void retireCbPlan_withNoRoles_delegatesWithEmptyRolesList() {
+        ApiRequest request = requestWithPlanId();
+        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(TOKEN), any(ApiResponse.class))).thenReturn(USER_ID);
+        Map<String, String> userProfile = new HashMap<>();
+        userProfile.put(Constants.USER_ROOT_ORG_ID, ORG_ID);
+        userProfile.put(Constants.ROLES, null);
+        when(userProfileUtil.buildUserProfile(eq(USER_ID), any(ApiResponse.class))).thenReturn(userProfile);
+
+        ApiResponse retireResponse = new ApiResponse();
+        retireResponse.setResponseCode(HttpStatus.OK);
+        when(cbPlanServiceV3.retireCbPlan(request, ORG_ID, TOKEN, List.of()))
+                .thenReturn(retireResponse);
+
+        ApiResponse response = cbPlanService.retireCbPlan(request, TOKEN);
+
+        assertEquals(HttpStatus.OK, response.getResponseCode());
+        verify(cbPlanServiceV3).retireCbPlan(request, ORG_ID, TOKEN, List.of());
+    }
+
+    @Test
+    void retireCbPlan_missingOrgId_returnsError() {
+        ApiRequest request = requestWithPlanId();
+        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(TOKEN), any(ApiResponse.class))).thenReturn(USER_ID);
+        Map<String, String> userProfile = new HashMap<>();
+        userProfile.put(Constants.USER_ROOT_ORG_ID, "");
+        when(userProfileUtil.buildUserProfile(eq(USER_ID), any(ApiResponse.class))).thenReturn(userProfile);
+
+        ApiResponse response = cbPlanService.retireCbPlan(request, TOKEN);
+
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(Constants.ERR_USER_ORG_NOT_FOUND, response.getParams().getErr());
+        assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
+        verify(cbPlanServiceV3, never()).retireCbPlan(any(), anyString(), anyString(), any());
     }
 }

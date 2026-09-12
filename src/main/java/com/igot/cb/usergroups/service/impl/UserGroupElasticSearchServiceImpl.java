@@ -6,6 +6,7 @@ import com.igot.cb.elasticsearch.dto.SearchCriteria;
 import com.igot.cb.elasticsearch.dto.SearchResult;
 import com.igot.cb.elasticsearch.service.EsUtilService;
 import com.igot.cb.usergroups.model.UserGroupEntity;
+import com.igot.cb.util.CbExtServerProperties;
 import com.igot.cb.util.Constants;
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -28,13 +29,16 @@ public class UserGroupElasticSearchServiceImpl {
 
     private final EsUtilService esUtilService;
     private final UserGroupDataTransformServiceImpl dataTransformService;
+    private final CbExtServerProperties serverProperties;
     private final ObjectMapper objectMapper;
 
     public UserGroupElasticSearchServiceImpl(EsUtilService esUtilService,
                                              UserGroupDataTransformServiceImpl dataTransformService,
+                                             CbExtServerProperties serverProperties,
                                              ObjectMapper objectMapper) {
         this.esUtilService = esUtilService;
         this.dataTransformService = dataTransformService;
+        this.serverProperties = serverProperties;
         this.objectMapper = objectMapper;
     }
 
@@ -47,11 +51,11 @@ public class UserGroupElasticSearchServiceImpl {
         try {
             Map<String, Object> document = dataTransformService.entityToResponseMap(entity);
             esUtilService.addDocument(
-                    Constants.ES_INDEX_USER_GROUP_INFO,
+                    serverProperties.getUserGroupIndex(),
                     Constants.INDEX_TYPE,
                     entity.getUserGroupId(),
                     document,
-                    Constants.ES_USERGROUP_FIELDS_JSON_PATH
+                    serverProperties.getElasticUserGroupJsonPath()
             );
             log.info("Indexed user group in ES: usergroupid={}", entity.getUserGroupId());
         } catch (Exception e) {
@@ -68,11 +72,11 @@ public class UserGroupElasticSearchServiceImpl {
     public void updateUserGroup(String userGroupId, Map<String, Object> updateProps) {
         try {
             esUtilService.updateDocument(
-                    Constants.ES_INDEX_USER_GROUP_INFO,
+                    serverProperties.getUserGroupIndex(),
                     Constants.INDEX_TYPE,
                     userGroupId,
                     updateProps,
-                    Constants.ES_USERGROUP_FIELDS_JSON_PATH
+                    serverProperties.getElasticUserGroupJsonPath()
             );
             log.info("Updated user group in ES: usergroupid={}", userGroupId);
         } catch (Exception e) {
@@ -98,9 +102,9 @@ public class UserGroupElasticSearchServiceImpl {
         try {
             SearchCriteria searchCriteria = buildSearchCriteria(filters, pageSize, pageNumber, sortBy, sortOrder);
             SearchResult searchResult = esUtilService.searchDocuments(
-                    Constants.ES_INDEX_USER_GROUP_INFO,
+                    serverProperties.getUserGroupIndex(),
                     searchCriteria,
-                    Constants.ES_USERGROUP_FIELDS_JSON_PATH
+                    serverProperties.getElasticUserGroupJsonPath()
             );
 
             List<Map<String, Object>> content = objectMapper.convertValue(

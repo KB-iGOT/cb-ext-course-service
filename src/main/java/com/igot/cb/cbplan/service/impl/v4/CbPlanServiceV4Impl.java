@@ -9,10 +9,13 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
+import com.igot.cb.cbplan.service.CbPlanServiceV3;
 import com.igot.cb.cbplan.service.impl.CbPlanContentLookupServiceV3Impl;
 import com.igot.cb.cbplan.service.impl.CbPlanDataTransformServiceV3Impl;
 import com.igot.cb.cbplan.service.impl.CbPlanElasticSearchServiceV3Impl;
 import com.igot.cb.cbplan.service.impl.CbPlanOrgLookupServiceV3Impl;
+import com.igot.cb.elasticsearch.dto.SearchCriteria;
+import com.igot.cb.elasticsearch.dto.SearchResult;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -55,6 +58,8 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
     private final CbPlanElasticSearchServiceV3Impl elasticSearchService;
     private final CbPlanOrgLookupServiceV3Impl orgLookupService;
     private final CbPlanReadServiceV4Impl readService;
+    private final CbPlanSearchServiceV4Impl searchService;
+    private final CbPlanServiceV3 cbPlanServiceV3;
     private final EsUtilService esUtilService;
     private final AccessTokenValidator accessTokenValidator;
     private final UserProfileUtil userProfileUtil;
@@ -68,6 +73,8 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
                                CbPlanElasticSearchServiceV3Impl elasticSearchService,
                                CbPlanOrgLookupServiceV3Impl orgLookupService,
                                CbPlanReadServiceV4Impl readService,
+                               CbPlanSearchServiceV4Impl searchService,
+                               CbPlanServiceV3 cbPlanServiceV3,
                                EsUtilService esUtilService,
                                AccessTokenValidator accessTokenValidator,
                                UserProfileUtil userProfileUtil) {
@@ -79,6 +86,8 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
         this.elasticSearchService = elasticSearchService;
         this.orgLookupService = orgLookupService;
         this.readService = readService;
+        this.searchService = searchService;
+        this.cbPlanServiceV3 = cbPlanServiceV3;
         this.esUtilService = esUtilService;
         this.accessTokenValidator = accessTokenValidator;
         this.userProfileUtil = userProfileUtil;
@@ -103,6 +112,8 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
             response.getResult().clear();
 
             log.info("CbPlanServiceV4Impl.createCbPlan: userId={}, orgId={}", userId, userRootOrgId);
+
+            serializeContentListInRequest(request);
 
             if (!validateV4Request(request, isCCA, userRootOrgId, response)) {
                 return response;
@@ -177,7 +188,6 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
      */
     private void executePlanCreation(ApiRequest request, String userId, String userOrgId, ApiResponse response) {
         try {
-            serializeContentListInRequest(request);
             Map<String, Object> planData = dataTransformService.prepareCbPlanForInsert(request, userId);
             ApiResponse insertResponse = insertPlanToDatabase(planData);
 
@@ -422,6 +432,7 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
         }
         String cbPlanId = (String) updatedCbPlan.get(Constants.ID);
         Map<String, Object> updatedRequest = dataTransformService.prepareCbPlanForUpdate(updatedCbPlan, userId);
+        addCaLinkedIdToUpdate(updatedCbPlan, updatedRequest);
         executeDraftPlanUpdate(cbPlanId, updatedRequest, existingCbPlan, response);
     }
 
@@ -501,6 +512,7 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
             if (MapUtils.isEmpty(updatedCbPlan)) {
                 return;
             }
+            addCaLinkedIdToUpdate(incomingCbPlanRequest, updatedCbPlan);
             saveLivePlanAsDraft(updatedCbPlan, existingCbPlan, response);
         } catch (JsonProcessingException e) {
             handleLivePlanUpdateException(e, response);
@@ -1219,5 +1231,103 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
             }
         }
         return jsonList;
+    }
+
+    /**
+     * Adds caLinkedId to the update map if present and non-blank in the incoming request.
+     * This is a V4-specific field that is not handled by the V3 data transform service.
+     * Uses CA_LINKED_ID for API field name and CA_LINKED_ID_DB for Cassandra column name.
+     *
+     * @param incomingRequest incoming update request (from API with "caLinkedId")
+     * @param updatedRequest  prepared update map to modify (for Cassandra with "calinkedid")
+     */
+    private void addCaLinkedIdToUpdate(Map<String, Object> incomingRequest, Map<String, Object> updatedRequest) {
+        if (incomingRequest.containsKey(Constants.CA_LINKED_ID)) {
+            String caLinkedId = (String) incomingRequest.get(Constants.CA_LINKED_ID);
+            if (StringUtils.isNotBlank(caLinkedId)) {
+                updatedRequest.put(Constants.CA_LINKED_ID_DB, caLinkedId);
+            }
+        }
+    }
+
+    /**
+     * Searches CB Plans. Client controls all filtering via the request body.
+     * User org ID is extracted from the authentication token.
+     *
+     * @param request   the API request containing search parameters
+     * @param authToken the authentication token
+     * @return ApiResponse containing search results
+     */
+    @Override
+    public ApiResponse searchCbPlan(ApiRequest request, String authToken) {
+        log.info("CbPlanServiceV4Impl.searchCbPlan: Searching CB Plans");
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_COMMUNITY_SEARCH);
+        try {
+            String userId = accessTokenValidator.fetchUserIdFromAccessToken(authToken, response);
+            if (StringUtils.isEmpty(userId)) {
+                return response;
+            }
+            Map<String, String> userProfile = userProfileUtil.buildUserProfile(userId, response);
+            String userRootOrgId = userProfile.get(Constants.USER_ROOT_ORG_ID);
+            if (StringUtils.isBlank(userRootOrgId)) {
+                log.warn("CbPlanServiceV4Impl.searchCbPlan: Failed to fetch userRootOrgId for userId={}", userId);
+                response.getParams().setStatus(Constants.FAILED);
+                response.getParams().setErr(Constants.ERR_USER_ORG_NOT_FOUND);
+                response.setResponseCode(HttpStatus.BAD_REQUEST);
+                return response;
+            }
+            log.info("CbPlanServiceV4Impl.searchCbPlan: userId={}, orgId={}", userId, userRootOrgId);
+            return searchService.searchCbPlan(request, userRootOrgId, authToken);
+        } catch (Exception e) {
+            log.error("CbPlanServiceV4Impl.searchCbPlan: Failed to search CB Plans", e);
+            response.getParams().setStatus(Constants.FAILED);
+            response.getParams().setErr(e.getMessage());
+            response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
+            return response;
+        }
+    }
+
+    /**
+     * Archives (retires) a CB Plan V4.
+     * Delegates to V3 implementation as the archive logic is version-agnostic.
+     * Both V3 and V4 plans use the same Cassandra table, ES index, and lookup tables.
+     * User org ID and roles are extracted from the authentication token.
+     *
+     * @param request   the API request containing CB Plan ID and optional comment
+     * @param authToken the authentication token
+     * @return ApiResponse containing the archive status
+     */
+    @Override
+    public ApiResponse retireCbPlan(ApiRequest request, String authToken) {
+        log.info("CbPlanServiceV4Impl.retireCbPlan: Archiving CB Plan V4");
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_CB_PLAN_RETIRE);
+        try {
+            String userId = accessTokenValidator.fetchUserIdFromAccessToken(authToken, response);
+            if (StringUtils.isEmpty(userId)) {
+                return response;
+            }
+            Map<String, String> userProfile = userProfileUtil.buildUserProfile(userId, response);
+            String userRootOrgId = userProfile.get(Constants.USER_ROOT_ORG_ID);
+            String userRolesStr = userProfile.get(Constants.ROLES);
+            if (StringUtils.isBlank(userRootOrgId)) {
+                log.warn("CbPlanServiceV4Impl.retireCbPlan: Failed to fetch userRootOrgId for userId={}", userId);
+                response.getParams().setStatus(Constants.FAILED);
+                response.getParams().setErr(Constants.ERR_USER_ORG_NOT_FOUND);
+                response.setResponseCode(HttpStatus.BAD_REQUEST);
+                return response;
+            }
+            List<String> userRoles = StringUtils.isNotBlank(userRolesStr)
+                    ? List.of(userRolesStr.split(","))
+                    : Collections.emptyList();
+            log.info("CbPlanServiceV4Impl.retireCbPlan: Delegating to V3 service - userId={}, orgId={}, roles={}",
+                    userId, userRootOrgId, userRoles);
+            return cbPlanServiceV3.retireCbPlan(request, userRootOrgId, authToken, userRoles);
+        } catch (Exception e) {
+            log.error("CbPlanServiceV4Impl.retireCbPlan: Failed to archive CB Plan", e);
+            response.getParams().setStatus(Constants.FAILED);
+            response.getParams().setErr(e.getMessage());
+            response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
+            return response;
+        }
     }
 }

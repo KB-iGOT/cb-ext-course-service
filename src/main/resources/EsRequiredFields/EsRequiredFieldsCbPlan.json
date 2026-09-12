@@ -114,5 +114,8 @@
         "type": "keyword"
       }
     }
+  },
+  "caLinkedId": {
+    "type": "keyword"
   }
 }

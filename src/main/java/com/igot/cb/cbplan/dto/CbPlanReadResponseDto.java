@@ -97,4 +97,10 @@ public class CbPlanReadResponseDto {
      * V3 format: ["do_123", "do_456"] (backward compatible - returned as-is)
      */
     private Object contentList;
+
+    /**
+     * Competency Assessment (CA) linked identifier.
+     * V4-specific field for linking CB Plan to Competency Assessment.
+     */
+    private String caLinkedId;
 }

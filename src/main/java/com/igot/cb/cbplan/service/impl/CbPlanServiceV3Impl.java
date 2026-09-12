@@ -1106,7 +1106,8 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
                     cbPlan.get(Constants.PLAN_ID));
             return true;
         }
-        boolean hasAccess = accessRuleEvaluator.hasAccess(contextDataObj, userProfile);
+        boolean hasAccess = accessRuleEvaluator.hasAccess(contextDataObj, userProfile,
+                cbPlan.get(Constants.PLAN_ID));
         log.debug("evaluateAccessControl: planId={}, hasAccess={}", cbPlan.get(Constants.PLAN_ID), hasAccess);
         return hasAccess;
     }
@@ -1530,7 +1531,7 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
         }
         if (dataInDraftObject.containsKey(Constants.CONTEXT_DATA_REQUEST)) {
             extractedFields.put(Constants.CONTEXT_DATA_REQUEST,
-                    mapper.writeValueAsString(dataInDraftObject.get(Constants.CONTEXT_DATA_REQUEST)));
+                    serializeContextData(dataInDraftObject.get(Constants.CONTEXT_DATA_REQUEST)));
         }
         if (dataInDraftObject.containsKey(Constants.END_DATE_REQUEST)) {
             extractedFields.put(Constants.END_DATE_REQUEST,
@@ -1603,6 +1604,20 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
         }
         log.info("publishCbPlanByAdmin: Publishing AI CBP plan for targetedOrganisation={}", targetedOrganisation);
         return aiCBPPublishCbPlan(request, targetedOrganisation, authToken, Collections.emptyList(), true);
+    }
+
+
+    /**
+     * Serializes contextData to a JSON string. A value that is already a
+     * serialized JSON string is returned as-is, so it is never double-encoded
+     * (a draft stores contextData as a string; publish/update must not wrap it
+     * into a quoted JSON string literal again).
+     */
+    private String serializeContextData(Object contextData) throws JsonProcessingException {
+        if (contextData instanceof String str) {
+            return str;
+        }
+        return mapper.writeValueAsString(contextData);
     }
 
     /**

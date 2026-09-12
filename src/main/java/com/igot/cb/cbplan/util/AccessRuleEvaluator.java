@@ -42,8 +42,19 @@ public class AccessRuleEvaluator {
      * @return true if access is granted
      */
     public boolean hasAccess(Object contextDataObj, Map<String, String> userProfile) {
+        return hasAccess(contextDataObj, userProfile, null);
+    }
+
+    /**
+     * Same as {@link #hasAccess(Object, Map)}; refId (e.g. the planId) is used only
+     * in log statements so a bad record can be located and fixed in the DB.
+     */
+    public boolean hasAccess(Object contextDataObj, Map<String, String> userProfile, Object refId) {
         if (Objects.isNull(contextDataObj)) {
             return true;
+        }
+        if (contextDataObj instanceof String str && str.trim().startsWith("\"")) {
+            log.warn("contextData is double-encoded (JSON string literal) for planId={} - record should be fixed in DB", refId);
         }
         if (userProfile == null || userProfile.isEmpty()) {
             return false;
@@ -74,7 +85,12 @@ public class AccessRuleEvaluator {
 
     private CompiledRule compileFromJson(String contextDataJson) {
         try {
-            Map<String, Object> contextDataMap = mapper.readValue(contextDataJson,
+            String json = contextDataJson;
+            // Tolerate double-encoded rows: a JSON string literal ("{\"...\"}") is unwrapped first
+            if (json.trim().startsWith("\"")) {
+                json = mapper.readValue(json, String.class);
+            }
+            Map<String, Object> contextDataMap = mapper.readValue(json,
                     new TypeReference<Map<String, Object>>() {
                     });
             return compileFromMap(contextDataMap);

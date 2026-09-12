@@ -89,6 +89,15 @@ class AccessRuleEvaluatorTest {
     }
 
     @Test
+    void doubleEncodedContextDataIsUnwrapped() throws Exception {
+        // rows written by the draft->publish flow contain a JSON string literal instead of an object
+        String raw = rule("group", "Group B", "Group C");
+        String doubleEncoded = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(raw);
+        assertTrue(evaluator.hasAccess(doubleEncoded, Map.of("group", "group b")));
+        assertFalse(evaluator.hasAccess(doubleEncoded, Map.of("group", "group a")));
+    }
+
+    @Test
     void malformedJsonDeniesAccess() {
         assertFalse(evaluator.hasAccess("{not-json", Map.of("designation", "director")));
     }

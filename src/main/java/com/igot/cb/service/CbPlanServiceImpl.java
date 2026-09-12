@@ -945,11 +945,25 @@ public class CbPlanServiceImpl {
                 parseEndDate(incomingRequest.get(Constants.END_DATE_REQUEST)));
         cbPlan.put(Constants.IS_APAR, incomingRequest.get(Constants.IS_APAR));
         cbPlan.put(Constants.CONTEXT_DATA_REQUEST,
-                mapper.writeValueAsString(incomingRequest.get(Constants.CONTEXT_DATA_REQUEST)));
+                serializeContextData(incomingRequest.get(Constants.CONTEXT_DATA_REQUEST)));
         if (incomingRequest.containsKey(Constants.PLAN_TYPE)) {
             cbPlan.put(Constants.PLAN_TYPE, incomingRequest.get(Constants.PLAN_TYPE));
         }
         return cbPlan;
+    }
+
+
+    /**
+     * Serializes contextData to a JSON string. A value that is already a
+     * serialized JSON string is returned as-is, so it is never double-encoded
+     * (a draft stores contextData as a string; publish/update must not wrap it
+     * into a quoted JSON string literal again).
+     */
+    private String serializeContextData(Object contextData) throws JsonProcessingException {
+        if (contextData instanceof String str) {
+            return str;
+        }
+        return mapper.writeValueAsString(contextData);
     }
 
     private Map<String, Object> prepareCbPlanForUpdate(Map<String, Object> incomingRequest,
@@ -968,7 +982,7 @@ public class CbPlanServiceImpl {
                 parseEndDate(incomingRequest.get(Constants.END_DATE_REQUEST)));
         updatedRequest.put(Constants.IS_APAR, incomingRequest.get(Constants.IS_APAR));
         updatedRequest.put(Constants.CONTEXT_DATA_REQUEST,
-                mapper.writeValueAsString(incomingRequest.get(Constants.CONTEXT_DATA_REQUEST)));
+                serializeContextData(incomingRequest.get(Constants.CONTEXT_DATA_REQUEST)));
         if (incomingRequest.containsKey(Constants.PLAN_TYPE)) {
             updatedRequest.put(Constants.PLAN_TYPE, incomingRequest.get(Constants.PLAN_TYPE));
         }
@@ -998,7 +1012,7 @@ public class CbPlanServiceImpl {
         }
         if (dataInDraftObject.containsKey(Constants.CONTEXT_DATA_REQUEST)) {
             updatedRequest.put(Constants.CONTEXT_DATA_REQUEST,
-                    mapper.writeValueAsString(dataInDraftObject.get(Constants.CONTEXT_DATA_REQUEST)));
+                    serializeContextData(dataInDraftObject.get(Constants.CONTEXT_DATA_REQUEST)));
         }
         if (dataInDraftObject.containsKey(Constants.END_DATE_REQUEST)) {
             updatedRequest.put(Constants.END_DATE_REQUEST,

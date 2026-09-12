@@ -25,6 +25,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.igot.cb.cache.IdMapCacheMgr;
 import com.igot.cb.cassandra.CassandraOperation;
@@ -382,14 +383,10 @@ class AccessSettingMigrationServiceImplTest {
         }
 
         @Test
-        void testCreateBitSetForAttribute_invalidValue() {
-                List<Integer> invalidValues = List.of(-1, Integer.MAX_VALUE); // or simulate overflow
+        void testToSortedIdList_sortsAndDeduplicates() {
+                List<Integer> ids = List.of(5, 1145607574, 3, 5, 1);
 
-                try {
-                        migrationService.createBitSetForAttribute(invalidValues);
-                } catch (Exception ex) {
-                        assertTrue(ex instanceof IndexOutOfBoundsException);
-                }
+                assertEquals(List.of(1, 3, 5, 1145607574), migrationService.toSortedIdList(ids));
         }
 
         @Test
@@ -479,22 +476,23 @@ class AccessSettingMigrationServiceImplTest {
                         assertEquals(1, criteriaList.size());
                         for (Map<String, Object> crit : criteriaList) {
                                 assertTrue(crit.containsKey(Constants.CRITERIA_KEY));
-                                assertTrue(crit.containsKey(Constants.CRITERIA_VALUE)); // should be BitSet
+                                assertTrue(crit.containsKey(Constants.CRITERIA_VALUE)); // should be id list
                         }
                 }
         }
 
         @Test
-        void testProcessAccessSettingRule_bitSetThrowsException() throws Exception {
-                String contextId = "do_bitset_error";
+        @SuppressWarnings("unchecked")
+        void testProcessAccessSettingRule_persistsSortedIdList() throws Exception {
+                String contextId = "do_id_list";
 
                 Map<String, Object> criteria = Map.of(
                                 Constants.CRITERIA_KEY, "designation",
-                                Constants.CRITERIA_VALUE, List.of("invalid-designation"));
+                                Constants.CRITERIA_VALUE, List.of("director", "secretary"));
 
                 Map<String, Object> userGroup = Map.of(
-                                Constants.USER_GROUP_ID, "group-error",
-                                Constants.USER_GROUP_NAME, "Error Group",
+                                Constants.USER_GROUP_ID, "group-1",
+                                Constants.USER_GROUP_NAME, "Group 1",
                                 Constants.USER_GROUP_CRITERIA_LIST, List.of(criteria));
 
                 Map<String, Object> accessControl = Map.of(
@@ -506,14 +504,21 @@ class AccessSettingMigrationServiceImplTest {
                 accessSettingMap.put(Constants.CONTEXT_DATA, new ObjectMapper().writeValueAsString(contextData));
 
                 when(contentService.readCourseCategoryForContent(contextId)).thenReturn("Course");
+                // Large ids (above the old 1M BitSet cap) must be persisted, sorted ascending
+                when(idMapCacheMgr.getId(anyList())).thenReturn(Map.of("director", 40556710, "secretary", 330));
 
-                // Force invalid ID value (e.g., -1)
-                when(idMapCacheMgr.getId(anyList())).thenReturn(Map.of("invalid-designation", -1));
+                assertTrue(migrationService.processAccessSettingRule(accessSettingMap));
 
-                // Expect the process method to throw
-                assertThrows(IndexOutOfBoundsException.class, () -> {
-                        migrationService.processAccessSettingRule(accessSettingMap);
-                });
+                Map<String, Object> saved = new ObjectMapper().readValue(
+                                (String) accessSettingMap.get(Constants.CONTEXT_DATA),
+                                new TypeReference<Map<String, Object>>() {
+                                });
+                Map<String, Object> accessControlId = (Map<String, Object>) saved.get(Constants.ACCESS_CONTROL_ID);
+                List<Map<String, Object>> userGroups = (List<Map<String, Object>>) accessControlId
+                                .get(Constants.USER_GROUPS);
+                List<Map<String, Object>> criteriaList = (List<Map<String, Object>>) userGroups.get(0)
+                                .get(Constants.USER_GROUP_CRITERIA_LIST);
+                assertEquals(List.of(330, 40556710), criteriaList.get(0).get(Constants.CRITERIA_VALUE));
         }
 
         @Test

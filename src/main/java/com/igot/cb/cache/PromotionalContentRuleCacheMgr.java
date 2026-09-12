@@ -8,6 +8,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.roaringbitmap.RoaringBitmap;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -18,7 +19,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 /**
  * Cache manager for promotional content access rules.
  * Provides caching using Caffeine cache with configurable TTL.
- * Converts criteria values to BitSets for efficient rule evaluation.
+ * Converts criteria values to RoaringBitmaps for efficient rule evaluation.
  */
 @Component
 @Slf4j
@@ -131,7 +132,7 @@ public class PromotionalContentRuleCacheMgr {
     }
 
     /**
-     * Processes a rule and converts criteria values to BitSets for efficient evaluation.
+     * Processes a rule and converts criteria values to RoaringBitmaps for efficient evaluation.
      */
     private void processAndCacheRule(CachedAccessSettingRule rule) {
         try {
@@ -186,8 +187,8 @@ public class PromotionalContentRuleCacheMgr {
     }
 
     /**
-     * Processes a single criterion by converting its values from list to BitSet.
-     * BitSets enable O(1) membership checking during rule evaluation.
+     * Processes a single criterion by converting its values from list to RoaringBitmap.
+     * RoaringBitmaps enable O(1) membership checking during rule evaluation.
      */
     private void processCriteria(Map<String, Object> criteria, String userGroupId, String userGroupName, String cacheKey) {
         String criteriaKey = (String) criteria.get(Constants.CRITERIA_KEY);
@@ -203,36 +204,43 @@ public class PromotionalContentRuleCacheMgr {
                 .map(val -> parseIntegerValue(val, criteriaKey, cacheKey))
                 .filter(Objects::nonNull)
                 .toList();
-        BitSet bitSet = createBitSetForAttribute(intValues);
-        criteria.put(Constants.CRITERIA_VALUE, bitSet);
+        criteria.put(Constants.CRITERIA_VALUE, createBitmapForAttribute(intValues));
     }
 
     /**
-     * Parses a string to Integer, returns null if parsing fails.
+     * Parses a string to Integer, returns null if parsing fails or value is negative.
      */
     private Integer parseIntegerValue(String val, String criteriaKey, String cacheKey) {
         try {
-            return Integer.parseInt(val);
+            int parsedVal = Integer.parseInt(val);
+            if (parsedVal < 0) {
+                log.error("Negative criteria value '{}' for key {} in rule {} - skipping", val, criteriaKey, cacheKey);
+                return null;
+            }
+            return parsedVal;
         } catch (NumberFormatException e) {
-            log.warn("Non-integer criteria value '{}' for key {} in rule {}", val, criteriaKey, cacheKey);
+            log.error("Non-integer criteria value '{}' for key {} in rule {} - skipping", val, criteriaKey, cacheKey);
             return null;
         }
     }
 
     /**
-     * Creates a BitSet from integer values for efficient O(1) membership checks.
-     * Example: [1, 3, 5] creates BitSet with bits 1, 3, 5 set to true.
+     * Creates a RoaringBitmap from integer values for efficient O(1) membership checks.
+     * Memory grows with the number of values, not with the largest value.
+     * Example: [1, 3, 5] creates a bitmap containing 1, 3, 5.
      */
-    BitSet createBitSetForAttribute(Collection<Integer> attributeValues) {
-        BitSet bitSet = new BitSet();
-        for (Integer part : attributeValues) {
-            try {
-                bitSet.set(part);
-            } catch (Exception ex) {
-                log.error("Failed to set the bit map positing for value: {}", part, ex);
-                throw ex;
-            }
+    RoaringBitmap createBitmapForAttribute(Collection<Integer> attributeValues) {
+        RoaringBitmap bitmap = new RoaringBitmap();
+        if (CollectionUtils.isEmpty(attributeValues)) {
+            return bitmap;
         }
-        return bitSet;
+        for (Integer part : attributeValues) {
+            if (part == null || part < 0) {
+                log.error("Skipping invalid criteria value: {}", part);
+                continue;
+            }
+            bitmap.add(part);
+        }
+        return bitmap;
     }
 }

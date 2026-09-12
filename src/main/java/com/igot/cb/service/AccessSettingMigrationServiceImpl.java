@@ -17,12 +17,9 @@ import org.springframework.util.StringUtils;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.igot.cb.cache.IdMapCacheMgr;
 import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.model.ApiResponse;
-import com.igot.cb.util.BitSetDeserializer;
-import com.igot.cb.util.BitSetSerializer;
 import com.igot.cb.util.Constants;
 
 import lombok.extern.slf4j.Slf4j;
@@ -51,10 +48,6 @@ public class AccessSettingMigrationServiceImpl {
         this.idMapCacheMgr = idMapCacheMgr;
         this.esUtilService = esUtilService;
         this.objectMapper = new ObjectMapper();
-        SimpleModule module = new SimpleModule();
-        module.addSerializer(BitSet.class, new BitSetSerializer());
-        module.addDeserializer(BitSet.class, new BitSetDeserializer());
-        objectMapper.registerModule(module);
     }
 
     public ApiResponse migrateAccessSettingRules() {
@@ -308,7 +301,7 @@ public class AccessSettingMigrationServiceImpl {
                 }
                 Map<String, Object> criteriaIdMap = new HashMap<>();
                 criteriaIdMap.put(Constants.CRITERIA_KEY, criteriaKey);
-                criteriaIdMap.put(Constants.CRITERIA_VALUE, createBitSetForAttribute(idResultMap.values()));
+                criteriaIdMap.put(Constants.CRITERIA_VALUE, toSortedIdList(idResultMap.values()));
 
                 criteriaIdMapList.add(criteriaIdMap);
             }
@@ -319,23 +312,15 @@ public class AccessSettingMigrationServiceImpl {
     }
 
     /**
-     * Creates a BitSet for the given attribute values.
-     * 
-     * @param attributeValues Collection of Integer values representing the
-     *                        attribute.
-     * @return BitSet representing the attribute values.
+     * Returns the attribute ids as a sorted, de-duplicated list. This is the
+     * persisted form of a criteria value in contextData (same JSON shape the
+     * previous BitSet serializer produced).
+     *
+     * @param attributeValues Collection of Integer ids representing the attribute.
+     * @return Sorted distinct list of ids.
      */
-    BitSet createBitSetForAttribute(Collection<Integer> attributeValues) {
-        BitSet bitSet = new BitSet();
-        for (Integer part : attributeValues) {
-            try {
-                bitSet.set(part);
-            } catch (Exception ex) {
-                log.error("Failed to set the bit map positing for value: {}", part, ex);
-                throw ex;
-            }
-        }
-        return bitSet;
+    List<Integer> toSortedIdList(Collection<Integer> attributeValues) {
+        return attributeValues.stream().distinct().sorted().collect(Collectors.toList());
     }
 
     private String buildContextData(String cbPlanId, String orgId, String assignmentType, List<String> assignmentTypeInfo)

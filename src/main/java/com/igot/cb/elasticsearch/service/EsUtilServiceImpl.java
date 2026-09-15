@@ -294,6 +294,8 @@ public class EsUtilServiceImpl implements EsUtilService{
                     return buildMatchQuery((Map<String, Object>) value);
                 case Constants.RANGE:
                     return buildRangeQuery((Map<String, Object>) value);
+                case Constants.EXISTS:
+                    return buildExistsQuery((Map<String, Object>) value);
                 case Constants.MUST_NOT:
                     if (value instanceof List) {
                         BoolQuery.Builder boolQueryBuilder = QueryBuilders.bool();
@@ -386,7 +388,7 @@ public class EsUtilServiceImpl implements EsUtilService{
         log.info("search::buildTermQuery");
         BoolQuery.Builder boolQueryBuilder = QueryBuilders.bool();
         for (Map.Entry<String, Object> entry : termMap.entrySet()) {
-            boolQueryBuilder.must(QueryBuilders.term(t -> t.field(entry.getKey()).value((FieldValue) entry.getValue())));
+            boolQueryBuilder.must(QueryBuilders.term(t -> t.field(entry.getKey()).value(convertToFieldValue(entry.getValue()))));
         }
         return boolQueryBuilder.build()._toQuery();
     }
@@ -548,6 +550,33 @@ public class EsUtilServiceImpl implements EsUtilService{
             log.error("Error reading json schema", e);
             throw new CustomException("error reading json schema", e.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR);
         }
+    }
+
+    private FieldValue convertToFieldValue(Object value) {
+        if (value instanceof FieldValue fieldValue) {
+            return fieldValue;
+        } else if (value instanceof String stringValue) {
+            return FieldValue.of(stringValue);
+        } else if (value instanceof Long longValue) {
+            return FieldValue.of(longValue);
+        } else if (value instanceof Integer intValue) {
+            return FieldValue.of(intValue.longValue());
+        } else if (value instanceof Double doubleValue) {
+            return FieldValue.of(doubleValue);
+        } else if (value instanceof Boolean boolValue) {
+            return FieldValue.of(boolValue);
+        } else {
+            return FieldValue.of(value.toString());
+        }
+    }
+
+    private Query buildExistsQuery(Map<String, Object> existsMap) {
+        log.info("search::buildExistsQuery");
+        if (existsMap.containsKey("field")) {
+            String field = (String) existsMap.get("field");
+            return QueryBuilders.exists().field(field).build()._toQuery();
+        }
+        throw new IllegalArgumentException("exists query requires 'field' parameter");
     }
 }
 

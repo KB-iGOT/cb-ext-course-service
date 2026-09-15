@@ -784,6 +784,7 @@ public class Constants {
     public static final String ERR_DRAFT_PLAN_NOT_ACCESSIBLE = "Draft plans are not accessible via public read API. Use admin read API instead.";
     public static final String CA_LINKED_ID = "caLinkedId";
     public static final String CA_LINKED_ID_DB = "calinkedid";
+    public static final String EXISTS = "exists";
 
     private Constants() {
     }

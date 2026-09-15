@@ -12,7 +12,6 @@ import java.util.Set;
 import com.igot.cb.cbplan.service.CbPlanServiceV3;
 import com.igot.cb.cbplan.service.impl.CbPlanContentLookupServiceV3Impl;
 import com.igot.cb.cbplan.service.impl.CbPlanDataTransformServiceV3Impl;
-import com.igot.cb.cbplan.service.impl.CbPlanElasticSearchServiceV3Impl;
 import com.igot.cb.cbplan.service.impl.CbPlanOrgLookupServiceV3Impl;
 import com.igot.cb.elasticsearch.dto.SearchCriteria;
 import com.igot.cb.elasticsearch.dto.SearchResult;
@@ -55,7 +54,7 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
     private final CbPlanValidationServiceV4Impl validationService;
     private final CbPlanDataTransformServiceV3Impl dataTransformService;
     private final CbPlanContentLookupServiceV3Impl contentLookupService;
-    private final CbPlanElasticSearchServiceV3Impl elasticSearchService;
+    private final CbPlanElasticSearchServiceV4Impl elasticSearchService;
     private final CbPlanOrgLookupServiceV3Impl orgLookupService;
     private final CbPlanReadServiceV4Impl readService;
     private final CbPlanSearchServiceV4Impl searchService;
@@ -70,7 +69,7 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
                                CbPlanValidationServiceV4Impl validationService,
                                CbPlanDataTransformServiceV3Impl dataTransformService,
                                CbPlanContentLookupServiceV3Impl contentLookupService,
-                               CbPlanElasticSearchServiceV3Impl elasticSearchService,
+                               CbPlanElasticSearchServiceV4Impl elasticSearchService,
                                CbPlanOrgLookupServiceV3Impl orgLookupService,
                                CbPlanReadServiceV4Impl readService,
                                CbPlanSearchServiceV4Impl searchService,

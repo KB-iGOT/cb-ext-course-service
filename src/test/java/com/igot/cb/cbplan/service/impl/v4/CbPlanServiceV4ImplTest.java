@@ -6,7 +6,6 @@ import com.igot.cb.cbplan.dto.CbPlanReadResponseDto;
 import com.igot.cb.cbplan.service.CbPlanServiceV3;
 import com.igot.cb.cbplan.service.impl.CbPlanContentLookupServiceV3Impl;
 import com.igot.cb.cbplan.service.impl.CbPlanDataTransformServiceV3Impl;
-import com.igot.cb.cbplan.service.impl.CbPlanElasticSearchServiceV3Impl;
 import com.igot.cb.cbplan.service.impl.CbPlanOrgLookupServiceV3Impl;
 import com.igot.cb.elasticsearch.service.EsUtilService;
 import com.igot.cb.model.ApiRequest;
@@ -65,7 +64,7 @@ class CbPlanServiceV4ImplTest {
     private CbPlanContentLookupServiceV3Impl contentLookupService;
 
     @Mock
-    private CbPlanElasticSearchServiceV3Impl elasticSearchService;
+    private CbPlanElasticSearchServiceV4Impl elasticSearchService;
 
     @Mock
     private CbPlanOrgLookupServiceV3Impl orgLookupService;

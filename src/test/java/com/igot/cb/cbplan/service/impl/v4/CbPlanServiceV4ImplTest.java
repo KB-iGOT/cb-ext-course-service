@@ -31,6 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -772,5 +773,77 @@ class CbPlanServiceV4ImplTest {
         assertEquals(Constants.ERR_USER_ORG_NOT_FOUND, response.getParams().getErr());
         assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
         verify(cbPlanServiceV3, never()).retireCbPlan(any(), anyString(), anyString(), any());
+    }
+
+    @Test
+    void updateCbPlan_livePlanWithOnlyCaLinkedId_performsDirectUpdate() throws JsonProcessingException {
+        mockAuthSuccess();
+        when(validationService.validatePlanIdExists(any(), any())).thenReturn(true);
+        Map<String, Object> requestMap = new HashMap<>();
+        requestMap.put(Constants.ID, PLAN_ID);
+        requestMap.put(Constants.CA_LINKED_ID, "ca-assessment-123");
+        Map<String, Object> existingPlan = new HashMap<>();
+        existingPlan.put(Constants.STATUS, Constants.LIVE);
+        existingPlan.put(Constants.CREATED_BY, USER_ID);
+        mockExistingPlan(existingPlan);
+        when(validationService.isUnauthorizedToUpdate(eq(USER_ID), anyMap(), any(), any())).thenReturn(false);
+        when(validationService.validateUserOrganization(eq(USER_ID), any())).thenReturn(ORG_ID);
+        when(validationService.validateOrgCCA(eq(ORG_ID), any())).thenReturn(false);
+        when(cassandraOperation.updateRecord(eq(Constants.KEYSPACE_SUNBIRD),
+                eq(Constants.TABLE_CB_PLAN_V3), anyMap(), anyMap()))
+                .thenReturn(Map.of(Constants.RESPONSE, Constants.SUCCESS));
+        ApiResponse response = cbPlanService.updateCbPlan(apiRequest(requestMap), TOKEN);
+        assertEquals(Constants.SUCCESS, response.getParams().getStatus());
+        assertEquals(HttpStatus.OK, response.getResponseCode());
+        assertEquals("CB Plan caLinkedId updated successfully", response.getResult().get(Constants.RESPONSE));
+        assertEquals(PLAN_ID, response.getResult().get(Constants.PLAN_ID));
+        assertEquals("ca-assessment-123", response.getResult().get(Constants.CA_LINKED_ID));
+        verify(elasticSearchService).updateElasticSearchForPlan(eq(PLAN_ID), anyMap());
+    }
+
+    @Test
+    void updateCbPlan_draftPlanWithOnlyCaLinkedId_usesNormalDraftFlow() throws JsonProcessingException {
+        mockAuthSuccess();
+        when(validationService.validatePlanIdExists(any(), any())).thenReturn(true);
+        Map<String, Object> requestMap = new HashMap<>();
+        requestMap.put(Constants.ID, PLAN_ID);
+        requestMap.put(Constants.CA_LINKED_ID, "ca-assessment-123");
+        Map<String, Object> existingPlan = new HashMap<>();
+        existingPlan.put(Constants.STATUS, Constants.DRAFT);
+        existingPlan.put(Constants.CREATED_BY, USER_ID);
+        mockExistingPlan(existingPlan);
+        when(validationService.isUnauthorizedToUpdate(eq(USER_ID), anyMap(), any(), any())).thenReturn(false);
+        when(validationService.validateUserOrganization(eq(USER_ID), any())).thenReturn(ORG_ID);
+        when(validationService.validateOrgCCA(eq(ORG_ID), any())).thenReturn(false);
+        when(validationService.validateRequest(any(), anyBoolean(), anyString(), any())).thenReturn(true);
+        when(dataTransformService.prepareCbPlanForUpdate(anyMap(), eq(USER_ID)))
+                .thenReturn(new HashMap<>());
+        when(cassandraOperation.updateRecord(anyString(), anyString(), anyMap(), anyMap()))
+                .thenReturn(Map.of(Constants.RESPONSE, Constants.SUCCESS));
+        ApiResponse response = cbPlanService.updateCbPlan(apiRequest(requestMap), TOKEN);
+        verify(dataTransformService).prepareCbPlanForUpdate(anyMap(), eq(USER_ID));
+    }
+
+    @Test
+    void updateCbPlan_directCaLinkedIdUpdateFails_returns500() throws JsonProcessingException {
+        mockAuthSuccess();
+        when(validationService.validatePlanIdExists(any(), any())).thenReturn(true);
+        Map<String, Object> requestMap = new HashMap<>();
+        requestMap.put(Constants.ID, PLAN_ID);
+        requestMap.put(Constants.CA_LINKED_ID, "ca-assessment-123");
+        Map<String, Object> existingPlan = new HashMap<>();
+        existingPlan.put(Constants.STATUS, Constants.LIVE);
+        existingPlan.put(Constants.CREATED_BY, USER_ID);
+        mockExistingPlan(existingPlan);
+        when(validationService.isUnauthorizedToUpdate(eq(USER_ID), anyMap(), any(), any())).thenReturn(false);
+        when(validationService.validateUserOrganization(eq(USER_ID), any())).thenReturn(ORG_ID);
+        when(validationService.validateOrgCCA(eq(ORG_ID), any())).thenReturn(false);
+        when(cassandraOperation.updateRecord(eq(Constants.KEYSPACE_SUNBIRD),
+                eq(Constants.TABLE_CB_PLAN_V3), anyMap(), anyMap()))
+                .thenReturn(Map.of(Constants.RESPONSE, Constants.FAILED));
+        ApiResponse response = cbPlanService.updateCbPlan(apiRequest(requestMap), TOKEN);
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals("Failed to update caLinkedId", response.getParams().getErr());
+        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getResponseCode());
     }
 }

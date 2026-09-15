@@ -380,6 +380,8 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
     /**
      * Re-validates the caller's org/CCA status, then dispatches to the LIVE or
      * DRAFT update handler based on the plan's current status.
+     * Special case: if a LIVE plan update contains only caLinkedId (plus id),
+     * performs direct update bypassing draftData staging.
      *
      * @param request        the API request containing updated CB Plan details
      * @param userId         caller's user ID
@@ -401,7 +403,16 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
             return;
         }
         String existingStatus = (String) existingCbPlan.get(Constants.STATUS);
+        String cbPlanId = (String) updatedCbPlan.get(Constants.ID);
         log.debug("CbPlanServiceV4Impl.executeAuthorizedUpdate: existingStatus={}", existingStatus);
+        if (Constants.LIVE.equalsIgnoreCase(existingStatus) && isCaLinkedIdOnlyUpdate(updatedCbPlan)) {
+            String caLinkedId = (String) updatedCbPlan.get(Constants.CA_LINKED_ID);
+            if (StringUtils.isNotBlank(caLinkedId)) {
+                log.info("CbPlanServiceV4Impl.executeAuthorizedUpdate: Direct caLinkedId update - cbPlanId={}", cbPlanId);
+                executeDirectCaLinkedIdUpdate(cbPlanId, caLinkedId, userId, response);
+                return;
+            }
+        }
         if (Constants.LIVE.equalsIgnoreCase(existingStatus)) {
             handleUpdateOfLiveCbPlan(response, updatedCbPlan, existingCbPlan, userId, rootOrgId, isCCA);
         } else if (Constants.DRAFT.equalsIgnoreCase(existingStatus)) {
@@ -1327,6 +1338,62 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
             response.getParams().setErr(e.getMessage());
             response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
             return response;
+        }
+    }
+
+    /**
+     * Checks if the update request contains only caLinkedId (plus the mandatory id field).
+     * Used to determine if a LIVE plan update can bypass draftData staging.
+     *
+     * @param updatedCbPlan incoming update request map from API
+     * @return true if only id and caLinkedId are present, false otherwise
+     */
+    private boolean isCaLinkedIdOnlyUpdate(Map<String, Object> updatedCbPlan) {
+        if (MapUtils.isEmpty(updatedCbPlan)) {
+            return false;
+        }
+        Set<String> keysWithoutId = new HashSet<>(updatedCbPlan.keySet());
+        keysWithoutId.remove(Constants.ID);
+        return keysWithoutId.equals(Set.of(Constants.CA_LINKED_ID));
+    }
+
+    /**
+     * Performs direct update of caLinkedId on a LIVE plan, bypassing draftData staging.
+     * Updates Cassandra, Elasticsearch, and returns success response.
+     * This is a shortcut flow for linking CA assessments to existing LIVE plans.
+     *
+     * @param cbPlanId   CB Plan ID
+     * @param caLinkedId CA linked ID to set
+     * @param userId     user performing the update
+     * @param response   API response object, populated with success or error
+     */
+    private void executeDirectCaLinkedIdUpdate(String cbPlanId, String caLinkedId,
+                                               String userId, ApiResponse response) {
+        log.info("CbPlanServiceV4Impl.executeDirectCaLinkedIdUpdate: Updating caLinkedId directly - cbPlanId={}, caLinkedId={}",
+                cbPlanId, caLinkedId);
+        Map<String, Object> updateMap = new HashMap<>();
+        updateMap.put(Constants.CA_LINKED_ID_DB, caLinkedId);
+        updateMap.put(Constants.UPDATED_BY, userId);
+        updateMap.put(Constants.UPDATED_AT, Instant.now());
+        Map<String, Object> resp = cassandraOperation.updateRecord(
+                Constants.KEYSPACE_SUNBIRD,
+                Constants.TABLE_CB_PLAN_V3,
+                updateMap,
+                Map.of(Constants.PLAN_ID, cbPlanId));
+        if (Constants.SUCCESS.equals(resp.get(Constants.RESPONSE))) {
+            elasticSearchService.updateElasticSearchForPlan(cbPlanId, updateMap);
+            response.getParams().setStatus(Constants.SUCCESS);
+            response.setResponseCode(HttpStatus.OK);
+            response.getResult().put(Constants.RESPONSE, "CB Plan caLinkedId updated successfully");
+            response.getResult().put(Constants.PLAN_ID, cbPlanId);
+            response.getResult().put(Constants.CA_LINKED_ID, caLinkedId);
+            log.info("CbPlanServiceV4Impl.executeDirectCaLinkedIdUpdate: Success - cbPlanId={}, caLinkedId={}",
+                    cbPlanId, caLinkedId);
+        } else {
+            response.getParams().setStatus(Constants.FAILED);
+            response.getParams().setErr("Failed to update caLinkedId");
+            response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
+            log.error("CbPlanServiceV4Impl.executeDirectCaLinkedIdUpdate: Failed - cbPlanId={}", cbPlanId);
         }
     }
 }

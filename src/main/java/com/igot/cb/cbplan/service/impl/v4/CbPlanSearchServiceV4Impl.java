@@ -18,6 +18,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
+
 /**
  * Service for CB Plan V4 search operations.
  * Handles search query construction and execution.
@@ -61,7 +62,8 @@ public class CbPlanSearchServiceV4Impl {
                 return response;
             }
             SearchCriteria searchCriteria = mapper.convertValue(request.getRequest(), SearchCriteria.class);
-            SearchResult searchResult = esUtilService.searchDocuments(
+            addOrgIdListFilter(searchCriteria, userOrgId);
+            SearchResult searchResult = esUtilService.searchDocumentsV2(
                     serverProperties.getCpPlanIndex(),
                     searchCriteria,
                     serverProperties.getElasticCbPlanJsonPath());
@@ -78,5 +80,29 @@ public class CbPlanSearchServiceV4Impl {
             response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
         }
         return response;
+    }
+
+    /**
+     * Adds orgIdList filter directly to Elasticsearch query when applyOrgIdFilter flag is true.
+     * This approach is more efficient than post-processing as ES filters at query time using indexed fields.
+     * Only transfers matching records over the network and provides accurate totalCount from ES.
+     *
+     * @param searchCriteria the search criteria to modify
+     * @param userOrgId      the user's organization ID to filter by
+     */
+    private void addOrgIdListFilter(SearchCriteria searchCriteria, String userOrgId) {
+        if (!searchCriteria.isApplyOrgIdFilter()) {
+            log.info("CbPlanSearchServiceV4Impl.addOrgIdListFilter: Skipping orgIdList filter (applyOrgIdFilter=false)");
+            return;
+        }
+        if (StringUtils.isBlank(userOrgId)) {
+            log.warn("CbPlanSearchServiceV4Impl.addOrgIdListFilter: userOrgId is blank, skipping filter");
+            return;
+        }
+        if (searchCriteria.getFilter() == null) {
+            searchCriteria.setFilter(new java.util.HashMap<>());
+        }
+        searchCriteria.getFilter().put(Constants.ORG_ID_LIST, userOrgId);
+        log.info("CbPlanSearchServiceV4Impl.addOrgIdListFilter: Added orgIdList filter for orgId: {}", userOrgId);
     }
 }

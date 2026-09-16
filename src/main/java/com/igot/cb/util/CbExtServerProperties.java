@@ -157,6 +157,18 @@ public class CbExtServerProperties {
     @Value("${cassandra.query.limit.user.extended.profile}")
     private int cassandraQueryLimitUserExtendedProfile;
 
+    @Value("${usergroup.update.authorized.role}")
+    private String userGroupUpdateAuthorizedRole;
+
+    @Value("${cb.plan.v4.usergroup.batch.size}")
+    private int cbPlanV4UserGroupBatchSize;
+
+    @Value("${user.group.index}")
+    private String userGroupIndex;
+
+    @Value("${elastic.required.field.user.group.json.path}")
+    private String elasticUserGroupJsonPath;
+
     public List<String> getCbPlanEnrichedContentFieldsList() {
         return Arrays.asList(cbPlanEnrichedContentFields.split(",", -1));
     }

@@ -19,4 +19,6 @@ public interface EsUtilService {
     Map<String, Object> getDocumentById(String esIndexName, String id);
 
     Map<String, Object> getDocumentById(ElasticsearchClient client, String esIndexName, String id);
+
+    SearchResult searchDocumentsV2(String esIndexName, SearchCriteria searchCriteria, String jsonFilePath);
 }

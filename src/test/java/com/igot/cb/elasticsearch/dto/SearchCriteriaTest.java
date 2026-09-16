@@ -9,7 +9,7 @@ class SearchCriteriaTest {
     @Test
     void testDefaultConstructor() {
         SearchCriteria criteria = new SearchCriteria();
-        
+
         assertNull(criteria.getFilter());
         assertNull(criteria.getRequestedFields());
         assertEquals(0, criteria.getPageNumber());
@@ -20,22 +20,23 @@ class SearchCriteriaTest {
         assertNull(criteria.getFacets());
         assertNull(criteria.getQuery());
         assertFalse(criteria.isOverrideCache());
+        assertFalse(criteria.isApplyOrgIdFilter());
     }
 
     @Test
     void testAllArgsConstructor() {
         HashMap<String, Object> filter = new HashMap<>();
         filter.put("status", "active");
-        
+
         List<String> requestedFields = Arrays.asList("id", "name");
         List<String> facets = Arrays.asList("category", "type");
         Map<String, Object> query = new HashMap<>();
         query.put("match", "test");
-        
+
         SearchCriteria criteria = new SearchCriteria(
-            filter, requestedFields, 1, 10, "name", "asc", "test", facets, query, true
+            filter, requestedFields, 1, 10, "name", "asc", "test", facets, query, true, true
         );
-        
+
         assertEquals(filter, criteria.getFilter());
         assertEquals(requestedFields, criteria.getRequestedFields());
         assertEquals(1, criteria.getPageNumber());
@@ -46,19 +47,20 @@ class SearchCriteriaTest {
         assertEquals(facets, criteria.getFacets());
         assertEquals(query, criteria.getQuery());
         assertTrue(criteria.isOverrideCache());
+        assertTrue(criteria.isApplyOrgIdFilter());
     }
 
     @Test
     void testSettersAndGetters() {
         SearchCriteria criteria = new SearchCriteria();
-        
+
         HashMap<String, Object> filter = new HashMap<>();
         filter.put("category", "course");
-        
+
         List<String> fields = Arrays.asList("title", "description");
         List<String> facets = Arrays.asList("level");
         Map<String, Object> query = new HashMap<>();
-        
+
         criteria.setFilter(filter);
         criteria.setRequestedFields(fields);
         criteria.setPageNumber(2);
@@ -69,7 +71,8 @@ class SearchCriteriaTest {
         criteria.setFacets(facets);
         criteria.setQuery(query);
         criteria.setOverrideCache(true);
-        
+        criteria.setApplyOrgIdFilter(true);
+
         assertEquals(filter, criteria.getFilter());
         assertEquals(fields, criteria.getRequestedFields());
         assertEquals(2, criteria.getPageNumber());
@@ -80,5 +83,6 @@ class SearchCriteriaTest {
         assertEquals(facets, criteria.getFacets());
         assertEquals(query, criteria.getQuery());
         assertTrue(criteria.isOverrideCache());
+        assertTrue(criteria.isApplyOrgIdFilter());
     }
 }

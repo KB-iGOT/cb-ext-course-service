@@ -62,6 +62,7 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
     private final EsUtilService esUtilService;
     private final AccessTokenValidator accessTokenValidator;
     private final UserProfileUtil userProfileUtil;
+    private final CbPlanDictionaryServiceV4Impl dictionaryService;
     private final ObjectMapper mapper;
 
     public CbPlanServiceV4Impl(CassandraOperation cassandraOperation,
@@ -76,7 +77,8 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
                                CbPlanServiceV3 cbPlanServiceV3,
                                EsUtilService esUtilService,
                                AccessTokenValidator accessTokenValidator,
-                               UserProfileUtil userProfileUtil) {
+                               UserProfileUtil userProfileUtil,
+                               CbPlanDictionaryServiceV4Impl dictionaryService) {
         this.cassandraOperation = cassandraOperation;
         this.serverProperties = serverProperties;
         this.validationService = validationService;
@@ -90,6 +92,7 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
         this.esUtilService = esUtilService;
         this.accessTokenValidator = accessTokenValidator;
         this.userProfileUtil = userProfileUtil;
+        this.dictionaryService = dictionaryService;
         this.mapper = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
@@ -1395,5 +1398,13 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
             response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
             log.error("CbPlanServiceV4Impl.executeDirectCaLinkedIdUpdate: Failed - cbPlanId={}", cbPlanId);
         }
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public ApiResponse getCBPlanDictionaryForUser(ApiRequest request, String authToken) {
+        return dictionaryService.getCBPlanDictionaryForUser(request, authToken);
     }
 }

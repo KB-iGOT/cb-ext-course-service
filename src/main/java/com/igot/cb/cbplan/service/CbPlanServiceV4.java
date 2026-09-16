@@ -85,4 +85,15 @@ public interface CbPlanServiceV4 {
      * @return ApiResponse containing the archive status
      */
     ApiResponse retireCbPlan(ApiRequest request, String authToken);
+
+    /**
+     * Returns the user's active CB Plans grouped by APAR/non-APAR for the given plan year.
+     * Each plan entry carries name, contentList, comprehensiveAssessment, org details, and endDate.
+     * V4 plans are access-controlled by resolving userGroupId references against the user's profile.
+     *
+     * @param request   the API request containing planYear
+     * @param authToken the authentication token
+     * @return ApiResponse with aparPlanList and nonAparPlanList grouped by planYear
+     */
+    ApiResponse getCBPlanDictionaryForUser(ApiRequest request, String authToken);
 }

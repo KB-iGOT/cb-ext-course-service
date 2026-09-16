@@ -785,6 +785,15 @@ public class Constants {
     public static final String CA_LINKED_ID = "caLinkedId";
     public static final String CA_LINKED_ID_DB = "calinkedid";
     public static final String EXISTS = "exists";
+    public static final String API_CBPLAN_V4_GET_USER_DICTIONARY = "api.cbplan.v4.user.dictionary";
+    public static final String CB_PLAN_V4_REDIS_KEY_PREFIX = "cbplan:v4:userlookup:";
+    public static final String RESPONSE_KEY_APAR_PLAN_LIST = "aparPlanList";
+    public static final String RESPONSE_KEY_NON_APAR_PLAN_LIST = "nonAparPlanList";
+    public static final String RESPONSE_KEY_APAR_PLAN_COUNT = "aparPlanCount";
+    public static final String RESPONSE_KEY_NON_APAR_PLAN_COUNT = "nonAparPlanCount";
+    public static final String COMPREHENSIVE_ASSESSMENT = "comprehensiveAssessment";
+    public static final String CREATED_BY_ORG_ID = "createdByOrgId";
+    public static final String CREATED_BY_ORG_NAME = "createdByOrgName";
 
     private Constants() {
     }

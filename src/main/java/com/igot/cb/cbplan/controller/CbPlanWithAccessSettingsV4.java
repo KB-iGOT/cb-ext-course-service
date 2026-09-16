@@ -146,4 +146,21 @@ public class CbPlanWithAccessSettingsV4 {
         ApiResponse response = cbPlanServiceV4.retireCbPlan(request, token);
         return new ResponseEntity<>(response, response.getResponseCode());
     }
+
+    /**
+     * Returns active CB Plans grouped by APAR/non-APAR for the authenticated user.
+     * Each plan entry includes name, contentList, comprehensiveAssessment, and org details.
+     * Access control is enforced via V4 userGroupId references resolved against the user's profile.
+     *
+     * @param request the API request containing planYear
+     * @param token   the authentication token
+     * @return ResponseEntity containing ApiResponse with plan dictionary grouped by planYear
+     */
+    @PostMapping("/user/dictionary")
+    public ResponseEntity<ApiResponse> getCBPlanDictionary(
+            @RequestBody ApiRequest request,
+            @RequestHeader(Constants.X_AUTH_TOKEN) String token) {
+        ApiResponse response = cbPlanServiceV4.getCBPlanDictionaryForUser(request, token);
+        return new ResponseEntity<>(response, response.getResponseCode());
+    }
 }

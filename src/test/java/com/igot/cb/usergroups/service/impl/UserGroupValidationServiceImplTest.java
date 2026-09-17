@@ -219,6 +219,204 @@ class UserGroupValidationServiceImplTest {
 
     // Helper methods
 
+    @Test
+    void validateCreateRequest_nonCCA_withoutRootOrgId_shouldFail() {
+        List<CriteriaItem> criteriaWithoutRootOrgId = List.of(
+                new CriteriaItem("department", List.of("HR"))
+        );
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_USER_GROUP_CREATE);
+
+        boolean result = validationService.validateCreateRequest(
+                TEST_USER_GROUP_NAME, criteriaWithoutRootOrgId, TEST_ORG_ID, "USER", response);
+
+        assertFalse(result);
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(Constants.MSG_ROOTORGID_REQUIRED_NON_CCA, response.getParams().getErr());
+        assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
+    }
+
+    @Test
+    void validateCreateRequest_nonCCA_withMultipleRootOrgIds_shouldFail() {
+        List<CriteriaItem> criteriaWithMultipleRootOrgIds = List.of(
+                new CriteriaItem("rootOrgId", List.of(TEST_ORG_ID, "different_org"))
+        );
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_USER_GROUP_CREATE);
+
+        boolean result = validationService.validateCreateRequest(
+                TEST_USER_GROUP_NAME, criteriaWithMultipleRootOrgIds, TEST_ORG_ID, "USER", response);
+
+        assertFalse(result);
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(Constants.MSG_MULTIPLE_ROOTORGID_NON_CCA, response.getParams().getErr());
+        assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
+    }
+
+    @Test
+    void validateCreateRequest_nonCCA_rootOrgIdMismatch_nonAdmin_shouldFail() {
+        List<CriteriaItem> criteriaWithDifferentOrg = List.of(
+                new CriteriaItem("rootOrgId", List.of("different_org_id"))
+        );
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_USER_GROUP_CREATE);
+
+        boolean result = validationService.validateCreateRequest(
+                TEST_USER_GROUP_NAME, criteriaWithDifferentOrg, TEST_ORG_ID, "USER", response);
+
+        assertFalse(result);
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(Constants.MSG_ROOTORGID_MISMATCH, response.getParams().getErr());
+        assertEquals(HttpStatus.FORBIDDEN, response.getResponseCode());
+    }
+
+    @Test
+    void validateCreateRequest_nonCCA_rootOrgIdMismatch_admin_shouldPass() {
+        List<CriteriaItem> criteriaWithDifferentOrg = List.of(
+                new CriteriaItem("rootOrgId", List.of("different_org_id"))
+        );
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_USER_GROUP_CREATE);
+
+        boolean result = validationService.validateCreateRequest(
+                TEST_USER_GROUP_NAME, criteriaWithDifferentOrg, TEST_ORG_ID, TEST_USER_ROLES, response);
+
+        assertTrue(result);
+    }
+
+    @Test
+    void validateCreateRequest_nonCCA_rootOrgIdMatches_shouldPass() {
+        List<CriteriaItem> criteria = List.of(
+                new CriteriaItem("rootOrgId", List.of(TEST_ORG_ID)),
+                new CriteriaItem("department", List.of("HR"))
+        );
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_USER_GROUP_CREATE);
+
+        boolean result = validationService.validateCreateRequest(
+                TEST_USER_GROUP_NAME, criteria, TEST_ORG_ID, "USER", response);
+
+        assertTrue(result);
+    }
+
+    @Test
+    void validateCreateRequest_CCA_withoutRootOrgId_shouldPass() {
+        Map<String, Object> ccaOrgMap = new HashMap<>();
+        ccaOrgMap.put(Constants.IS_CCA, true);
+        when(userAndOrgService.readOrgFromDB(eq(TEST_ORG_ID), any())).thenReturn(ccaOrgMap);
+
+        List<CriteriaItem> criteriaWithoutRootOrgId = List.of(
+                new CriteriaItem("department", List.of("HR"))
+        );
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_USER_GROUP_CREATE);
+
+        boolean result = validationService.validateCreateRequest(
+                TEST_USER_GROUP_NAME, criteriaWithoutRootOrgId, TEST_ORG_ID, "USER", response);
+
+        assertTrue(result);
+    }
+
+    @Test
+    void validateCreateRequest_CCA_withSingleRootOrgId_shouldPass() {
+        Map<String, Object> ccaOrgMap = new HashMap<>();
+        ccaOrgMap.put(Constants.IS_CCA, true);
+        when(userAndOrgService.readOrgFromDB(eq(TEST_ORG_ID), any())).thenReturn(ccaOrgMap);
+
+        List<CriteriaItem> criteria = List.of(
+                new CriteriaItem("rootOrgId", List.of(TEST_ORG_ID))
+        );
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_USER_GROUP_CREATE);
+
+        boolean result = validationService.validateCreateRequest(
+                TEST_USER_GROUP_NAME, criteria, TEST_ORG_ID, "USER", response);
+
+        assertTrue(result);
+    }
+
+    @Test
+    void validateCreateRequest_CCA_withMultipleRootOrgIds_shouldPass() {
+        Map<String, Object> ccaOrgMap = new HashMap<>();
+        ccaOrgMap.put(Constants.IS_CCA, true);
+        when(userAndOrgService.readOrgFromDB(eq(TEST_ORG_ID), any())).thenReturn(ccaOrgMap);
+
+        List<CriteriaItem> criteriaWithMultipleOrgs = List.of(
+                new CriteriaItem("rootOrgId", List.of(TEST_ORG_ID, "other_org_1", "other_org_2"))
+        );
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_USER_GROUP_CREATE);
+
+        boolean result = validationService.validateCreateRequest(
+                TEST_USER_GROUP_NAME, criteriaWithMultipleOrgs, TEST_ORG_ID, "USER", response);
+
+        assertTrue(result);
+    }
+
+    @Test
+    void validateCreateRequest_orgNotFoundInDB_shouldFail() {
+        when(userAndOrgService.readOrgFromDB(eq(TEST_ORG_ID), any())).thenReturn(null);
+
+        List<CriteriaItem> criteria = createValidCriteriaList();
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_USER_GROUP_CREATE);
+
+        boolean result = validationService.validateCreateRequest(
+                TEST_USER_GROUP_NAME, criteria, TEST_ORG_ID, TEST_USER_ROLES, response);
+
+        assertFalse(result);
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertTrue(response.getParams().getErr().contains(Constants.ERR_FAILED_TO_READ_ORG_DETAILS));
+        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getResponseCode());
+    }
+
+    @Test
+    void validateCreateRequest_withTargetedOrganisation_shouldPass() {
+        List<CriteriaItem> criteriaWithTargetedOrg = List.of(
+                new CriteriaItem("targetedOrganisation", List.of(TEST_ORG_ID)),
+                new CriteriaItem("department", List.of("HR"))
+        );
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_USER_GROUP_CREATE);
+
+        boolean result = validationService.validateCreateRequest(
+                TEST_USER_GROUP_NAME, criteriaWithTargetedOrg, TEST_ORG_ID, "USER", response);
+
+        assertTrue(result);
+    }
+
+    @Test
+    void validateCreateRequest_caseInsensitiveRootOrgId_shouldPass() {
+        List<CriteriaItem> criteriaWithMixedCase = List.of(
+                new CriteriaItem("ROOTORGID", List.of(TEST_ORG_ID)),
+                new CriteriaItem("department", List.of("HR"))
+        );
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_USER_GROUP_CREATE);
+
+        boolean result = validationService.validateCreateRequest(
+                TEST_USER_GROUP_NAME, criteriaWithMixedCase, TEST_ORG_ID, "USER", response);
+
+        assertTrue(result);
+    }
+
+    @Test
+    void validateCreateRequest_userWithNoRoles_nonAdminBehavior() {
+        List<CriteriaItem> criteria = List.of(
+                new CriteriaItem("rootOrgId", List.of(TEST_ORG_ID))
+        );
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_USER_GROUP_CREATE);
+
+        boolean result = validationService.validateCreateRequest(
+                TEST_USER_GROUP_NAME, criteria, TEST_ORG_ID, null, response);
+
+        assertTrue(result);
+    }
+
+    @Test
+    void validateCreateRequest_userWithBlankRoles_nonAdminBehavior() {
+        List<CriteriaItem> criteriaWithDifferentOrg = List.of(
+                new CriteriaItem("rootOrgId", List.of("different_org"))
+        );
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_USER_GROUP_CREATE);
+
+        boolean result = validationService.validateCreateRequest(
+                TEST_USER_GROUP_NAME, criteriaWithDifferentOrg, TEST_ORG_ID, "   ", response);
+
+        assertFalse(result);
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(Constants.MSG_ROOTORGID_MISMATCH, response.getParams().getErr());
+    }
+
     private List<CriteriaItem> createValidCriteriaList() {
         return List.of(
                 new CriteriaItem("rootOrgId", List.of(TEST_ORG_ID)),

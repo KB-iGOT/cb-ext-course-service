@@ -562,7 +562,7 @@ public class CbPlanDictionaryServiceV4Impl {
     /**
      * Parses the contentList stored in Cassandra.
      * V4 format: JSON strings → List<Map<String, Object>> with identifier and mandatory.
-     * V3 format: plain IDs → List<Map<String, Object>> with only identifier.
+     * V3 format: plain IDs → List<Map<String, Object>> with identifier and mandatory=false.
      */
     private List<Map<String, Object>> parseContentList(Object contentListObj) {
         if (!(contentListObj instanceof List<?> rawList) || rawList.isEmpty()) {
@@ -577,9 +577,19 @@ public class CbPlanDictionaryServiceV4Impl {
             try {
                 Map<String, Object> parsed = mapper.readValue(itemStr, new TypeReference<Map<String, Object>>() {
                 });
-                result.add(parsed);
+                if (parsed.containsKey(Constants.IDENTIFIER)) {
+                    result.add(parsed);
+                } else {
+                    Map<String, Object> contentItem = new HashMap<>();
+                    contentItem.put(Constants.IDENTIFIER, itemStr);
+                    contentItem.put(Constants.MANDATORY, false);
+                    result.add(contentItem);
+                }
             } catch (JsonProcessingException e) {
-                result.add(Map.of(Constants.IDENTIFIER, itemStr));
+                Map<String, Object> contentItem = new HashMap<>();
+                contentItem.put(Constants.IDENTIFIER, itemStr);
+                contentItem.put(Constants.MANDATORY, false);
+                result.add(contentItem);
             }
         }
         return result;

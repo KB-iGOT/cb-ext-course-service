@@ -69,6 +69,7 @@ public class UserGroupServiceImpl implements UserGroupService {
 
             Map<String, String> userProfile = userProfileUtil.buildUserProfile(userId, response);
             String userRootOrgId = userProfile.get(Constants.USER_ROOT_ORG_ID);
+            String userRoles = userProfile.get(Constants.ROLES);
             if (StringUtils.isBlank(userRootOrgId)) {
                 log.warn("createUserGroup: Failed to fetch userRootOrgId for userId={}", userId);
                 response.getParams().setStatus(Constants.FAILED);
@@ -87,7 +88,7 @@ public class UserGroupServiceImpl implements UserGroupService {
             String userGroupName = userGroupRequest.userGroupName();
             List<CriteriaItem> criteria = userGroupRequest.criteria();
 
-            if (!validationService.validateCreateRequest(userGroupName, criteria, response)) {
+            if (!validationService.validateCreateRequest(userGroupName, criteria, userRootOrgId, userRoles, response)) {
                 return response;
             }
 

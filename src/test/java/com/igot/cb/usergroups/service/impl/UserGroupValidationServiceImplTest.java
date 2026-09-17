@@ -6,6 +6,7 @@ import static org.mockito.Mockito.*;
 import java.util.*;
 
 import com.igot.cb.model.ApiResponse;
+import com.igot.cb.service.UserAndOrgServiceImpl;
 import com.igot.cb.util.ProjectUtil;
 import com.igot.cb.usergroups.model.CriteriaItem;
 import com.igot.cb.util.CbExtServerProperties;
@@ -26,16 +27,26 @@ class UserGroupValidationServiceImplTest {
     private static final String TEST_USER_GROUP_ID = "ug_789";
     private static final String TEST_USER_GROUP_NAME = "Test Group";
     private static final String TEST_AUTHORIZED_ROLE = "MDO_LEADER";
+    private static final String TEST_USER_ROLES = "MDO_LEADER,USER";
 
     @Mock
     private CbExtServerProperties serverProperties;
+
+    @Mock
+    private UserAndOrgServiceImpl userAndOrgService;
 
     private UserGroupValidationServiceImpl validationService;
 
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
-        validationService = new UserGroupValidationServiceImpl(serverProperties);
+        validationService = new UserGroupValidationServiceImpl(serverProperties, userAndOrgService);
+
+        Map<String, Object> orgMap = new HashMap<>();
+        orgMap.put(Constants.IS_CCA, false);
+        lenient().when(userAndOrgService.readOrgFromDB(eq(TEST_ORG_ID), any())).thenReturn(orgMap);
+
+        lenient().when(serverProperties.getUserGroupUpdateAuthorizedRole()).thenReturn(TEST_AUTHORIZED_ROLE);
     }
 
     @Test
@@ -43,7 +54,7 @@ class UserGroupValidationServiceImplTest {
         List<CriteriaItem> criteria = createValidCriteriaList();
         ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_USER_GROUP_CREATE);
 
-        boolean result = validationService.validateCreateRequest(TEST_USER_GROUP_NAME, criteria, response);
+        boolean result = validationService.validateCreateRequest(TEST_USER_GROUP_NAME, criteria, TEST_ORG_ID, TEST_USER_ROLES, response);
 
         assertTrue(result);
     }
@@ -53,7 +64,7 @@ class UserGroupValidationServiceImplTest {
         List<CriteriaItem> criteria = createValidCriteriaList();
         ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_USER_GROUP_CREATE);
 
-        boolean result = validationService.validateCreateRequest("", criteria, response);
+        boolean result = validationService.validateCreateRequest("", criteria, TEST_ORG_ID, TEST_USER_ROLES, response);
 
         assertFalse(result);
         assertEquals(Constants.FAILED, response.getParams().getStatus());
@@ -65,7 +76,7 @@ class UserGroupValidationServiceImplTest {
         List<CriteriaItem> criteria = createValidCriteriaList();
         ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_USER_GROUP_CREATE);
 
-        boolean result = validationService.validateCreateRequest(null, criteria, response);
+        boolean result = validationService.validateCreateRequest(null, criteria, TEST_ORG_ID, TEST_USER_ROLES, response);
 
         assertFalse(result);
         assertEquals(Constants.FAILED, response.getParams().getStatus());
@@ -76,7 +87,7 @@ class UserGroupValidationServiceImplTest {
     void validateCreateRequest_withEmptyCriteria_shouldReturnFalse() {
         ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_USER_GROUP_CREATE);
 
-        boolean result = validationService.validateCreateRequest(TEST_USER_GROUP_NAME, Collections.emptyList(), response);
+        boolean result = validationService.validateCreateRequest(TEST_USER_GROUP_NAME, Collections.emptyList(), TEST_ORG_ID, TEST_USER_ROLES, response);
 
         assertFalse(result);
         assertEquals(Constants.FAILED, response.getParams().getStatus());
@@ -87,7 +98,7 @@ class UserGroupValidationServiceImplTest {
     void validateCreateRequest_withNullCriteria_shouldReturnFalse() {
         ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_USER_GROUP_CREATE);
 
-        boolean result = validationService.validateCreateRequest(TEST_USER_GROUP_NAME, null, response);
+        boolean result = validationService.validateCreateRequest(TEST_USER_GROUP_NAME, null, TEST_ORG_ID, TEST_USER_ROLES, response);
 
         assertFalse(result);
         assertEquals(Constants.FAILED, response.getParams().getStatus());
@@ -210,6 +221,7 @@ class UserGroupValidationServiceImplTest {
 
     private List<CriteriaItem> createValidCriteriaList() {
         return List.of(
+                new CriteriaItem("rootOrgId", List.of(TEST_ORG_ID)),
                 new CriteriaItem("department", List.of("HR", "Finance")),
                 new CriteriaItem("role", List.of("Manager"))
         );

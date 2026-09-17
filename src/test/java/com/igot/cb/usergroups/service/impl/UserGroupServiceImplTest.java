@@ -77,7 +77,7 @@ class UserGroupServiceImplTest {
         when(objectMapper.convertValue(any(), eq(UserGroupRequest.class))).thenReturn(userGroupRequest);
         when(dataTransformService.buildEntityForCreate(anyString(), eq(TEST_USER_GROUP_NAME), any(), eq(TEST_ORG_ID), eq(TEST_USER_ID)))
                 .thenReturn(entity);
-        when(validationService.validateCreateRequest(anyString(), anyList(), any())).thenReturn(true);
+        when(validationService.validateCreateRequest(anyString(), anyList(), anyString(), anyString(), any())).thenReturn(true);
         when(cassandraOperation.insertRecord(anyString(), anyString(), anyMap())).thenReturn(null);
         doNothing().when(esService).indexUserGroup(any());
         when(dataTransformService.entityToResponseMap(entity)).thenReturn(Map.of(Constants.COL_USERGROUPID, TEST_USER_GROUP_ID));

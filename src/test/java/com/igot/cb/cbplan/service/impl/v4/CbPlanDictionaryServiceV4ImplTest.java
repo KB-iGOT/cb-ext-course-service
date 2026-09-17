@@ -612,4 +612,213 @@ class CbPlanDictionaryServiceV4ImplTest {
         userGroup.put("criteria", criteria);
         return userGroup;
     }
+
+    @Test
+    void getCBPlanDictionaryForUser_v3ContentList_addsMandatoryFalse() {
+        setupValidUserProfileMocks();
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
+
+        Map<String, Object> planWithV3ContentList = createMockPlan("plan_v3_content", false, null);
+        planWithV3ContentList.put(Constants.CONTENT_LIST, List.of(
+                "do_114376977434968064182",
+                "do_114378386987417600180"
+        ));
+
+        when(cbPlanCacheMgrV3.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+                .thenReturn(List.of(planWithV3ContentList));
+        lenient().when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), isNull()))
+                .thenReturn(Collections.emptyList());
+
+        ApiResponse response = dictionaryService.getCBPlanDictionaryForUser(testRequest, TEST_AUTH_TOKEN);
+
+        assertThat(response.getResponseCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> yearResult = (Map<String, Object>) response.getResult().get(TEST_PLAN_YEAR);
+        Map<String, Map<String, Object>> nonAparList = (Map<String, Map<String, Object>>) yearResult.get(Constants.RESPONSE_KEY_NON_APAR_PLAN_LIST);
+
+        Map<String, Object> plan = nonAparList.get("plan_v3_content");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> contentList = (List<Map<String, Object>>) plan.get(Constants.CONTENT_LIST);
+
+        assertThat(contentList).hasSize(2);
+        assertThat(contentList.get(0).get(Constants.IDENTIFIER)).isEqualTo("do_114376977434968064182");
+        assertThat(contentList.get(0).get(Constants.MANDATORY)).isEqualTo(false);
+        assertThat(contentList.get(1).get(Constants.IDENTIFIER)).isEqualTo("do_114378386987417600180");
+        assertThat(contentList.get(1).get(Constants.MANDATORY)).isEqualTo(false);
+    }
+
+    @Test
+    void getCBPlanDictionaryForUser_v4ContentList_preservesMandatoryField() {
+        setupValidUserProfileMocks();
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
+
+        Map<String, Object> planWithV4ContentList = createMockPlan("plan_v4_content", false, null);
+        planWithV4ContentList.put(Constants.CONTENT_LIST, List.of(
+                "{\"identifier\":\"do_114467322178428928111\",\"mandatory\":true}",
+                "{\"identifier\":\"do_114378386987417600180\",\"mandatory\":false}"
+        ));
+
+        when(cbPlanCacheMgrV3.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+                .thenReturn(List.of(planWithV4ContentList));
+        lenient().when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), isNull()))
+                .thenReturn(Collections.emptyList());
+
+        ApiResponse response = dictionaryService.getCBPlanDictionaryForUser(testRequest, TEST_AUTH_TOKEN);
+
+        assertThat(response.getResponseCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> yearResult = (Map<String, Object>) response.getResult().get(TEST_PLAN_YEAR);
+        Map<String, Map<String, Object>> nonAparList = (Map<String, Map<String, Object>>) yearResult.get(Constants.RESPONSE_KEY_NON_APAR_PLAN_LIST);
+
+        Map<String, Object> plan = nonAparList.get("plan_v4_content");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> contentList = (List<Map<String, Object>>) plan.get(Constants.CONTENT_LIST);
+
+        assertThat(contentList).hasSize(2);
+        assertThat(contentList.get(0).get(Constants.IDENTIFIER)).isEqualTo("do_114467322178428928111");
+        assertThat(contentList.get(0).get(Constants.MANDATORY)).isEqualTo(true);
+        assertThat(contentList.get(1).get(Constants.IDENTIFIER)).isEqualTo("do_114378386987417600180");
+        assertThat(contentList.get(1).get(Constants.MANDATORY)).isEqualTo(false);
+    }
+
+    @Test
+    void getCBPlanDictionaryForUser_emptyContentList_returnsEmptyList() {
+        setupValidUserProfileMocks();
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
+
+        Map<String, Object> planWithEmptyContentList = createMockPlan("plan_empty_content", false, null);
+        planWithEmptyContentList.put(Constants.CONTENT_LIST, Collections.emptyList());
+
+        when(cbPlanCacheMgrV3.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+                .thenReturn(List.of(planWithEmptyContentList));
+        lenient().when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), isNull()))
+                .thenReturn(Collections.emptyList());
+
+        ApiResponse response = dictionaryService.getCBPlanDictionaryForUser(testRequest, TEST_AUTH_TOKEN);
+
+        assertThat(response.getResponseCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> yearResult = (Map<String, Object>) response.getResult().get(TEST_PLAN_YEAR);
+        Map<String, Map<String, Object>> nonAparList = (Map<String, Map<String, Object>>) yearResult.get(Constants.RESPONSE_KEY_NON_APAR_PLAN_LIST);
+
+        Map<String, Object> plan = nonAparList.get("plan_empty_content");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> contentList = (List<Map<String, Object>>) plan.get(Constants.CONTENT_LIST);
+
+        assertThat(contentList).isEmpty();
+    }
+
+    @Test
+    void getCBPlanDictionaryForUser_nullContentList_returnsEmptyList() {
+        setupValidUserProfileMocks();
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
+
+        Map<String, Object> planWithNullContentList = createMockPlan("plan_null_content", false, null);
+        planWithNullContentList.put(Constants.CONTENT_LIST, null);
+
+        when(cbPlanCacheMgrV3.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+                .thenReturn(List.of(planWithNullContentList));
+        lenient().when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), isNull()))
+                .thenReturn(Collections.emptyList());
+
+        ApiResponse response = dictionaryService.getCBPlanDictionaryForUser(testRequest, TEST_AUTH_TOKEN);
+
+        assertThat(response.getResponseCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> yearResult = (Map<String, Object>) response.getResult().get(TEST_PLAN_YEAR);
+        Map<String, Map<String, Object>> nonAparList = (Map<String, Map<String, Object>>) yearResult.get(Constants.RESPONSE_KEY_NON_APAR_PLAN_LIST);
+
+        Map<String, Object> plan = nonAparList.get("plan_null_content");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> contentList = (List<Map<String, Object>>) plan.get(Constants.CONTENT_LIST);
+
+        assertThat(contentList).isEmpty();
+    }
+
+    @Test
+    void getCBPlanDictionaryForUser_invalidJsonContentList_treatsAsV3WithMandatoryFalse() {
+        setupValidUserProfileMocks();
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
+
+        Map<String, Object> planWithInvalidJson = createMockPlan("plan_invalid_json", false, null);
+        planWithInvalidJson.put(Constants.CONTENT_LIST, List.of(
+                "{\"id\":\"do_123\"}",
+                "plain_string_do_456"
+        ));
+
+        when(cbPlanCacheMgrV3.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+                .thenReturn(List.of(planWithInvalidJson));
+        lenient().when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), isNull()))
+                .thenReturn(Collections.emptyList());
+
+        ApiResponse response = dictionaryService.getCBPlanDictionaryForUser(testRequest, TEST_AUTH_TOKEN);
+
+        assertThat(response.getResponseCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> yearResult = (Map<String, Object>) response.getResult().get(TEST_PLAN_YEAR);
+        Map<String, Map<String, Object>> nonAparList = (Map<String, Map<String, Object>>) yearResult.get(Constants.RESPONSE_KEY_NON_APAR_PLAN_LIST);
+
+        Map<String, Object> plan = nonAparList.get("plan_invalid_json");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> contentList = (List<Map<String, Object>>) plan.get(Constants.CONTENT_LIST);
+
+        assertThat(contentList).hasSize(2);
+        assertThat(contentList.get(0).get(Constants.IDENTIFIER)).isEqualTo("{\"id\":\"do_123\"}");
+        assertThat(contentList.get(0).get(Constants.MANDATORY)).isEqualTo(false);
+        assertThat(contentList.get(1).get(Constants.IDENTIFIER)).isEqualTo("plain_string_do_456");
+        assertThat(contentList.get(1).get(Constants.MANDATORY)).isEqualTo(false);
+    }
+
+    @Test
+    void getCBPlanDictionaryForUser_singleItemV3ContentList_addsMandatoryFalse() {
+        setupValidUserProfileMocks();
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
+
+        Map<String, Object> planWithSingleItem = createMockPlan("plan_single_item", false, null);
+        planWithSingleItem.put(Constants.CONTENT_LIST, List.of("do_1143558909548953601106"));
+
+        when(cbPlanCacheMgrV3.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+                .thenReturn(List.of(planWithSingleItem));
+        lenient().when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), isNull()))
+                .thenReturn(Collections.emptyList());
+
+        ApiResponse response = dictionaryService.getCBPlanDictionaryForUser(testRequest, TEST_AUTH_TOKEN);
+
+        assertThat(response.getResponseCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> yearResult = (Map<String, Object>) response.getResult().get(TEST_PLAN_YEAR);
+        Map<String, Map<String, Object>> nonAparList = (Map<String, Map<String, Object>>) yearResult.get(Constants.RESPONSE_KEY_NON_APAR_PLAN_LIST);
+
+        Map<String, Object> plan = nonAparList.get("plan_single_item");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> contentList = (List<Map<String, Object>>) plan.get(Constants.CONTENT_LIST);
+
+        assertThat(contentList).hasSize(1);
+        assertThat(contentList.get(0).get(Constants.IDENTIFIER)).isEqualTo("do_1143558909548953601106");
+        assertThat(contentList.get(0).get(Constants.MANDATORY)).isEqualTo(false);
+    }
+
+    @Test
+    void getCBPlanDictionaryForUser_aparPlanWithV4ContentList_preservesMandatory() {
+        setupValidUserProfileMocks();
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
+
+        Map<String, Object> aparPlanWithContentList = createMockPlan("apar_plan_content", true, null);
+        aparPlanWithContentList.put(Constants.CONTENT_LIST, List.of(
+                "{\"identifier\":\"do_apar_123\",\"mandatory\":true}"
+        ));
+
+        when(cbPlanCacheMgrV3.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+                .thenReturn(List.of(aparPlanWithContentList));
+        lenient().when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), isNull()))
+                .thenReturn(Collections.emptyList());
+
+        ApiResponse response = dictionaryService.getCBPlanDictionaryForUser(testRequest, TEST_AUTH_TOKEN);
+
+        assertThat(response.getResponseCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> yearResult = (Map<String, Object>) response.getResult().get(TEST_PLAN_YEAR);
+        Map<String, Map<String, Object>> aparList = (Map<String, Map<String, Object>>) yearResult.get(Constants.RESPONSE_KEY_APAR_PLAN_LIST);
+
+        Map<String, Object> plan = aparList.get("apar_plan_content");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> contentList = (List<Map<String, Object>>) plan.get(Constants.CONTENT_LIST);
+
+        assertThat(contentList).hasSize(1);
+        assertThat(contentList.get(0).get(Constants.IDENTIFIER)).isEqualTo("do_apar_123");
+        assertThat(contentList.get(0).get(Constants.MANDATORY)).isEqualTo(true);
+    }
 }

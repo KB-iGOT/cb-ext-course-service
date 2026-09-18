@@ -561,13 +561,23 @@ public class CbPlanDictionaryServiceV4Impl {
 
     /**
      * Parses the contentList stored in Cassandra.
-     * V4 format: JSON strings → List<Map<String, Object>> with identifier and mandatory.
-     * V3 format: plain IDs → List<Map<String, Object>> with identifier and mandatory=false.
+     * BACKWARD COMPATIBLE: Handles both old (JSON strings/plain IDs) and new (nested objects) formats.
+     * - If already objects → return as-is
+     * - If JSON strings → parse to objects
+     * - If plain strings → convert to objects with mandatory=false
+     *
+     * @param contentListObj contentList from Cassandra
+     * @return list of V4 content objects with identifier and mandatory fields
      */
     private List<Map<String, Object>> parseContentList(Object contentListObj) {
         if (!(contentListObj instanceof List<?> rawList) || rawList.isEmpty()) {
             return Collections.emptyList();
         }
+        if (isAlreadyObjectFormat(rawList)) {
+            log.debug("ContentList already in object format, skipping transformation");
+            return (List<Map<String, Object>>) rawList;
+        }
+        log.debug("ContentList in old format, applying transformation");
         List<Map<String, Object>> result = new ArrayList<>();
         for (Object item : rawList) {
             if (Objects.isNull(item)) {
@@ -738,4 +748,24 @@ public class CbPlanDictionaryServiceV4Impl {
     private List<Map<String, Object>> castToMapList(List<?> rawList) {
         return (List<Map<String, Object>>) rawList;
     }
+
+
+    /**
+     * Checks if contentList is already in the new object format (post-migration).
+     * Returns true if first item is a Map with "identifier" key.
+     *
+     * @param rawList list to check
+     * @return true if already object format, false if old string format
+     */
+    private boolean isAlreadyObjectFormat(List<?> rawList) {
+        if (CollectionUtils.isEmpty(rawList)) {
+            return false;
+        }
+        Object firstItem = rawList.get(0);
+        if (firstItem instanceof Map<?, ?> firstMap) {
+            return firstMap.containsKey(Constants.IDENTIFIER);
+        }
+        return false;
+    }
+
 }

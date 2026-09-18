@@ -129,13 +129,13 @@ class CbPlanDictionaryServiceV4ImplTest {
 
         String cacheKey = Constants.CB_PLAN_V4_REDIS_KEY_PREFIX + TEST_USER_ID + ":" + TEST_PLAN_YEAR + ":dict";
         String cachedJson = "{\"" + TEST_PLAN_YEAR + "\":{\"aparPlanList\":{},\"nonAparPlanList\":{}}}";
-        when(redisCacheMgr.getFromCache(eq(cacheKey))).thenReturn(cachedJson);
+        when(redisCacheMgr.getFromCache(cacheKey)).thenReturn(cachedJson);
 
         ApiResponse response = dictionaryService.getCBPlanDictionaryForUser(testRequest, TEST_AUTH_TOKEN);
 
         assertThat(response.getResponseCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getResult()).containsKey(TEST_PLAN_YEAR);
-        verify(redisCacheMgr, times(1)).getFromCache(eq(cacheKey));
+        verify(redisCacheMgr, times(1)).getFromCache(cacheKey);
         verifyNoInteractions(cassandraOperation, cbPlanCacheMgrV3);
     }
 
@@ -640,10 +640,10 @@ class CbPlanDictionaryServiceV4ImplTest {
         List<Map<String, Object>> contentList = (List<Map<String, Object>>) plan.get(Constants.CONTENT_LIST);
 
         assertThat(contentList).hasSize(2);
-        assertThat(contentList.get(0).get(Constants.IDENTIFIER)).isEqualTo("do_114376977434968064182");
-        assertThat(contentList.get(0).get(Constants.MANDATORY)).isEqualTo(false);
-        assertThat(contentList.get(1).get(Constants.IDENTIFIER)).isEqualTo("do_114378386987417600180");
-        assertThat(contentList.get(1).get(Constants.MANDATORY)).isEqualTo(false);
+        assertThat(contentList.get(0)).containsEntry(Constants.IDENTIFIER, "do_114376977434968064182");
+        assertThat(contentList.get(0)).containsEntry(Constants.MANDATORY, false);
+        assertThat(contentList.get(1)).containsEntry(Constants.IDENTIFIER, "do_114378386987417600180");
+        assertThat(contentList.get(1)).containsEntry(Constants.MANDATORY, false);
     }
 
     @Test
@@ -673,10 +673,10 @@ class CbPlanDictionaryServiceV4ImplTest {
         List<Map<String, Object>> contentList = (List<Map<String, Object>>) plan.get(Constants.CONTENT_LIST);
 
         assertThat(contentList).hasSize(2);
-        assertThat(contentList.get(0).get(Constants.IDENTIFIER)).isEqualTo("do_114467322178428928111");
-        assertThat(contentList.get(0).get(Constants.MANDATORY)).isEqualTo(true);
-        assertThat(contentList.get(1).get(Constants.IDENTIFIER)).isEqualTo("do_114378386987417600180");
-        assertThat(contentList.get(1).get(Constants.MANDATORY)).isEqualTo(false);
+        assertThat(contentList.get(0)).containsEntry(Constants.IDENTIFIER, "do_114467322178428928111");
+        assertThat(contentList.get(0)).containsEntry(Constants.MANDATORY, true);
+        assertThat(contentList.get(1)).containsEntry(Constants.IDENTIFIER, "do_114378386987417600180");
+        assertThat(contentList.get(1)).containsEntry(Constants.MANDATORY, false);
     }
 
     @Test
@@ -758,10 +758,10 @@ class CbPlanDictionaryServiceV4ImplTest {
         List<Map<String, Object>> contentList = (List<Map<String, Object>>) plan.get(Constants.CONTENT_LIST);
 
         assertThat(contentList).hasSize(2);
-        assertThat(contentList.get(0).get(Constants.IDENTIFIER)).isEqualTo("{\"id\":\"do_123\"}");
-        assertThat(contentList.get(0).get(Constants.MANDATORY)).isEqualTo(false);
-        assertThat(contentList.get(1).get(Constants.IDENTIFIER)).isEqualTo("plain_string_do_456");
-        assertThat(contentList.get(1).get(Constants.MANDATORY)).isEqualTo(false);
+        assertThat(contentList.get(0)).containsEntry(Constants.IDENTIFIER, "{\"id\":\"do_123\"}");
+        assertThat(contentList.get(0)).containsEntry(Constants.MANDATORY, false);
+        assertThat(contentList.get(1)).containsEntry(Constants.IDENTIFIER, "plain_string_do_456");
+        assertThat(contentList.get(1)).containsEntry(Constants.MANDATORY, false);
     }
 
     @Test
@@ -788,8 +788,8 @@ class CbPlanDictionaryServiceV4ImplTest {
         List<Map<String, Object>> contentList = (List<Map<String, Object>>) plan.get(Constants.CONTENT_LIST);
 
         assertThat(contentList).hasSize(1);
-        assertThat(contentList.get(0).get(Constants.IDENTIFIER)).isEqualTo("do_1143558909548953601106");
-        assertThat(contentList.get(0).get(Constants.MANDATORY)).isEqualTo(false);
+        assertThat(contentList.get(0)).containsEntry(Constants.IDENTIFIER, "do_1143558909548953601106");
+        assertThat(contentList.get(0)).containsEntry(Constants.MANDATORY, false);
     }
 
     @Test
@@ -818,7 +818,87 @@ class CbPlanDictionaryServiceV4ImplTest {
         List<Map<String, Object>> contentList = (List<Map<String, Object>>) plan.get(Constants.CONTENT_LIST);
 
         assertThat(contentList).hasSize(1);
-        assertThat(contentList.get(0).get(Constants.IDENTIFIER)).isEqualTo("do_apar_123");
-        assertThat(contentList.get(0).get(Constants.MANDATORY)).isEqualTo(true);
+        assertThat(contentList.get(0)).containsEntry(Constants.IDENTIFIER, "do_apar_123");
+        assertThat(contentList.get(0)).containsEntry(Constants.MANDATORY, true);
+    }
+
+    @Test
+    void getCBPlanDictionaryForUser_nestedObjectContentList_skipsTransformation() {
+        setupValidUserProfileMocks();
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
+
+        Map<String, Object> planWithNestedObjects = createMockPlan("plan_nested_obj", false, null);
+        Map<String, Object> content1 = new HashMap<>();
+        content1.put(Constants.IDENTIFIER, "do_114467322178428928111");
+        content1.put(Constants.MANDATORY, true);
+
+        Map<String, Object> content2 = new HashMap<>();
+        content2.put(Constants.IDENTIFIER, "do_114378386987417600180");
+        content2.put(Constants.MANDATORY, false);
+
+        planWithNestedObjects.put(Constants.CONTENT_LIST, List.of(content1, content2));
+
+        when(cbPlanCacheMgrV3.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+                .thenReturn(List.of(planWithNestedObjects));
+        lenient().when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), isNull()))
+                .thenReturn(Collections.emptyList());
+
+        ApiResponse response = dictionaryService.getCBPlanDictionaryForUser(testRequest, TEST_AUTH_TOKEN);
+
+        assertThat(response.getResponseCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> yearResult = (Map<String, Object>) response.getResult().get(TEST_PLAN_YEAR);
+        Map<String, Map<String, Object>> nonAparList = (Map<String, Map<String, Object>>) yearResult.get(Constants.RESPONSE_KEY_NON_APAR_PLAN_LIST);
+
+        Map<String, Object> plan = nonAparList.get("plan_nested_obj");
+        List<Map<String, Object>> contentList = (List<Map<String, Object>>) plan.get(Constants.CONTENT_LIST);
+
+        assertThat(contentList).hasSize(2);
+        assertThat(contentList.get(0)).containsEntry(Constants.IDENTIFIER, "do_114467322178428928111");
+        assertThat(contentList.get(0)).containsEntry(Constants.MANDATORY, true);
+        assertThat(contentList.get(1)).containsEntry(Constants.IDENTIFIER, "do_114378386987417600180");
+        assertThat(contentList.get(1)).containsEntry(Constants.MANDATORY, false);
+    }
+
+    @Test
+    void getCBPlanDictionaryForUser_mixedContentListFormats_handlesAll() {
+        setupValidUserProfileMocks();
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
+
+        Map<String, Object> v3Plan = createMockPlan("plan_v3_mix", false, null);
+        v3Plan.put(Constants.CONTENT_LIST, List.of("do_v3_plain"));
+
+        Map<String, Object> v4Plan = createMockPlan("plan_v4_mix", false, null);
+        v4Plan.put(Constants.CONTENT_LIST, List.of("{\"identifier\":\"do_v4_json\",\"mandatory\":true}"));
+
+        Map<String, Object> nestedPlan = createMockPlan("plan_nested_mix", false, null);
+        Map<String, Object> nestedContent = new HashMap<>();
+        nestedContent.put(Constants.IDENTIFIER, "do_nested_obj");
+        nestedContent.put(Constants.MANDATORY, false);
+        nestedPlan.put(Constants.CONTENT_LIST, List.of(nestedContent));
+
+        when(cbPlanCacheMgrV3.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+                .thenReturn(List.of(v3Plan, v4Plan, nestedPlan));
+        lenient().when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), isNull()))
+                .thenReturn(Collections.emptyList());
+
+        ApiResponse response = dictionaryService.getCBPlanDictionaryForUser(testRequest, TEST_AUTH_TOKEN);
+
+        assertThat(response.getResponseCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> yearResult = (Map<String, Object>) response.getResult().get(TEST_PLAN_YEAR);
+        Map<String, Map<String, Object>> nonAparList = (Map<String, Map<String, Object>>) yearResult.get(Constants.RESPONSE_KEY_NON_APAR_PLAN_LIST);
+
+        assertThat(nonAparList).hasSize(3);
+
+        List<Map<String, Object>> v3ContentList = (List<Map<String, Object>>) nonAparList.get("plan_v3_mix").get(Constants.CONTENT_LIST);
+        assertThat(v3ContentList.get(0)).containsEntry(Constants.IDENTIFIER, "do_v3_plain");
+        assertThat(v3ContentList.get(0)).containsEntry(Constants.MANDATORY, false);
+
+        List<Map<String, Object>> v4ContentList = (List<Map<String, Object>>) nonAparList.get("plan_v4_mix").get(Constants.CONTENT_LIST);
+        assertThat(v4ContentList.get(0)).containsEntry(Constants.IDENTIFIER, "do_v4_json");
+        assertThat(v4ContentList.get(0)).containsEntry(Constants.MANDATORY, true);
+
+        List<Map<String, Object>> nestedContentList = (List<Map<String, Object>>) nonAparList.get("plan_nested_mix").get(Constants.CONTENT_LIST);
+        assertThat(nestedContentList.get(0)).containsEntry(Constants.IDENTIFIER, "do_nested_obj");
+        assertThat(nestedContentList.get(0)).containsEntry(Constants.MANDATORY, false);
     }
 }

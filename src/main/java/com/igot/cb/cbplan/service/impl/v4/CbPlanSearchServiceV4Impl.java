@@ -115,8 +115,11 @@ public class CbPlanSearchServiceV4Impl {
     }
 
     /**
-     * Transforms contentList from V4 format (JSON strings) to proper objects in search results.
-     * Modifies the search results in place.
+     * Transforms contentList from various formats to V4 object format.
+     * BACKWARD COMPATIBLE: Handles both old (JSON strings) and new (nested objects) formats.
+     * - If contentList is already objects → skip transformation
+     * - If contentList is JSON strings → parse and convert
+     * - If contentList is plain strings (V3) → convert to objects with mandatory=false
      *
      * @param searchResults list of search result records from Elasticsearch
      */
@@ -125,15 +128,7 @@ public class CbPlanSearchServiceV4Impl {
             return;
         }
         for (Map<String, Object> searchResult : searchResults) {
-            if (MapUtils.isNotEmpty(searchResult) && searchResult.containsKey(Constants.CONTENT_LIST)) {
-                Object contentListObj = searchResult.get(Constants.CONTENT_LIST);
-                if (contentListObj instanceof List<?> contentList) {
-                    List<Map<String, Object>> transformedContentList = parseV4ContentList(contentList);
-                    if (CollectionUtils.isNotEmpty(transformedContentList)) {
-                        searchResult.put(Constants.CONTENT_LIST, transformedContentList);
-                    }
-                }
-            }
+            transformSingleContentList(searchResult);
         }
     }
 
@@ -226,4 +221,44 @@ public class CbPlanSearchServiceV4Impl {
         }
     }
 
+    /**
+     * Checks if contentList is already in the new object format (post-migration).
+     * Returns true if first item is a Map with "identifier" key.
+     *
+     * @param contentList list to check
+     * @return true if already object format, false if old string format
+     */
+    private boolean isAlreadyObjectFormat(List<?> contentList) {
+        if (CollectionUtils.isEmpty(contentList)) {
+            return false;
+        }
+        Object firstItem = contentList.get(0);
+        if (firstItem instanceof Map<?, ?> firstMap) {
+            return firstMap.containsKey(Constants.IDENTIFIER);
+        }
+        return false;
+    }
+
+    /**
+     * Transforms contentList in a single search result record.
+     *
+     * @param searchResult search result record to transform
+     */
+    private void transformSingleContentList(Map<String, Object> searchResult) {
+        if (MapUtils.isEmpty(searchResult) || !searchResult.containsKey(Constants.CONTENT_LIST)) {
+            return;
+        }
+        Object contentListObj = searchResult.get(Constants.CONTENT_LIST);
+        if (!(contentListObj instanceof List<?> contentList) || contentList.isEmpty()) {
+            return;
+        }
+        if (isAlreadyObjectFormat(contentList)) {
+            log.debug("ContentList already in object format, skipping transformation");
+            return;
+        }
+        List<Map<String, Object>> transformedContentList = parseV4ContentList(contentList);
+        if (CollectionUtils.isNotEmpty(transformedContentList)) {
+            searchResult.put(Constants.CONTENT_LIST, transformedContentList);
+        }
+    }
 }

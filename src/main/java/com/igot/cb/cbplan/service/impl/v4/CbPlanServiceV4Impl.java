@@ -233,7 +233,10 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
         planDataWithIds.put(Constants.CONTENT_LIST, identifiers);
 
         contentLookupService.updateContentLookup(planId, planDataWithIds);
-        elasticSearchService.indexToElasticSearch(planId, planData);
+
+        // Deserialize contentList for ES indexing (ES expects nested objects, not JSON strings)
+        Map<String, Object> planDataForEs = prepareDataForElasticsearch(planData);
+        elasticSearchService.indexToElasticSearch(planId, planDataForEs);
 
         populateSuccessResponse(response, planId);
     }
@@ -899,6 +902,8 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
         updatedRequest.remove(Constants.EXISTING_MINISTRY_OR_STATE_IDS);
         updatedRequest.remove(Constants.NEW_MINISTRY_OR_STATE_IDS);
         Map<String, Object> sanitizedMap = elasticSearchService.sanitizeForElastic(updatedRequest);
+        // Deserialize contentList for ES indexing (ES expects nested objects, not JSON strings)
+        Map<String, Object> sanitizedMapForEs = prepareDataForElasticsearch(sanitizedMap);
         Map<String, Object> sanitizedExisting = elasticSearchService.sanitizeForElastic(existingCbPlan);
         Map<String, Object> resp = cassandraOperation.updateRecord(
                 Constants.KEYSPACE_SUNBIRD,
@@ -906,7 +911,7 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
                 updatedRequest,
                 Map.of(Constants.PLAN_ID, cbPlanId),
                 () -> Objects.nonNull(esUtilService.updateDocument(serverProperties.getCpPlanIndex(), Constants.INDEX_TYPE,
-                        cbPlanId, sanitizedMap, serverProperties.getElasticCbPlanJsonPath())),
+                        cbPlanId, sanitizedMapForEs, serverProperties.getElasticCbPlanJsonPath())),
                 () -> rollbackElasticSearchDocument(cbPlanId, sanitizedExisting));
         if (Constants.SUCCESS.equals(resp.get(Constants.RESPONSE))) {
             log.info("CbPlanServiceV4Impl.executePublishTransaction: Published - cbPlanId={}, planYear={}", cbPlanId, planYear);
@@ -931,8 +936,10 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
      * @param sanitizedExisting pre-publish document to restore
      */
     private void rollbackElasticSearchDocument(String cbPlanId, Map<String, Object> sanitizedExisting) {
+        // Deserialize contentList for ES rollback (ES expects nested objects, not JSON strings)
+        Map<String, Object> sanitizedExistingForEs = prepareDataForElasticsearch(sanitizedExisting);
         String rollbackResult = esUtilService.updateDocument(serverProperties.getCpPlanIndex(),
-                Constants.INDEX_TYPE, cbPlanId, sanitizedExisting, serverProperties.getElasticCbPlanJsonPath());
+                Constants.INDEX_TYPE, cbPlanId, sanitizedExistingForEs, serverProperties.getElasticCbPlanJsonPath());
         if (Objects.isNull(rollbackResult)) {
             log.error("CbPlanServiceV4Impl: ES_CASSANDRA_DIVERGENCE: failed to roll back ES document for cbPlanId={} "
                     + "after Cassandra commit failure - manual reconciliation required", cbPlanId);
@@ -1407,4 +1414,69 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
     public ApiResponse getCBPlanDictionaryForUser(ApiRequest request, String authToken) {
         return dictionaryService.getCBPlanDictionaryForUser(request, authToken);
     }
+
+    /**
+     * Prepares plan data for Elasticsearch indexing by deserializing contentList from JSON strings to objects.
+     * ES mapping expects nested objects, not JSON strings.
+     * Converts from: ['{"identifier":"do_123","mandatory":true}']
+     * To: [{"identifier": "do_123", "mandatory": true}]
+     *
+     * @param planData plan data with contentList as JSON strings
+     * @return plan data with contentList as objects for ES nested type
+     */
+    private Map<String, Object> prepareDataForElasticsearch(Map<String, Object> planData) {
+        if (MapUtils.isEmpty(planData)) {
+            return planData;
+        }
+
+        Map<String, Object> esData = new HashMap<>(planData);
+        Object contentListObj = esData.get(Constants.CONTENT_LIST);
+
+        if (Objects.isNull(contentListObj)) {
+            return esData;
+        }
+
+        if (contentListObj instanceof List) {
+            List<?> contentListRaw = (List<?>) contentListObj;
+            if (CollectionUtils.isEmpty(contentListRaw)) {
+                return esData;
+            }
+
+            Object firstItem = contentListRaw.get(0);
+            if (firstItem instanceof String) {
+                List<Map<String, Object>> deserializedList = deserializeContentListFromJson((List<String>) contentListRaw);
+                esData.put(Constants.CONTENT_LIST, deserializedList);
+                log.debug("CbPlanServiceV4Impl.prepareDataForElasticsearch: Deserialized {} content items for ES",
+                        deserializedList.size());
+            }
+        }
+
+        return esData;
+    }
+
+    /**
+     * Deserializes contentList from JSON strings to objects for Elasticsearch nested type.
+     * Converts from: ['{"identifier":"do_123","mandatory":true}']
+     * To: [{"identifier": "do_123", "mandatory": true}]
+     *
+     * @param jsonList list of JSON strings
+     * @return list of content objects, empty list if input is null/empty or parsing fails
+     */
+    private List<Map<String, Object>> deserializeContentListFromJson(List<String> jsonList) {
+        if (CollectionUtils.isEmpty(jsonList)) {
+            return Collections.emptyList();
+        }
+
+        List<Map<String, Object>> objectList = new java.util.ArrayList<>();
+        for (String json : jsonList) {
+            try {
+                Map<String, Object> item = mapper.readValue(json, new TypeReference<Map<String, Object>>() {});
+                objectList.add(item);
+            } catch (JsonProcessingException e) {
+                log.error("CbPlanServiceV4Impl.deserializeContentListFromJson: Failed to deserialize item: {}", json, e);
+            }
+        }
+        return objectList;
+    }
+
 }

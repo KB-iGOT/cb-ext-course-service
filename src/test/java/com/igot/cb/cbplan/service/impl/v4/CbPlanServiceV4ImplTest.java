@@ -31,7 +31,6 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -776,7 +775,7 @@ class CbPlanServiceV4ImplTest {
     }
 
     @Test
-    void updateCbPlan_livePlanWithOnlyCaLinkedId_performsDirectUpdate() throws JsonProcessingException {
+    void updateCbPlan_livePlanWithOnlyCaLinkedId_performsDirectUpdate() {
         mockAuthSuccess();
         when(validationService.validatePlanIdExists(any(), any())).thenReturn(true);
         Map<String, Object> requestMap = new HashMap<>();
@@ -820,12 +819,15 @@ class CbPlanServiceV4ImplTest {
                 .thenReturn(new HashMap<>());
         when(cassandraOperation.updateRecord(anyString(), anyString(), anyMap(), anyMap()))
                 .thenReturn(Map.of(Constants.RESPONSE, Constants.SUCCESS));
+
         ApiResponse response = cbPlanService.updateCbPlan(apiRequest(requestMap), TOKEN);
+
+        assertEquals(HttpStatus.OK, response.getResponseCode());
         verify(dataTransformService).prepareCbPlanForUpdate(anyMap(), eq(USER_ID));
     }
 
     @Test
-    void updateCbPlan_directCaLinkedIdUpdateFails_returns500() throws JsonProcessingException {
+    void updateCbPlan_directCaLinkedIdUpdateFails_returns500() {
         mockAuthSuccess();
         when(validationService.validatePlanIdExists(any(), any())).thenReturn(true);
         Map<String, Object> requestMap = new HashMap<>();
@@ -845,5 +847,149 @@ class CbPlanServiceV4ImplTest {
         assertEquals(Constants.FAILED, response.getParams().getStatus());
         assertEquals("Failed to update caLinkedId", response.getParams().getErr());
         assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getResponseCode());
+    }
+
+    @Test
+    void prepareDataForElasticsearch_withJsonStrings_deserializesToObjects() throws Exception {
+        Map<String, Object> planData = new HashMap<>();
+        planData.put(Constants.PLAN_ID, PLAN_ID);
+        planData.put(Constants.NAME, "Test Plan");
+        planData.put(Constants.CONTENT_LIST, List.of(
+                "{\"identifier\":\"do_114467322178428928111\",\"mandatory\":true}",
+                "{\"identifier\":\"do_114378386987417600180\",\"mandatory\":false}"
+        ));
+
+        java.lang.reflect.Method method = CbPlanServiceV4Impl.class.getDeclaredMethod(
+                "prepareDataForElasticsearch", Map.class);
+        method.setAccessible(true);
+        Map<String, Object> result = (Map<String, Object>) method.invoke(cbPlanService, planData);
+
+        assertNotNull(result);
+        List<Map<String, Object>> contentList = (List<Map<String, Object>>) result.get(Constants.CONTENT_LIST);
+        assertNotNull(contentList);
+        assertEquals(2, contentList.size());
+        assertEquals("do_114467322178428928111", contentList.get(0).get(Constants.IDENTIFIER));
+        assertEquals(true, contentList.get(0).get(Constants.MANDATORY));
+        assertEquals("do_114378386987417600180", contentList.get(1).get(Constants.IDENTIFIER));
+        assertEquals(false, contentList.get(1).get(Constants.MANDATORY));
+    }
+
+    @Test
+    void prepareDataForElasticsearch_withObjects_keepsAsIs() throws Exception {
+        Map<String, Object> content1 = new HashMap<>();
+        content1.put(Constants.IDENTIFIER, "do_114467322178428928111");
+        content1.put(Constants.MANDATORY, true);
+
+        Map<String, Object> content2 = new HashMap<>();
+        content2.put(Constants.IDENTIFIER, "do_114378386987417600180");
+        content2.put(Constants.MANDATORY, false);
+
+        Map<String, Object> planData = new HashMap<>();
+        planData.put(Constants.PLAN_ID, PLAN_ID);
+        planData.put(Constants.CONTENT_LIST, List.of(content1, content2));
+
+        java.lang.reflect.Method method = CbPlanServiceV4Impl.class.getDeclaredMethod(
+                "prepareDataForElasticsearch", Map.class);
+        method.setAccessible(true);
+        Map<String, Object> result = (Map<String, Object>) method.invoke(cbPlanService, planData);
+
+        assertNotNull(result);
+        List<Map<String, Object>> contentList = (List<Map<String, Object>>) result.get(Constants.CONTENT_LIST);
+        assertNotNull(contentList);
+        assertEquals(2, contentList.size());
+        assertEquals("do_114467322178428928111", contentList.get(0).get(Constants.IDENTIFIER));
+        assertEquals(true, contentList.get(0).get(Constants.MANDATORY));
+    }
+
+    @Test
+    void prepareDataForElasticsearch_withEmptyContentList_returnsEmpty() throws Exception {
+        Map<String, Object> planData = new HashMap<>();
+        planData.put(Constants.PLAN_ID, PLAN_ID);
+        planData.put(Constants.CONTENT_LIST, List.of());
+
+        java.lang.reflect.Method method = CbPlanServiceV4Impl.class.getDeclaredMethod(
+                "prepareDataForElasticsearch", Map.class);
+        method.setAccessible(true);
+        Map<String, Object> result = (Map<String, Object>) method.invoke(cbPlanService, planData);
+
+        assertNotNull(result);
+        List<?> contentList = (List<?>) result.get(Constants.CONTENT_LIST);
+        assertNotNull(contentList);
+        assertTrue(contentList.isEmpty());
+    }
+
+    @Test
+    void prepareDataForElasticsearch_withNullContentList_returnsNull() throws Exception {
+        Map<String, Object> planData = new HashMap<>();
+        planData.put(Constants.PLAN_ID, PLAN_ID);
+        planData.put(Constants.CONTENT_LIST, null);
+
+        java.lang.reflect.Method method = CbPlanServiceV4Impl.class.getDeclaredMethod(
+                "prepareDataForElasticsearch", Map.class);
+        method.setAccessible(true);
+        Map<String, Object> result = (Map<String, Object>) method.invoke(cbPlanService, planData);
+
+        assertNotNull(result);
+        assertEquals(null, result.get(Constants.CONTENT_LIST));
+    }
+
+    @Test
+    void prepareDataForElasticsearch_withNoContentList_returnsDataUnchanged() throws Exception {
+        Map<String, Object> planData = new HashMap<>();
+        planData.put(Constants.PLAN_ID, PLAN_ID);
+        planData.put(Constants.NAME, "Test Plan");
+
+        java.lang.reflect.Method method = CbPlanServiceV4Impl.class.getDeclaredMethod(
+                "prepareDataForElasticsearch", Map.class);
+        method.setAccessible(true);
+        Map<String, Object> result = (Map<String, Object>) method.invoke(cbPlanService, planData);
+
+        assertNotNull(result);
+        assertEquals(PLAN_ID, result.get(Constants.PLAN_ID));
+        assertEquals("Test Plan", result.get(Constants.NAME));
+        assertEquals(null, result.get(Constants.CONTENT_LIST));
+    }
+
+    @Test
+    void deserializeContentListFromJson_validJsonStrings_returnsObjects() throws Exception {
+        List<String> jsonList = List.of(
+                "{\"identifier\":\"do_114467322178428928111\",\"mandatory\":true}",
+                "{\"identifier\":\"do_114378386987417600180\",\"mandatory\":false}"
+        );
+
+        java.lang.reflect.Method method = CbPlanServiceV4Impl.class.getDeclaredMethod(
+                "deserializeContentListFromJson", List.class);
+        method.setAccessible(true);
+        List<Map<String, Object>> result = (List<Map<String, Object>>) method.invoke(cbPlanService, jsonList);
+
+        assertNotNull(result);
+        assertEquals(2, result.size());
+        assertEquals("do_114467322178428928111", result.get(0).get(Constants.IDENTIFIER));
+        assertEquals(true, result.get(0).get(Constants.MANDATORY));
+        assertEquals("do_114378386987417600180", result.get(1).get(Constants.IDENTIFIER));
+        assertEquals(false, result.get(1).get(Constants.MANDATORY));
+    }
+
+    @Test
+    void deserializeContentListFromJson_emptyList_returnsEmpty() throws Exception {
+        java.lang.reflect.Method method = CbPlanServiceV4Impl.class.getDeclaredMethod(
+                "deserializeContentListFromJson", List.class);
+        method.setAccessible(true);
+        List<Map<String, Object>> result = (List<Map<String, Object>>) method.invoke(cbPlanService, List.of());
+
+        assertNotNull(result);
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    void deserializeContentListFromJson_nullList_returnsEmpty() throws Exception {
+        java.lang.reflect.Method method = CbPlanServiceV4Impl.class.getDeclaredMethod(
+                "deserializeContentListFromJson", List.class);
+        method.setAccessible(true);
+        List<Map<String, Object>> result = (List<Map<String, Object>>) method.invoke(cbPlanService,
+                new Object[]{null});
+
+        assertNotNull(result);
+        assertTrue(result.isEmpty());
     }
 }

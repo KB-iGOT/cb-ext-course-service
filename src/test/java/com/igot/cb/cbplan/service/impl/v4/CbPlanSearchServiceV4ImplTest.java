@@ -20,6 +20,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -84,11 +85,10 @@ class CbPlanSearchServiceV4ImplTest {
         assertNotNull(contentList);
         assertEquals(2, contentList.size());
 
-        assertEquals("do_114376977434968064182", contentList.get(0).get(Constants.IDENTIFIER));
-        assertEquals(false, contentList.get(0).get(Constants.MANDATORY));
-
-        assertEquals("do_114378386987417600180", contentList.get(1).get(Constants.IDENTIFIER));
-        assertEquals(false, contentList.get(1).get(Constants.MANDATORY));
+        assertThat(contentList.get(0)).containsEntry(Constants.IDENTIFIER, "do_114376977434968064182");
+        assertThat(contentList.get(0)).containsEntry(Constants.MANDATORY, false);
+        assertThat(contentList.get(1)).containsEntry(Constants.IDENTIFIER, "do_114378386987417600180");
+        assertThat(contentList.get(1)).containsEntry(Constants.MANDATORY, false);
     }
 
     @Test
@@ -268,12 +268,11 @@ class CbPlanSearchServiceV4ImplTest {
         SearchResult resultData = (SearchResult) response.getResult().get(Constants.RESULT);
         assertNotNull(resultData);
         List<Map<String, Object>> data = resultData.getData();
-        @SuppressWarnings("unchecked")
         List<Map<String, Object>> contentList = (List<Map<String, Object>>) data.get(0).get(Constants.CONTENT_LIST);
 
         assertEquals(1, contentList.size());
-        assertEquals("do_123456", contentList.get(0).get(Constants.IDENTIFIER));
-        assertEquals(false, contentList.get(0).get(Constants.MANDATORY));
+        assertThat(contentList.get(0)).containsEntry(Constants.IDENTIFIER, "do_123456");
+        assertThat(contentList.get(0)).containsEntry(Constants.MANDATORY, false);
     }
 
     @Test
@@ -313,12 +312,99 @@ class CbPlanSearchServiceV4ImplTest {
 
         List<Map<String, Object>> v3ContentList = (List<Map<String, Object>>) data.get(0).get(Constants.CONTENT_LIST);
         assertEquals(2, v3ContentList.size());
-        assertEquals(false, v3ContentList.get(0).get(Constants.MANDATORY));
+        assertThat(v3ContentList.get(0)).containsEntry(Constants.MANDATORY, false);
 
             List<Map<String, Object>> v4ContentList = (List<Map<String, Object>>) data.get(1).get(Constants.CONTENT_LIST);
         assertEquals(2, v4ContentList.size());
-        assertEquals(true, v4ContentList.get(0).get(Constants.MANDATORY));
-        assertEquals(false, v4ContentList.get(1).get(Constants.MANDATORY));
+        assertThat(v4ContentList.get(0)).containsEntry(Constants.MANDATORY, true);
+        assertThat(v4ContentList.get(1)).containsEntry(Constants.MANDATORY, false);
+    }
+
+    @Test
+    void searchCbPlan_withNestedObjectContentList_shouldSkipTransformation() {
+        ApiRequest request = createApiRequest();
+        List<Map<String, Object>> esData = createEsDataWithNestedObjectContentList();
+        SearchResult searchResult = new SearchResult();
+        searchResult.setData(esData);
+
+        when(validationService.validateAndExtractUserId(eq(TEST_AUTH_TOKEN), any())).thenReturn(TEST_USER_ID);
+        when(esUtilService.searchDocumentsV2(eq(TEST_INDEX), any(SearchCriteria.class), eq(TEST_JSON_PATH)))
+                .thenReturn(searchResult);
+
+        ApiResponse response = searchService.searchCbPlan(request, TEST_ORG_ID, TEST_AUTH_TOKEN);
+
+        assertEquals(Constants.SUCCESS, response.getParams().getStatus());
+        assertEquals(HttpStatus.OK, response.getResponseCode());
+
+        SearchResult resultData = (SearchResult) response.getResult().get(Constants.RESULT);
+        assertNotNull(resultData);
+        List<Map<String, Object>> data = resultData.getData();
+        assertEquals(1, data.size());
+
+        List<Map<String, Object>> contentList = (List<Map<String, Object>>) data.get(0).get(Constants.CONTENT_LIST);
+        assertNotNull(contentList);
+        assertEquals(2, contentList.size());
+        assertThat(contentList.get(0)).containsEntry(Constants.IDENTIFIER, "do_114467322178428928111");
+        assertThat(contentList.get(0)).containsEntry(Constants.MANDATORY, true);
+        assertThat(contentList.get(1)).containsEntry(Constants.IDENTIFIER, "do_114378386987417600180");
+        assertThat(contentList.get(1)).containsEntry(Constants.MANDATORY, false);
+    }
+
+    @Test
+    void searchCbPlan_withMixedContentListFormats_shouldHandleAll() {
+        ApiRequest request = createApiRequest();
+        List<Map<String, Object>> esData = new ArrayList<>();
+
+        Map<String, Object> nestedObjectRecord = new HashMap<>();
+        nestedObjectRecord.put("id", "plan_nested");
+        Map<String, Object> content1 = new HashMap<>();
+        content1.put(Constants.IDENTIFIER, "do_nested_1");
+        content1.put(Constants.MANDATORY, true);
+        Map<String, Object> content2 = new HashMap<>();
+        content2.put(Constants.IDENTIFIER, "do_nested_2");
+        content2.put(Constants.MANDATORY, false);
+        nestedObjectRecord.put(Constants.CONTENT_LIST, List.of(content1, content2));
+        esData.add(nestedObjectRecord);
+
+        Map<String, Object> v3Record = new HashMap<>();
+        v3Record.put("id", "plan_v3");
+        v3Record.put(Constants.CONTENT_LIST, List.of("do_v3_1"));
+        esData.add(v3Record);
+
+        Map<String, Object> v4Record = new HashMap<>();
+        v4Record.put("id", "plan_v4");
+        v4Record.put(Constants.CONTENT_LIST, List.of("{\"identifier\":\"do_v4_1\",\"mandatory\":true}"));
+        esData.add(v4Record);
+
+        SearchResult searchResult = new SearchResult();
+        searchResult.setData(esData);
+
+        when(validationService.validateAndExtractUserId(eq(TEST_AUTH_TOKEN), any())).thenReturn(TEST_USER_ID);
+        when(esUtilService.searchDocumentsV2(eq(TEST_INDEX), any(SearchCriteria.class), eq(TEST_JSON_PATH)))
+                .thenReturn(searchResult);
+
+        ApiResponse response = searchService.searchCbPlan(request, TEST_ORG_ID, TEST_AUTH_TOKEN);
+
+        assertEquals(Constants.SUCCESS, response.getParams().getStatus());
+        assertEquals(HttpStatus.OK, response.getResponseCode());
+
+        SearchResult resultData = (SearchResult) response.getResult().get(Constants.RESULT);
+        assertNotNull(resultData);
+        List<Map<String, Object>> data = resultData.getData();
+        assertEquals(3, data.size());
+
+        List<Map<String, Object>> nestedList = (List<Map<String, Object>>) data.get(0).get(Constants.CONTENT_LIST);
+        assertEquals(2, nestedList.size());
+        assertThat(nestedList.get(0)).containsEntry(Constants.IDENTIFIER, "do_nested_1");
+        assertThat(nestedList.get(0)).containsEntry(Constants.MANDATORY, true);
+        List<Map<String, Object>> v3List = (List<Map<String, Object>>) data.get(1).get(Constants.CONTENT_LIST);
+        assertEquals(1, v3List.size());
+        assertThat(v3List.get(0)).containsEntry(Constants.IDENTIFIER, "do_v3_1");
+        assertThat(v3List.get(0)).containsEntry(Constants.MANDATORY, false);
+        List<Map<String, Object>> v4List = (List<Map<String, Object>>) data.get(2).get(Constants.CONTENT_LIST);
+        assertEquals(1, v4List.size());
+        assertThat(v4List.get(0)).containsEntry(Constants.IDENTIFIER, "do_v4_1");
+        assertThat(v4List.get(0)).containsEntry(Constants.MANDATORY, true);
     }
 
     private ApiRequest createApiRequest() {
@@ -377,6 +463,25 @@ class CbPlanSearchServiceV4ImplTest {
         Map<String, Object> searchRecord = new HashMap<>();
         searchRecord.put("id", "plan_4");
         searchRecord.put("name", "Plan without contentList");
+        esData.add(searchRecord);
+        return esData;
+    }
+
+    private List<Map<String, Object>> createEsDataWithNestedObjectContentList() {
+        List<Map<String, Object>> esData = new ArrayList<>();
+        Map<String, Object> searchRecord = new HashMap<>();
+        searchRecord.put("id", "plan_5");
+        searchRecord.put("name", "Test Plan Nested Objects");
+
+        Map<String, Object> content1 = new HashMap<>();
+        content1.put(Constants.IDENTIFIER, "do_114467322178428928111");
+        content1.put(Constants.MANDATORY, true);
+
+        Map<String, Object> content2 = new HashMap<>();
+        content2.put(Constants.IDENTIFIER, "do_114378386987417600180");
+        content2.put(Constants.MANDATORY, false);
+
+        searchRecord.put(Constants.CONTENT_LIST, List.of(content1, content2));
         esData.add(searchRecord);
         return esData;
     }

@@ -799,7 +799,10 @@ public class Constants {
     public static final String MSG_ROOTORGID_MISMATCH = "rootOrgId in criteria does not match your organization";
     public static final String CREATED_BY_ORG_LOGO = "createdByOrgLogo";
     public static final String UPDATED_BY_NAME = "updatedByName";
-    
+    public static final String CA_EVENT_TYPE_ADD = "ADD";
+    public static final String CA_EVENT_TYPE_REMOVE = "REMOVE";
+    public static final String COL_UPDATEDAT = "updatedat";
+
     private Constants() {
     }
 }

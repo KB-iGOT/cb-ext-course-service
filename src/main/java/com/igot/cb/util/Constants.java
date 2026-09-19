@@ -802,6 +802,10 @@ public class Constants {
     public static final String CA_EVENT_TYPE_ADD = "ADD";
     public static final String CA_EVENT_TYPE_REMOVE = "REMOVE";
     public static final String COL_UPDATEDAT = "updatedat";
+    public static final String COURSES = "courses";
+    public static final String IDENTIFIERS = "identifiers";
+    public static final String SECURE_SETTINGS_IS_VERIFIED_KARMAYOGI = "secureSettings.isVerifiedKarmayogi";
+    public static final String API_CONTENT_INFO_V2 = "api.content.v2.user.info";
 
     private Constants() {
     }

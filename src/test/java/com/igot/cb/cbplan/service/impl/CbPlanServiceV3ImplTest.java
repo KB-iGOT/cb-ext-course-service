@@ -4,7 +4,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.igot.cb.cache.CbPlanCacheMgrV3;
-import com.igot.cb.cache.CbPlanUserGroupCacheMgr;
 import com.igot.cb.cache.RedisCacheMgr;
 import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.cbplan.dto.CbPlanContentOccurrence;
@@ -91,9 +90,6 @@ class CbPlanServiceV3ImplTest {
 
     @Mock
     private CbPlanCacheMgrV3 cbPlanCacheMgrV3;
-
-    @Mock
-    private CbPlanUserGroupCacheMgr userGroupCacheMgr;
 
     @Mock
     private RedisCacheMgr redisCacheMgr;
@@ -933,7 +929,7 @@ class CbPlanServiceV3ImplTest {
     void testConstructor() {
         assertNotNull(new CbPlanServiceV3Impl(accessTokenValidator, cassandraOperation, serverProperties,
                 userAndOrgService, esUtilService, contentService,
-                outboundRequestHandlerService, cbPlanCacheMgrV3, userGroupCacheMgr, redisCacheMgr));
+                outboundRequestHandlerService, cbPlanCacheMgrV3, redisCacheMgr));
     }
 
     @Test
@@ -1194,73 +1190,10 @@ class CbPlanServiceV3ImplTest {
         assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getResponseCode());
     }
 
-    @Test
-    void testGetCBPlanDictionary_v4UserGroup_criteriaMatch_grantsAccess() {
-        mockAuthenticatedUser();
-        when(redisCacheMgr.getFromCache(DICT_CACHE_KEY)).thenReturn(null);
-        when(redisCacheMgr.getFromCache(BASIC_PROFILE_CACHE_KEY))
-                .thenReturn("{\"id\":\"" + USER_ID + "\",\"rootOrgId\":\"" + ORG_ID + "\"}");
-        Map<String, Object> plan = new HashMap<>();
-        plan.put(Constants.PLAN_ID, PLAN_ID);
-        plan.put(Constants.IS_APAR, false);
-        plan.put(Constants.IS_ACTIVE, true);
-        plan.put(Constants.CONTENT_LIST, List.of("course1"));
-        plan.put(Constants.CONTEXT_DATA_REQUEST,
-                "{\"accessControl\":{\"userGroups\":[{\"userGroupId\":\"ug_123\"}]}}");
-        when(cbPlanCacheMgrV3.getCbPlanForAllAndOrgId(anyString(), anyString(), any()))
-                .thenReturn(List.of(plan));
-        Map<String, Object> groupEntity = new HashMap<>();
-        groupEntity.put(Constants.COL_CRITERIA, List.of(Map.of("rootOrgId", List.of(ORG_ID))));
-        when(userGroupCacheMgr.getUserGroup("ug_123", ORG_ID)).thenReturn(groupEntity);
-        Map<String, Object> requestMap = new HashMap<>();
-        requestMap.put("planYear", PLAN_YEAR);
-        ApiResponse response = cbPlanService.getCBPlanDictionaryForUser(apiRequest(requestMap), TOKEN);
-        assertEquals(1, response.getResult().get("nonAparCount"));
-    }
 
-    @Test
-    void testGetCBPlanDictionary_v4UserGroup_criteriaNoMatch_deniesAccess() {
-        mockAuthenticatedUser();
-        when(redisCacheMgr.getFromCache(DICT_CACHE_KEY)).thenReturn(null);
-        when(redisCacheMgr.getFromCache(BASIC_PROFILE_CACHE_KEY))
-                .thenReturn("{\"id\":\"" + USER_ID + "\",\"rootOrgId\":\"" + ORG_ID + "\"}");
-        Map<String, Object> plan = new HashMap<>();
-        plan.put(Constants.PLAN_ID, PLAN_ID);
-        plan.put(Constants.IS_APAR, false);
-        plan.put(Constants.IS_ACTIVE, true);
-        plan.put(Constants.CONTENT_LIST, List.of("course1"));
-        plan.put(Constants.CONTEXT_DATA_REQUEST,
-                "{\"accessControl\":{\"userGroups\":[{\"userGroupId\":\"ug_456\"}]}}");
-        when(cbPlanCacheMgrV3.getCbPlanForAllAndOrgId(anyString(), anyString(), any()))
-                .thenReturn(List.of(plan));
-        Map<String, Object> groupEntity = new HashMap<>();
-        groupEntity.put(Constants.COL_CRITERIA, List.of(Map.of("designation", List.of("Director"))));
-        when(userGroupCacheMgr.getUserGroup("ug_456", ORG_ID)).thenReturn(groupEntity);
-        Map<String, Object> requestMap = new HashMap<>();
-        requestMap.put("planYear", PLAN_YEAR);
-        ApiResponse response = cbPlanService.getCBPlanDictionaryForUser(apiRequest(requestMap), TOKEN);
-        assertEquals(0, response.getResult().get("nonAparCount"));
-    }
 
-    @Test
-    void testGetCBPlanDictionary_v4UserGroup_notFound_deniesAccess() {
-        mockAuthenticatedUser();
-        when(redisCacheMgr.getFromCache(DICT_CACHE_KEY)).thenReturn(null);
-        when(redisCacheMgr.getFromCache(BASIC_PROFILE_CACHE_KEY))
-                .thenReturn("{\"id\":\"" + USER_ID + "\",\"rootOrgId\":\"" + ORG_ID + "\"}");
-        Map<String, Object> plan = new HashMap<>();
-        plan.put(Constants.PLAN_ID, PLAN_ID);
-        plan.put(Constants.IS_APAR, false);
-        plan.put(Constants.IS_ACTIVE, true);
-        plan.put(Constants.CONTENT_LIST, List.of("course1"));
-        plan.put(Constants.CONTEXT_DATA_REQUEST,
-                "{\"accessControl\":{\"userGroups\":[{\"userGroupId\":\"ug_999\"}]}}");
-        when(cbPlanCacheMgrV3.getCbPlanForAllAndOrgId(anyString(), anyString(), any()))
-                .thenReturn(List.of(plan));
-        when(userGroupCacheMgr.getUserGroup("ug_999", ORG_ID)).thenReturn(Collections.emptyMap());
-        Map<String, Object> requestMap = new HashMap<>();
-        requestMap.put("planYear", PLAN_YEAR);
-        ApiResponse response = cbPlanService.getCBPlanDictionaryForUser(apiRequest(requestMap), TOKEN);
-        assertEquals(0, response.getResult().get("nonAparCount"));
-    }
+
+
+
+
 }

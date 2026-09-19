@@ -799,16 +799,12 @@ public class Constants {
     public static final String MSG_ROOTORGID_MISMATCH = "rootOrgId in criteria does not match your organization";
     public static final String CREATED_BY_ORG_LOGO = "createdByOrgLogo";
     public static final String UPDATED_BY_NAME = "updatedByName";
-    public static final String CA_EVENT_TYPE_ADD = "ADD";
-    public static final String CA_EVENT_TYPE_REMOVE = "REMOVE";
-    public static final String COL_UPDATEDAT = "updatedat";
     public static final String COURSES = "courses";
     public static final String IDENTIFIERS = "identifiers";
     public static final String SECURE_SETTINGS_IS_VERIFIED_KARMAYOGI = "secureSettings.isVerifiedKarmayogi";
     public static final String API_CONTENT_INFO_V2 = "api.content.v2.user.info";
     public static final String API_CBPLAN_V4_SEARCH = "api.cbplan.v4.search";
     public static final String API_CBPLAN_V3_SEARCH = "api.cbplan.v3.search";
-
     private Constants() {
     }
 }

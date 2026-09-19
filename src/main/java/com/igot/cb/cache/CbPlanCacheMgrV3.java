@@ -117,7 +117,7 @@ public class CbPlanCacheMgrV3 {
                     .toList();
             cbPlanCache.put(cacheKey, cbPlanList);
             log.info("getCbPlanForOrgId: Loaded from Cassandra - orgId={}, planYear={}, activeCount={}",
-                    cbPlanList.size(), orgId, planYear);
+                    orgId, planYear, cbPlanList.size());
         } else {
             log.debug("getCbPlanForOrgId: Caffeine cache hit - orgId={}, planYear={}, count={}",
                     orgId, planYear, cbPlanList.size());

@@ -1281,7 +1281,7 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
     @Override
     public ApiResponse searchCbPlan(ApiRequest request, String authToken) {
         log.info("CbPlanServiceV4Impl.searchCbPlan: Searching CB Plans");
-        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_COMMUNITY_SEARCH);
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_CBPLAN_V4_SEARCH);
         try {
             String userId = accessTokenValidator.fetchUserIdFromAccessToken(authToken, response);
             if (StringUtils.isEmpty(userId)) {

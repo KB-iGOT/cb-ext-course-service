@@ -806,6 +806,8 @@ public class Constants {
     public static final String IDENTIFIERS = "identifiers";
     public static final String SECURE_SETTINGS_IS_VERIFIED_KARMAYOGI = "secureSettings.isVerifiedKarmayogi";
     public static final String API_CONTENT_INFO_V2 = "api.content.v2.user.info";
+    public static final String API_CBPLAN_V4_SEARCH = "api.cbplan.v4.search";
+    public static final String API_CBPLAN_V3_SEARCH = "api.cbplan.v3.search";
 
     private Constants() {
     }

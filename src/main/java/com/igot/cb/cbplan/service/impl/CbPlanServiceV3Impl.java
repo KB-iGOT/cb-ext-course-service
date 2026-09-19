@@ -701,7 +701,7 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
     @Override
     public ApiResponse searchCbPlan(SearchCriteria searchCriteria, String userOrgId, String authToken) {
         log.info("CbPlanServiceV3Impl.searchCbPlan: Searching CB Plans for orgId: {}", userOrgId);
-        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_COMMUNITY_SEARCH);
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_CBPLAN_V3_SEARCH);
         try {
             String userId = validationService.validateAndExtractUserId(authToken, response);
             if (StringUtils.isEmpty(userId)) {

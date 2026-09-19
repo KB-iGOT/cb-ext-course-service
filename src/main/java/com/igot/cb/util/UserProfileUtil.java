@@ -216,7 +216,7 @@ public final class UserProfileUtil {
                         .filter(user -> StringUtils.isNotBlank((String) user.get(Constants.ID)))
                         .forEach(user -> {
                             String id = (String) user.get(Constants.ID);
-                            Object firstName = user.get(Constants.FIRST_NAME);
+                            Object firstName = user.get(Constants.FIRSTNAME);
                             result.put(id, firstName != null ? firstName.toString() : StringUtils.EMPTY);
                         });
             }

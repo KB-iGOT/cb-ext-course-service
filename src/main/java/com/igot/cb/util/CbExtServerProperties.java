@@ -169,6 +169,27 @@ public class CbExtServerProperties {
     @Value("${elastic.required.field.user.group.json.path}")
     private String elasticUserGroupJsonPath;
 
+    @Value("${sb.search.service.host}")
+    private String sbSearchServiceHost;
+
+    @Value("${sb.composite.v4.search}")
+    private String sbCompositeV4Search;
+
+    @Value("${moderated.course.search.request}")
+    private String moderatedCourseSearchRequest;
+
+    @Value("${enrolment.dictionary.url}")
+    private String enrolmentDictionaryUrl;
+
+    @Value("${lms.host}")
+    private String lmsServiceHost;
+
+    @Value("${standalone.assessment.search.request}")
+    private String standaloneAssessmentSearchRequest;
+
+    @Value("${lms.enrollment.details.url}")
+    private String enrollmentDetailsUrl;
+
     public List<String> getCbPlanEnrichedContentFieldsList() {
         return Arrays.asList(cbPlanEnrichedContentFields.split(",", -1));
     }

@@ -131,9 +131,9 @@ public class CbPlanDictionaryServiceV4Impl {
             Map<String, Map<String, Object>> nonAparPlanMap = new LinkedHashMap<>();
             processPlans(activePlans, userProfile, prefetchedUserGroups, aparPlanMap, nonAparPlanMap);
             Set<String> orgIds = collectCreatedByOrgIds(aparPlanMap, nonAparPlanMap);
-            Map<String, String> orgNameMap = fetchOrgNames(orgIds);
-            enrichOrgNames(aparPlanMap, orgNameMap);
-            enrichOrgNames(nonAparPlanMap, orgNameMap);
+            Map<String, Map<String, String>> orgDetailsMap = fetchOrgDetails(orgIds);
+            enrichOrgDetails(aparPlanMap, orgDetailsMap);
+            enrichOrgDetails(nonAparPlanMap, orgDetailsMap);
             Map<String, Object> yearResult = buildYearResult(aparPlanMap, nonAparPlanMap);
             response.getResult().put(planYear, yearResult);
             response.setParams(new ApiRespParam());
@@ -548,6 +548,7 @@ public class CbPlanDictionaryServiceV4Impl {
         String createdByOrgId = extractCreatedByOrgId(plan);
         entry.put(Constants.CREATED_BY_ORG_ID, createdByOrgId);
         entry.put(Constants.CREATED_BY_ORG_NAME, null);
+        entry.put(Constants.CREATED_BY_ORG_LOGO, null);
         return entry;
     }
 
@@ -626,45 +627,51 @@ public class CbPlanDictionaryServiceV4Impl {
     }
 
     /**
-     * Batch fetches org names for the given org IDs using a single Cassandra IN query.
+     * Batch fetches org details (name and logo) for the given org IDs using a single Cassandra IN query.
      *
      * @param orgIds org IDs to resolve
-     * @return map of orgId to orgName; missing entries for orgs not found
+     * @return map of orgId to org details (name, logo); missing entries for orgs not found
      */
-    private Map<String, String> fetchOrgNames(Set<String> orgIds) {
+    private Map<String, Map<String, String>> fetchOrgDetails(Set<String> orgIds) {
         if (CollectionUtils.isEmpty(orgIds)) {
             return Collections.emptyMap();
         }
-        Map<String, String> orgNameMap = new HashMap<>();
+        Map<String, Map<String, String>> orgDetailsMap = new HashMap<>();
         try {
             Map<String, Object> queryMap = Map.of(Constants.ID, new ArrayList<>(orgIds));
             List<Map<String, Object>> orgList = cassandraOperation.getRecordsByProperties(
                     Constants.KEYSPACE_SUNBIRD, Constants.ORG_TABLE, queryMap,
-                    List.of(Constants.ID, Constants.ORG_NAME), null);
+                    List.of(Constants.ID, Constants.ORG_NAME, Constants.LOGO), null);
             if (CollectionUtils.isNotEmpty(orgList)) {
                 for (Map<String, Object> org : orgList) {
                     String id = (String) org.get(Constants.ID);
                     String name = (String) org.get(Constants.ORG_NAME);
-                    if (StringUtils.isNotBlank(id) && StringUtils.isNotBlank(name)) {
-                        orgNameMap.put(id, name);
+                    String logo = (String) org.get(Constants.LOGO);
+                    if (StringUtils.isNotBlank(id)) {
+                        Map<String, String> details = new HashMap<>();
+                        details.put(Constants.ORG_NAME, name);
+                        details.put(Constants.LOGO, logo);
+                        orgDetailsMap.put(id, details);
                     }
                 }
             }
-            log.debug("fetchOrgNames: Resolved {} org names for {} org IDs", orgNameMap.size(), orgIds.size());
+            log.debug("fetchOrgDetails: Resolved {} org details for {} org IDs", orgDetailsMap.size(), orgIds.size());
         } catch (Exception e) {
-            log.error("fetchOrgNames: Failed to batch fetch org names for {} orgs", orgIds.size(), e);
+            log.error("fetchOrgDetails: Failed to batch fetch org details for {} orgs", orgIds.size(), e);
         }
-        return orgNameMap;
+        return orgDetailsMap;
     }
 
     /**
-     * Enriches plan entries in the given map with resolved org names.
+     * Enriches plan entries in the given map with resolved org names and logos.
      */
-    private void enrichOrgNames(Map<String, Map<String, Object>> planMap, Map<String, String> orgNameMap) {
+    private void enrichOrgDetails(Map<String, Map<String, Object>> planMap, Map<String, Map<String, String>> orgDetailsMap) {
         for (Map<String, Object> entry : planMap.values()) {
             String orgId = (String) entry.get(Constants.CREATED_BY_ORG_ID);
-            if (StringUtils.isNotBlank(orgId)) {
-                entry.put(Constants.CREATED_BY_ORG_NAME, orgNameMap.get(orgId));
+            if (StringUtils.isNotBlank(orgId) && orgDetailsMap.containsKey(orgId)) {
+                Map<String, String> orgDetails = orgDetailsMap.get(orgId);
+                entry.put(Constants.CREATED_BY_ORG_NAME, orgDetails.get(Constants.ORG_NAME));
+                entry.put(Constants.CREATED_BY_ORG_LOGO, orgDetails.get(Constants.LOGO));
             }
         }
     }

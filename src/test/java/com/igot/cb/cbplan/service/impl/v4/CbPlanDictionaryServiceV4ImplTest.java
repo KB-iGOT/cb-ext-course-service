@@ -323,7 +323,7 @@ class CbPlanDictionaryServiceV4ImplTest {
     }
 
     @Test
-    void getCBPlanDictionaryForUser_orgNameEnrichment_populatesOrgNames() {
+    void getCBPlanDictionaryForUser_orgDetailsEnrichment_populatesOrgNamesAndLogos() {
         setupValidUserProfileMocks();
         when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
 
@@ -336,12 +336,13 @@ class CbPlanDictionaryServiceV4ImplTest {
         Map<String, Object> orgRecord = new HashMap<>();
         orgRecord.put(Constants.ID, "org_creator");
         orgRecord.put(Constants.ORG_NAME, "Creator Organization");
+        orgRecord.put(Constants.LOGO, "https://example.com/logo.png");
 
         when(cassandraOperation.getRecordsByProperties(
                 eq(Constants.KEYSPACE_SUNBIRD),
                 eq(Constants.ORG_TABLE),
                 any(Map.class),
-                eq(List.of(Constants.ID, Constants.ORG_NAME)),
+                eq(List.of(Constants.ID, Constants.ORG_NAME, Constants.LOGO)),
                 eq(null)
         )).thenReturn(List.of(orgRecord));
 
@@ -350,7 +351,9 @@ class CbPlanDictionaryServiceV4ImplTest {
         assertThat(response.getResponseCode()).isEqualTo(HttpStatus.OK);
         Map<String, Object> yearResult = (Map<String, Object>) response.getResult().get(TEST_PLAN_YEAR);
         Map<String, Map<String, Object>> nonAparList = (Map<String, Map<String, Object>>) yearResult.get(Constants.RESPONSE_KEY_NON_APAR_PLAN_LIST);
-        assertThat(nonAparList.values().iterator().next().get(Constants.CREATED_BY_ORG_NAME)).isEqualTo("Creator Organization");
+        Map<String, Object> planEntry = nonAparList.values().iterator().next();
+        assertThat(planEntry).containsEntry(Constants.CREATED_BY_ORG_NAME, "Creator Organization");
+        assertThat(planEntry).containsEntry(Constants.CREATED_BY_ORG_LOGO, "https://example.com/logo.png");
     }
 
     @Test

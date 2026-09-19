@@ -18,6 +18,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.igot.cb.cache.CbPlanCacheMgrV3;
+import com.igot.cb.cache.CbPlanUserGroupCacheMgr;
 import com.igot.cb.cache.RedisCacheMgr;
 import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.cbplan.dto.CbPlanContentOccurrence;
@@ -63,6 +64,7 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
     private final CbPlanElasticSearchServiceV3Impl elasticSearchService;
     private final CbPlanEnrichmentServiceV3Impl enrichmentService;
     private final CbPlanCacheMgrV3 cbPlanCacheMgrV3;
+    private final CbPlanUserGroupCacheMgr userGroupCacheMgr;
     private final RedisCacheMgr redisCacheMgr;
 
     public CbPlanServiceV3Impl(AccessTokenValidator accessTokenValidator,
@@ -73,6 +75,7 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
                                ContentInfoServiceImpl contentService,
                                OutboundRequestHandlerServiceImpl outboundRequestHandlerService,
                                CbPlanCacheMgrV3 cbPlanCacheMgrV3,
+                               CbPlanUserGroupCacheMgr userGroupCacheMgr,
                                RedisCacheMgr redisCacheMgr) {
         this.cbPlanRequestValidator = new CbPlanRequestValidatorImpl(userAndOrgService, serverProperties);
         this.orgLookupService = new CbPlanOrgLookupServiceV3Impl(cassandraOperation);
@@ -87,6 +90,7 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
         this.esUtilService = esUtilService;
         this.contentService = contentService;
         this.cbPlanCacheMgrV3 = cbPlanCacheMgrV3;
+        this.userGroupCacheMgr = userGroupCacheMgr;
         this.redisCacheMgr = redisCacheMgr;
         this.mapper = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -1148,6 +1152,11 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
     }
 
     private boolean matchesUserGroup(Map<String, Object> userGroup, Map<String, String> userProfile) {
+        String userGroupId = (String) userGroup.get(Constants.USER_GROUP_ID);
+        if (StringUtils.isNotBlank(userGroupId)) {
+            String orgId = userProfile.get(Constants.USER_ROOT_ORG_ID);
+            return StringUtils.isNotBlank(orgId) && fetchAndMatchV4UserGroup(userGroupId, orgId, userProfile);
+        }
         List<Map<String, Object>> criteriaList =
                 (List<Map<String, Object>>) userGroup.get(Constants.USER_GROUP_CRITERIA_LIST);
         if (CollectionUtils.isEmpty(criteriaList)) {
@@ -1842,4 +1851,67 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
         return dataTransformService.mergePlanLists(orgPlans, ministryPlans);
     }
 
+    /**
+     * Fetches a user group from {@code user_group_info} by its composite key and evaluates
+     * the {@code criteria} column (V4 format: {@code frozen<list<map<text,frozen<list<text>>>>>})
+     * against the user's profile.
+     */
+    private boolean fetchAndMatchV4UserGroup(String userGroupId, String orgId, Map<String, String> userProfile) {
+        try {
+            Map<String, Object> groupEntity = userGroupCacheMgr.getUserGroup(userGroupId, orgId);
+            if (MapUtils.isEmpty(groupEntity)) {
+                log.debug("fetchAndMatchV4UserGroup: User group not found - userGroupId={}", userGroupId);
+                return false;
+            }
+            List<Map<String, List<String>>> criteriaList =
+                    (List<Map<String, List<String>>>) groupEntity.get(Constants.COL_CRITERIA);
+            if (CollectionUtils.isEmpty(criteriaList)) {
+                return false;
+            }
+            for (Map<String, List<String>> criteriaEntry : criteriaList) {
+                if (!matchesV4CriteriaEntry(criteriaEntry, userProfile)) {
+                    return false;
+                }
+            }
+            return true;
+        } catch (Exception e) {
+            log.error("fetchAndMatchV4UserGroup: Failed for userGroupId={}", userGroupId, e);
+            return false;
+        }
+    }
+
+    /**
+     * Evaluates one entry from the V4 {@code user_group_info} criteria column.
+     * Each entry is a map with the field name as key and allowed values as the list.
+     */
+    private boolean matchesV4CriteriaEntry(Map<String, List<String>> criteriaEntry,
+                                           Map<String, String> userProfile) {
+        for (Map.Entry<String, List<String>> entry : criteriaEntry.entrySet()) {
+            String criteriaKey = entry.getKey().toLowerCase().trim();
+            List<String> allowedValues = entry.getValue();
+            if (CollectionUtils.isEmpty(allowedValues)) {
+                return false;
+            }
+            if (Constants.CENTRAL_DEPUTATION.equalsIgnoreCase(criteriaKey)) {
+                boolean expected = Boolean.parseBoolean(allowedValues.get(0));
+                boolean actual = Boolean.parseBoolean(
+                        userProfile.getOrDefault(Constants.CENTRAL_DEPUTATION_LOWER_KEY, "false"));
+                if (expected != actual) {
+                    return false;
+                }
+                continue;
+            }
+            String actualValue = userProfile.get(criteriaKey);
+            if (Objects.isNull(actualValue)) {
+                return false;
+            }
+            boolean matches = allowedValues.stream()
+                    .map(String::toLowerCase)
+                    .anyMatch(expected -> expected.equals(actualValue.toLowerCase()));
+            if (!matches) {
+                return false;
+            }
+        }
+        return true;
+    }
 }

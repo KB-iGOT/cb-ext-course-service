@@ -122,7 +122,16 @@ public class CbPlanDictionaryServiceV4Impl {
             List<Map<String, Object>> activePlans = fetchPlansForUser(userProfile, userOrgId, planYear, isCacheEnabled);
             if (CollectionUtils.isEmpty(activePlans)) {
                 log.info("getCBPlanDictionaryForUser: No active plans - userId={}, planYear={}", userId, planYear);
-                populateEmptyResponse(response, planYear);
+                if (StringUtils.isNotBlank(requestedPlanYear)) {
+                    response.getResult().put(planYear, buildYearResult(new LinkedHashMap<>(), new LinkedHashMap<>()));
+                    fetchAndAppendPreviousYear(response, userProfile, userOrgId,
+                            CbPlanYearUtil.resolvePreviousYear(planYear));
+                    response.setParams(new ApiRespParam());
+                    response.getParams().setStatus(Constants.SUCCESS);
+                    response.setResponseCode(HttpStatus.OK);
+                } else {
+                    populateEmptyResponse(response, planYear);
+                }
                 cacheResult(cacheKey, response.getResult(), isCacheEnabled.get());
                 return response;
             }
@@ -773,6 +782,32 @@ public class CbPlanDictionaryServiceV4Impl {
             return firstMap.containsKey(Constants.IDENTIFIER);
         }
         return false;
+    }
+
+    /**
+     * Fetches plans for the previous year and appends the result to the response.
+     * If no plans are found for the previous year, an empty entry is still added.
+     */
+    private void fetchAndAppendPreviousYear(ApiResponse response, Map<String, String> userProfile,
+                                            String userOrgId, String previousYear) {
+        AtomicBoolean prevCacheEnabled = new AtomicBoolean(false);
+        List<Map<String, Object>> prevPlans = fetchPlansForUser(userProfile, userOrgId, previousYear, prevCacheEnabled);
+        if (CollectionUtils.isEmpty(prevPlans)) {
+            log.info("fetchAndAppendPreviousYear: No plans found - previousYear={}", previousYear);
+            response.getResult().put(previousYear, buildYearResult(new LinkedHashMap<>(), new LinkedHashMap<>()));
+            return;
+        }
+        Map<String, Map<String, Object>> prefetchedUserGroups = batchFetchUserGroupsForPlans(prevPlans, userOrgId);
+        Map<String, Map<String, Object>> aparPlanMap = new LinkedHashMap<>();
+        Map<String, Map<String, Object>> nonAparPlanMap = new LinkedHashMap<>();
+        processPlans(prevPlans, userProfile, prefetchedUserGroups, aparPlanMap, nonAparPlanMap);
+        Set<String> orgIds = collectCreatedByOrgIds(aparPlanMap, nonAparPlanMap);
+        Map<String, Map<String, String>> orgDetailsMap = fetchOrgDetails(orgIds);
+        enrichOrgDetails(aparPlanMap, orgDetailsMap);
+        enrichOrgDetails(nonAparPlanMap, orgDetailsMap);
+        response.getResult().put(previousYear, buildYearResult(aparPlanMap, nonAparPlanMap));
+        log.info("fetchAndAppendPreviousYear: previousYear={}, aparCount={}, nonAparCount={}",
+                previousYear, aparPlanMap.size(), nonAparPlanMap.size());
     }
 
 }

@@ -155,4 +155,73 @@ public final class UserProfileUtil {
             return List.of();
         }
     }
+
+    /**
+     * Fetches first names for a list of users in bulk.
+     * Checks Redis cache per user; falls back to batched Cassandra IN-clause for misses.
+     *
+     * @param userIds list of user IDs to fetch names for
+     * @return map of userId to firstName (absent entries mean user not found)
+     */
+    public Map<String, String> buildUserProfiles(List<String> userIds) {
+        if (CollectionUtils.isEmpty(userIds)) {
+            return Collections.emptyMap();
+        }
+        List<String> distinctIds = userIds.stream().distinct().toList();
+        Map<String, String> result = new HashMap<>();
+        List<String> missIds = distinctIds.stream()
+                .filter(userId -> !resolveFromCache(userId, result))
+                .toList();
+        if (!missIds.isEmpty()) {
+            resolveFromCassandra(missIds, result);
+        }
+        log.info("buildUserProfiles: cacheHits={}, cacheMisses={}, resolved={}",
+                distinctIds.size() - missIds.size(), missIds.size(), result.size());
+        return result;
+    }
+
+    private boolean resolveFromCache(String userId, Map<String, String> result) {
+        String cachedData = redisCacheMgr.getFromCache(Constants.USER + ":basicProfile:" + userId);
+        if (StringUtils.isBlank(cachedData)) {
+            return false;
+        }
+        try {
+            Map<String, Object> profile = objectMapper.readValue(cachedData,
+                    new TypeReference<Map<String, Object>>() {});
+            Object firstName = profile.get(Constants.FIRSTNAME);
+            result.put(userId, firstName != null ? firstName.toString() : StringUtils.EMPTY);
+            return true;
+        } catch (Exception e) {
+            log.warn("resolveFromCache: Failed to parse cached profile - userId={}", userId, e);
+            return false;
+        }
+    }
+
+    private void resolveFromCassandra(List<String> missIds, Map<String, String> result) {
+        int batchSize = serverProperties.getCassandraQueryLimitPrimaryKey();
+        for (int i = 0; i < missIds.size(); i += batchSize) {
+            List<String> batch = missIds.subList(i, Math.min(i + batchSize, missIds.size()));
+            fetchAndMerge(batch, result);
+        }
+    }
+
+    private void fetchAndMerge(List<String> batch, Map<String, String> result) {
+        try {
+            Map<String, Object> propertiesMap = Map.of(Constants.ID, batch);
+            List<Map<String, Object>> users = cassandraOperation.getRecordsByProperties(
+                    Constants.KEYSPACE_SUNBIRD, Constants.TABLE_USER, propertiesMap,
+                    Arrays.asList(Constants.ID, Constants.FIRST_NAME), null);
+            if (CollectionUtils.isNotEmpty(users)) {
+                users.stream()
+                        .filter(user -> StringUtils.isNotBlank((String) user.get(Constants.ID)))
+                        .forEach(user -> {
+                            String id = (String) user.get(Constants.ID);
+                            Object firstName = user.get(Constants.FIRST_NAME);
+                            result.put(id, firstName != null ? firstName.toString() : StringUtils.EMPTY);
+                        });
+            }
+        } catch (Exception e) {
+            log.error("fetchAndMerge: Cassandra fetch failed for batch of {} users", batch.size(), e);
+        }
+    }
 }

@@ -288,6 +288,7 @@ public class UserGroupServiceImpl implements UserGroupService {
             String sortOrder = extractSortOrder(request);
 
             Map<String, Object> searchResult = esService.searchUserGroups(filters, pageSize, pageNumber, sortBy, sortOrder);
+            enrichSearchResultWithUserNames(searchResult);
 
             response.getParams().setStatus(Constants.SUCCESSFUL);
             response.setResponseCode(HttpStatus.OK);
@@ -546,5 +547,45 @@ public class UserGroupServiceImpl implements UserGroupService {
         response.getParams().setStatus(Constants.FAILED);
         response.getParams().setErr(e.getMessage());
         response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    /**
+     * Enriches each user group in the search result with {@code createdByName} and {@code updatedByName}
+     * using a single batch Cassandra fetch for all unique user IDs.
+     *
+     * @param searchResult map containing {@code content} list from ES
+     */
+    private void enrichSearchResultWithUserNames(Map<String, Object> searchResult) {
+        List<Map<String, Object>> content = (List<Map<String, Object>>) searchResult.get(Constants.CONTENT);
+        if (CollectionUtils.isEmpty(content)) {
+            return;
+        }
+        Set<String> userIds = new HashSet<>();
+        for (Map<String, Object> item : content) {
+            String createdBy = (String) item.get(Constants.COL_CREATEDBY);
+            String updatedBy = (String) item.get(Constants.COL_UPDATEDBY);
+            if (StringUtils.isNotBlank(createdBy)) {
+                userIds.add(createdBy);
+            }
+            if (StringUtils.isNotBlank(updatedBy)) {
+                userIds.add(updatedBy);
+            }
+        }
+        if (userIds.isEmpty()) {
+            return;
+        }
+        Map<String, String> userIdToName = userProfileUtil.buildUserProfiles(new ArrayList<>(userIds));
+        for (Map<String, Object> item : content) {
+            String createdBy = (String) item.get(Constants.COL_CREATEDBY);
+            String updatedBy = (String) item.get(Constants.COL_UPDATEDBY);
+            if (StringUtils.isNotBlank(createdBy)) {
+                item.put(Constants.CREATED_BY_NAME, userIdToName.getOrDefault(createdBy, StringUtils.EMPTY));
+            }
+            if (StringUtils.isNotBlank(updatedBy)) {
+                item.put(Constants.UPDATED_BY_NAME, userIdToName.getOrDefault(updatedBy, StringUtils.EMPTY));
+            }
+        }
+        log.debug("enrichSearchResultWithUserNames: Enriched {} items, resolved {} unique users",
+                content.size(), userIdToName.size());
     }
 }

@@ -798,6 +798,7 @@ public class Constants {
     public static final String MSG_MULTIPLE_ROOTORGID_NON_CCA = "Multiple rootOrgIds are not allowed for non-CCA organizations";
     public static final String MSG_ROOTORGID_MISMATCH = "rootOrgId in criteria does not match your organization";
     public static final String CREATED_BY_ORG_LOGO = "createdByOrgLogo";
+    public static final String UPDATED_BY_NAME = "updatedByName";
     
     private Constants() {
     }

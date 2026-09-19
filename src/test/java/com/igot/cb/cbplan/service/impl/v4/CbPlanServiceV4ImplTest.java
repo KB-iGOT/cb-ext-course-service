@@ -1,6 +1,8 @@
 package com.igot.cb.cbplan.service.impl.v4;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.igot.cb.cache.CbPlanCacheMgrV3;
+import com.igot.cb.cache.RedisCacheMgr;
 import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.cbplan.dto.CbPlanReadResponseDto;
 import com.igot.cb.cbplan.service.CbPlanServiceV3;
@@ -26,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -33,6 +36,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
@@ -86,6 +90,12 @@ class CbPlanServiceV4ImplTest {
 
     @Mock
     private UserProfileUtil userProfileUtil;
+
+    @Mock
+    private RedisCacheMgr redisCacheMgr;
+
+    @Mock
+    private CbPlanCacheMgrV3 cbPlanCacheMgrV3;
 
     @InjectMocks
     private CbPlanServiceV4Impl cbPlanService;
@@ -824,6 +834,54 @@ class CbPlanServiceV4ImplTest {
 
         assertEquals(HttpStatus.OK, response.getResponseCode());
         verify(dataTransformService).prepareCbPlanForUpdate(anyMap(), eq(USER_ID));
+    }
+
+    @Test
+    void updateCaLinkedId_success_updatesCassandraEsAndInvalidatesCaches() {
+        when(cassandraOperation.updateRecord(eq(Constants.KEYSPACE_SUNBIRD),
+                eq(Constants.TABLE_CB_PLAN_V3), anyMap(), anyMap()))
+                .thenReturn(Map.of(Constants.RESPONSE, Constants.SUCCESS));
+
+        boolean result = cbPlanService.updateCaLinkedId(PLAN_ID, "ca-assessment-123", Constants.SYSTEM_USER);
+
+        assertTrue(result);
+        verify(cassandraOperation).updateRecord(eq(Constants.KEYSPACE_SUNBIRD), eq(Constants.TABLE_CB_PLAN_V3),
+                argThat(m -> "ca-assessment-123".equals(m.get(Constants.CA_LINKED_ID_DB))
+                        && Constants.SYSTEM_USER.equals(m.get(Constants.UPDATED_BY))),
+                eq(Map.of(Constants.PLAN_ID, PLAN_ID)));
+        verify(elasticSearchService).updateElasticSearchForPlan(eq(PLAN_ID), anyMap());
+        verify(cbPlanCacheMgrV3).invalidatePlan(PLAN_ID);
+        verify(redisCacheMgr).deleteKeysByPatternAsync(Constants.CB_PLAN_V4_REDIS_KEY_PREFIX + "*");
+    }
+
+    @Test
+    void updateCaLinkedId_nullValue_clearsLink() {
+        when(cassandraOperation.updateRecord(eq(Constants.KEYSPACE_SUNBIRD),
+                eq(Constants.TABLE_CB_PLAN_V3), anyMap(), anyMap()))
+                .thenReturn(Map.of(Constants.RESPONSE, Constants.SUCCESS));
+
+        boolean result = cbPlanService.updateCaLinkedId(PLAN_ID, null, Constants.SYSTEM_USER);
+
+        assertTrue(result);
+        verify(cassandraOperation).updateRecord(eq(Constants.KEYSPACE_SUNBIRD), eq(Constants.TABLE_CB_PLAN_V3),
+                argThat(m -> m.containsKey(Constants.CA_LINKED_ID_DB) && m.get(Constants.CA_LINKED_ID_DB) == null),
+                anyMap());
+        verify(elasticSearchService).updateElasticSearchForPlan(eq(PLAN_ID),
+                argThat(m -> m.containsKey(Constants.CA_LINKED_ID_DB) && m.get(Constants.CA_LINKED_ID_DB) == null));
+    }
+
+    @Test
+    void updateCaLinkedId_cassandraFailure_returnsFalseAndSkipsEsAndCaches() {
+        when(cassandraOperation.updateRecord(eq(Constants.KEYSPACE_SUNBIRD),
+                eq(Constants.TABLE_CB_PLAN_V3), anyMap(), anyMap()))
+                .thenReturn(Map.of(Constants.RESPONSE, Constants.FAILED));
+
+        boolean result = cbPlanService.updateCaLinkedId(PLAN_ID, "ca-assessment-123", Constants.SYSTEM_USER);
+
+        assertFalse(result);
+        verify(elasticSearchService, never()).updateElasticSearchForPlan(anyString(), anyMap());
+        verify(cbPlanCacheMgrV3, never()).invalidatePlan(anyString());
+        verify(redisCacheMgr, never()).deleteKeysByPatternAsync(anyString());
     }
 
     @Test

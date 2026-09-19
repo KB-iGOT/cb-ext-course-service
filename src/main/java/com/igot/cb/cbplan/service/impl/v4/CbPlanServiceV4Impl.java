@@ -13,8 +13,6 @@ import com.igot.cb.cbplan.service.CbPlanServiceV3;
 import com.igot.cb.cbplan.service.impl.CbPlanContentLookupServiceV3Impl;
 import com.igot.cb.cbplan.service.impl.CbPlanDataTransformServiceV3Impl;
 import com.igot.cb.cbplan.service.impl.CbPlanOrgLookupServiceV3Impl;
-import com.igot.cb.elasticsearch.dto.SearchCriteria;
-import com.igot.cb.elasticsearch.dto.SearchResult;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -26,6 +24,8 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.igot.cb.cache.CbPlanCacheMgrV3;
+import com.igot.cb.cache.RedisCacheMgr;
 import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.cbplan.dto.CbPlanReadResponseDto;
 import com.igot.cb.cbplan.service.CbPlanServiceV4;
@@ -63,6 +63,8 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
     private final AccessTokenValidator accessTokenValidator;
     private final UserProfileUtil userProfileUtil;
     private final CbPlanDictionaryServiceV4Impl dictionaryService;
+    private final RedisCacheMgr redisCacheMgr;
+    private final CbPlanCacheMgrV3 cbPlanCacheMgrV3;
     private final ObjectMapper mapper;
 
     public CbPlanServiceV4Impl(CassandraOperation cassandraOperation,
@@ -78,7 +80,9 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
                                EsUtilService esUtilService,
                                AccessTokenValidator accessTokenValidator,
                                UserProfileUtil userProfileUtil,
-                               CbPlanDictionaryServiceV4Impl dictionaryService) {
+                               CbPlanDictionaryServiceV4Impl dictionaryService,
+                               RedisCacheMgr redisCacheMgr,
+                               CbPlanCacheMgrV3 cbPlanCacheMgrV3) {
         this.cassandraOperation = cassandraOperation;
         this.serverProperties = serverProperties;
         this.validationService = validationService;
@@ -93,6 +97,8 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
         this.accessTokenValidator = accessTokenValidator;
         this.userProfileUtil = userProfileUtil;
         this.dictionaryService = dictionaryService;
+        this.redisCacheMgr = redisCacheMgr;
+        this.cbPlanCacheMgrV3 = cbPlanCacheMgrV3;
         this.mapper = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
@@ -1381,17 +1387,7 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
                                                String userId, ApiResponse response) {
         log.info("CbPlanServiceV4Impl.executeDirectCaLinkedIdUpdate: Updating caLinkedId directly - cbPlanId={}, caLinkedId={}",
                 cbPlanId, caLinkedId);
-        Map<String, Object> updateMap = new HashMap<>();
-        updateMap.put(Constants.CA_LINKED_ID_DB, caLinkedId);
-        updateMap.put(Constants.UPDATED_BY, userId);
-        updateMap.put(Constants.UPDATED_AT, Instant.now());
-        Map<String, Object> resp = cassandraOperation.updateRecord(
-                Constants.KEYSPACE_SUNBIRD,
-                Constants.TABLE_CB_PLAN_V3,
-                updateMap,
-                Map.of(Constants.PLAN_ID, cbPlanId));
-        if (Constants.SUCCESS.equals(resp.get(Constants.RESPONSE))) {
-            elasticSearchService.updateElasticSearchForPlan(cbPlanId, updateMap);
+        if (updateCaLinkedId(cbPlanId, caLinkedId, userId)) {
             response.getParams().setStatus(Constants.SUCCESS);
             response.setResponseCode(HttpStatus.OK);
             response.getResult().put(Constants.RESPONSE, "CB Plan caLinkedId updated successfully");
@@ -1405,6 +1401,33 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
             response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
             log.error("CbPlanServiceV4Impl.executeDirectCaLinkedIdUpdate: Failed - cbPlanId={}", cbPlanId);
         }
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean updateCaLinkedId(String cbPlanId, String caLinkedId, String updatedBy) {
+        Map<String, Object> updateMap = new HashMap<>();
+        updateMap.put(Constants.CA_LINKED_ID_DB, caLinkedId);
+        updateMap.put(Constants.UPDATED_BY, updatedBy);
+        updateMap.put(Constants.UPDATED_AT, Instant.now());
+        Map<String, Object> resp = cassandraOperation.updateRecord(
+                Constants.KEYSPACE_SUNBIRD,
+                Constants.TABLE_CB_PLAN_V3,
+                updateMap,
+                Map.of(Constants.PLAN_ID, cbPlanId));
+        if (!Constants.SUCCESS.equals(resp.get(Constants.RESPONSE))) {
+            log.error("CbPlanServiceV4Impl.updateCaLinkedId: Cassandra update failed - cbPlanId={}, caLinkedId={}",
+                    cbPlanId, caLinkedId);
+            return false;
+        }
+        elasticSearchService.updateElasticSearchForPlan(cbPlanId, updateMap);
+        cbPlanCacheMgrV3.invalidatePlan(cbPlanId);
+        redisCacheMgr.deleteKeysByPatternAsync(Constants.CB_PLAN_V4_REDIS_KEY_PREFIX + "*");
+        log.info("CbPlanServiceV4Impl.updateCaLinkedId: Updated - cbPlanId={}, caLinkedId={}, updatedBy={}",
+                cbPlanId, caLinkedId, updatedBy);
+        return true;
     }
 
     /**

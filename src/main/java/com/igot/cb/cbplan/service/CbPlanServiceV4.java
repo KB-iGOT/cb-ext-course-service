@@ -96,4 +96,16 @@ public interface CbPlanServiceV4 {
      * @return ApiResponse with aparPlanList and nonAparPlanList grouped by planYear
      */
     ApiResponse getCBPlanDictionaryForUser(ApiRequest request, String authToken);
+
+    /**
+     * Sets or clears the Comprehensive Assessment link (calinkedid) on a CB Plan, syncs the
+     * ElasticSearch document and invalidates the plan/dictionary caches.
+     * Used by the authenticated update API and by the training-plan CA-link Kafka consumer.
+     *
+     * @param cbPlanId   CB Plan ID
+     * @param caLinkedId CA content identifier to link, or null to clear the link
+     * @param updatedBy  user or system identifier recorded in updatedBy
+     * @return true when Cassandra and ElasticSearch were updated, false when the Cassandra update failed
+     */
+    boolean updateCaLinkedId(String cbPlanId, String caLinkedId, String updatedBy);
 }

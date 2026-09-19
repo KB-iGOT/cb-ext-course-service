@@ -145,6 +145,11 @@ public class CbPlanDictionaryServiceV4Impl {
             enrichOrgDetails(nonAparPlanMap, orgDetailsMap);
             Map<String, Object> yearResult = buildYearResult(aparPlanMap, nonAparPlanMap);
             response.getResult().put(planYear, yearResult);
+            if (StringUtils.isNotBlank(requestedPlanYear) && aparPlanMap.isEmpty() && nonAparPlanMap.isEmpty()) {
+                log.info("getCBPlanDictionaryForUser: Plans found but none accessible - userId={}, planYear={}, fetching previous year", userId, planYear);
+                fetchAndAppendPreviousYear(response, userProfile, userOrgId,
+                        CbPlanYearUtil.resolvePreviousYear(planYear));
+            }
             response.setParams(new ApiRespParam());
             response.getParams().setStatus(Constants.SUCCESS);
             response.setResponseCode(HttpStatus.OK);

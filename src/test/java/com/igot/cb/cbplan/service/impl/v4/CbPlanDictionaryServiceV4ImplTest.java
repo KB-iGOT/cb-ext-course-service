@@ -904,4 +904,99 @@ class CbPlanDictionaryServiceV4ImplTest {
         assertThat(nestedContentList.get(0)).containsEntry(Constants.IDENTIFIER, "do_nested_obj");
         assertThat(nestedContentList.get(0)).containsEntry(Constants.MANDATORY, false);
     }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getCBPlanDictionaryForUser_planYearProvidedNoCurrentData_fetchesPreviousYearData() {
+        setupValidUserProfileMocks();
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
+        Map<String, Object> prevYearPlan = createMockPlan("plan_prev_001", false, null);
+        when(cbPlanCacheMgrV3.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+                .thenReturn(Collections.emptyList());
+        when(cbPlanCacheMgrV3.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq("2025-26"), any(AtomicBoolean.class)))
+                .thenReturn(List.of(prevYearPlan));
+        lenient().when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), isNull()))
+                .thenReturn(Collections.emptyList());
+
+        ApiResponse response = dictionaryService.getCBPlanDictionaryForUser(testRequest, TEST_AUTH_TOKEN);
+
+        assertThat(response.getResponseCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getResult()).containsKeys(TEST_PLAN_YEAR, "2025-26");
+        Map<String, Object> currentYearResult = (Map<String, Object>) response.getResult().get(TEST_PLAN_YEAR);
+        assertThat(currentYearResult.get(Constants.RESPONSE_KEY_APAR_PLAN_COUNT)).isEqualTo(0);
+        assertThat(currentYearResult.get(Constants.RESPONSE_KEY_NON_APAR_PLAN_COUNT)).isEqualTo(0);
+        Map<String, Object> prevYearResult = (Map<String, Object>) response.getResult().get("2025-26");
+        Map<String, Map<String, Object>> prevNonAparList =
+                (Map<String, Map<String, Object>>) prevYearResult.get(Constants.RESPONSE_KEY_NON_APAR_PLAN_LIST);
+        assertThat(prevNonAparList).containsKey("plan_prev_001");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getCBPlanDictionaryForUser_planYearProvidedNoPlansBothYears_returnsBothYearsEmpty() {
+        setupValidUserProfileMocks();
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
+        when(cbPlanCacheMgrV3.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+                .thenReturn(Collections.emptyList());
+        when(cbPlanCacheMgrV3.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq("2025-26"), any(AtomicBoolean.class)))
+                .thenReturn(Collections.emptyList());
+
+        ApiResponse response = dictionaryService.getCBPlanDictionaryForUser(testRequest, TEST_AUTH_TOKEN);
+
+        assertThat(response.getResponseCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getResult()).containsKeys(TEST_PLAN_YEAR, "2025-26");
+        Map<String, Object> currentYearResult = (Map<String, Object>) response.getResult().get(TEST_PLAN_YEAR);
+        Map<String, Object> prevYearResult = (Map<String, Object>) response.getResult().get("2025-26");
+        assertThat(currentYearResult.get(Constants.RESPONSE_KEY_APAR_PLAN_COUNT)).isEqualTo(0);
+        assertThat(currentYearResult.get(Constants.RESPONSE_KEY_NON_APAR_PLAN_COUNT)).isEqualTo(0);
+        assertThat(prevYearResult.get(Constants.RESPONSE_KEY_APAR_PLAN_COUNT)).isEqualTo(0);
+        assertThat(prevYearResult.get(Constants.RESPONSE_KEY_NON_APAR_PLAN_COUNT)).isEqualTo(0);
+    }
+
+    @Test
+    void getCBPlanDictionaryForUser_planYearNotProvided_noPlans_noFallbackTriggered() {
+        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(TEST_AUTH_TOKEN), any(ApiResponse.class)))
+                .thenReturn(TEST_USER_ID);
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
+        Map<String, Object> userRecord = new HashMap<>();
+        userRecord.put(Constants.ID, TEST_USER_ID);
+        userRecord.put(Constants.ROOT_ORG_ID, TEST_ORG_ID);
+        try {
+            userRecord.put(Constants.PROFILE_DETAILS.toLowerCase(),
+                    mapper.writeValueAsString(Map.of(Constants.ROOT_ORG_ID, TEST_ORG_ID)));
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+        when(cassandraOperation.getRecordsByProperties(
+                eq(Constants.KEYSPACE_SUNBIRD), eq(Constants.USER),
+                any(Map.class), any(List.class), anyInt()))
+                .thenReturn(List.of(userRecord));
+        doAnswer(invocation -> null).when(enrichmentService)
+                .extractMinistryOrStateDetails(any(Map.class), any(Map.class));
+        when(cbPlanCacheMgrV3.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), anyString(), any(AtomicBoolean.class)))
+                .thenReturn(Collections.emptyList());
+
+        ApiRequest noYearRequest = new ApiRequest();
+        noYearRequest.setRequest(new HashMap<>());
+        ApiResponse response = dictionaryService.getCBPlanDictionaryForUser(noYearRequest, TEST_AUTH_TOKEN);
+
+        assertThat(response.getResponseCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getResult()).hasSize(1);
+        verify(cbPlanCacheMgrV3, times(1)).getCbPlanForAllAndOrgId(any(), anyString(), any());
+    }
+
+    @Test
+    void getCBPlanDictionaryForUser_planYearProvidedNoCurrentData_previousYearKeyIsCorrect() {
+        setupValidUserProfileMocks();
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
+        when(cbPlanCacheMgrV3.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+                .thenReturn(Collections.emptyList());
+        lenient().when(cbPlanCacheMgrV3.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq("2025-26"), any(AtomicBoolean.class)))
+                .thenReturn(Collections.emptyList());
+
+        ApiResponse response = dictionaryService.getCBPlanDictionaryForUser(testRequest, TEST_AUTH_TOKEN);
+
+        assertThat(response.getResult()).containsKey("2025-26");
+        assertThat(response.getResult()).doesNotContainKey("2024-25");
+    }
 }

@@ -177,6 +177,46 @@ class UserGroupElasticSearchServiceImplTest {
         assertEquals(0, result.get("count"));
     }
 
+    @Test
+    void tryUpdateDocument_whenEsUpdateReturnsNonNull_shouldReturnTrue() {
+        Map<String, Object> updateProps = Map.of(Constants.COL_USERGROUPNAME, "Updated Name");
+        when(esUtilService.updateDocument(anyString(), anyString(), anyString(), anyMap(), anyString())).thenReturn("success");
+
+        boolean result = esService.tryUpdateDocument(TEST_USER_GROUP_ID, updateProps);
+
+        assertTrue(result);
+        verify(esUtilService, times(1)).updateDocument(
+                eq("user_group_info"), eq(Constants.INDEX_TYPE), eq(TEST_USER_GROUP_ID), eq(updateProps), anyString());
+    }
+
+    @Test
+    void tryUpdateDocument_whenEsUpdateReturnsNull_shouldReturnFalse() {
+        Map<String, Object> updateProps = Map.of(Constants.COL_STATUS, Constants.ARCHIVED);
+        when(esUtilService.updateDocument(anyString(), anyString(), anyString(), anyMap(), anyString())).thenReturn(null);
+
+        boolean result = esService.tryUpdateDocument(TEST_USER_GROUP_ID, updateProps);
+
+        assertFalse(result);
+    }
+
+    @Test
+    void rollbackUpdate_whenEsRollbackSucceeds_shouldCompleteWithoutError() {
+        Map<String, Object> previousState = new HashMap<>();
+        when(esUtilService.updateDocument(anyString(), anyString(), anyString(), anyMap(), anyString())).thenReturn("success");
+
+        assertDoesNotThrow(() -> esService.rollbackUpdate(TEST_USER_GROUP_ID, previousState));
+        verify(esUtilService, times(1)).updateDocument(
+                eq("user_group_info"), eq(Constants.INDEX_TYPE), eq(TEST_USER_GROUP_ID), eq(previousState), anyString());
+    }
+
+    @Test
+    void rollbackUpdate_whenEsRollbackFails_shouldLogDivergenceErrorWithoutThrowing() {
+        Map<String, Object> previousState = new HashMap<>();
+        when(esUtilService.updateDocument(anyString(), anyString(), anyString(), anyMap(), anyString())).thenReturn(null);
+
+        assertDoesNotThrow(() -> esService.rollbackUpdate(TEST_USER_GROUP_ID, previousState));
+    }
+
     // Helper methods
 
     private UserGroupEntity createUserGroupEntity() {

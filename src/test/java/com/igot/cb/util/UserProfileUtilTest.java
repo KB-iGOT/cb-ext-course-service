@@ -81,8 +81,8 @@ class UserProfileUtilTest {
         when(serverProperties.getCassandraQueryLimitPrimaryKey()).thenReturn(BATCH_SIZE);
         when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), anyMap(), anyList(), isNull()))
                 .thenReturn(List.of(
-                        Map.of(Constants.ID, USER_ID_1, Constants.FIRST_NAME, FIRST_NAME_1),
-                        Map.of(Constants.ID, USER_ID_2, Constants.FIRST_NAME, FIRST_NAME_2)
+                        Map.of(Constants.ID, USER_ID_1, Constants.FIRSTNAME, FIRST_NAME_1),
+                        Map.of(Constants.ID, USER_ID_2, Constants.FIRSTNAME, FIRST_NAME_2)
                 ));
 
         Map<String, String> result = userProfileUtil.buildUserProfiles(List.of(USER_ID_1, USER_ID_2));
@@ -100,7 +100,7 @@ class UserProfileUtilTest {
         when(redisCacheMgr.getFromCache(CACHE_KEY_2)).thenReturn(null);
         when(serverProperties.getCassandraQueryLimitPrimaryKey()).thenReturn(BATCH_SIZE);
         when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), anyMap(), anyList(), isNull()))
-                .thenReturn(List.of(Map.of(Constants.ID, USER_ID_2, Constants.FIRST_NAME, FIRST_NAME_2)));
+                .thenReturn(List.of(Map.of(Constants.ID, USER_ID_2, Constants.FIRSTNAME, FIRST_NAME_2)));
 
         Map<String, String> result = userProfileUtil.buildUserProfiles(List.of(USER_ID_1, USER_ID_2));
 
@@ -115,7 +115,7 @@ class UserProfileUtilTest {
         when(redisCacheMgr.getFromCache(CACHE_KEY_1)).thenReturn(null);
         when(serverProperties.getCassandraQueryLimitPrimaryKey()).thenReturn(BATCH_SIZE);
         when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), anyMap(), anyList(), isNull()))
-                .thenReturn(List.of(Map.of(Constants.ID, USER_ID_1, Constants.FIRST_NAME, FIRST_NAME_1)));
+                .thenReturn(List.of(Map.of(Constants.ID, USER_ID_1, Constants.FIRSTNAME, FIRST_NAME_1)));
 
         Map<String, String> result = userProfileUtil.buildUserProfiles(
                 List.of(USER_ID_1, USER_ID_1, USER_ID_1));
@@ -152,7 +152,7 @@ class UserProfileUtilTest {
         when(redisCacheMgr.getFromCache(CACHE_KEY_1)).thenReturn("not-valid-json");
         when(serverProperties.getCassandraQueryLimitPrimaryKey()).thenReturn(BATCH_SIZE);
         when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), anyMap(), anyList(), isNull()))
-                .thenReturn(List.of(Map.of(Constants.ID, USER_ID_1, Constants.FIRST_NAME, FIRST_NAME_1)));
+                .thenReturn(List.of(Map.of(Constants.ID, USER_ID_1, Constants.FIRSTNAME, FIRST_NAME_1)));
 
         Map<String, String> result = userProfileUtil.buildUserProfiles(List.of(USER_ID_1));
 

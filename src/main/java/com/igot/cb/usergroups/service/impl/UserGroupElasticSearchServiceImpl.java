@@ -17,6 +17,7 @@ import org.springframework.stereotype.Service;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Elasticsearch service for User Group operations.
@@ -149,5 +150,36 @@ public class UserGroupElasticSearchServiceImpl {
         }
 
         return searchCriteria;
+    }
+
+    /**
+     * Attempts to update a user group in Elasticsearch, returning whether the update succeeded.
+     * Used as a {@code preCommitValidator} in the transactional {@code updateRecord} overload.
+     *
+     * @param userGroupId user group ID
+     * @param updateProps fields to update
+     * @return true if ES responded with a non-null result
+     */
+    public boolean tryUpdateDocument(String userGroupId, Map<String, Object> updateProps) {
+        return Objects.nonNull(esUtilService.updateDocument(
+                serverProperties.getUserGroupIndex(),
+                Constants.INDEX_TYPE,
+                userGroupId,
+                updateProps,
+                serverProperties.getElasticUserGroupJsonPath()
+        ));
+    }
+
+    /**
+     * Best-effort ES rollback: restores the user group document to its pre-update state.
+     * Called as {@code onCommitFailureRollback} when Cassandra fails after ES already succeeded.
+     *
+     * @param userGroupId   user group ID
+     * @param previousState full document state before the attempted update
+     */
+    public void rollbackUpdate(String userGroupId, Map<String, Object> previousState) {
+        if (!tryUpdateDocument(userGroupId, previousState)) {
+            log.error("ES_CASSANDRA_DIVERGENCE: ES rollback failed for usergroupid={} — manual reconciliation required", userGroupId);
+        }
     }
 }

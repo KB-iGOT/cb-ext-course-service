@@ -21,6 +21,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
+import java.util.function.Supplier;
 
 /**
  * Main User Group service implementation.
@@ -196,12 +197,13 @@ public class UserGroupServiceImpl implements UserGroupService {
             }
 
             Map<String, Object> updateProps = dataTransformService.buildUpdateProperties(userGroupName, criteria, userId);
-            if (!updateUserGroupInCassandra(userGroupId, userRootOrgId, updateProps, response)) {
+            Map<String, Object> esSnapshot = dataTransformService.entityToResponseMap(existingEntity);
+            if (transactionalUpdateFailed(userGroupId, userRootOrgId, updateProps,
+                    () -> esService.tryUpdateDocument(userGroupId, updateProps),
+                    () -> esService.rollbackUpdate(userGroupId, esSnapshot),
+                    response)) {
                 return response;
             }
-
-            esService.updateUserGroup(userGroupId, updateProps);
-
             log.info("User group updated successfully: usergroupid={}", userGroupId);
             response.getParams().setStatus(Constants.SUCCESSFUL);
             response.setResponseCode(HttpStatus.OK);
@@ -243,13 +245,14 @@ public class UserGroupServiceImpl implements UserGroupService {
                 return response;
             }
 
-            if (!updateUserGroupInCassandra(userGroupId, userRootOrgId,
-                    Map.of(Constants.COL_STATUS, Constants.ARCHIVED), response)) {
+            Map<String, Object> archiveProps = Map.of(Constants.COL_STATUS, Constants.ARCHIVED);
+            Map<String, Object> esSnapshot = dataTransformService.entityToResponseMap(entity);
+            if (transactionalUpdateFailed(userGroupId, userRootOrgId, archiveProps,
+                    () -> esService.tryUpdateDocument(userGroupId, archiveProps),
+                    () -> esService.rollbackUpdate(userGroupId, esSnapshot),
+                    response)) {
                 return response;
             }
-
-            esService.updateUserGroup(userGroupId, Map.of(Constants.COL_STATUS, Constants.ARCHIVED));
-
             log.info("User group archived successfully: usergroupid={}", userGroupId);
             response.getParams().setStatus(Constants.SUCCESSFUL);
             response.setResponseCode(HttpStatus.OK);
@@ -335,11 +338,18 @@ public class UserGroupServiceImpl implements UserGroupService {
             insertMap.put(Constants.COL_CRITERIA, entity.getCriteria());
             insertMap.put(Constants.COL_STATUS, entity.getStatus());
 
-            cassandraOperation.insertRecord(
+            Map<String, Object> result = (Map<String, Object>) cassandraOperation.insertRecord(
                     Constants.KEYSPACE_SUNBIRD,
                     Constants.TABLE_USER_GROUP_INFO,
                     insertMap
             );
+            if (!Constants.SUCCESS.equals(result.get(Constants.RESPONSE))) {
+                log.error("Cassandra insert failed for usergroupid={}: {}", entity.getUserGroupId(), result.get(Constants.ERROR_MESSAGE));
+                response.getParams().setStatus(Constants.FAILED);
+                response.getParams().setErr(Constants.MSG_FAILED_CREATE_USER_GROUP);
+                response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
+                return false;
+            }
             log.debug("Inserted user group in Cassandra: usergroupid={}", entity.getUserGroupId());
             return true;
         } catch (Exception e) {
@@ -387,37 +397,11 @@ public class UserGroupServiceImpl implements UserGroupService {
     }
 
     /**
-     * Updates user group in Cassandra with provided properties.
-     *
-     * @param userGroupId user group ID
-     * @param userOrgId   organization ID
-     * @param updateProps properties to update
-     */
-    private boolean updateUserGroupInCassandra(String userGroupId, String userOrgId, Map<String, Object> updateProps, ApiResponse response) {
-        try {
-            cassandraOperation.updateRecord(
-                    Constants.KEYSPACE_SUNBIRD,
-                    Constants.TABLE_USER_GROUP_INFO,
-                    updateProps,
-                    Map.of(Constants.COL_ORGID, userOrgId, Constants.COL_USERGROUPID, userGroupId)
-            );
-            log.debug("Updated user group in Cassandra: usergroupid={}", userGroupId);
-            return true;
-        } catch (Exception e) {
-            log.error("Failed to update user group in Cassandra: usergroupid={}", userGroupId, e);
-            response.getParams().setStatus(Constants.FAILED);
-            response.getParams().setErr(Constants.MSG_FAILED_UPDATE_USER_GROUP);
-            response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
-            return false;
-        }
-    }
-
-    /**
      * Builds the post-update entity in-memory from the pre-update entity and the applied
      * update properties, avoiding a second Cassandra read to return the updated state.
      *
      * @param existingEntity entity as it was before the update
-     * @param updateProps    properties actually written by updateUserGroupInCassandra
+     * @param updateProps    properties actually written to Cassandra
      * @return entity reflecting the updated state
      */
     private UserGroupEntity applyUpdateProps(UserGroupEntity existingEntity, Map<String, Object> updateProps) {
@@ -587,5 +571,35 @@ public class UserGroupServiceImpl implements UserGroupService {
         }
         log.debug("enrichSearchResultWithUserNames: Enriched {} items, resolved {} unique users",
                 content.size(), userIdToName.size());
+    }
+
+    /**
+     * Atomically updates Cassandra and Elasticsearch: ES update runs as the pre-commit validator,
+     * so Cassandra only commits if ES succeeds. If Cassandra throws after ES already succeeded,
+     * the rollback lambda reverts ES to the previous state.
+     *
+     * @param esUpdate   pre-commit validator — returns true if ES update succeeded
+     * @param esRollback best-effort compensation invoked on Cassandra commit failure
+     */
+    private boolean transactionalUpdateFailed(String userGroupId, String userOrgId,
+            Map<String, Object> updateProps, Supplier<Boolean> esUpdate, Runnable esRollback,
+            ApiResponse response) {
+        Map<String, Object> result = cassandraOperation.updateRecord(
+                Constants.KEYSPACE_SUNBIRD,
+                Constants.TABLE_USER_GROUP_INFO,
+                updateProps,
+                Map.of(Constants.COL_ORGID, userOrgId, Constants.COL_USERGROUPID, userGroupId),
+                esUpdate,
+                esRollback
+        );
+        if (Constants.SUCCESS.equals(result.get(Constants.RESPONSE))) {
+            log.debug("Transactional update succeeded for usergroupid={}", userGroupId);
+            return false;
+        }
+        log.error("Transactional update failed for usergroupid={}", userGroupId);
+        response.getParams().setStatus(Constants.FAILED);
+        response.getParams().setErr(Constants.MSG_FAILED_UPDATE_USER_GROUP);
+        response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
+        return true;
     }
 }

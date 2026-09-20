@@ -520,7 +520,7 @@ class CbPlanServiceV3ImplTest {
         existingCbPlan.put(Constants.ORG_SCOPE, Constants.ALL);
         existingCbPlan.put(Constants.PLAN_YEAR, PLAN_YEAR);
         mockExistingPlan(existingCbPlan);
-        when(cassandraOperation.updateRecord(anyString(), anyString(), anyMap(), anyMap()))
+        when(cassandraOperation.updateRecord(anyString(), anyString(), anyMap(), anyMap(), any(), any()))
                 .thenReturn(Map.of(Constants.RESPONSE, Constants.SUCCESS));
         when(cassandraOperation.insertRecord(anyString(), anyString(), anyMap())).thenReturn(cassandraInsertSuccess());
         Map<String, Object> requestMap = new HashMap<>();
@@ -538,7 +538,7 @@ class CbPlanServiceV3ImplTest {
         existingCbPlan.put(Constants.CREATED_BY, USER_ID);
         existingCbPlan.put(Constants.STATUS, Constants.DRAFT);
         mockExistingPlan(existingCbPlan);
-        when(cassandraOperation.updateRecord(anyString(), anyString(), anyMap(), anyMap()))
+        when(cassandraOperation.updateRecord(anyString(), anyString(), anyMap(), anyMap(), any(), any()))
                 .thenReturn(Map.of(Constants.RESPONSE, Constants.FAILED, Constants.ERROR_MESSAGE, "update failed"));
         ApiResponse response = cbPlanService.retireCbPlan(requestWithPlanId(), ORG_ID, TOKEN, List.of());
         assertEquals(Constants.FAILED, response.getParams().getStatus());
@@ -1002,7 +1002,7 @@ class CbPlanServiceV3ImplTest {
         existingPlan.put(Constants.PLAN_YEAR, PLAN_YEAR);
         mockExistingPlan(existingPlan);
 
-        when(cassandraOperation.updateRecord(anyString(), anyString(), anyMap(), anyMap()))
+        when(cassandraOperation.updateRecord(anyString(), anyString(), anyMap(), anyMap(), any(), any()))
                 .thenReturn(Map.of(Constants.RESPONSE, Constants.SUCCESS));
 
         Map<String, Object> request = new HashMap<>();
@@ -1069,7 +1069,7 @@ class CbPlanServiceV3ImplTest {
         existingPlan.put(Constants.PLAN_YEAR, PLAN_YEAR);
         mockExistingPlan(existingPlan);
 
-        when(cassandraOperation.updateRecord(anyString(), anyString(), anyMap(), anyMap()))
+        when(cassandraOperation.updateRecord(anyString(), anyString(), anyMap(), anyMap(), any(), any()))
                 .thenReturn(Map.of(Constants.RESPONSE, Constants.FAILED));
 
         Map<String, Object> request = new HashMap<>();

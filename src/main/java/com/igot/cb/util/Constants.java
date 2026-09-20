@@ -784,6 +784,11 @@ public class Constants {
     public static final String ERR_DRAFT_PLAN_NOT_ACCESSIBLE = "Draft plans are not accessible via public read API. Use admin read API instead.";
     public static final String CA_LINKED_ID = "caLinkedId";
     public static final String CA_LINKED_ID_DB = "calinkedid";
+    public static final String TRAINING_PLAN_ID = "trainingPlanId";
+    public static final String CA_IDENTIFIER = "caIdentifier";
+    public static final String CA_LINK_EVENT_ADD = "ADD";
+    public static final String CA_LINK_EVENT_REMOVE = "REMOVE";
+    public static final String SYSTEM_USER = "SYSTEM";
     public static final String EXISTS = "exists";
     public static final String API_CBPLAN_V4_GET_USER_DICTIONARY = "api.cbplan.v4.user.dictionary";
     public static final String CB_PLAN_V4_REDIS_KEY_PREFIX = "cbplan:v4:userlookup:";

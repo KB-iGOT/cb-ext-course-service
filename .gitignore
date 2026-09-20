@@ -3,3 +3,4 @@ target/cb-ext-course-service-0.0.1-SNAPSHOT.jar.original
 htmlReport/*
 target/*
 .idea/*
+.DS_Store

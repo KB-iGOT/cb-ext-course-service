@@ -14,6 +14,7 @@ import com.igot.cb.util.PayloadValidation;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.roaringbitmap.RoaringBitmap;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -99,7 +100,7 @@ public class PromotionalContentServiceImpl implements IPromotionalContentService
 
     /**
      * Processes user group details, generates UUIDs, and saves to database.
-     * Converts criteria to BitSets via migration service before storage.
+     * Converts criteria values to id lists via migration service before storage.
      *
      * @throws Exception if processing or database operation fails
      */
@@ -286,9 +287,9 @@ public class PromotionalContentServiceImpl implements IPromotionalContentService
             }
             for (Map<String, Object> criteria : criteriaList) {
                 String criteriaKey = criteria.get(Constants.CRITERIA_KEY).toString().toLowerCase();
-                BitSet criteriaValue = (BitSet) criteria.get(Constants.CRITERIA_VALUE);
+                RoaringBitmap criteriaValue = (RoaringBitmap) criteria.get(Constants.CRITERIA_VALUE);
                 Integer userCriteriaValue = userProfile.get(criteriaKey);
-                if (userCriteriaValue == null || !criteriaValue.get(userCriteriaValue)) {
+                if (userCriteriaValue == null || !criteriaValue.contains(userCriteriaValue)) {
                     log.info("User profile does not contain criteria key: {} in userGroup: {}", criteriaKey,
                             userGroupId);
                     isUserHasAccess = false;

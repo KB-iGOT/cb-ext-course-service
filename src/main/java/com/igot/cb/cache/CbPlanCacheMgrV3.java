@@ -314,4 +314,27 @@ public class CbPlanCacheMgrV3 {
         }
         return cbPlanList;
     }
+
+    /**
+     * Evicts a single plan from this instance's Caffeine caches after one of its attributes changed
+     * out-of-band (e.g. caLinkedId sync from Kafka): the planIdCache row, plus only those cbPlanCache
+     * lists that contain a full row for the plan (the combined "orgId:planYear" lists). Lookup-table
+     * lists ("*-lookup:planYear") carry no plan attributes beyond planid/enddate/isactive and are left
+     * untouched, so the next dictionary build re-reads just this plan from Cassandra.
+     *
+     * @param planId CB Plan ID to evict
+     */
+    public void invalidatePlan(String planId) {
+        if (Objects.isNull(planId)) {
+            return;
+        }
+        planIdCache.invalidate(planId);
+        List<String> affectedKeys = cbPlanCache.asMap().entrySet().stream()
+                .filter(entry -> entry.getValue().stream().anyMatch(row ->
+                        planId.equals(row.get(Constants.PLAN_ID)) && row.containsKey(Constants.CA_LINKED_ID_DB)))
+                .map(Map.Entry::getKey)
+                .toList();
+        cbPlanCache.invalidateAll(affectedKeys);
+        log.info("CbPlanCacheMgrV3.invalidatePlan: planId={}, evicted {} list entries", planId, affectedKeys.size());
+    }
 }

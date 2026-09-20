@@ -98,4 +98,16 @@ public final class CbPlanYearUtil {
         String normalized = planYear.trim();
         return isValidPlanYearFormat(normalized) ? normalized : null;
     }
+
+    /**
+     * Resolves the previous financial year for the given plan year.
+     * Example: "2026-27" → "2025-26"
+     *
+     * @param planYear the plan year in format "YYYY-YY"
+     * @return previous financial year in format "YYYY-YY"
+     */
+    public static String resolvePreviousYear(String planYear) {
+        int startYear = Integer.parseInt(planYear.substring(0, 4)) - 1;
+        return String.format("%d-%02d", startYear, (startYear + 1) % 100);
+    }
 }

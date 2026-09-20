@@ -663,22 +663,26 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
                                     Map<String, Object> existingCbPlan, ApiResponse response) {
         String planYear = (String) existingCbPlan.get(Constants.PLAN_YEAR);
         Map<String, Object> updateData = dataTransformService.prepareArchiveUpdate(comment, userId);
+        Map<String, Object> sanitizedMap = prepareArchiveEsDocument(cbPlanId, existingCbPlan, updateData);
+        Map<String, Object> sanitizedExisting = elasticSearchService.sanitizeForElastic(new HashMap<>(existingCbPlan));
         Map<String, Object> resp = cassandraOperation.updateRecord(
                 Constants.KEYSPACE_SUNBIRD,
                 Constants.TABLE_CB_PLAN_V3,
                 updateData,
-                Map.of(Constants.PLAN_ID, cbPlanId));
+                Map.of(Constants.PLAN_ID, cbPlanId),
+                () -> Objects.nonNull(esUtilService.updateDocument(serverProperties.getCpPlanIndex(),
+                        Constants.INDEX_TYPE, cbPlanId, sanitizedMap, serverProperties.getElasticCbPlanJsonPath())),
+                () -> rollbackArchiveEsSync(cbPlanId, sanitizedExisting));
         if (Constants.SUCCESS.equals(resp.get(Constants.RESPONSE))) {
-            processSuccessfulArchive(cbPlanId, planYear, existingCbPlan, updateData, response);
+            processSuccessfulArchive(cbPlanId, planYear, existingCbPlan, response);
         } else {
             processFailedArchive(cbPlanId, resp, response);
         }
     }
 
     private void processSuccessfulArchive(String cbPlanId, String planYear, Map<String, Object> existingCbPlan,
-                                          Map<String, Object> updateData, ApiResponse response) {
+                                          ApiResponse response) {
         contentLookupService.removeFromContentLookup(cbPlanId, existingCbPlan);
-        elasticSearchService.updateElasticSearchForArchive(cbPlanId, existingCbPlan, updateData);
         orgLookupService.deactivateOrgLookupEntries(cbPlanId, planYear, existingCbPlan, response);
         if (Constants.SUCCESS.equalsIgnoreCase(response.getParams().getStatus())
                 || Objects.isNull(response.getParams().getStatus())) {
@@ -704,7 +708,7 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
     @Override
     public ApiResponse searchCbPlan(SearchCriteria searchCriteria, String userOrgId, String authToken) {
         log.info("CbPlanServiceV3Impl.searchCbPlan: Searching CB Plans for orgId: {}", userOrgId);
-        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_COMMUNITY_SEARCH);
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_CBPLAN_V3_SEARCH);
         try {
             String userId = validationService.validateAndExtractUserId(authToken, response);
             if (StringUtils.isEmpty(userId)) {
@@ -1772,6 +1776,37 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
         List<Map<String, Object>> ministryPlans = cbPlanCacheMgrV3.getCbPlanForMinistryOrStateId(
                 ministryOrStateId, planYear);
         return dataTransformService.mergePlanLists(orgPlans, ministryPlans);
+    }
+
+    /**
+     * Builds and sanitizes the ES document for an archive operation.
+     *
+     * @param cbPlanId      plan ID
+     * @param existingCbPlan existing plan data from Cassandra
+     * @param updateData    archive update fields (status, updatedAt, comment)
+     * @return sanitized document ready for ES indexing
+     */
+    private Map<String, Object> prepareArchiveEsDocument(String cbPlanId, Map<String, Object> existingCbPlan,
+                                                         Map<String, Object> updateData) {
+        Map<String, Object> esDocument = new HashMap<>(existingCbPlan);
+        esDocument.putAll(updateData);
+        esDocument.put(Constants.ID, cbPlanId);
+        esDocument.put(Constants.STATUS, Constants.CB_RETIRE);
+        return elasticSearchService.sanitizeForElastic(esDocument);
+    }
+
+    /**
+     * Best-effort ES rollback after a Cassandra commit failure during archive.
+     * Logs a divergence alert if the rollback itself also fails.
+     *
+     * @param cbPlanId         plan ID
+     * @param sanitizedExisting pre-archive ES document to restore
+     */
+    private void rollbackArchiveEsSync(String cbPlanId, Map<String, Object> sanitizedExisting) {
+        if (Objects.isNull(esUtilService.updateDocument(serverProperties.getCpPlanIndex(),
+                Constants.INDEX_TYPE, cbPlanId, sanitizedExisting, serverProperties.getElasticCbPlanJsonPath()))) {
+            log.error("ES_CASSANDRA_DIVERGENCE: ES rollback failed for cbPlanId={} — manual reconciliation required", cbPlanId);
+        }
     }
 
 }

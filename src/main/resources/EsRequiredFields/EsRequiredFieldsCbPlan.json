@@ -38,10 +38,13 @@
     }
   },
   "contentList": {
-    "type": "text",
-    "fields": {
-      "keyword": {
+    "type": "nested",
+    "properties": {
+      "identifier": {
         "type": "keyword"
+      },
+      "mandatory": {
+        "type": "boolean"
       }
     }
   },
@@ -114,5 +117,8 @@
         "type": "keyword"
       }
     }
+  },
+  "caLinkedId": {
+    "type": "keyword"
   }
 }

@@ -1,9 +1,11 @@
-FROM eclipse-temurin:17.0.14_7-jdk
+FROM eclipse-temurin:17-jdk-jammy
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends maven \
-    && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && \
+    apt-get install -y maven && \
+    rm -rf /var/lib/apt/lists/*
 
 COPY . /opt
+
 WORKDIR /opt
+
 RUN mvn clean install

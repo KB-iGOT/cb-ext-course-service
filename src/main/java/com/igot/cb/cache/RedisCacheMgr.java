@@ -1,9 +1,14 @@
 package com.igot.cb.cache;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
+import jakarta.annotation.PreDestroy;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -12,6 +17,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.JedisPool;
+import redis.clients.jedis.params.ScanParams;
+import redis.clients.jedis.resps.ScanResult;
 
 /**
  * Cache manager for Redis operations.
@@ -25,6 +32,18 @@ public class RedisCacheMgr {
 
     @Value("${cb.cache.ttl:600}") 
     private int ttlSeconds;
+
+    /**
+     * Single background thread for pattern deletes, so a keyspace-wide SCAN never runs on an
+     * API or Kafka listener thread and at most one scan runs at a time.
+     */
+    private final ExecutorService cacheInvalidationExecutor = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "redis-cache-invalidator");
+        t.setDaemon(true);
+        return t;
+    });
+    /** Patterns queued but not yet started; a pattern already queued is not queued again. */
+    private final Set<String> queuedInvalidationPatterns = ConcurrentHashMap.newKeySet();
 
     /**
      * Constructor for RedisCacheMgr.
@@ -140,6 +159,71 @@ public class RedisCacheMgr {
             log.error("Failed to read data from Redis: ", e);
             return null;
         }
+    }
+
+    /**
+     * Schedules deletion of every key matching the given glob pattern on the background
+     * invalidation thread and returns immediately. The caller is never blocked, regardless of
+     * keyspace size.
+     * <p>
+     * Requests are coalesced: if the same pattern is already queued and has not started yet, the
+     * new request is dropped because the queued run will cover it. A request arriving while a
+     * scan for that pattern is <em>running</em> is queued again, since keys written during the
+     * scan may have been missed.
+     *
+     * @param pattern glob pattern of keys to delete
+     */
+    public void deleteKeysByPatternAsync(String pattern) {
+        if (!queuedInvalidationPatterns.add(pattern)) {
+            log.debug("Redis invalidation for pattern '{}' already queued, coalescing", pattern);
+            return;
+        }
+        try {
+            cacheInvalidationExecutor.execute(() -> {
+                queuedInvalidationPatterns.remove(pattern);
+                deleteKeysByPattern(pattern);
+            });
+        } catch (Exception e) {
+            queuedInvalidationPatterns.remove(pattern);
+            log.error("Failed to schedule Redis invalidation for pattern '{}': ", pattern, e);
+        }
+    }
+
+    /**
+     * Deletes every key matching the given glob pattern (e.g. "cbplan:v4:userlookup:*").
+     * Uses SCAN + DEL in batches so it is safe to run against a live Redis, but it walks the
+     * whole keyspace and BLOCKS the calling thread for the duration; prefer
+     * {@link #deleteKeysByPatternAsync(String)} from request or listener threads.
+     *
+     * @param pattern glob pattern of keys to delete
+     * @return number of keys deleted, or -1 on error
+     */
+    public long deleteKeysByPattern(String pattern) {
+        long startNanos = System.nanoTime();
+        long deleted = 0;
+        try (Jedis jedis = jedisPool.getResource()) {
+            ScanParams params = new ScanParams().match(pattern).count(500);
+            String cursor = ScanParams.SCAN_POINTER_START;
+            do {
+                ScanResult<String> scan = jedis.scan(cursor, params);
+                List<String> keys = scan.getResult();
+                if (!keys.isEmpty()) {
+                    deleted += jedis.del(keys.toArray(new String[0]));
+                }
+                cursor = scan.getCursor();
+            } while (!ScanParams.SCAN_POINTER_START.equals(cursor));
+            log.info("Deleted {} Redis keys matching pattern '{}' in {} ms", deleted, pattern,
+                    (System.nanoTime() - startNanos) / 1_000_000);
+            return deleted;
+        } catch (Exception e) {
+            log.error("Failed to delete Redis keys matching pattern '{}': ", pattern, e);
+            return -1;
+        }
+    }
+
+    @PreDestroy
+    void shutdownInvalidationExecutor() {
+        cacheInvalidationExecutor.shutdown();
     }
 
 }

@@ -28,6 +28,8 @@ class UserGroupValidationServiceImplTest {
     private static final String TEST_USER_GROUP_NAME = "Test Group";
     private static final String TEST_AUTHORIZED_ROLE = "MDO_LEADER";
     private static final String TEST_USER_ROLES = "MDO_LEADER,USER";
+    private static final String TEST_UNAUTHORIZED_MSG = "You are not authorised to edit this user group. It belongs to a different organisation.";
+    private static final String TEST_MISSING_ROLE_MSG = "You are not authorised to edit this user group. Only the MDO Leader or the group creator can make changes.";
 
     @Mock
     private CbExtServerProperties serverProperties;
@@ -47,6 +49,8 @@ class UserGroupValidationServiceImplTest {
         lenient().when(userAndOrgService.readOrgFromDB(eq(TEST_ORG_ID), any())).thenReturn(orgMap);
 
         lenient().when(serverProperties.getUserGroupUpdateAuthorizedRole()).thenReturn(TEST_AUTHORIZED_ROLE);
+        lenient().when(serverProperties.getUserGroupEditUnauthorizedMsg()).thenReturn(TEST_UNAUTHORIZED_MSG);
+        lenient().when(serverProperties.getUserGroupEditMissingRoleMsg()).thenReturn(TEST_MISSING_ROLE_MSG);
     }
 
     @Test
@@ -196,6 +200,7 @@ class UserGroupValidationServiceImplTest {
         assertFalse(result);
         assertEquals(Constants.FAILED, response.getParams().getStatus());
         assertEquals(HttpStatus.FORBIDDEN, response.getResponseCode());
+        assertEquals(TEST_UNAUTHORIZED_MSG, response.getParams().getErr());
     }
 
     @Test
@@ -215,6 +220,27 @@ class UserGroupValidationServiceImplTest {
         assertFalse(result);
         assertEquals(Constants.FAILED, response.getParams().getStatus());
         assertEquals(HttpStatus.FORBIDDEN, response.getResponseCode());
+        assertEquals(TEST_MISSING_ROLE_MSG, response.getParams().getErr());
+    }
+
+    @Test
+    void validateUpdateAuthorization_mdoAdminNotCreatorNotMdoLeader_returnsConfigDrivenMessage() {
+        when(serverProperties.getUserGroupUpdateAuthorizedRole()).thenReturn(TEST_AUTHORIZED_ROLE);
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_USER_GROUP_UPDATE);
+
+        boolean result = validationService.validateUpdateAuthorization(
+                TEST_USER_ID,
+                TEST_ORG_ID,
+                "MDO_ADMIN",
+                "other_creator",
+                TEST_ORG_ID,
+                response
+        );
+
+        assertFalse(result);
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(HttpStatus.FORBIDDEN, response.getResponseCode());
+        assertEquals(TEST_MISSING_ROLE_MSG, response.getParams().getErr());
     }
 
     // Helper methods

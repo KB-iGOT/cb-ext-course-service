@@ -751,8 +751,6 @@ public class Constants {
     public static final String MSG_CRITERIA_KEY_BLANK = "criteriaKey cannot be blank";
     public static final String MSG_CRITERIA_KEY_NULL = "criteriaKey cannot be null or blank";
     public static final String MSG_CRITERIA_VALUE_NULL = "criteriaValue cannot be null or empty";
-    public static final String MSG_USER_NOT_AUTHORIZED = "User not authorized to update this user group";
-    public static final String MSG_USER_MISSING_ROLE = "User does not have required role to update this user group";
     public static final String MSG_INVALID_REQUEST_FORMAT = "Invalid request format";
     public static final String MSG_FAILED_CREATE_USER_GROUP = "Failed to create user group";
     public static final String MSG_FAILED_FETCH_USER_GROUP = "Failed to fetch user group";

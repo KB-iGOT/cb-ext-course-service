@@ -16,12 +16,15 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -188,5 +191,115 @@ class CbPlanElasticSearchServiceV4ImplTest {
     @Test
     void constructor_withValidDependencies_createsInstance() {
         assertNotNull(new CbPlanElasticSearchServiceV4Impl(esUtilService, serverProperties));
+    }
+
+    @Test
+    void tryIndexPlan_whenEsAddReturnsNonNull_returnsTrue() {
+        stubEsProperties();
+        Map<String, Object> planData = new HashMap<>();
+        planData.put(Constants.NAME, "planName");
+        when(esUtilService.addDocument(anyString(), anyString(), anyString(), anyMap(), anyString())).thenReturn("created");
+
+        boolean result = elasticSearchService.tryIndexPlan(PLAN_ID, planData);
+
+        assertTrue(result);
+        verify(esUtilService, times(1)).addDocument(
+                eq(ES_INDEX), eq(Constants.INDEX_TYPE), eq(PLAN_ID), anyMap(), eq(JSON_PATH));
+    }
+
+    @Test
+    void tryIndexPlan_whenEsAddReturnsNull_returnsFalse() {
+        stubEsProperties();
+        Map<String, Object> planData = new HashMap<>();
+        when(esUtilService.addDocument(anyString(), anyString(), anyString(), anyMap(), anyString())).thenReturn(null);
+
+        boolean result = elasticSearchService.tryIndexPlan(PLAN_ID, planData);
+
+        assertFalse(result);
+    }
+
+    @Test
+    void tryIndexPlan_whenEsAddThrows_returnsFalse() {
+        stubEsProperties();
+        Map<String, Object> planData = new HashMap<>();
+        when(esUtilService.addDocument(anyString(), anyString(), anyString(), anyMap(), anyString()))
+                .thenThrow(new RuntimeException("ES unavailable"));
+
+        boolean result = elasticSearchService.tryIndexPlan(PLAN_ID, planData);
+
+        assertFalse(result);
+    }
+
+    @Test
+    void rollbackCreate_whenDeleteSucceeds_completesNormally() {
+        when(serverProperties.getCpPlanIndex()).thenReturn(ES_INDEX);
+        when(esUtilService.deleteDocument(eq(ES_INDEX), eq(PLAN_ID))).thenReturn(true);
+
+        assertDoesNotThrow(() -> elasticSearchService.rollbackCreate(PLAN_ID));
+        verify(esUtilService, times(1)).deleteDocument(eq(ES_INDEX), eq(PLAN_ID));
+    }
+
+    @Test
+    void rollbackCreate_whenDeleteFails_logsDivergenceWithoutThrowing() {
+        when(serverProperties.getCpPlanIndex()).thenReturn(ES_INDEX);
+        when(esUtilService.deleteDocument(eq(ES_INDEX), eq(PLAN_ID))).thenReturn(false);
+
+        assertDoesNotThrow(() -> elasticSearchService.rollbackCreate(PLAN_ID));
+    }
+
+    @Test
+    void tryUpdatePlan_whenEsUpdateReturnsNonNull_returnsTrue() {
+        stubEsProperties();
+        Map<String, Object> updateData = new HashMap<>();
+        updateData.put(Constants.NAME, "updatedName");
+        when(esUtilService.updateDocument(anyString(), anyString(), anyString(), anyMap(), anyString())).thenReturn("updated");
+
+        boolean result = elasticSearchService.tryUpdatePlan(PLAN_ID, updateData);
+
+        assertTrue(result);
+        verify(esUtilService, times(1)).updateDocument(
+                eq(ES_INDEX), eq(Constants.INDEX_TYPE), eq(PLAN_ID), anyMap(), eq(JSON_PATH));
+    }
+
+    @Test
+    void tryUpdatePlan_whenEsUpdateReturnsNull_returnsFalse() {
+        stubEsProperties();
+        Map<String, Object> updateData = new HashMap<>();
+        when(esUtilService.updateDocument(anyString(), anyString(), anyString(), anyMap(), anyString())).thenReturn(null);
+
+        boolean result = elasticSearchService.tryUpdatePlan(PLAN_ID, updateData);
+
+        assertFalse(result);
+    }
+
+    @Test
+    void tryUpdatePlan_whenEsUpdateThrows_returnsFalse() {
+        stubEsProperties();
+        Map<String, Object> updateData = new HashMap<>();
+        when(esUtilService.updateDocument(anyString(), anyString(), anyString(), anyMap(), anyString()))
+                .thenThrow(new RuntimeException("ES down"));
+
+        boolean result = elasticSearchService.tryUpdatePlan(PLAN_ID, updateData);
+
+        assertFalse(result);
+    }
+
+    @Test
+    void rollbackUpdate_whenTryUpdateSucceeds_completesNormally() {
+        stubEsProperties();
+        Map<String, Object> previousState = new HashMap<>();
+        previousState.put(Constants.NAME, "originalName");
+        when(esUtilService.updateDocument(anyString(), anyString(), anyString(), anyMap(), anyString())).thenReturn("updated");
+
+        assertDoesNotThrow(() -> elasticSearchService.rollbackUpdate(PLAN_ID, previousState));
+    }
+
+    @Test
+    void rollbackUpdate_whenTryUpdateFails_logsDivergenceWithoutThrowing() {
+        stubEsProperties();
+        Map<String, Object> previousState = new HashMap<>();
+        when(esUtilService.updateDocument(anyString(), anyString(), anyString(), anyMap(), anyString())).thenReturn(null);
+
+        assertDoesNotThrow(() -> elasticSearchService.rollbackUpdate(PLAN_ID, previousState));
     }
 }

@@ -3,7 +3,9 @@ package com.igot.cb.cache;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -11,6 +13,8 @@ import org.mockito.*;
 import org.mockito.junit.jupiter.MockitoExtension;
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.JedisPool;
+import redis.clients.jedis.params.ScanParams;
+import redis.clients.jedis.resps.ScanResult;
 import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
@@ -168,5 +172,45 @@ class RedisCacheMgrTest {
         assertDoesNotThrow(() -> redisCacheMgr.putInCache(key, value));
         
         verify(jedisPool).getResource();
+    }
+
+    @Test
+    void deleteKeysByPattern_scansUntilCursorReturnsToStartAndDeletesEachBatch() {
+        when(jedisPool.getResource()).thenReturn(jedis);
+        when(jedis.scan(eq(ScanParams.SCAN_POINTER_START), any(ScanParams.class)))
+                .thenReturn(new ScanResult<>("42", List.of("cbplan:v4:userlookup:u1:2026-27:dict", "cbplan:v4:userlookup:u2:2026-27:dict")));
+        when(jedis.scan(eq("42"), any(ScanParams.class)))
+                .thenReturn(new ScanResult<>(ScanParams.SCAN_POINTER_START, List.of()));
+        when(jedis.del(any(String[].class))).thenReturn(2L);
+
+        long deleted = redisCacheMgr.deleteKeysByPattern("cbplan:v4:userlookup:*");
+
+        assertEquals(2L, deleted);
+        verify(jedis, times(2)).scan(anyString(), any(ScanParams.class));
+        verify(jedis, times(1)).del(any(String[].class));
+    }
+
+    @Test
+    void deleteKeysByPattern_onError_returnsMinusOne() {
+        when(jedisPool.getResource()).thenThrow(new RuntimeException("pool exhausted"));
+
+        assertEquals(-1L, redisCacheMgr.deleteKeysByPattern("cbplan:v4:userlookup:*"));
+    }
+
+    @Test
+    void deleteKeysByPatternAsync_returnsImmediatelyAndRunsOnBackgroundThread() throws Exception {
+        java.util.concurrent.CountDownLatch started = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.atomic.AtomicReference<String> threadName = new java.util.concurrent.atomic.AtomicReference<>();
+        when(jedisPool.getResource()).thenReturn(jedis);
+        when(jedis.scan(anyString(), any(ScanParams.class))).thenAnswer(inv -> {
+            threadName.set(Thread.currentThread().getName());
+            started.countDown();
+            return new ScanResult<>(ScanParams.SCAN_POINTER_START, List.<String>of());
+        });
+
+        redisCacheMgr.deleteKeysByPatternAsync("cbplan:v4:userlookup:*");
+
+        assertTrue(started.await(5, TimeUnit.SECONDS), "scan did not run in the background");
+        assertEquals("redis-cache-invalidator", threadName.get());
     }
 }

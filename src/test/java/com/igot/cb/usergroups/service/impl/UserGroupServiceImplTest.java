@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 import java.util.*;
+import java.util.function.BooleanSupplier;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.igot.cb.cassandra.CassandraOperation;
@@ -78,8 +79,10 @@ class UserGroupServiceImplTest {
         when(dataTransformService.buildEntityForCreate(anyString(), eq(TEST_USER_GROUP_NAME), any(), eq(TEST_ORG_ID), eq(TEST_USER_ID)))
                 .thenReturn(entity);
         when(validationService.validateCreateRequest(anyString(), anyList(), anyString(), anyString(), any())).thenReturn(true);
-        when(cassandraOperation.insertRecord(anyString(), anyString(), anyMap())).thenReturn(null);
-        doNothing().when(esService).indexUserGroup(any());
+        Map<String, Object> cassandraInsertResult = new HashMap<>();
+        cassandraInsertResult.put(Constants.RESPONSE, Constants.SUCCESS);
+        when(cassandraOperation.insertRecord(anyString(), anyString(), anyMap(),
+                any(BooleanSupplier.class), any(Runnable.class))).thenReturn(cassandraInsertResult);
         when(dataTransformService.entityToResponseMap(entity)).thenReturn(Map.of(Constants.COL_USERGROUPID, TEST_USER_GROUP_ID));
 
         // Act
@@ -90,8 +93,8 @@ class UserGroupServiceImplTest {
         assertEquals(Constants.SUCCESSFUL, response.getParams().getStatus());
         assertEquals(HttpStatus.CREATED, response.getResponseCode());
         assertEquals(TEST_USER_GROUP_ID, response.get(Constants.COL_USERGROUPID));
-        verify(cassandraOperation, times(1)).insertRecord(anyString(), anyString(), anyMap());
-        verify(esService, times(1)).indexUserGroup(any());
+        verify(cassandraOperation, times(1)).insertRecord(anyString(), anyString(), anyMap(),
+                any(BooleanSupplier.class), any(Runnable.class));
     }
 
     @Test
@@ -106,7 +109,6 @@ class UserGroupServiceImplTest {
         // Assert
         assertNotNull(response);
         verify(cassandraOperation, never()).insertRecord(anyString(), anyString(), anyMap());
-        verify(esService, never()).indexUserGroup(any());
     }
 
     @Test
@@ -184,8 +186,7 @@ class UserGroupServiceImplTest {
         when(dataTransformService.buildUpdateProperties(anyString(), anyList(), anyString())).thenReturn(updateProps);
         when(validationService.validateUpdateRequest(anyString(), anyString(), anyList(), any())).thenReturn(true);
         when(validationService.validateUpdateAuthorization(anyString(), anyString(), anyString(), anyString(), anyString(), any())).thenReturn(true);
-        when(cassandraOperation.updateRecord(anyString(), anyString(), anyMap(), anyMap())).thenReturn(new HashMap<>());
-        doNothing().when(esService).updateUserGroup(anyString(), anyMap());
+        when(cassandraOperation.updateRecord(anyString(), anyString(), anyMap(), anyMap(), any(), any())).thenReturn(Map.of(Constants.RESPONSE, Constants.SUCCESS));
         when(dataTransformService.entityToResponseMap(any())).thenReturn(Map.of(Constants.COL_USERGROUPID, TEST_USER_GROUP_ID));
 
         // Act
@@ -196,8 +197,7 @@ class UserGroupServiceImplTest {
         assertEquals(Constants.SUCCESSFUL, response.getParams().getStatus());
         assertEquals(HttpStatus.OK, response.getResponseCode());
         assertEquals(TEST_USER_GROUP_ID, response.get(Constants.COL_USERGROUPID));
-        verify(cassandraOperation, times(1)).updateRecord(anyString(), anyString(), anyMap(), anyMap());
-        verify(esService, times(1)).updateUserGroup(anyString(), anyMap());
+        verify(cassandraOperation, times(1)).updateRecord(anyString(), anyString(), anyMap(), anyMap(), any(), any());
     }
 
     @Test
@@ -210,8 +210,8 @@ class UserGroupServiceImplTest {
         when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), anyMap(), anyList(), any()))
                 .thenReturn(List.of(cassandraRow));
         when(validationService.validateUserGroupId(anyString(), any())).thenReturn(true);
-        when(cassandraOperation.updateRecord(anyString(), anyString(), anyMap(), anyMap())).thenReturn(new HashMap<>());
-        doNothing().when(esService).updateUserGroup(anyString(), anyMap());
+        when(dataTransformService.entityToResponseMap(any())).thenReturn(new HashMap<>());
+        when(cassandraOperation.updateRecord(anyString(), anyString(), anyMap(), anyMap(), any(), any())).thenReturn(Map.of(Constants.RESPONSE, Constants.SUCCESS));
 
         // Act
         ApiResponse response = userGroupService.deleteUserGroup(TEST_USER_GROUP_ID, TEST_AUTH_TOKEN);
@@ -221,7 +221,7 @@ class UserGroupServiceImplTest {
         assertEquals(Constants.SUCCESSFUL, response.getParams().getStatus());
         assertEquals(HttpStatus.OK, response.getResponseCode());
         assertEquals(Constants.MSG_USER_GROUP_ARCHIVED, response.get(Constants.RESPONSE));
-        verify(cassandraOperation, times(1)).updateRecord(anyString(), anyString(), anyMap(), anyMap());
+        verify(cassandraOperation, times(1)).updateRecord(anyString(), anyString(), anyMap(), anyMap(), any(), any());
     }
 
     @Test
@@ -243,6 +243,73 @@ class UserGroupServiceImplTest {
         assertNotNull(response);
         assertEquals(HttpStatus.OK, response.getResponseCode());
         verify(esService, times(1)).searchUserGroups(anyMap(), anyInt(), anyInt(), anyString(), anyString());
+    }
+
+    @Test
+    void createUserGroup_whenCassandraInsertFails_shouldNotIndexToEs() {
+        ApiRequest request = createApiRequest();
+        UserGroupRequest userGroupRequest = new UserGroupRequest(null, TEST_USER_GROUP_NAME, createCriteriaList());
+        UserGroupEntity entity = createUserGroupEntity();
+
+        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(TEST_AUTH_TOKEN), any())).thenReturn(TEST_USER_ID);
+        when(userProfileUtil.buildUserProfile(eq(TEST_USER_ID), any())).thenReturn(createUserProfile());
+        when(objectMapper.convertValue(any(), eq(UserGroupRequest.class))).thenReturn(userGroupRequest);
+        when(dataTransformService.buildEntityForCreate(anyString(), eq(TEST_USER_GROUP_NAME), any(), eq(TEST_ORG_ID), eq(TEST_USER_ID))).thenReturn(entity);
+        when(validationService.validateCreateRequest(anyString(), anyList(), anyString(), anyString(), any())).thenReturn(true);
+        Map<String, Object> cassandraFailResult = new HashMap<>();
+        cassandraFailResult.put(Constants.RESPONSE, Constants.FAILED);
+        when(cassandraOperation.insertRecord(anyString(), anyString(), anyMap(),
+                any(BooleanSupplier.class), any(Runnable.class))).thenReturn(cassandraFailResult);
+
+        ApiResponse response = userGroupService.createUserGroup(request, TEST_AUTH_TOKEN);
+
+        assertNotNull(response);
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getResponseCode());
+    }
+
+    @Test
+    void updateUserGroup_whenTransactionalUpdateFails_shouldReturnFailedResponse() {
+        ApiRequest request = createApiRequest();
+        UserGroupRequest userGroupRequest = new UserGroupRequest(TEST_USER_GROUP_ID, TEST_USER_GROUP_NAME, createCriteriaList());
+        Map<String, Object> cassandraRow = createCassandraRow();
+        Map<String, Object> updateProps = new HashMap<>();
+
+        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(TEST_AUTH_TOKEN), any())).thenReturn(TEST_USER_ID);
+        when(userProfileUtil.buildUserProfile(eq(TEST_USER_ID), any())).thenReturn(createUserProfile());
+        when(objectMapper.convertValue(any(), eq(UserGroupRequest.class))).thenReturn(userGroupRequest);
+        when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), anyMap(), anyList(), any())).thenReturn(List.of(cassandraRow));
+        when(dataTransformService.buildUpdateProperties(anyString(), anyList(), anyString())).thenReturn(updateProps);
+        when(validationService.validateUpdateRequest(anyString(), anyString(), anyList(), any())).thenReturn(true);
+        when(validationService.validateUpdateAuthorization(anyString(), anyString(), anyString(), anyString(), anyString(), any())).thenReturn(true);
+        when(dataTransformService.entityToResponseMap(any())).thenReturn(new HashMap<>());
+        when(cassandraOperation.updateRecord(anyString(), anyString(), anyMap(), anyMap(), any(), any())).thenReturn(Map.of(Constants.RESPONSE, Constants.FAILED));
+
+        ApiResponse response = userGroupService.updateUserGroup(request, TEST_AUTH_TOKEN);
+
+        assertNotNull(response);
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getResponseCode());
+        verify(cassandraOperation, times(1)).updateRecord(anyString(), anyString(), anyMap(), anyMap(), any(), any());
+    }
+
+    @Test
+    void deleteUserGroup_whenTransactionalUpdateFails_shouldReturnFailedResponse() {
+        Map<String, Object> cassandraRow = createCassandraRow();
+
+        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(TEST_AUTH_TOKEN), any())).thenReturn(TEST_USER_ID);
+        when(userProfileUtil.buildUserProfile(eq(TEST_USER_ID), any())).thenReturn(createUserProfile());
+        when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), anyMap(), anyList(), any())).thenReturn(List.of(cassandraRow));
+        when(validationService.validateUserGroupId(anyString(), any())).thenReturn(true);
+        when(dataTransformService.entityToResponseMap(any())).thenReturn(new HashMap<>());
+        when(cassandraOperation.updateRecord(anyString(), anyString(), anyMap(), anyMap(), any(), any())).thenReturn(Map.of(Constants.RESPONSE, Constants.FAILED));
+
+        ApiResponse response = userGroupService.deleteUserGroup(TEST_USER_GROUP_ID, TEST_AUTH_TOKEN);
+
+        assertNotNull(response);
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getResponseCode());
+        verify(cassandraOperation, times(1)).updateRecord(anyString(), anyString(), anyMap(), anyMap(), any(), any());
     }
 
     // Helper methods

@@ -683,6 +683,25 @@ public class EsUtilServiceImpl implements EsUtilService{
         log.info("final search query result V2: {}", searchSourceBuilder);
         return searchSourceBuilder;
     }
+
+    /**
+     * Deletes a document from the given index by ID.
+     *
+     * @param esIndexName index name
+     * @param id          document ID
+     * @return true if deletion succeeded
+     */
+    @Override
+    public boolean deleteDocument(String esIndexName, String id) {
+        try {
+            elasticsearchClient.delete(d -> d.index(esIndexName).id(id).refresh(Refresh.True));
+            log.info("Deleted document from ES: index={}, id={}", esIndexName, id);
+            return true;
+        } catch (Exception e) {
+            log.error("Failed to delete document from ES: index={}, id={}: {}", esIndexName, id, e.getMessage(), e);
+            return false;
+        }
+    }
 }
 
 

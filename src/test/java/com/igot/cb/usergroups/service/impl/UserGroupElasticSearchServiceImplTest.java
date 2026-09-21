@@ -51,7 +51,7 @@ class UserGroupElasticSearchServiceImplTest {
     }
 
     @Test
-    void indexUserGroup_withValidEntity_shouldIndexSuccessfully() {
+    void tryIndexUserGroup_withValidDocument_shouldReturnTrueAndVerifyAddDocument() {
         UserGroupEntity entity = createUserGroupEntity();
         Map<String, Object> document = new HashMap<>();
 
@@ -59,8 +59,9 @@ class UserGroupElasticSearchServiceImplTest {
         when(esUtilService.addDocument(anyString(), anyString(), anyString(), anyMap(), anyString()))
                 .thenReturn("success");
 
-        assertDoesNotThrow(() -> esService.indexUserGroup(entity));
+        boolean result = esService.tryIndexUserGroup(entity);
 
+        assertTrue(result);
         verify(dataTransformService, times(1)).entityToResponseMap(entity);
         verify(esUtilService, times(1)).addDocument(
                 eq("user_group_info"),
@@ -72,14 +73,14 @@ class UserGroupElasticSearchServiceImplTest {
     }
 
     @Test
-    void indexUserGroup_withException_shouldLogAndContinue() {
-        // Arrange
+    void tryIndexUserGroup_whenDataTransformThrows_shouldReturnFalseWithoutThrowing() {
         UserGroupEntity entity = createUserGroupEntity();
 
         when(dataTransformService.entityToResponseMap(entity)).thenThrow(new RuntimeException("Test exception"));
 
-        // Act & Assert - should not throw
-        assertDoesNotThrow(() -> esService.indexUserGroup(entity));
+        boolean result = esService.tryIndexUserGroup(entity);
+
+        assertFalse(result);
     }
 
     @Test
@@ -175,6 +176,96 @@ class UserGroupElasticSearchServiceImplTest {
         assertTrue(result.containsKey("count"));
         assertEquals(0, ((List<?>) result.get("content")).size());
         assertEquals(0, result.get("count"));
+    }
+
+    @Test
+    void tryUpdateDocument_whenEsUpdateReturnsNonNull_shouldReturnTrue() {
+        Map<String, Object> updateProps = Map.of(Constants.COL_USERGROUPNAME, "Updated Name");
+        when(esUtilService.updateDocument(anyString(), anyString(), anyString(), anyMap(), anyString())).thenReturn("success");
+
+        boolean result = esService.tryUpdateDocument(TEST_USER_GROUP_ID, updateProps);
+
+        assertTrue(result);
+        verify(esUtilService, times(1)).updateDocument(
+                eq("user_group_info"), eq(Constants.INDEX_TYPE), eq(TEST_USER_GROUP_ID), eq(updateProps), anyString());
+    }
+
+    @Test
+    void tryUpdateDocument_whenEsUpdateReturnsNull_shouldReturnFalse() {
+        Map<String, Object> updateProps = Map.of(Constants.COL_STATUS, Constants.ARCHIVED);
+        when(esUtilService.updateDocument(anyString(), anyString(), anyString(), anyMap(), anyString())).thenReturn(null);
+
+        boolean result = esService.tryUpdateDocument(TEST_USER_GROUP_ID, updateProps);
+
+        assertFalse(result);
+    }
+
+    @Test
+    void rollbackUpdate_whenEsRollbackSucceeds_shouldCompleteWithoutError() {
+        Map<String, Object> previousState = new HashMap<>();
+        when(esUtilService.updateDocument(anyString(), anyString(), anyString(), anyMap(), anyString())).thenReturn("success");
+
+        assertDoesNotThrow(() -> esService.rollbackUpdate(TEST_USER_GROUP_ID, previousState));
+        verify(esUtilService, times(1)).updateDocument(
+                eq("user_group_info"), eq(Constants.INDEX_TYPE), eq(TEST_USER_GROUP_ID), eq(previousState), anyString());
+    }
+
+    @Test
+    void rollbackUpdate_whenEsRollbackFails_shouldLogDivergenceErrorWithoutThrowing() {
+        Map<String, Object> previousState = new HashMap<>();
+        when(esUtilService.updateDocument(anyString(), anyString(), anyString(), anyMap(), anyString())).thenReturn(null);
+
+        assertDoesNotThrow(() -> esService.rollbackUpdate(TEST_USER_GROUP_ID, previousState));
+    }
+
+    @Test
+    void tryIndexUserGroup_whenEsAddReturnsNonNull_shouldReturnTrue() {
+        UserGroupEntity entity = createUserGroupEntity();
+        Map<String, Object> document = new HashMap<>();
+        when(dataTransformService.entityToResponseMap(entity)).thenReturn(document);
+        when(esUtilService.addDocument(anyString(), anyString(), anyString(), anyMap(), anyString())).thenReturn("created");
+
+        boolean result = esService.tryIndexUserGroup(entity);
+
+        assertTrue(result);
+        verify(esUtilService, times(1)).addDocument(
+                eq("user_group_info"), eq(Constants.INDEX_TYPE), eq(TEST_USER_GROUP_ID), eq(document), anyString());
+    }
+
+    @Test
+    void tryIndexUserGroup_whenEsAddReturnsNull_shouldReturnFalse() {
+        UserGroupEntity entity = createUserGroupEntity();
+        when(dataTransformService.entityToResponseMap(entity)).thenReturn(new HashMap<>());
+        when(esUtilService.addDocument(anyString(), anyString(), anyString(), anyMap(), anyString())).thenReturn(null);
+
+        boolean result = esService.tryIndexUserGroup(entity);
+
+        assertFalse(result);
+    }
+
+    @Test
+    void tryIndexUserGroup_whenEsAddThrows_shouldReturnFalse() {
+        UserGroupEntity entity = createUserGroupEntity();
+        when(dataTransformService.entityToResponseMap(entity)).thenThrow(new RuntimeException("ES unavailable"));
+
+        boolean result = esService.tryIndexUserGroup(entity);
+
+        assertFalse(result);
+    }
+
+    @Test
+    void rollbackCreate_whenDeleteSucceeds_shouldCompleteWithoutError() {
+        when(esUtilService.deleteDocument(eq("user_group_info"), eq(TEST_USER_GROUP_ID))).thenReturn(true);
+
+        assertDoesNotThrow(() -> esService.rollbackCreate(TEST_USER_GROUP_ID));
+        verify(esUtilService, times(1)).deleteDocument(eq("user_group_info"), eq(TEST_USER_GROUP_ID));
+    }
+
+    @Test
+    void rollbackCreate_whenDeleteFails_shouldLogDivergenceWithoutThrowing() {
+        when(esUtilService.deleteDocument(eq("user_group_info"), eq(TEST_USER_GROUP_ID))).thenReturn(false);
+
+        assertDoesNotThrow(() -> esService.rollbackCreate(TEST_USER_GROUP_ID));
     }
 
     // Helper methods

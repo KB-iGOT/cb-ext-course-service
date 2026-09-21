@@ -190,6 +190,12 @@ public class CbExtServerProperties {
     @Value("${lms.enrollment.details.url}")
     private String enrollmentDetailsUrl;
 
+    @Value("${usergroup.edit.unauthorized.msg}")
+    private String userGroupEditUnauthorizedMsg;
+
+    @Value("${usergroup.edit.missing.role.msg}")
+    private String userGroupEditMissingRoleMsg;
+
     public List<String> getCbPlanEnrichedContentFieldsList() {
         return Arrays.asList(cbPlanEnrichedContentFields.split(",", -1));
     }

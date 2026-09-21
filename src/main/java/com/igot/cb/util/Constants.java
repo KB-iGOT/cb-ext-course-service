@@ -751,8 +751,6 @@ public class Constants {
     public static final String MSG_CRITERIA_KEY_BLANK = "criteriaKey cannot be blank";
     public static final String MSG_CRITERIA_KEY_NULL = "criteriaKey cannot be null or blank";
     public static final String MSG_CRITERIA_VALUE_NULL = "criteriaValue cannot be null or empty";
-    public static final String MSG_USER_NOT_AUTHORIZED = "User not authorized to update this user group";
-    public static final String MSG_USER_MISSING_ROLE = "User does not have required role to update this user group";
     public static final String MSG_INVALID_REQUEST_FORMAT = "Invalid request format";
     public static final String MSG_FAILED_CREATE_USER_GROUP = "Failed to create user group";
     public static final String MSG_FAILED_FETCH_USER_GROUP = "Failed to fetch user group";
@@ -784,6 +782,11 @@ public class Constants {
     public static final String ERR_DRAFT_PLAN_NOT_ACCESSIBLE = "Draft plans are not accessible via public read API. Use admin read API instead.";
     public static final String CA_LINKED_ID = "caLinkedId";
     public static final String CA_LINKED_ID_DB = "calinkedid";
+    public static final String TRAINING_PLAN_ID = "trainingPlanId";
+    public static final String CA_IDENTIFIER = "caIdentifier";
+    public static final String CA_LINK_EVENT_ADD = "ADD";
+    public static final String CA_LINK_EVENT_REMOVE = "REMOVE";
+    public static final String SYSTEM_USER = "SYSTEM";
     public static final String EXISTS = "exists";
     public static final String API_CBPLAN_V4_GET_USER_DICTIONARY = "api.cbplan.v4.user.dictionary";
     public static final String CB_PLAN_V4_REDIS_KEY_PREFIX = "cbplan:v4:userlookup:";

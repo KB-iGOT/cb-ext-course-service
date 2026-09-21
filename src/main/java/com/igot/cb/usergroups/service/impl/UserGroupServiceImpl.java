@@ -338,7 +338,7 @@ public class UserGroupServiceImpl implements UserGroupService {
             insertMap.put(Constants.COL_CRITERIA, entity.getCriteria());
             insertMap.put(Constants.COL_STATUS, entity.getStatus());
 
-            Map<String, Object> result = (Map<String, Object>) cassandraOperation.insertRecord(
+            ApiResponse result = (ApiResponse) cassandraOperation.insertRecord(
                     Constants.KEYSPACE_SUNBIRD,
                     Constants.TABLE_USER_GROUP_INFO,
                     insertMap

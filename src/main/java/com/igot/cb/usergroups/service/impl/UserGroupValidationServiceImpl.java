@@ -135,7 +135,7 @@ public class UserGroupValidationServiceImpl {
             log.warn("Authorization failed: User rootOrgId {} does not match userGroup orgId {}",
                     userRootOrgId, userGroupOrgId);
             response.getParams().setStatus(Constants.FAILED);
-            response.getParams().setErr(Constants.MSG_USER_NOT_AUTHORIZED);
+            response.getParams().setErr(serverProperties.getUserGroupEditUnauthorizedMsg());
             response.setResponseCode(HttpStatus.FORBIDDEN);
             return false;
         }
@@ -150,7 +150,7 @@ public class UserGroupValidationServiceImpl {
             log.warn("Authorization failed: User does not have required role {}. User roles: {}",
                     authorizedRole, userRoles);
             response.getParams().setStatus(Constants.FAILED);
-            response.getParams().setErr(Constants.MSG_USER_MISSING_ROLE);
+            response.getParams().setErr(serverProperties.getUserGroupEditMissingRoleMsg());
             response.setResponseCode(HttpStatus.FORBIDDEN);
             return false;
         }

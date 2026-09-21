@@ -1492,7 +1492,26 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
      */
     private void processDraftUpdateSuccessPostEsUpdate(String cbPlanId, Map<String, Object> updatedRequest,
                                                         Map<String, Object> existingCbPlan, ApiResponse response) {
-        contentLookupService.updateContentLookupForModifiedPlan(cbPlanId, updatedRequest, existingCbPlan);
+        contentLookupService.updateContentLookupForModifiedPlan(
+                cbPlanId,
+                withExtractedIds(updatedRequest),
+                withExtractedIds(existingCbPlan));
         response.getResult().put(Constants.STATUS, Constants.UPDATED);
+    }
+
+    /**
+     * Returns a shallow copy of {@code planData} with the contentList replaced by plain content
+     * identifiers extracted via {@link CbPlanReadServiceV4Impl#extractIdentifiers}. Required before
+     * passing V4 JSON-string contentList to shared V3 content-lookup methods that expect flat IDs.
+     *
+     * @param planData plan data map, not mutated
+     * @return copy with contentList as plain identifiers
+     */
+    private Map<String, Object> withExtractedIds(Map<String, Object> planData) {
+        List<String> rawList = (List<String>) planData.get(Constants.CONTENT_LIST);
+        List<String> identifiers = readService.extractIdentifiers(rawList);
+        Map<String, Object> copy = new HashMap<>(planData);
+        copy.put(Constants.CONTENT_LIST, identifiers);
+        return copy;
     }
 }

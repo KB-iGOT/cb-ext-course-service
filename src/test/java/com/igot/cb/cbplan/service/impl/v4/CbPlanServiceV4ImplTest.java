@@ -311,11 +311,16 @@ class CbPlanServiceV4ImplTest {
         when(cassandraOperation.updateRecord(anyString(), anyString(), anyMap(), anyMap(),
                 any(Supplier.class), any(Runnable.class)))
                 .thenReturn(Map.of(Constants.RESPONSE, Constants.SUCCESS));
+        when(readService.extractIdentifiers(any())).thenReturn(List.of());
 
         ApiResponse response = cbPlanService.updateCbPlan(requestWithPlanId(), TOKEN);
 
+        Map<String, Object> expectedUpdatedIds = new HashMap<>(updatedRequest);
+        expectedUpdatedIds.put(Constants.CONTENT_LIST, List.of());
+        Map<String, Object> expectedExistingIds = new HashMap<>(existingCbPlan);
+        expectedExistingIds.put(Constants.CONTENT_LIST, List.of());
         assertEquals(Constants.UPDATED, response.getResult().get(Constants.STATUS));
-        verify(contentLookupService).updateContentLookupForModifiedPlan(PLAN_ID, updatedRequest, existingCbPlan);
+        verify(contentLookupService).updateContentLookupForModifiedPlan(PLAN_ID, expectedUpdatedIds, expectedExistingIds);
         verify(elasticSearchService, never()).updateElasticSearchForPlan(any(), any());
     }
 

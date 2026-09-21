@@ -44,23 +44,31 @@ public class UserGroupElasticSearchServiceImpl {
     }
 
     /**
-     * Indexes a user group in Elasticsearch.
+     * Attempts to index a user group in Elasticsearch.
+     * Used as a {@code preCommitValidator} in the transactional {@code insertRecord} overload.
      *
-     * @param entity user group entity
+     * @param entity user group entity to index
+     * @return true if ES indexing succeeded
      */
-    public void indexUserGroup(UserGroupEntity entity) {
+    public boolean tryIndexUserGroup(UserGroupEntity entity) {
         try {
             Map<String, Object> document = dataTransformService.entityToResponseMap(entity);
-            esUtilService.addDocument(
+            String result = esUtilService.addDocument(
                     serverProperties.getUserGroupIndex(),
                     Constants.INDEX_TYPE,
                     entity.getUserGroupId(),
                     document,
                     serverProperties.getElasticUserGroupJsonPath()
             );
+            if (StringUtils.isEmpty(result)) {
+                log.error("Failed to index user group in ES (null result): usergroupid={}", entity.getUserGroupId());
+                return false;
+            }
             log.info("Indexed user group in ES: usergroupid={}", entity.getUserGroupId());
+            return true;
         } catch (Exception e) {
             log.error("Failed to index user group in ES: usergroupid={}", entity.getUserGroupId(), e);
+            return false;
         }
     }
 
@@ -180,6 +188,19 @@ public class UserGroupElasticSearchServiceImpl {
     public void rollbackUpdate(String userGroupId, Map<String, Object> previousState) {
         if (!tryUpdateDocument(userGroupId, previousState)) {
             log.error("ES_CASSANDRA_DIVERGENCE: ES rollback failed for usergroupid={} — manual reconciliation required", userGroupId);
+        }
+    }
+
+    /**
+     * Best-effort ES rollback for create: deletes the indexed document when the subsequent
+     * Cassandra insert fails.
+     * Called as {@code onCommitFailureRollback} when Cassandra fails after ES already succeeded.
+     *
+     * @param userGroupId user group ID to remove from ES
+     */
+    public void rollbackCreate(String userGroupId) {
+        if (!esUtilService.deleteDocument(serverProperties.getUserGroupIndex(), userGroupId)) {
+            log.error("ES_CASSANDRA_DIVERGENCE: ES rollback for create failed for usergroupid={} — manual reconciliation required", userGroupId);
         }
     }
 }

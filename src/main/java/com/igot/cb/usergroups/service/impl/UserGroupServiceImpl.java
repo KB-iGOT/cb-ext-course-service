@@ -22,6 +22,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.*;
 import java.util.function.Supplier;
+import java.util.function.BooleanSupplier;
 
 /**
  * Main User Group service implementation.
@@ -96,12 +97,9 @@ public class UserGroupServiceImpl implements UserGroupService {
             String userGroupId = UUID.randomUUID().toString();
             UserGroupEntity entity = dataTransformService.buildEntityForCreate(userGroupId, userGroupName, criteria, userRootOrgId, userId);
 
-            if (!insertUserGroupInCassandra(entity, response)) {
+            if (transactionalInsertFailed(entity, response)) {
                 return response;
             }
-
-            esService.indexUserGroup(entity);
-
             log.info("User group created successfully: usergroupid={}", userGroupId);
             response.getParams().setStatus(Constants.SUCCESSFUL);
             response.setResponseCode(HttpStatus.CREATED);
@@ -317,47 +315,6 @@ public class UserGroupServiceImpl implements UserGroupService {
             response.getParams().setErr(Constants.MSG_INVALID_REQUEST_FORMAT);
             response.setResponseCode(HttpStatus.BAD_REQUEST);
             return null;
-        }
-    }
-
-    /**
-     * Inserts user group entity into Cassandra.
-     *
-     * @param entity user group entity to insert
-     */
-    private boolean insertUserGroupInCassandra(UserGroupEntity entity, ApiResponse response) {
-        try {
-            Map<String, Object> insertMap = new HashMap<>();
-            insertMap.put(Constants.COL_ORGID, entity.getOrgId());
-            insertMap.put(Constants.COL_USERGROUPID, entity.getUserGroupId());
-            insertMap.put(Constants.COL_USERGROUPNAME, entity.getUserGroupName());
-            insertMap.put(Constants.COL_CREATEDBY, entity.getCreatedBy());
-            insertMap.put(Constants.COL_CREATEDDATE, entity.getCreatedDate());
-            insertMap.put(Constants.COL_UPDATEDBY, entity.getUpdatedBy());
-            insertMap.put(Constants.COL_UPDATEDDATE, entity.getUpdatedDate());
-            insertMap.put(Constants.COL_CRITERIA, entity.getCriteria());
-            insertMap.put(Constants.COL_STATUS, entity.getStatus());
-
-            ApiResponse result = (ApiResponse) cassandraOperation.insertRecord(
-                    Constants.KEYSPACE_SUNBIRD,
-                    Constants.TABLE_USER_GROUP_INFO,
-                    insertMap
-            );
-            if (!Constants.SUCCESS.equals(result.get(Constants.RESPONSE))) {
-                log.error("Cassandra insert failed for usergroupid={}: {}", entity.getUserGroupId(), result.get(Constants.ERROR_MESSAGE));
-                response.getParams().setStatus(Constants.FAILED);
-                response.getParams().setErr(Constants.MSG_FAILED_CREATE_USER_GROUP);
-                response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
-                return false;
-            }
-            log.debug("Inserted user group in Cassandra: usergroupid={}", entity.getUserGroupId());
-            return true;
-        } catch (Exception e) {
-            log.error("Failed to insert user group in Cassandra: usergroupid={}", entity.getUserGroupId(), e);
-            response.getParams().setStatus(Constants.FAILED);
-            response.getParams().setErr(Constants.MSG_FAILED_CREATE_USER_GROUP);
-            response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
-            return false;
         }
     }
 
@@ -601,5 +558,55 @@ public class UserGroupServiceImpl implements UserGroupService {
         response.getParams().setErr(Constants.MSG_FAILED_UPDATE_USER_GROUP);
         response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
         return true;
+    }
+
+
+    /**
+     * Atomically inserts into Cassandra and Elasticsearch: ES index runs as the pre-commit validator,
+     * so Cassandra only inserts if ES succeeds. If Cassandra throws after ES already succeeded,
+     * the rollback lambda deletes the ES document.
+     *
+     * @param entity   user group entity to insert
+     * @param response API response to populate on failure
+     * @return true if the transactional insert failed
+     */
+    private boolean transactionalInsertFailed(UserGroupEntity entity, ApiResponse response) {
+        Map<String, Object> result = cassandraOperation.insertRecord(
+                Constants.KEYSPACE_SUNBIRD,
+                Constants.TABLE_USER_GROUP_INFO,
+                buildInsertMap(entity),
+                () -> esService.tryIndexUserGroup(entity),
+                () -> esService.rollbackCreate(entity.getUserGroupId())
+        );
+        if (Constants.SUCCESS.equals(result.get(Constants.RESPONSE))) {
+            log.debug("Transactional insert succeeded for usergroupid={}", entity.getUserGroupId());
+            return false;
+        }
+        log.error("Transactional insert failed for usergroupid={}", entity.getUserGroupId());
+        response.getParams().setStatus(Constants.FAILED);
+        response.getParams().setErr(Constants.MSG_FAILED_CREATE_USER_GROUP);
+        response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
+        return true;
+    }
+
+
+    /**
+     * Builds the Cassandra insert map from the entity.
+     *
+     * @param entity user group entity
+     * @return column map for Cassandra insert
+     */
+    private Map<String, Object> buildInsertMap(UserGroupEntity entity) {
+        Map<String, Object> insertMap = new HashMap<>();
+        insertMap.put(Constants.COL_ORGID, entity.getOrgId());
+        insertMap.put(Constants.COL_USERGROUPID, entity.getUserGroupId());
+        insertMap.put(Constants.COL_USERGROUPNAME, entity.getUserGroupName());
+        insertMap.put(Constants.COL_CREATEDBY, entity.getCreatedBy());
+        insertMap.put(Constants.COL_CREATEDDATE, entity.getCreatedDate());
+        insertMap.put(Constants.COL_UPDATEDBY, entity.getUpdatedBy());
+        insertMap.put(Constants.COL_UPDATEDDATE, entity.getUpdatedDate());
+        insertMap.put(Constants.COL_CRITERIA, entity.getCriteria());
+        insertMap.put(Constants.COL_STATUS, entity.getStatus());
+        return insertMap;
     }
 }

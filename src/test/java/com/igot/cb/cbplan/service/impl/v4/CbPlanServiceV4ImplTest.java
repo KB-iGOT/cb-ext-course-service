@@ -2,6 +2,8 @@ package com.igot.cb.cbplan.service.impl.v4;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.igot.cb.cache.CbPlanCacheMgrV3;
+import java.util.function.BooleanSupplier;
+import java.util.function.Supplier;
 import com.igot.cb.cache.RedisCacheMgr;
 import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.cbplan.dto.CbPlanReadResponseDto;
@@ -155,7 +157,10 @@ class CbPlanServiceV4ImplTest {
         Map<String, Object> planData = new HashMap<>();
         planData.put(Constants.PLAN_ID, PLAN_ID);
         when(dataTransformService.prepareCbPlanForInsert(any(), eq(USER_ID))).thenReturn(planData);
-        when(cassandraOperation.insertRecord(anyString(), anyString(), anyMap())).thenReturn(successApiResponse());
+        Map<String, Object> insertResult = new HashMap<>();
+        insertResult.put(Constants.RESPONSE, Constants.SUCCESS);
+        when(cassandraOperation.insertRecord(anyString(), anyString(), anyMap(),
+                any(BooleanSupplier.class), any(Runnable.class))).thenReturn(insertResult);
 
         ApiResponse response = cbPlanService.createCbPlan(apiRequest(new HashMap<>()), TOKEN);
 
@@ -163,7 +168,7 @@ class CbPlanServiceV4ImplTest {
         assertEquals(Constants.CREATED, response.getResult().get(Constants.STATUS));
         assertEquals(PLAN_ID, response.getResult().get(Constants.ID));
         verify(contentLookupService).updateContentLookup(eq(PLAN_ID), anyMap());
-        verify(elasticSearchService).indexToElasticSearch(PLAN_ID, planData);
+        verify(elasticSearchService, never()).indexToElasticSearch(any(), any());
     }
 
     @Test
@@ -173,7 +178,8 @@ class CbPlanServiceV4ImplTest {
         ApiResponse response = cbPlanService.createCbPlan(apiRequest(new HashMap<>()), TOKEN);
 
         assertNotNull(response);
-        verify(cassandraOperation, never()).insertRecord(anyString(), anyString(), anyMap());
+        verify(cassandraOperation, never()).insertRecord(anyString(), anyString(), anyMap(),
+                any(BooleanSupplier.class), any(Runnable.class));
     }
 
     @Test
@@ -185,7 +191,8 @@ class CbPlanServiceV4ImplTest {
 
         assertEquals(Constants.FAILED, response.getParams().getStatus());
         assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
-        verify(cassandraOperation, never()).insertRecord(anyString(), anyString(), anyMap());
+        verify(cassandraOperation, never()).insertRecord(anyString(), anyString(), anyMap(),
+                any(BooleanSupplier.class), any(Runnable.class));
     }
 
     @Test
@@ -195,7 +202,8 @@ class CbPlanServiceV4ImplTest {
 
         ApiResponse response = cbPlanService.createCbPlan(apiRequest(new HashMap<>()), TOKEN);
 
-        verify(cassandraOperation, never()).insertRecord(anyString(), anyString(), anyMap());
+        verify(cassandraOperation, never()).insertRecord(anyString(), anyString(), anyMap(),
+                any(BooleanSupplier.class), any(Runnable.class));
         assertNotEquals(HttpStatus.CREATED, response.getResponseCode());
     }
 
@@ -203,11 +211,13 @@ class CbPlanServiceV4ImplTest {
     void createCbPlan_insertFails_returns500() throws JsonProcessingException {
         mockAuthSuccess();
         when(validationService.validateRequest(any(), anyBoolean(), anyString(), any())).thenReturn(true);
-        when(dataTransformService.prepareCbPlanForInsert(any(), eq(USER_ID))).thenReturn(new HashMap<>());
-        ApiResponse insertFailed = new ApiResponse();
-        insertFailed.put(Constants.RESPONSE, Constants.FAILED);
-        insertFailed.getParams().setErr("insert error");
-        when(cassandraOperation.insertRecord(anyString(), anyString(), anyMap())).thenReturn(insertFailed);
+        Map<String, Object> planData = new HashMap<>();
+        planData.put(Constants.PLAN_ID, PLAN_ID);
+        when(dataTransformService.prepareCbPlanForInsert(any(), eq(USER_ID))).thenReturn(planData);
+        Map<String, Object> insertFailedResult = new HashMap<>();
+        insertFailedResult.put(Constants.RESPONSE, Constants.FAILED);
+        when(cassandraOperation.insertRecord(anyString(), anyString(), anyMap(),
+                any(BooleanSupplier.class), any(Runnable.class))).thenReturn(insertFailedResult);
 
         ApiResponse response = cbPlanService.createCbPlan(apiRequest(new HashMap<>()), TOKEN);
 
@@ -298,14 +308,15 @@ class CbPlanServiceV4ImplTest {
         when(validationService.validateRequest(any(), anyBoolean(), anyString(), any())).thenReturn(true);
         Map<String, Object> updatedRequest = new HashMap<>();
         when(dataTransformService.prepareCbPlanForUpdate(anyMap(), eq(USER_ID))).thenReturn(updatedRequest);
-        when(cassandraOperation.updateRecord(anyString(), anyString(), anyMap(), anyMap()))
+        when(cassandraOperation.updateRecord(anyString(), anyString(), anyMap(), anyMap(),
+                any(Supplier.class), any(Runnable.class)))
                 .thenReturn(Map.of(Constants.RESPONSE, Constants.SUCCESS));
 
         ApiResponse response = cbPlanService.updateCbPlan(requestWithPlanId(), TOKEN);
 
         assertEquals(Constants.UPDATED, response.getResult().get(Constants.STATUS));
         verify(contentLookupService).updateContentLookupForModifiedPlan(PLAN_ID, updatedRequest, existingCbPlan);
-        verify(elasticSearchService).updateElasticSearchForPlan(PLAN_ID, updatedRequest);
+        verify(elasticSearchService, never()).updateElasticSearchForPlan(any(), any());
     }
 
     @Test
@@ -321,7 +332,8 @@ class CbPlanServiceV4ImplTest {
 
         cbPlanService.updateCbPlan(requestWithPlanId(), TOKEN);
 
-        verify(cassandraOperation, never()).updateRecord(anyString(), anyString(), anyMap(), anyMap());
+        verify(cassandraOperation, never()).updateRecord(anyString(), anyString(), anyMap(), anyMap(),
+                any(Supplier.class), any(Runnable.class));
     }
 
     @Test
@@ -335,7 +347,8 @@ class CbPlanServiceV4ImplTest {
         when(validationService.isUnauthorizedToUpdate(eq(USER_ID), anyMap(), any(), any())).thenReturn(false);
         when(validationService.validateRequest(any(), anyBoolean(), anyString(), any())).thenReturn(true);
         when(dataTransformService.prepareCbPlanForUpdate(anyMap(), eq(USER_ID))).thenReturn(new HashMap<>());
-        when(cassandraOperation.updateRecord(anyString(), anyString(), anyMap(), anyMap()))
+        when(cassandraOperation.updateRecord(anyString(), anyString(), anyMap(), anyMap(),
+                any(Supplier.class), any(Runnable.class)))
                 .thenReturn(Map.of(Constants.RESPONSE, Constants.FAILED));
 
         ApiResponse response = cbPlanService.updateCbPlan(requestWithPlanId(), TOKEN);
@@ -827,7 +840,8 @@ class CbPlanServiceV4ImplTest {
         when(validationService.validateRequest(any(), anyBoolean(), anyString(), any())).thenReturn(true);
         when(dataTransformService.prepareCbPlanForUpdate(anyMap(), eq(USER_ID)))
                 .thenReturn(new HashMap<>());
-        when(cassandraOperation.updateRecord(anyString(), anyString(), anyMap(), anyMap()))
+        when(cassandraOperation.updateRecord(anyString(), anyString(), anyMap(), anyMap(),
+                any(Supplier.class), any(Runnable.class)))
                 .thenReturn(Map.of(Constants.RESPONSE, Constants.SUCCESS));
 
         ApiResponse response = cbPlanService.updateCbPlan(apiRequest(requestMap), TOKEN);

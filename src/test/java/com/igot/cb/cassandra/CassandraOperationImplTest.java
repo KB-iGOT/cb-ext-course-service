@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 import java.util.*;
+import java.util.function.BooleanSupplier;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -451,6 +452,92 @@ class CassandraOperationImplTest {
             assertEquals(Constants.FAILED, response.get(Constants.RESPONSE));
             assertTrue(response.get(Constants.ERROR_MESSAGE).toString().contains("tbl"));
             assertTrue(response.get(Constants.ERROR_MESSAGE).toString().contains("DB error"));
+        }
+    }
+
+    @Test
+    void insertRecordWithValidator_ValidationSucceeds_Commits() {
+        Map<String, Object> request = new HashMap<>();
+        request.put("id", "123");
+
+        try (MockedStatic<CassandraUtil> cassandraUtilMockedStatic = Mockito.mockStatic(CassandraUtil.class)) {
+            cassandraUtilMockedStatic.when(() -> CassandraUtil.getPreparedStatement(anyString(), anyString(), any()))
+                    .thenReturn("INSERT INTO testKeyspace.testTable (id) VALUES (?)");
+            when(mockSession.prepare(anyString())).thenReturn(mockPreparedStatement);
+            when(mockPreparedStatement.bind(any())).thenReturn(mockBoundStatement);
+
+            Runnable rollback = mock(Runnable.class);
+            Map<String, Object> response = cassandraOperation.insertRecord(
+                    keyspaceName, tableName, request, () -> true, rollback);
+
+            assertEquals(Constants.SUCCESS, response.get(Constants.RESPONSE));
+            verify(mockSession, times(1)).execute(any(BoundStatement.class));
+            verify(rollback, never()).run();
+        }
+    }
+
+    @Test
+    void insertRecordWithValidator_ValidationFails_SkipsCommitWithoutThrowing() {
+        Map<String, Object> request = new HashMap<>();
+        request.put("id", "123");
+
+        try (MockedStatic<CassandraUtil> cassandraUtilMockedStatic = Mockito.mockStatic(CassandraUtil.class)) {
+            cassandraUtilMockedStatic.when(() -> CassandraUtil.getPreparedStatement(anyString(), anyString(), any()))
+                    .thenReturn("INSERT INTO testKeyspace.testTable (id) VALUES (?)");
+            when(mockSession.prepare(anyString())).thenReturn(mockPreparedStatement);
+            when(mockPreparedStatement.bind(any())).thenReturn(mockBoundStatement);
+
+            Runnable rollback = mock(Runnable.class);
+            Map<String, Object> response = cassandraOperation.insertRecord(
+                    keyspaceName, tableName, request, () -> false, rollback);
+
+            assertEquals(Constants.FAILED, response.get(Constants.RESPONSE));
+            assertNotNull(response.get(Constants.ERROR_MESSAGE));
+            verify(mockSession, never()).execute(any(BoundStatement.class));
+            verify(rollback, never()).run();
+        }
+    }
+
+    @Test
+    void insertRecordWithValidator_CommitFailsAfterValidationSucceeded_TriggersRollback() {
+        Map<String, Object> request = new HashMap<>();
+        request.put("id", "123");
+
+        try (MockedStatic<CassandraUtil> cassandraUtilMockedStatic = Mockito.mockStatic(CassandraUtil.class)) {
+            cassandraUtilMockedStatic.when(() -> CassandraUtil.getPreparedStatement(anyString(), anyString(), any()))
+                    .thenReturn("INSERT INTO testKeyspace.testTable (id) VALUES (?)");
+            when(mockSession.prepare(anyString())).thenReturn(mockPreparedStatement);
+            when(mockPreparedStatement.bind(any())).thenReturn(mockBoundStatement);
+            when(mockSession.execute(any(BoundStatement.class))).thenThrow(new RuntimeException("Cassandra down"));
+
+            Runnable rollback = mock(Runnable.class);
+            Map<String, Object> response = cassandraOperation.insertRecord(
+                    keyspaceName, tableName, request, () -> true, rollback);
+
+            assertEquals(Constants.FAILED, response.get(Constants.RESPONSE));
+            assertNotNull(response.get(Constants.ERROR_MESSAGE));
+            verify(rollback, times(1)).run();
+        }
+    }
+
+    @Test
+    void insertRecordWithValidator_RollbackItselfThrows_OriginalErrorStillReflectedInResponse() {
+        Map<String, Object> request = new HashMap<>();
+        request.put("id", "123");
+
+        try (MockedStatic<CassandraUtil> cassandraUtilMockedStatic = Mockito.mockStatic(CassandraUtil.class)) {
+            cassandraUtilMockedStatic.when(() -> CassandraUtil.getPreparedStatement(anyString(), anyString(), any()))
+                    .thenReturn("INSERT INTO testKeyspace.testTable (id) VALUES (?)");
+            when(mockSession.prepare(anyString())).thenReturn(mockPreparedStatement);
+            when(mockPreparedStatement.bind(any())).thenReturn(mockBoundStatement);
+            when(mockSession.execute(any(BoundStatement.class))).thenThrow(new RuntimeException("Cassandra down"));
+
+            Runnable rollback = () -> { throw new RuntimeException("ES also unreachable"); };
+            Map<String, Object> response = cassandraOperation.insertRecord(
+                    keyspaceName, tableName, request, () -> true, rollback);
+
+            assertEquals(Constants.FAILED, response.get(Constants.RESPONSE));
+            assertTrue(response.get(Constants.ERROR_MESSAGE).toString().contains("Cassandra down"));
         }
     }
 }

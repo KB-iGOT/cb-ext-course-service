@@ -21,4 +21,13 @@ public interface EsUtilService {
     Map<String, Object> getDocumentById(ElasticsearchClient client, String esIndexName, String id);
 
     SearchResult searchDocumentsV2(String esIndexName, SearchCriteria searchCriteria, String jsonFilePath);
+
+    /**
+     * Deletes a document from the given index by ID.
+     *
+     * @param esIndexName index name
+     * @param id          document ID
+     * @return true if deletion succeeded
+     */
+    boolean deleteDocument(String esIndexName, String id);
 }

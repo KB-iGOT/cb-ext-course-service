@@ -78,7 +78,9 @@ class UserGroupServiceImplTest {
         when(dataTransformService.buildEntityForCreate(anyString(), eq(TEST_USER_GROUP_NAME), any(), eq(TEST_ORG_ID), eq(TEST_USER_ID)))
                 .thenReturn(entity);
         when(validationService.validateCreateRequest(anyString(), anyList(), anyString(), anyString(), any())).thenReturn(true);
-        when(cassandraOperation.insertRecord(anyString(), anyString(), anyMap())).thenReturn(Map.of(Constants.RESPONSE, Constants.SUCCESS));
+        ApiResponse cassandraInsertResponse = new ApiResponse();
+        cassandraInsertResponse.put(Constants.RESPONSE, Constants.SUCCESS);
+        when(cassandraOperation.insertRecord(anyString(), anyString(), anyMap())).thenReturn(cassandraInsertResponse);
         doNothing().when(esService).indexUserGroup(any());
         when(dataTransformService.entityToResponseMap(entity)).thenReturn(Map.of(Constants.COL_USERGROUPID, TEST_USER_GROUP_ID));
 
@@ -254,7 +256,9 @@ class UserGroupServiceImplTest {
         when(objectMapper.convertValue(any(), eq(UserGroupRequest.class))).thenReturn(userGroupRequest);
         when(dataTransformService.buildEntityForCreate(anyString(), eq(TEST_USER_GROUP_NAME), any(), eq(TEST_ORG_ID), eq(TEST_USER_ID))).thenReturn(entity);
         when(validationService.validateCreateRequest(anyString(), anyList(), anyString(), anyString(), any())).thenReturn(true);
-        when(cassandraOperation.insertRecord(anyString(), anyString(), anyMap())).thenReturn(Map.of(Constants.RESPONSE, Constants.FAILED));
+        ApiResponse cassandraInsertResponse = new ApiResponse();
+        cassandraInsertResponse.put(Constants.RESPONSE, Constants.FAILED);
+        when(cassandraOperation.insertRecord(anyString(), anyString(), anyMap())).thenReturn(cassandraInsertResponse);
 
         ApiResponse response = userGroupService.createUserGroup(request, TEST_AUTH_TOKEN);
 

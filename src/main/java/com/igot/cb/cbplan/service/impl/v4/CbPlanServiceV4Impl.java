@@ -127,7 +127,7 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
                 return response;
             }
 
-            executePlanCreation(request, userId, userRootOrgId, response);
+            executePlanCreationTransactional(request, userId, userRootOrgId, response);
         } catch (Exception e) {
             handleException(response, userRootOrgId, e);
         }
@@ -186,68 +186,6 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
     }
 
     /**
-     * Builds the insert record and persists it, then fans out to content-lookup
-     * and Elasticsearch on success.
-     *
-     * @param request   the API request containing CB Plan details
-     * @param userId    creator's user ID
-     * @param userOrgId creator's organization ID, used only for error messages
-     * @param response  API response object, populated with the created plan ID on success
-     */
-    private void executePlanCreation(ApiRequest request, String userId, String userOrgId, ApiResponse response) {
-        try {
-            Map<String, Object> planData = dataTransformService.prepareCbPlanForInsert(request, userId);
-            ApiResponse insertResponse = insertPlanToDatabase(planData);
-
-            if (Constants.SUCCESS.equals(insertResponse.get(Constants.RESPONSE))) {
-                processSuccessfulCreation(planData, response);
-            } else {
-                processFailedCreation(insertResponse, userOrgId, response);
-            }
-        } catch (JsonProcessingException e) {
-            handleJsonProcessingException(e, userOrgId, response);
-        }
-    }
-
-    /**
-     * Inserts the prepared plan row into {@code cb_plan_v3}.
-     *
-     * @param planData prepared plan data
-     * @return Cassandra insert response
-     */
-    private ApiResponse insertPlanToDatabase(Map<String, Object> planData) {
-        return (ApiResponse) cassandraOperation.insertRecord(
-                Constants.KEYSPACE_SUNBIRD,
-                Constants.TABLE_CB_PLAN_V3,
-                planData);
-    }
-
-    /**
-     * Updates the content-lookup table and Elasticsearch index, then populates
-     * the success result.
-     *
-     * @param planData inserted plan data
-     * @param response API response object to populate
-     */
-    private void processSuccessfulCreation(Map<String, Object> planData, ApiResponse response) {
-        String planId = String.valueOf(planData.get(Constants.PLAN_ID));
-
-        // Extract identifiers from V4 JSON strings for content lookup
-        List<String> contentListRaw = (List<String>) planData.get(Constants.CONTENT_LIST);
-        List<String> identifiers = readService.extractIdentifiers(contentListRaw);
-        Map<String, Object> planDataWithIds = new HashMap<>(planData);
-        planDataWithIds.put(Constants.CONTENT_LIST, identifiers);
-
-        contentLookupService.updateContentLookup(planId, planDataWithIds);
-
-        // Deserialize contentList for ES indexing (ES expects nested objects, not JSON strings)
-        Map<String, Object> planDataForEs = prepareDataForElasticsearch(planData);
-        elasticSearchService.indexToElasticSearch(planId, planDataForEs);
-
-        populateSuccessResponse(response, planId);
-    }
-
-    /**
      * Populates the 201 Created success response for a new plan.
      *
      * @param response API response object to populate
@@ -267,10 +205,9 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
      * @param userOrgId      creator's organization ID, included in the error message
      * @param response       API response object to populate
      */
-    private void processFailedCreation(ApiResponse insertResponse, String userOrgId, ApiResponse response) {
+    private void processFailedCreation(String userOrgId, ApiResponse response) {
         response.getParams().setStatus(Constants.FAILED);
-        response.getParams().setErr(Constants.ERR_FAILED_TO_CREATE_CB_PLAN + userOrgId
-                + Constants.ERR_MESSAGE_SEPARATOR + insertResponse.getParams().getErr());
+        response.getParams().setErr(Constants.ERR_FAILED_TO_CREATE_CB_PLAN + userOrgId);
         response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
         log.error("CbPlanServiceV4Impl.createCbPlan: Insert failed for orgId: {}", userOrgId);
     }
@@ -455,41 +392,7 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
         String cbPlanId = (String) updatedCbPlan.get(Constants.ID);
         Map<String, Object> updatedRequest = dataTransformService.prepareCbPlanForUpdate(updatedCbPlan, userId);
         addCaLinkedIdToUpdate(updatedCbPlan, updatedRequest);
-        executeDraftPlanUpdate(cbPlanId, updatedRequest, existingCbPlan, response);
-    }
-
-    /**
-     * Persists the DRAFT plan overwrite and fans out to content-lookup/ES on success.
-     *
-     * @param cbPlanId       CB Plan ID
-     * @param updatedRequest prepared update data
-     * @param existingCbPlan existing CB Plan record, used to diff content-lookup changes
-     * @param response       API response object, populated with the update status
-     */
-    private void executeDraftPlanUpdate(String cbPlanId, Map<String, Object> updatedRequest,
-                                        Map<String, Object> existingCbPlan, ApiResponse response) {
-        Map<String, Object> resp = cassandraOperation.updateRecord(Constants.KEYSPACE_SUNBIRD,
-                Constants.TABLE_CB_PLAN_V3, updatedRequest, Map.of(Constants.PLAN_ID, cbPlanId));
-        if (Constants.SUCCESS.equals(resp.get(Constants.RESPONSE))) {
-            processDraftUpdateSuccess(cbPlanId, updatedRequest, existingCbPlan, response);
-        } else {
-            processDraftUpdateFailure(cbPlanId, response);
-        }
-    }
-
-    /**
-     * Updates content-lookup and Elasticsearch for a successful DRAFT overwrite.
-     *
-     * @param cbPlanId       CB Plan ID
-     * @param updatedRequest applied update data
-     * @param existingCbPlan pre-update plan record, used to diff added/removed content
-     * @param response       API response object to populate
-     */
-    private void processDraftUpdateSuccess(String cbPlanId, Map<String, Object> updatedRequest,
-                                           Map<String, Object> existingCbPlan, ApiResponse response) {
-        contentLookupService.updateContentLookupForModifiedPlan(cbPlanId, updatedRequest, existingCbPlan);
-        elasticSearchService.updateElasticSearchForPlan(cbPlanId, updatedRequest);
-        response.getResult().put(Constants.STATUS, Constants.UPDATED);
+        executeDraftPlanUpdateTransactional(cbPlanId, updatedRequest, existingCbPlan, response);
     }
 
     /**
@@ -1502,4 +1405,94 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
         return objectList;
     }
 
+    /**
+     * ES-first create: indexes to Elasticsearch before inserting to Cassandra.
+     * If Cassandra fails after ES succeeds, the ES document is deleted as rollback.
+     *
+     * @param request   the API request containing CB Plan details
+     * @param userId    creator's user ID
+     * @param userOrgId creator's organization ID, used only for error messages
+     * @param response  API response object, populated with the created plan ID on success
+     */
+    private void executePlanCreationTransactional(ApiRequest request, String userId, String userOrgId, ApiResponse response) {
+        try {
+            Map<String, Object> planData = dataTransformService.prepareCbPlanForInsert(request, userId);
+            String planId = String.valueOf(planData.get(Constants.PLAN_ID));
+            Map<String, Object> planDataForEs = prepareDataForElasticsearch(planData);
+
+            Map<String, Object> insertResult = cassandraOperation.insertRecord(
+                    Constants.KEYSPACE_SUNBIRD,
+                    Constants.TABLE_CB_PLAN_V3,
+                    planData,
+                    () -> elasticSearchService.tryIndexPlan(planId, planDataForEs),
+                    () -> elasticSearchService.rollbackCreate(planId)
+            );
+
+            if (Constants.SUCCESS.equals(insertResult.get(Constants.RESPONSE))) {
+                processSuccessfulCreationPostEsIndex(planData, planId, response);
+            } else {
+                processFailedCreation(userOrgId, response);
+            }
+        } catch (JsonProcessingException e) {
+            handleJsonProcessingException(e, userOrgId, response);
+        }
+    }
+
+    /**
+     * Post-insert handler for ES-first create.
+     * ES was already indexed by the preCommitValidator; only content-lookup and response are needed.
+     *
+     * @param planData inserted plan data
+     * @param planId   CB Plan ID
+     * @param response API response object to populate
+     */
+    private void processSuccessfulCreationPostEsIndex(Map<String, Object> planData, String planId, ApiResponse response) {
+        List<String> contentListRaw = (List<String>) planData.get(Constants.CONTENT_LIST);
+        List<String> identifiers = readService.extractIdentifiers(contentListRaw);
+        Map<String, Object> planDataWithIds = new HashMap<>(planData);
+        planDataWithIds.put(Constants.CONTENT_LIST, identifiers);
+        contentLookupService.updateContentLookup(planId, planDataWithIds);
+        populateSuccessResponse(response, planId);
+    }
+
+    /**
+     * ES-first draft update: updates Elasticsearch before updating Cassandra.
+     * If Cassandra fails after ES succeeds, the ES document is restored to its pre-update state.
+     *
+     * @param cbPlanId       CB Plan ID
+     * @param updatedRequest prepared update data
+     * @param existingCbPlan existing CB Plan record, used for content-lookup diff and ES rollback
+     * @param response       API response object, populated with the update status
+     */
+    private void executeDraftPlanUpdateTransactional(String cbPlanId, Map<String, Object> updatedRequest,
+                                                      Map<String, Object> existingCbPlan, ApiResponse response) {
+        Map<String, Object> resp = cassandraOperation.updateRecord(
+                Constants.KEYSPACE_SUNBIRD,
+                Constants.TABLE_CB_PLAN_V3,
+                updatedRequest,
+                Map.of(Constants.PLAN_ID, cbPlanId),
+                () -> elasticSearchService.tryUpdatePlan(cbPlanId, updatedRequest),
+                () -> elasticSearchService.rollbackUpdate(cbPlanId, existingCbPlan)
+        );
+        if (Constants.SUCCESS.equals(resp.get(Constants.RESPONSE))) {
+            processDraftUpdateSuccessPostEsUpdate(cbPlanId, updatedRequest, existingCbPlan, response);
+        } else {
+            processDraftUpdateFailure(cbPlanId, response);
+        }
+    }
+
+    /**
+     * Post-update handler for ES-first draft update.
+     * ES was already updated by the preCommitValidator; only content-lookup and response are needed.
+     *
+     * @param cbPlanId       CB Plan ID
+     * @param updatedRequest applied update data
+     * @param existingCbPlan pre-update plan record, used to diff added/removed content
+     * @param response       API response object to populate
+     */
+    private void processDraftUpdateSuccessPostEsUpdate(String cbPlanId, Map<String, Object> updatedRequest,
+                                                        Map<String, Object> existingCbPlan, ApiResponse response) {
+        contentLookupService.updateContentLookupForModifiedPlan(cbPlanId, updatedRequest, existingCbPlan);
+        response.getResult().put(Constants.STATUS, Constants.UPDATED);
+    }
 }

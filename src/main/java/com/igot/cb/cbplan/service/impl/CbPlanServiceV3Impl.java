@@ -665,6 +665,7 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
         Map<String, Object> updateData = dataTransformService.prepareArchiveUpdate(comment, userId);
         Map<String, Object> sanitizedMap = prepareArchiveEsDocument(cbPlanId, existingCbPlan, updateData);
         Map<String, Object> sanitizedExisting = elasticSearchService.sanitizeForElastic(new HashMap<>(existingCbPlan));
+        deserializeContentListForEs(sanitizedExisting);
         Map<String, Object> resp = cassandraOperation.updateRecord(
                 Constants.KEYSPACE_SUNBIRD,
                 Constants.TABLE_CB_PLAN_V3,
@@ -1792,7 +1793,9 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
         esDocument.putAll(updateData);
         esDocument.put(Constants.ID, cbPlanId);
         esDocument.put(Constants.STATUS, Constants.CB_RETIRE);
-        return elasticSearchService.sanitizeForElastic(esDocument);
+        Map<String, Object> sanitized = elasticSearchService.sanitizeForElastic(esDocument);
+        deserializeContentListForEs(sanitized);
+        return sanitized;
     }
 
     /**
@@ -1809,4 +1812,46 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
         }
     }
 
+    /**
+     * Normalizes contentList for ES nested-type mapping.
+     * V4 JSON strings are deserialized to Map objects; V3 plain IDs are wrapped with mandatory=false.
+     * Mutates the map in place. No-op when contentList is absent, empty, or already contains non-String items.
+     *
+     * @param esDocument document being prepared for ES indexing
+     */
+    private void deserializeContentListForEs(Map<String, Object> esDocument) {
+        if (!(esDocument.get(Constants.CONTENT_LIST) instanceof List<?> raw)) {
+            return;
+        }
+        if (CollectionUtils.isEmpty(raw) || !(raw.get(0) instanceof String)) {
+            return;
+        }
+        List<Map<String, Object>> normalized = new ArrayList<>();
+        for (Object item : raw) {
+            normalized.add(toContentItem((String) item));
+        }
+        esDocument.put(Constants.CONTENT_LIST, normalized);
+    }
+
+    /**
+     * Converts a single contentList item to an ES-compatible nested object.
+     * V4 JSON string is deserialized to a Map; V3 plain ID is wrapped with mandatory=false.
+     *
+     * @param item raw contentList item
+     * @return ES-compatible content object
+     */
+    private Map<String, Object> toContentItem(String item) {
+        try {
+            Object parsed = mapper.readValue(item, Object.class);
+            if (parsed instanceof Map) {
+                return (Map<String, Object>) parsed;
+            }
+        } catch (JsonProcessingException ignored) {
+            log.debug("CbPlanServiceV3Impl.toContentItem: item is not JSON, treating as plain id: {}", item);
+        }
+        Map<String, Object> entry = new HashMap<>();
+        entry.put(Constants.IDENTIFIER, item);
+        entry.put(Constants.MANDATORY, false);
+        return entry;
+    }
 }

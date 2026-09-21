@@ -1194,6 +1194,127 @@ class CbPlanServiceV3ImplTest {
 
 
 
+    @Test
+    void testRetireCbPlan_withV4JsonContentList_esReceivesDeserializedObjects() {
+        mockValidUserAndOrg(false);
+        mockEsProperties();
+        Map<String, Object> existingPlan = new HashMap<>();
+        existingPlan.put(Constants.PLAN_ID, PLAN_ID);
+        existingPlan.put(Constants.CREATED_BY, USER_ID);
+        existingPlan.put(Constants.STATUS, Constants.LIVE);
+        existingPlan.put(Constants.PLAN_YEAR, PLAN_YEAR);
+        existingPlan.put(Constants.CONTENT_LIST, List.of(
+                "{\"identifier\":\"do_123\",\"mandatory\":true}",
+                "{\"identifier\":\"do_456\",\"mandatory\":false}"
+        ));
+        mockExistingPlan(existingPlan);
+        when(esUtilService.updateDocument(anyString(), anyString(), anyString(), anyMap(), anyString()))
+                .thenReturn("success");
+        when(cassandraOperation.updateRecord(anyString(), anyString(), anyMap(), anyMap(), any(), any()))
+                .thenAnswer(invocation -> {
+                    java.util.function.Supplier<Boolean> preCommit = invocation.getArgument(4);
+                    preCommit.get();
+                    return Map.of(Constants.RESPONSE, Constants.SUCCESS);
+                });
+        Map<String, Object> request = new HashMap<>();
+        request.put(Constants.ID, PLAN_ID);
+        ApiResponse retireResponse = cbPlanService.retireCbPlan(apiRequest(request), ORG_ID, TOKEN, List.of());
+        assertEquals(HttpStatus.OK, retireResponse.getResponseCode());
+        org.mockito.ArgumentCaptor<Map<String, Object>> esDocCaptor = org.mockito.ArgumentCaptor.forClass(Map.class);
+        verify(esUtilService).updateDocument(anyString(), anyString(), anyString(), esDocCaptor.capture(), anyString());
+        List<?> normalizedList = (List<?>) esDocCaptor.getValue().get(Constants.CONTENT_LIST);
+        assertNotNull(normalizedList);
+        assertEquals(2, normalizedList.size());
+        Map<?, ?> firstItem = (Map<?, ?>) normalizedList.get(0);
+        assertEquals("do_123", firstItem.get(Constants.IDENTIFIER));
+        assertEquals(true, firstItem.get(Constants.MANDATORY));
+        Map<?, ?> secondItem = (Map<?, ?>) normalizedList.get(1);
+        assertEquals("do_456", secondItem.get(Constants.IDENTIFIER));
+        assertEquals(false, secondItem.get(Constants.MANDATORY));
+    }
 
+    @Test
+    void testRetireCbPlan_withV3PlainIdContentList_esReceivesWrappedObjects() {
+        mockValidUserAndOrg(false);
+        mockEsProperties();
+        Map<String, Object> existingPlan = new HashMap<>();
+        existingPlan.put(Constants.PLAN_ID, PLAN_ID);
+        existingPlan.put(Constants.CREATED_BY, USER_ID);
+        existingPlan.put(Constants.STATUS, Constants.LIVE);
+        existingPlan.put(Constants.PLAN_YEAR, PLAN_YEAR);
+        existingPlan.put(Constants.CONTENT_LIST, List.of("do_123", "do_456"));
+        mockExistingPlan(existingPlan);
+        when(esUtilService.updateDocument(anyString(), anyString(), anyString(), anyMap(), anyString()))
+                .thenReturn("success");
+        when(cassandraOperation.updateRecord(anyString(), anyString(), anyMap(), anyMap(), any(), any()))
+                .thenAnswer(invocation -> {
+                    java.util.function.Supplier<Boolean> preCommit = invocation.getArgument(4);
+                    preCommit.get();
+                    return Map.of(Constants.RESPONSE, Constants.SUCCESS);
+                });
+        Map<String, Object> request = new HashMap<>();
+        request.put(Constants.ID, PLAN_ID);
+        ApiResponse retireResponse = cbPlanService.retireCbPlan(apiRequest(request), ORG_ID, TOKEN, List.of());
+        assertEquals(HttpStatus.OK, retireResponse.getResponseCode());
+        org.mockito.ArgumentCaptor<Map<String, Object>> esDocCaptor = org.mockito.ArgumentCaptor.forClass(Map.class);
+        verify(esUtilService).updateDocument(anyString(), anyString(), anyString(), esDocCaptor.capture(), anyString());
+        List<?> normalizedList = (List<?>) esDocCaptor.getValue().get(Constants.CONTENT_LIST);
+        assertNotNull(normalizedList);
+        assertEquals(2, normalizedList.size());
+        Map<?, ?> firstItem = (Map<?, ?>) normalizedList.get(0);
+        assertEquals("do_123", firstItem.get(Constants.IDENTIFIER));
+        assertEquals(false, firstItem.get(Constants.MANDATORY));
+        Map<?, ?> secondItem = (Map<?, ?>) normalizedList.get(1);
+        assertEquals("do_456", secondItem.get(Constants.IDENTIFIER));
+        assertEquals(false, secondItem.get(Constants.MANDATORY));
+    }
 
+    @Test
+    void testRetireCbPlan_withEmptyContentList_archivesSuccessfully() {
+        mockValidUserAndOrg(false);
+        mockEsProperties();
+        Map<String, Object> existingPlan = new HashMap<>();
+        existingPlan.put(Constants.PLAN_ID, PLAN_ID);
+        existingPlan.put(Constants.CREATED_BY, USER_ID);
+        existingPlan.put(Constants.STATUS, Constants.LIVE);
+        existingPlan.put(Constants.PLAN_YEAR, PLAN_YEAR);
+        existingPlan.put(Constants.CONTENT_LIST, Collections.emptyList());
+        mockExistingPlan(existingPlan);
+        when(esUtilService.updateDocument(anyString(), anyString(), anyString(), anyMap(), anyString()))
+                .thenReturn("success");
+        when(cassandraOperation.updateRecord(anyString(), anyString(), anyMap(), anyMap(), any(), any()))
+                .thenAnswer(invocation -> {
+                    java.util.function.Supplier<Boolean> preCommit = invocation.getArgument(4);
+                    preCommit.get();
+                    return Map.of(Constants.RESPONSE, Constants.SUCCESS);
+                });
+        Map<String, Object> request = new HashMap<>();
+        request.put(Constants.ID, PLAN_ID);
+        ApiResponse retireResponse = cbPlanService.retireCbPlan(apiRequest(request), ORG_ID, TOKEN, List.of());
+        assertEquals(HttpStatus.OK, retireResponse.getResponseCode());
+    }
+
+    @Test
+    void testRetireCbPlan_withNullContentList_archivesSuccessfully() {
+        mockValidUserAndOrg(false);
+        mockEsProperties();
+        Map<String, Object> existingPlan = new HashMap<>();
+        existingPlan.put(Constants.PLAN_ID, PLAN_ID);
+        existingPlan.put(Constants.CREATED_BY, USER_ID);
+        existingPlan.put(Constants.STATUS, Constants.LIVE);
+        existingPlan.put(Constants.PLAN_YEAR, PLAN_YEAR);
+        mockExistingPlan(existingPlan);
+        when(esUtilService.updateDocument(anyString(), anyString(), anyString(), anyMap(), anyString()))
+                .thenReturn("success");
+        when(cassandraOperation.updateRecord(anyString(), anyString(), anyMap(), anyMap(), any(), any()))
+                .thenAnswer(invocation -> {
+                    java.util.function.Supplier<Boolean> preCommit = invocation.getArgument(4);
+                    preCommit.get();
+                    return Map.of(Constants.RESPONSE, Constants.SUCCESS);
+                });
+        Map<String, Object> request = new HashMap<>();
+        request.put(Constants.ID, PLAN_ID);
+        ApiResponse retireResponse = cbPlanService.retireCbPlan(apiRequest(request), ORG_ID, TOKEN, List.of());
+        assertEquals(HttpStatus.OK, retireResponse.getResponseCode());
+    }
 }

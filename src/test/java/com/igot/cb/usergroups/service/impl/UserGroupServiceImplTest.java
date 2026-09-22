@@ -21,7 +21,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 
@@ -54,7 +53,6 @@ class UserGroupServiceImplTest {
 
     @BeforeEach
     void setUp() {
-        MockitoAnnotations.openMocks(this);
         userGroupService = new UserGroupServiceImpl(
                 cassandraOperation,
                 validationService,
@@ -215,7 +213,7 @@ class UserGroupServiceImplTest {
 
         assertNotNull(response);
         assertEquals(Constants.FAILED, response.getParams().getStatus());
-        assertEquals(HttpStatus.CONFLICT, response.getResponseCode());
+        assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
         assertEquals(Constants.MSG_USERGROUP_NAME_EXISTS, response.getParams().getErr());
         verify(cassandraOperation, never()).insertRecord(anyString(), anyString(), anyMap(),
                 any(BooleanSupplier.class), any(Runnable.class));
@@ -263,7 +261,7 @@ class UserGroupServiceImplTest {
 
         assertNotNull(response);
         assertEquals(Constants.FAILED, response.getParams().getStatus());
-        assertEquals(HttpStatus.CONFLICT, response.getResponseCode());
+        assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
         assertEquals(Constants.MSG_USERGROUP_NAME_EXISTS, response.getParams().getErr());
         verify(cassandraOperation, never()).updateRecord(anyString(), anyString(), anyMap(), anyMap(), any(), any());
     }

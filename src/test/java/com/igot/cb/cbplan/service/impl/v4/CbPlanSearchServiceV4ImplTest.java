@@ -7,6 +7,7 @@ import com.igot.cb.model.ApiRequest;
 import com.igot.cb.model.ApiResponse;
 import com.igot.cb.util.CbExtServerProperties;
 import com.igot.cb.util.Constants;
+import com.igot.cb.util.UserProfileUtil;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -31,6 +32,7 @@ import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -42,6 +44,9 @@ class CbPlanSearchServiceV4ImplTest {
     private static final String TEST_ORG_ID = "org_456";
     private static final String TEST_INDEX = "cbplan_index";
     private static final String TEST_JSON_PATH = "jsonPath";
+    private static final String CREATOR_ID = "creator-uuid-001";
+    private static final String UPDATER_ID = "updater-uuid-002";
+    private static final String PUBLISHER_ID = "publisher-uuid-003";
 
     @Mock
     private EsUtilService esUtilService;
@@ -49,12 +54,14 @@ class CbPlanSearchServiceV4ImplTest {
     private CbExtServerProperties serverProperties;
     @Mock
     private CbPlanValidationServiceV4Impl validationService;
+    @Mock
+    private UserProfileUtil userProfileUtil;
 
     private CbPlanSearchServiceV4Impl searchService;
 
     @BeforeEach
     void setUp() {
-        searchService = new CbPlanSearchServiceV4Impl(esUtilService, serverProperties, validationService);
+        searchService = new CbPlanSearchServiceV4Impl(esUtilService, serverProperties, validationService, userProfileUtil);
 
         lenient().when(serverProperties.getCpPlanIndex()).thenReturn(TEST_INDEX);
         lenient().when(serverProperties.getElasticCbPlanJsonPath()).thenReturn(TEST_JSON_PATH);
@@ -405,6 +412,108 @@ class CbPlanSearchServiceV4ImplTest {
         assertEquals(1, v4List.size());
         assertThat(v4List.get(0)).containsEntry(Constants.IDENTIFIER, "do_v4_1");
         assertThat(v4List.get(0)).containsEntry(Constants.MANDATORY, true);
+    }
+
+    @Test
+    void searchCbPlan_withCreatedByAndUpdatedBy_shouldEnrichWithUserNames() {
+        ApiRequest request = createApiRequest();
+        Map<String, Object> searchRecord = new HashMap<>();
+        searchRecord.put("id", "plan_enrich_1");
+        searchRecord.put(Constants.CREATED_BY, CREATOR_ID);
+        searchRecord.put(Constants.UPDATED_BY, UPDATER_ID);
+        SearchResult searchResult = new SearchResult();
+        searchResult.setData(List.of(searchRecord));
+
+        when(validationService.validateAndExtractUserId(eq(TEST_AUTH_TOKEN), any())).thenReturn(TEST_USER_ID);
+        when(esUtilService.searchDocumentsV2(eq(TEST_INDEX), any(SearchCriteria.class), eq(TEST_JSON_PATH)))
+                .thenReturn(searchResult);
+        when(userProfileUtil.buildUserProfiles(any())).thenReturn(
+                Map.of(CREATOR_ID, "Alice", UPDATER_ID, "Bob"));
+
+        ApiResponse response = searchService.searchCbPlan(request, TEST_ORG_ID, TEST_AUTH_TOKEN);
+
+        assertEquals(Constants.SUCCESS, response.getParams().getStatus());
+        SearchResult resultData = (SearchResult) response.getResult().get(Constants.RESULT);
+        Map<String, Object> resultRecord = resultData.getData().get(0);
+        assertEquals("Alice", resultRecord.get(Constants.CREATED_BY_NAME));
+        assertEquals("Bob", resultRecord.get(Constants.UPDATED_BY_NAME));
+        verify(userProfileUtil, times(1)).buildUserProfiles(any());
+    }
+
+    @Test
+    void searchCbPlan_withPublishedBy_shouldEnrichPublishedByName() {
+        ApiRequest request = createApiRequest();
+        Map<String, Object> searchRecord = new HashMap<>();
+        searchRecord.put("id", "plan_enrich_2");
+        searchRecord.put(Constants.PUBLISHED_BY, PUBLISHER_ID);
+        SearchResult searchResult = new SearchResult();
+        searchResult.setData(List.of(searchRecord));
+
+        when(validationService.validateAndExtractUserId(eq(TEST_AUTH_TOKEN), any())).thenReturn(TEST_USER_ID);
+        when(esUtilService.searchDocumentsV2(eq(TEST_INDEX), any(SearchCriteria.class), eq(TEST_JSON_PATH)))
+                .thenReturn(searchResult);
+        when(userProfileUtil.buildUserProfiles(any())).thenReturn(Map.of(PUBLISHER_ID, "Carol"));
+
+        ApiResponse response = searchService.searchCbPlan(request, TEST_ORG_ID, TEST_AUTH_TOKEN);
+
+        assertEquals(Constants.SUCCESS, response.getParams().getStatus());
+        SearchResult resultData = (SearchResult) response.getResult().get(Constants.RESULT);
+        Map<String, Object> resultRecord = resultData.getData().get(0);
+        assertEquals("Carol", resultRecord.get(Constants.PUBLISHED_BY_NAME));
+        verify(userProfileUtil, times(1)).buildUserProfiles(any());
+    }
+
+    @Test
+    void searchCbPlan_whenNoUserIdFieldsPresent_shouldSkipBuildUserProfiles() {
+        ApiRequest request = createApiRequest();
+        Map<String, Object> searchRecord = new HashMap<>();
+        searchRecord.put("id", "plan_no_users");
+        searchRecord.put("name", "Plan With No User Fields");
+        SearchResult searchResult = new SearchResult();
+        searchResult.setData(List.of(searchRecord));
+
+        when(validationService.validateAndExtractUserId(eq(TEST_AUTH_TOKEN), any())).thenReturn(TEST_USER_ID);
+        when(esUtilService.searchDocumentsV2(eq(TEST_INDEX), any(SearchCriteria.class), eq(TEST_JSON_PATH)))
+                .thenReturn(searchResult);
+
+        ApiResponse response = searchService.searchCbPlan(request, TEST_ORG_ID, TEST_AUTH_TOKEN);
+
+        assertEquals(Constants.SUCCESS, response.getParams().getStatus());
+        verify(userProfileUtil, never()).buildUserProfiles(any());
+    }
+
+    @Test
+    void searchCbPlan_withMultiplePlansAndSharedCreator_shouldBatchSingleUserProfileCall() {
+        ApiRequest request = createApiRequest();
+        Map<String, Object> plan1 = new HashMap<>();
+        plan1.put("id", "plan_batch_1");
+        plan1.put(Constants.CREATED_BY, CREATOR_ID);
+        plan1.put(Constants.UPDATED_BY, UPDATER_ID);
+
+        Map<String, Object> plan2 = new HashMap<>();
+        plan2.put("id", "plan_batch_2");
+        plan2.put(Constants.CREATED_BY, CREATOR_ID);
+        plan2.put(Constants.PUBLISHED_BY, PUBLISHER_ID);
+
+        SearchResult searchResult = new SearchResult();
+        searchResult.setData(List.of(plan1, plan2));
+
+        when(validationService.validateAndExtractUserId(eq(TEST_AUTH_TOKEN), any())).thenReturn(TEST_USER_ID);
+        when(esUtilService.searchDocumentsV2(eq(TEST_INDEX), any(SearchCriteria.class), eq(TEST_JSON_PATH)))
+                .thenReturn(searchResult);
+        when(userProfileUtil.buildUserProfiles(any())).thenReturn(
+                Map.of(CREATOR_ID, "Alice", UPDATER_ID, "Bob", PUBLISHER_ID, "Carol"));
+
+        ApiResponse response = searchService.searchCbPlan(request, TEST_ORG_ID, TEST_AUTH_TOKEN);
+
+        assertEquals(Constants.SUCCESS, response.getParams().getStatus());
+        verify(userProfileUtil, times(1)).buildUserProfiles(any());
+        SearchResult resultData = (SearchResult) response.getResult().get(Constants.RESULT);
+        List<Map<String, Object>> data = resultData.getData();
+        assertEquals("Alice", data.get(0).get(Constants.CREATED_BY_NAME));
+        assertEquals("Bob", data.get(0).get(Constants.UPDATED_BY_NAME));
+        assertEquals("Alice", data.get(1).get(Constants.CREATED_BY_NAME));
+        assertEquals("Carol", data.get(1).get(Constants.PUBLISHED_BY_NAME));
     }
 
     private ApiRequest createApiRequest() {

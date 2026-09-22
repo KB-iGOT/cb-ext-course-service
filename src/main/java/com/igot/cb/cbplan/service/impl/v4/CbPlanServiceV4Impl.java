@@ -1,13 +1,7 @@
 package com.igot.cb.cbplan.service.impl.v4;
 
 import java.time.Instant;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
 
 import com.igot.cb.cbplan.service.CbPlanServiceV3;
 import com.igot.cb.cbplan.service.impl.CbPlanContentLookupServiceV3Impl;
@@ -1382,25 +1376,19 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
 
     /**
      * Deserializes contentList from JSON strings to objects for Elasticsearch nested type.
-     * Converts from: ['{"identifier":"do_123","mandatory":true}']
-     * To: [{"identifier": "do_123", "mandatory": true}]
+     * V4 JSON strings are deserialized to Maps; V3 plain IDs are wrapped with mandatory=false.
      *
-     * @param jsonList list of JSON strings
-     * @return list of content objects, empty list if input is null/empty or parsing fails
+     * @param jsonList list of contentList strings (V4 JSON or V3 plain IDs)
+     * @return list of ES-compatible content objects
      */
     private List<Map<String, Object>> deserializeContentListFromJson(List<String> jsonList) {
         if (CollectionUtils.isEmpty(jsonList)) {
             return Collections.emptyList();
         }
 
-        List<Map<String, Object>> objectList = new java.util.ArrayList<>();
-        for (String json : jsonList) {
-            try {
-                Map<String, Object> item = mapper.readValue(json, new TypeReference<Map<String, Object>>() {});
-                objectList.add(item);
-            } catch (JsonProcessingException e) {
-                log.error("CbPlanServiceV4Impl.deserializeContentListFromJson: Failed to deserialize item: {}", json, e);
-            }
+        List<Map<String, Object>> objectList = new ArrayList<>();
+        for (String item : jsonList) {
+            objectList.add(toContentItem(item));
         }
         return objectList;
     }
@@ -1513,5 +1501,27 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
         Map<String, Object> copy = new HashMap<>(planData);
         copy.put(Constants.CONTENT_LIST, identifiers);
         return copy;
+    }
+
+    /**
+     * Converts a single contentList item to an ES-compatible nested object.
+     * V4 JSON string is deserialized to a Map; V3 plain ID is wrapped with mandatory=false.
+     *
+     * @param item raw contentList item
+     * @return ES-compatible content object
+     */
+    private Map<String, Object> toContentItem(String item) {
+        try {
+            Object parsed = mapper.readValue(item, Object.class);
+            if (parsed instanceof Map) {
+                return (Map<String, Object>) parsed;
+            }
+        } catch (JsonProcessingException ignored) {
+            log.debug("CbPlanServiceV4Impl.toContentItem: item is not JSON, treating as plain id: {}", item);
+        }
+        Map<String, Object> entry = new HashMap<>();
+        entry.put(Constants.IDENTIFIER, item);
+        entry.put(Constants.MANDATORY, false);
+        return entry;
     }
 }

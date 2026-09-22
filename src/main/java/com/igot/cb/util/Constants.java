@@ -808,6 +808,9 @@ public class Constants {
     public static final String API_CONTENT_INFO_V2 = "api.content.v2.user.info";
     public static final String API_CBPLAN_V4_SEARCH = "api.cbplan.v4.search";
     public static final String API_CBPLAN_V3_SEARCH = "api.cbplan.v3.search";
+    public static final String MSG_USERGROUP_NAME_EXISTS = "A user group with this name already exists in the organisation";
+    public static final String PUBLISHED_BY_NAME = "publishedByName";
+
     private Constants() {
     }
 }

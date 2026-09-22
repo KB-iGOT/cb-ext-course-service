@@ -94,6 +94,14 @@ public class UserGroupServiceImpl implements UserGroupService {
                 return response;
             }
 
+            if (esService.isDuplicateGroupName(userGroupName, userRootOrgId, null)) {
+                log.warn("createUserGroup: Duplicate group name rejected: name={}, orgId={}", userGroupName, userRootOrgId);
+                response.getParams().setStatus(Constants.FAILED);
+                response.getParams().setErr(Constants.MSG_USERGROUP_NAME_EXISTS);
+                response.setResponseCode(HttpStatus.BAD_REQUEST);
+                return response;
+            }
+
             String userGroupId = UUID.randomUUID().toString();
             UserGroupEntity entity = dataTransformService.buildEntityForCreate(userGroupId, userGroupName, criteria, userRootOrgId, userId);
 
@@ -191,6 +199,15 @@ public class UserGroupServiceImpl implements UserGroupService {
             if (!validationService.validateUpdateAuthorization(
                     userId, userRootOrgId, userRoles,
                     existingEntity.getCreatedBy(), existingEntity.getOrgId(), response)) {
+                return response;
+            }
+
+            if (StringUtils.isNotBlank(userGroupName)
+                    && esService.isDuplicateGroupName(userGroupName, existingEntity.getOrgId(), userGroupId)) {
+                log.warn("updateUserGroup: Duplicate group name rejected: name={}, orgId={}, groupId={}", userGroupName, existingEntity.getOrgId(), userGroupId);
+                response.getParams().setStatus(Constants.FAILED);
+                response.getParams().setErr(Constants.MSG_USERGROUP_NAME_EXISTS);
+                response.setResponseCode(HttpStatus.BAD_REQUEST);
                 return response;
             }
 

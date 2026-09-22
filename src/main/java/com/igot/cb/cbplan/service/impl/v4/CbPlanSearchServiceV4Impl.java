@@ -13,6 +13,7 @@ import com.igot.cb.model.ApiRespParam;
 import com.igot.cb.util.CbExtServerProperties;
 import com.igot.cb.util.Constants;
 import com.igot.cb.util.ProjectUtil;
+import com.igot.cb.util.UserProfileUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections.MapUtils;
@@ -22,8 +23,10 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 
 /**
@@ -38,14 +41,17 @@ public class CbPlanSearchServiceV4Impl {
     private final EsUtilService esUtilService;
     private final CbExtServerProperties serverProperties;
     private final CbPlanValidationServiceV4Impl validationService;
+    private final UserProfileUtil userProfileUtil;
     private final ObjectMapper mapper;
 
     public CbPlanSearchServiceV4Impl(EsUtilService esUtilService,
                                      CbExtServerProperties serverProperties,
-                                     CbPlanValidationServiceV4Impl validationService) {
+                                     CbPlanValidationServiceV4Impl validationService,
+                                     UserProfileUtil userProfileUtil) {
         this.esUtilService = esUtilService;
         this.serverProperties = serverProperties;
         this.validationService = validationService;
+        this.userProfileUtil = userProfileUtil;
         this.mapper = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
@@ -76,6 +82,7 @@ public class CbPlanSearchServiceV4Impl {
                     serverProperties.getElasticCbPlanJsonPath());
             if (CollectionUtils.isNotEmpty(searchResult.getData())) {
                 transformContentListInSearchResults(searchResult.getData());
+                enrichSearchResultsWithUserNames(searchResult.getData());
                 response.getResult().put(Constants.RESULT, searchResult);
                 response.setParams(new ApiRespParam());
                 response.getParams().setStatus(Constants.SUCCESS);
@@ -259,6 +266,53 @@ public class CbPlanSearchServiceV4Impl {
         List<Map<String, Object>> transformedContentList = parseV4ContentList(contentList);
         if (CollectionUtils.isNotEmpty(transformedContentList)) {
             searchResult.put(Constants.CONTENT_LIST, transformedContentList);
+        }
+    }
+
+    /**
+     * Enriches each CB Plan in the search results with {@code createdByName}, {@code updatedByName},
+     * and {@code publishedByName} using a single batch Cassandra fetch for all unique user IDs.
+     *
+     * @param searchResults list of CB Plan records from Elasticsearch
+     */
+    private void enrichSearchResultsWithUserNames(List<Map<String, Object>> searchResults) {
+        if (CollectionUtils.isEmpty(searchResults)) {
+            return;
+        }
+        Set<String> userIds = new HashSet<>();
+        for (Map<String, Object> item : searchResults) {
+            collectNonBlank(userIds, (String) item.get(Constants.CREATED_BY));
+            collectNonBlank(userIds, (String) item.get(Constants.UPDATED_BY));
+            collectNonBlank(userIds, (String) item.get(Constants.PUBLISHED_BY));
+        }
+        if (userIds.isEmpty()) {
+            return;
+        }
+        Map<String, String> userIdToName = userProfileUtil.buildUserProfiles(new ArrayList<>(userIds));
+        for (Map<String, Object> item : searchResults) {
+            String createdBy = (String) item.get(Constants.CREATED_BY);
+            String updatedBy = (String) item.get(Constants.UPDATED_BY);
+            String publishedBy = (String) item.get(Constants.PUBLISHED_BY);
+            if (StringUtils.isNotBlank(createdBy)) {
+                item.put(Constants.CREATED_BY_NAME, userIdToName.getOrDefault(createdBy, StringUtils.EMPTY));
+            }
+            if (StringUtils.isNotBlank(updatedBy)) {
+                item.put(Constants.UPDATED_BY_NAME, userIdToName.getOrDefault(updatedBy, StringUtils.EMPTY));
+            }
+            if (StringUtils.isNotBlank(publishedBy)) {
+                item.put(Constants.PUBLISHED_BY_NAME, userIdToName.getOrDefault(publishedBy, StringUtils.EMPTY));
+            }
+        }
+        log.debug("enrichSearchResultsWithUserNames: Enriched {} CB Plans, resolved {} unique users",
+                searchResults.size(), userIdToName.size());
+    }
+
+    /**
+     * Adds {@code value} to {@code set} only when it is non-blank.
+     */
+    private void collectNonBlank(Set<String> set, String value) {
+        if (StringUtils.isNotBlank(value)) {
+            set.add(value);
         }
     }
 }

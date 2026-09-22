@@ -201,6 +201,123 @@ class UserGroupServiceImplTest {
     }
 
     @Test
+    void createUserGroup_whenDuplicateNameExistsInSameOrg_shouldReturnConflict() {
+        ApiRequest request = createApiRequest();
+        UserGroupRequest userGroupRequest = new UserGroupRequest(null, TEST_USER_GROUP_NAME, createCriteriaList());
+
+        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(TEST_AUTH_TOKEN), any())).thenReturn(TEST_USER_ID);
+        when(userProfileUtil.buildUserProfile(eq(TEST_USER_ID), any())).thenReturn(createUserProfile());
+        when(objectMapper.convertValue(any(), eq(UserGroupRequest.class))).thenReturn(userGroupRequest);
+        when(validationService.validateCreateRequest(anyString(), anyList(), anyString(), anyString(), any())).thenReturn(true);
+        when(esService.isDuplicateGroupName(eq(TEST_USER_GROUP_NAME), eq(TEST_ORG_ID), isNull())).thenReturn(true);
+
+        ApiResponse response = userGroupService.createUserGroup(request, TEST_AUTH_TOKEN);
+
+        assertNotNull(response);
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(HttpStatus.CONFLICT, response.getResponseCode());
+        assertEquals(Constants.MSG_USERGROUP_NAME_EXISTS, response.getParams().getErr());
+        verify(cassandraOperation, never()).insertRecord(anyString(), anyString(), anyMap(),
+                any(BooleanSupplier.class), any(Runnable.class));
+    }
+
+    @Test
+    void createUserGroup_whenSameNameExistsInDifferentOrg_shouldSucceed() {
+        ApiRequest request = createApiRequest();
+        UserGroupRequest userGroupRequest = new UserGroupRequest(null, TEST_USER_GROUP_NAME, createCriteriaList());
+        UserGroupEntity entity = createUserGroupEntity();
+
+        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(TEST_AUTH_TOKEN), any())).thenReturn(TEST_USER_ID);
+        when(userProfileUtil.buildUserProfile(eq(TEST_USER_ID), any())).thenReturn(createUserProfile());
+        when(objectMapper.convertValue(any(), eq(UserGroupRequest.class))).thenReturn(userGroupRequest);
+        when(validationService.validateCreateRequest(anyString(), anyList(), anyString(), anyString(), any())).thenReturn(true);
+        when(esService.isDuplicateGroupName(eq(TEST_USER_GROUP_NAME), eq(TEST_ORG_ID), isNull())).thenReturn(false);
+        when(dataTransformService.buildEntityForCreate(anyString(), eq(TEST_USER_GROUP_NAME), any(), eq(TEST_ORG_ID), eq(TEST_USER_ID))).thenReturn(entity);
+        when(cassandraOperation.insertRecord(anyString(), anyString(), anyMap(),
+                any(BooleanSupplier.class), any(Runnable.class))).thenReturn(Map.of(Constants.RESPONSE, Constants.SUCCESS));
+        when(dataTransformService.entityToResponseMap(entity)).thenReturn(Map.of(Constants.COL_USERGROUPID, TEST_USER_GROUP_ID));
+
+        ApiResponse response = userGroupService.createUserGroup(request, TEST_AUTH_TOKEN);
+
+        assertNotNull(response);
+        assertEquals(Constants.SUCCESSFUL, response.getParams().getStatus());
+        assertEquals(HttpStatus.CREATED, response.getResponseCode());
+    }
+
+    @Test
+    void updateUserGroup_whenNewNameAlreadyExistsForDifferentGroup_shouldReturnConflict() {
+        ApiRequest request = createApiRequest();
+        String newName = "Existing Team";
+        UserGroupRequest userGroupRequest = new UserGroupRequest(TEST_USER_GROUP_ID, newName, null);
+        Map<String, Object> cassandraRow = createCassandraRow();
+
+        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(TEST_AUTH_TOKEN), any())).thenReturn(TEST_USER_ID);
+        when(userProfileUtil.buildUserProfile(eq(TEST_USER_ID), any())).thenReturn(createUserProfile());
+        when(objectMapper.convertValue(any(), eq(UserGroupRequest.class))).thenReturn(userGroupRequest);
+        when(validationService.validateUpdateRequest(anyString(), anyString(), any(), any())).thenReturn(true);
+        when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), anyMap(), anyList(), any())).thenReturn(List.of(cassandraRow));
+        when(validationService.validateUpdateAuthorization(anyString(), anyString(), anyString(), anyString(), anyString(), any())).thenReturn(true);
+        when(esService.isDuplicateGroupName(eq(newName), eq(TEST_ORG_ID), eq(TEST_USER_GROUP_ID))).thenReturn(true);
+
+        ApiResponse response = userGroupService.updateUserGroup(request, TEST_AUTH_TOKEN);
+
+        assertNotNull(response);
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(HttpStatus.CONFLICT, response.getResponseCode());
+        assertEquals(Constants.MSG_USERGROUP_NAME_EXISTS, response.getParams().getErr());
+        verify(cassandraOperation, never()).updateRecord(anyString(), anyString(), anyMap(), anyMap(), any(), any());
+    }
+
+    @Test
+    void updateUserGroup_whenNameIsUnchangedOwnName_shouldSucceed() {
+        ApiRequest request = createApiRequest();
+        UserGroupRequest userGroupRequest = new UserGroupRequest(TEST_USER_GROUP_ID, TEST_USER_GROUP_NAME, createCriteriaList());
+        Map<String, Object> cassandraRow = createCassandraRow();
+        Map<String, Object> updateProps = new HashMap<>();
+
+        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(TEST_AUTH_TOKEN), any())).thenReturn(TEST_USER_ID);
+        when(userProfileUtil.buildUserProfile(eq(TEST_USER_ID), any())).thenReturn(createUserProfile());
+        when(objectMapper.convertValue(any(), eq(UserGroupRequest.class))).thenReturn(userGroupRequest);
+        when(validationService.validateUpdateRequest(anyString(), anyString(), anyList(), any())).thenReturn(true);
+        when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), anyMap(), anyList(), any())).thenReturn(List.of(cassandraRow));
+        when(validationService.validateUpdateAuthorization(anyString(), anyString(), anyString(), anyString(), anyString(), any())).thenReturn(true);
+        when(esService.isDuplicateGroupName(eq(TEST_USER_GROUP_NAME), eq(TEST_ORG_ID), eq(TEST_USER_GROUP_ID))).thenReturn(false);
+        when(dataTransformService.buildUpdateProperties(anyString(), anyList(), anyString())).thenReturn(updateProps);
+        when(cassandraOperation.updateRecord(anyString(), anyString(), anyMap(), anyMap(), any(), any())).thenReturn(Map.of(Constants.RESPONSE, Constants.SUCCESS));
+        when(dataTransformService.entityToResponseMap(any())).thenReturn(Map.of(Constants.COL_USERGROUPID, TEST_USER_GROUP_ID));
+
+        ApiResponse response = userGroupService.updateUserGroup(request, TEST_AUTH_TOKEN);
+
+        assertNotNull(response);
+        assertEquals(Constants.SUCCESSFUL, response.getParams().getStatus());
+        assertEquals(HttpStatus.OK, response.getResponseCode());
+    }
+
+    @Test
+    void updateUserGroup_whenNameIsNotProvided_shouldSkipDuplicateCheck() {
+        ApiRequest request = createApiRequest();
+        UserGroupRequest userGroupRequest = new UserGroupRequest(TEST_USER_GROUP_ID, null, createCriteriaList());
+        Map<String, Object> cassandraRow = createCassandraRow();
+        Map<String, Object> updateProps = new HashMap<>();
+
+        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(TEST_AUTH_TOKEN), any())).thenReturn(TEST_USER_ID);
+        when(userProfileUtil.buildUserProfile(eq(TEST_USER_ID), any())).thenReturn(createUserProfile());
+        when(objectMapper.convertValue(any(), eq(UserGroupRequest.class))).thenReturn(userGroupRequest);
+        when(validationService.validateUpdateRequest(anyString(), isNull(), anyList(), any())).thenReturn(true);
+        when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), anyMap(), anyList(), any())).thenReturn(List.of(cassandraRow));
+        when(validationService.validateUpdateAuthorization(anyString(), anyString(), anyString(), anyString(), anyString(), any())).thenReturn(true);
+        when(dataTransformService.buildUpdateProperties(isNull(), anyList(), anyString())).thenReturn(updateProps);
+        when(cassandraOperation.updateRecord(anyString(), anyString(), anyMap(), anyMap(), any(), any())).thenReturn(Map.of(Constants.RESPONSE, Constants.SUCCESS));
+        when(dataTransformService.entityToResponseMap(any())).thenReturn(Map.of(Constants.COL_USERGROUPID, TEST_USER_GROUP_ID));
+
+        ApiResponse response = userGroupService.updateUserGroup(request, TEST_AUTH_TOKEN);
+
+        assertNotNull(response);
+        assertEquals(Constants.SUCCESSFUL, response.getParams().getStatus());
+        verify(esService, never()).isDuplicateGroupName(anyString(), anyString(), anyString());
+    }
+
+    @Test
     void deleteUserGroup_whenFound_shouldArchiveSuccessfully() {
         // Arrange
         Map<String, Object> cassandraRow = createCassandraRow();

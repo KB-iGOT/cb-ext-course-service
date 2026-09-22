@@ -203,4 +203,53 @@ public class UserGroupElasticSearchServiceImpl {
             log.error("ES_CASSANDRA_DIVERGENCE: ES rollback for create failed for usergroupid={} — manual reconciliation required", userGroupId);
         }
     }
+
+    /**
+     * Checks whether an active group with the given name already exists in the given organisation.
+     *
+     * <p>Uses an exact match on {@code usergroupname.keyword} — comparison is case-sensitive.
+     * Only active groups are considered; archived or inactive groups do not count as a collision.
+     *
+     * <p>For the create flow pass {@code null} as {@code excludeGroupId}.
+     * For the update flow pass the current group's own ID so that a group may keep its unchanged name.
+     *
+     * @param name           group name to check (exact, case-sensitive)
+     * @param orgId          organisation ID to scope the check
+     * @param excludeGroupId group ID to exclude from the result (null for create)
+     * @return {@code true} if a duplicate exists, {@code false} otherwise (including on ES failure)
+     */
+    public boolean isDuplicateGroupName(String name, String orgId, String excludeGroupId) {
+        try {
+            HashMap<String, Object> filter = new HashMap<>();
+            filter.put(Constants.COL_USERGROUPNAME, name);
+            filter.put(Constants.COL_ORGID, orgId);
+            filter.put(Constants.COL_STATUS, Constants.ACTIVE);
+
+            SearchCriteria searchCriteria = new SearchCriteria();
+            searchCriteria.setFilter(filter);
+            searchCriteria.setPageSize(1);
+            searchCriteria.setPageNumber(0);
+
+            SearchResult result = esUtilService.searchDocuments(
+                    serverProperties.getUserGroupIndex(),
+                    searchCriteria,
+                    serverProperties.getElasticUserGroupJsonPath());
+
+            long totalCount = result.getTotalCount();
+            if (totalCount == 0) {
+                return false;
+            }
+            if (excludeGroupId == null) {
+                return true;
+            }
+            if (totalCount >= 2) {
+                return true;
+            }
+            String matchedId = (String) result.getData().get(0).get(Constants.COL_USERGROUPID);
+            return !excludeGroupId.equals(matchedId);
+        } catch (Exception e) {
+            log.error("isDuplicateGroupName: ES query failed for name={}, orgId={}", name, orgId, e);
+            return false;
+        }
+    }
 }

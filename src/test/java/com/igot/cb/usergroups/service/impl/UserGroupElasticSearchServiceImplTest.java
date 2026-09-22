@@ -268,6 +268,76 @@ class UserGroupElasticSearchServiceImplTest {
         assertDoesNotThrow(() -> esService.rollbackCreate(TEST_USER_GROUP_ID));
     }
 
+    @Test
+    void isDuplicateGroupName_createFlow_whenNoMatchFound_shouldReturnFalse() throws Exception {
+        SearchResult searchResult = new SearchResult();
+        searchResult.setData(List.of());
+        searchResult.setTotalCount(0);
+
+        when(esUtilService.searchDocuments(anyString(), any(SearchCriteria.class), anyString()))
+                .thenReturn(searchResult);
+
+        boolean result = esService.isDuplicateGroupName(TEST_USER_GROUP_NAME, TEST_ORG_ID, null);
+
+        assertFalse(result);
+        verify(esUtilService, times(1)).searchDocuments(eq("user_group_info"), any(SearchCriteria.class), anyString());
+    }
+
+    @Test
+    void isDuplicateGroupName_createFlow_whenMatchFoundInSameOrg_shouldReturnTrue() throws Exception {
+        Map<String, Object> existingDoc = Map.of(Constants.COL_USERGROUPID, "other_group_id");
+        SearchResult searchResult = new SearchResult();
+        searchResult.setData(List.of(existingDoc));
+        searchResult.setTotalCount(1);
+
+        when(esUtilService.searchDocuments(anyString(), any(SearchCriteria.class), anyString()))
+                .thenReturn(searchResult);
+
+        boolean result = esService.isDuplicateGroupName(TEST_USER_GROUP_NAME, TEST_ORG_ID, null);
+
+        assertTrue(result);
+    }
+
+    @Test
+    void isDuplicateGroupName_updateFlow_whenOnlyOwnGroupMatches_shouldReturnFalse() throws Exception {
+        Map<String, Object> ownDoc = Map.of(Constants.COL_USERGROUPID, TEST_USER_GROUP_ID);
+        SearchResult searchResult = new SearchResult();
+        searchResult.setData(List.of(ownDoc));
+        searchResult.setTotalCount(1);
+
+        when(esUtilService.searchDocuments(anyString(), any(SearchCriteria.class), anyString()))
+                .thenReturn(searchResult);
+
+        boolean result = esService.isDuplicateGroupName(TEST_USER_GROUP_NAME, TEST_ORG_ID, TEST_USER_GROUP_ID);
+
+        assertFalse(result);
+    }
+
+    @Test
+    void isDuplicateGroupName_updateFlow_whenDifferentGroupHasSameName_shouldReturnTrue() throws Exception {
+        Map<String, Object> otherDoc = Map.of(Constants.COL_USERGROUPID, "another_group_id");
+        SearchResult searchResult = new SearchResult();
+        searchResult.setData(List.of(otherDoc));
+        searchResult.setTotalCount(1);
+
+        when(esUtilService.searchDocuments(anyString(), any(SearchCriteria.class), anyString()))
+                .thenReturn(searchResult);
+
+        boolean result = esService.isDuplicateGroupName(TEST_USER_GROUP_NAME, TEST_ORG_ID, TEST_USER_GROUP_ID);
+
+        assertTrue(result);
+    }
+
+    @Test
+    void isDuplicateGroupName_whenEsQueryThrows_shouldReturnFalseWithoutRethrow() throws Exception {
+        when(esUtilService.searchDocuments(anyString(), any(SearchCriteria.class), anyString()))
+                .thenThrow(new RuntimeException("ES unavailable"));
+
+        boolean result = esService.isDuplicateGroupName(TEST_USER_GROUP_NAME, TEST_ORG_ID, null);
+
+        assertFalse(result);
+    }
+
     // Helper methods
 
     private UserGroupEntity createUserGroupEntity() {

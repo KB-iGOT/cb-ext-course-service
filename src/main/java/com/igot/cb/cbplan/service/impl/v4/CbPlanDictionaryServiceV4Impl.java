@@ -59,6 +59,7 @@ public class CbPlanDictionaryServiceV4Impl {
     private final CbPlanEnrichmentServiceV3Impl enrichmentService;
     private final CbPlanDataTransformServiceV3Impl dataTransformService;
     private final ObjectMapper mapper;
+    private static final TypeReference<Map<String, Object>> MAP_TYPE_REF = new TypeReference<>() {};
 
     public CbPlanDictionaryServiceV4Impl(CassandraOperation cassandraOperation,
                                          CbPlanCacheMgrV3 cbPlanCacheMgrV3,
@@ -135,10 +136,9 @@ public class CbPlanDictionaryServiceV4Impl {
                 cacheResult(cacheKey, response.getResult(), isCacheEnabled.get());
                 return response;
             }
-            Map<String, Map<String, Object>> prefetchedUserGroups = batchFetchUserGroupsForPlans(activePlans, userOrgId);
             Map<String, Map<String, Object>> aparPlanMap = new LinkedHashMap<>();
             Map<String, Map<String, Object>> nonAparPlanMap = new LinkedHashMap<>();
-            processPlans(activePlans, userProfile, prefetchedUserGroups, aparPlanMap, nonAparPlanMap);
+            buildPlanPartitions(activePlans, userOrgId, userProfile, aparPlanMap, nonAparPlanMap);
             Set<String> orgIds = collectCreatedByOrgIds(aparPlanMap, nonAparPlanMap);
             Map<String, Map<String, String>> orgDetailsMap = fetchOrgDetails(orgIds);
             enrichOrgDetails(aparPlanMap, orgDetailsMap);
@@ -198,8 +198,7 @@ public class CbPlanDictionaryServiceV4Impl {
             String cachedData = redisCacheMgr.getFromCache(cacheKey);
             Map<String, Object> userBasicProfile;
             if (StringUtils.isNotBlank(cachedData)) {
-                userBasicProfile = mapper.readValue(cachedData, new TypeReference<Map<String, Object>>() {
-                });
+                userBasicProfile = mapper.readValue(cachedData, MAP_TYPE_REF);
                 Object profileDetailsValue = userBasicProfile.remove(Constants.PROFILE_DETAILS);
                 if (Objects.nonNull(profileDetailsValue)) {
                     userBasicProfile.put(Constants.PROFILE_DETAILS.toLowerCase(), profileDetailsValue);
@@ -253,8 +252,7 @@ public class CbPlanDictionaryServiceV4Impl {
 
     private Map<String, Object> parseProfileDetails(Object rawValue) throws JsonProcessingException {
         if (rawValue instanceof String str && StringUtils.isNotBlank(str)) {
-            return mapper.readValue(str, new TypeReference<Map<String, Object>>() {
-            });
+            return mapper.readValue(str, MAP_TYPE_REF);
         } else if (rawValue instanceof Map<?, ?>) {
             return (Map<String, Object>) rawValue;
         }
@@ -311,44 +309,44 @@ public class CbPlanDictionaryServiceV4Impl {
      * avoiding per-plan Cassandra lookups in the access-control evaluation loop.
      */
     private Map<String, Map<String, Object>> batchFetchUserGroupsForPlans(List<Map<String, Object>> plans,
-                                                                          String userOrgId) {
+                                                                          String userOrgId,
+                                                                          Map<String, Map<String, Object>> parsedContextData) {
         Set<String> userGroupIds = new HashSet<>();
         for (Map<String, Object> plan : plans) {
-            collectV4UserGroupIds(plan, userGroupIds);
+            collectV4UserGroupIds(plan, userGroupIds, parsedContextData);
         }
         if (userGroupIds.isEmpty()) {
             return Collections.emptyMap();
         }
         log.debug("batchFetchUserGroupsForPlans: Pre-fetching {} unique userGroupIds for orgId={}",
                 userGroupIds.size(), userOrgId);
-        return userGroupLookupService.fetchUserGroupsByIds(new ArrayList<>(userGroupIds), userOrgId);
+        Map<String, Map<String, Object>> groups = userGroupLookupService.fetchUserGroupsByIds(new ArrayList<>(userGroupIds), userOrgId);
+        normalizeCriteriaKeysInGroups(groups);
+        return groups;
     }
 
-    private void collectV4UserGroupIds(Map<String, Object> plan, Set<String> userGroupIds) {
-        try {
-            Object contextDataObj = plan.get(Constants.CONTEXT_DATA_REQUEST);
-            if (Objects.isNull(contextDataObj)) {
-                return;
-            }
-            Map<String, Object> contextData = parseContextDataObj(contextDataObj);
-            Object accessControlObj = contextData.get(Constants.ACCESS_CONTROL);
-            if (!(accessControlObj instanceof Map<?, ?>)) {
-                return;
-            }
-            Object userGroupsObj = ((Map<?, ?>) accessControlObj).get(Constants.USER_GROUPS);
-            if (!(userGroupsObj instanceof List<?>)) {
-                return;
-            }
-            for (Object userGroupObj : (List<?>) userGroupsObj) {
-                if (userGroupObj instanceof Map<?, ?> userGroupMap) {
-                    String id = (String) userGroupMap.get(Constants.USER_GROUP_ID);
-                    if (StringUtils.isNotBlank(id)) {
-                        userGroupIds.add(id);
-                    }
+    private void collectV4UserGroupIds(Map<String, Object> plan, Set<String> userGroupIds,
+                                        Map<String, Map<String, Object>> parsedContextData) {
+        String planId = (String) plan.get(Constants.PLAN_ID);
+        Map<String, Object> contextData = parsedContextData.get(planId);
+        if (MapUtils.isEmpty(contextData)) {
+            return;
+        }
+        Object accessControlObj = contextData.get(Constants.ACCESS_CONTROL);
+        if (!(accessControlObj instanceof Map<?, ?>)) {
+            return;
+        }
+        Object userGroupsObj = ((Map<?, ?>) accessControlObj).get(Constants.USER_GROUPS);
+        if (!(userGroupsObj instanceof List<?>)) {
+            return;
+        }
+        for (Object userGroupObj : (List<?>) userGroupsObj) {
+            if (userGroupObj instanceof Map<?, ?> userGroupMap) {
+                String id = (String) userGroupMap.get(Constants.USER_GROUP_ID);
+                if (StringUtils.isNotBlank(id)) {
+                    userGroupIds.add(id);
                 }
             }
-        } catch (JsonProcessingException e) {
-            log.debug("collectV4UserGroupIds: Failed to parse contextData for plan={}", plan.get(Constants.PLAN_ID), e);
         }
     }
 
@@ -358,11 +356,12 @@ public class CbPlanDictionaryServiceV4Impl {
     private void processPlans(List<Map<String, Object>> plans,
                               Map<String, String> userProfile,
                               Map<String, Map<String, Object>> prefetchedUserGroups,
+                              Map<String, Map<String, Object>> parsedContextData,
                               Map<String, Map<String, Object>> aparPlanMap,
                               Map<String, Map<String, Object>> nonAparPlanMap) {
         for (Map<String, Object> plan : plans) {
             try {
-                if (!evaluateAccessControl(plan, userProfile, prefetchedUserGroups)) {
+                if (!evaluateAccessControl(plan, userProfile, prefetchedUserGroups, parsedContextData)) {
                     continue;
                 }
                 String planId = (String) plan.get(Constants.PLAN_ID);
@@ -385,34 +384,30 @@ public class CbPlanDictionaryServiceV4Impl {
      */
     private boolean evaluateAccessControl(Map<String, Object> plan,
                                           Map<String, String> userProfile,
-                                          Map<String, Map<String, Object>> prefetchedUserGroups) {
-        Object contextDataObj = plan.get(Constants.CONTEXT_DATA_REQUEST);
-        if (Objects.isNull(contextDataObj)) {
+                                              Map<String, Map<String, Object>> prefetchedUserGroups,
+                                          Map<String, Map<String, Object>> parsedContextData) {
+        String planId = (String) plan.get(Constants.PLAN_ID);
+        if (!parsedContextData.containsKey(planId)) {
+            return Objects.isNull(plan.get(Constants.CONTEXT_DATA_REQUEST));
+        }
+        Map<String, Object> contextData = parsedContextData.get(planId);
+        if (MapUtils.isEmpty(contextData)) {
             return true;
         }
-        try {
-            Map<String, Object> contextData = parseContextDataObj(contextDataObj);
-            if (MapUtils.isEmpty(contextData)) {
-                return true;
-            }
-            Object accessControlObj = contextData.get(Constants.ACCESS_CONTROL);
-            if (!(accessControlObj instanceof Map<?, ?>)) {
-                return false;
-            }
-            Object userGroupsObj = ((Map<?, ?>) accessControlObj).get(Constants.USER_GROUPS);
-            if (!(userGroupsObj instanceof List<?> rawList) || rawList.isEmpty()) {
-                return false;
-            }
-            List<Map<String, Object>> userGroups = castToMapList(rawList);
-            boolean hasV4Format = userGroups.stream().anyMatch(g -> g.containsKey(Constants.USER_GROUP_ID));
-            if (hasV4Format) {
-                return evaluateV4UserGroups(userGroups, userProfile, prefetchedUserGroups);
-            }
-            return evaluateV3InlineCriteria(userGroups, userProfile);
-        } catch (JsonProcessingException e) {
-            log.error("evaluateAccessControl: JSON parsing failed for planId={}", plan.get(Constants.PLAN_ID), e);
+        Object accessControlObj = contextData.get(Constants.ACCESS_CONTROL);
+        if (!(accessControlObj instanceof Map<?, ?>)) {
             return false;
         }
+        Object userGroupsObj = ((Map<?, ?>) accessControlObj).get(Constants.USER_GROUPS);
+        if (!(userGroupsObj instanceof List<?> rawList) || rawList.isEmpty()) {
+            return false;
+        }
+        List<Map<String, Object>> userGroups = castToMapList(rawList);
+        boolean hasV4Format = userGroups.stream().anyMatch(g -> g.containsKey(Constants.USER_GROUP_ID));
+        if (hasV4Format) {
+            return evaluateV4UserGroups(userGroups, userProfile, prefetchedUserGroups);
+        }
+        return evaluateV3InlineCriteria(userGroups, userProfile);
     }
 
     /**
@@ -442,12 +437,12 @@ public class CbPlanDictionaryServiceV4Impl {
      * Checks whether the user's profile satisfies all criteria declared in the user group entity.
      */
     private boolean matchesUserGroupCriteria(Map<String, Object> groupEntity, Map<String, String> userProfile) {
-        List<Map<String, List<String>>> criteriaList =
-                (List<Map<String, List<String>>>) groupEntity.get(Constants.COL_CRITERIA);
+        List<Map<String, Set<String>>> criteriaList =
+                (List<Map<String, Set<String>>>) groupEntity.get(Constants.COL_CRITERIA);
         if (CollectionUtils.isEmpty(criteriaList)) {
             return false;
         }
-        for (Map<String, List<String>> criteriaEntry : criteriaList) {
+        for (Map<String, Set<String>> criteriaEntry : criteriaList) {
             if (!matchesSingleGroupCriteria(criteriaEntry, userProfile)) {
                 return false;
             }
@@ -455,16 +450,16 @@ public class CbPlanDictionaryServiceV4Impl {
         return true;
     }
 
-    private boolean matchesSingleGroupCriteria(Map<String, List<String>> criteriaEntry,
+    private boolean matchesSingleGroupCriteria(Map<String, Set<String>> criteriaEntry,
                                                Map<String, String> userProfile) {
-        for (Map.Entry<String, List<String>> entry : criteriaEntry.entrySet()) {
-            String criteriaKey = entry.getKey().toLowerCase().trim();
-            List<String> allowedValues = entry.getValue();
+        for (Map.Entry<String, Set<String>> entry : criteriaEntry.entrySet()) {
+            String criteriaKey = entry.getKey();
+            Set<String> allowedValues = entry.getValue();
             if (CollectionUtils.isEmpty(allowedValues)) {
                 return false;
             }
             if (Constants.CENTRAL_DEPUTATION_LOWER_KEY.equals(criteriaKey)) {
-                boolean expected = Boolean.parseBoolean(allowedValues.get(0));
+                boolean expected = Boolean.parseBoolean(allowedValues.iterator().next());
                 boolean actual = Boolean.parseBoolean(
                         userProfile.getOrDefault(Constants.CENTRAL_DEPUTATION_LOWER_KEY, "false"));
                 if (expected != actual) {
@@ -476,10 +471,7 @@ public class CbPlanDictionaryServiceV4Impl {
             if (Objects.isNull(actualValue)) {
                 return false;
             }
-            boolean matches = allowedValues.stream()
-                    .map(String::toLowerCase)
-                    .anyMatch(expected -> expected.equals(actualValue.toLowerCase()));
-            if (!matches) {
+            if (!allowedValues.contains(actualValue.toLowerCase())) {
                 return false;
             }
         }
@@ -513,37 +505,25 @@ public class CbPlanDictionaryServiceV4Impl {
     }
 
     private boolean matchesV3Criteria(Map<String, Object> criteria, Map<String, String> userProfile) {
-        String criteriaKey = ((String) criteria.get(Constants.CRITERIA_KEY)).toLowerCase().trim();
+        String criteriaKey = (String) criteria.get(Constants.CRITERIA_KEY);
         Object rawCriteriaValue = criteria.get(Constants.CRITERIA_VALUE);
         if (Constants.CENTRAL_DEPUTATION_LOWER_KEY.equals(criteriaKey)) {
-            boolean expected = Boolean.parseBoolean(String.valueOf(rawCriteriaValue));
+            String firstValue = rawCriteriaValue instanceof Set<?> s && !s.isEmpty()
+                    ? (String) s.iterator().next()
+                    : String.valueOf(rawCriteriaValue);
+            boolean expected = Boolean.parseBoolean(firstValue);
             boolean actual = Boolean.parseBoolean(
                     userProfile.getOrDefault(Constants.CENTRAL_DEPUTATION_LOWER_KEY, "false"));
             return expected == actual;
         }
-        List<String> expectedValues = parseExpectedCriteriaValues(rawCriteriaValue);
-        if (CollectionUtils.isEmpty(expectedValues)) {
+        if (!(rawCriteriaValue instanceof Set<?> expectedSet) || expectedSet.isEmpty()) {
             return false;
         }
         String actualValue = userProfile.get(criteriaKey);
         if (Objects.isNull(actualValue)) {
             return false;
         }
-        return expectedValues.stream()
-                .map(String::toLowerCase)
-                .anyMatch(expected -> expected.equals(actualValue.toLowerCase()));
-    }
-
-    private List<String> parseExpectedCriteriaValues(Object rawCriteriaValue) {
-        if (rawCriteriaValue instanceof List<?> list) {
-            return list.stream()
-                    .filter(Objects::nonNull)
-                    .map(Object::toString)
-                    .toList();
-        } else if (Objects.nonNull(rawCriteriaValue)) {
-            return List.of(rawCriteriaValue.toString());
-        }
-        return Collections.emptyList();
+        return ((Set<String>) expectedSet).contains(actualValue.toLowerCase());
     }
 
     /**
@@ -598,24 +578,7 @@ public class CbPlanDictionaryServiceV4Impl {
             if (Objects.isNull(item)) {
                 continue;
             }
-            String itemStr = String.valueOf(item);
-            try {
-                Map<String, Object> parsed = mapper.readValue(itemStr, new TypeReference<Map<String, Object>>() {
-                });
-                if (parsed.containsKey(Constants.IDENTIFIER)) {
-                    result.add(parsed);
-                } else {
-                    Map<String, Object> contentItem = new HashMap<>();
-                    contentItem.put(Constants.IDENTIFIER, itemStr);
-                    contentItem.put(Constants.MANDATORY, false);
-                    result.add(contentItem);
-                }
-            } catch (JsonProcessingException e) {
-                Map<String, Object> contentItem = new HashMap<>();
-                contentItem.put(Constants.IDENTIFIER, itemStr);
-                contentItem.put(Constants.MANDATORY, false);
-                result.add(contentItem);
-            }
+            result.add(toContentItem(String.valueOf(item)));
         }
         return result;
     }
@@ -712,9 +675,7 @@ public class CbPlanDictionaryServiceV4Impl {
 
     private void populateResponseFromCache(ApiResponse response, String cachedJson, String planYear) {
         try {
-            Map<String, Object> cachedResult = mapper.readValue(cachedJson,
-                    new TypeReference<Map<String, Object>>() {
-                    });
+            Map<String, Object> cachedResult = mapper.readValue(cachedJson, MAP_TYPE_REF);
             response.getResult().putAll(cachedResult);
             response.setParams(new ApiRespParam());
             response.getParams().setStatus(Constants.SUCCESS);
@@ -743,8 +704,7 @@ public class CbPlanDictionaryServiceV4Impl {
 
     private Map<String, Object> parseContextDataObj(Object contextDataObj) throws JsonProcessingException {
         if (contextDataObj instanceof String str && StringUtils.isNotBlank(str)) {
-            return mapper.readValue(str, new TypeReference<Map<String, Object>>() {
-            });
+            return mapper.readValue(str, MAP_TYPE_REF);
         } else if (contextDataObj instanceof Map<?, ?>) {
             return (Map<String, Object>) contextDataObj;
         }
@@ -802,10 +762,9 @@ public class CbPlanDictionaryServiceV4Impl {
             response.getResult().put(previousYear, buildYearResult(new LinkedHashMap<>(), new LinkedHashMap<>()));
             return;
         }
-        Map<String, Map<String, Object>> prefetchedUserGroups = batchFetchUserGroupsForPlans(prevPlans, userOrgId);
         Map<String, Map<String, Object>> aparPlanMap = new LinkedHashMap<>();
         Map<String, Map<String, Object>> nonAparPlanMap = new LinkedHashMap<>();
-        processPlans(prevPlans, userProfile, prefetchedUserGroups, aparPlanMap, nonAparPlanMap);
+        buildPlanPartitions(prevPlans, userOrgId, userProfile, aparPlanMap, nonAparPlanMap);
         Set<String> orgIds = collectCreatedByOrgIds(aparPlanMap, nonAparPlanMap);
         Map<String, Map<String, String>> orgDetailsMap = fetchOrgDetails(orgIds);
         enrichOrgDetails(aparPlanMap, orgDetailsMap);
@@ -813,6 +772,164 @@ public class CbPlanDictionaryServiceV4Impl {
         response.getResult().put(previousYear, buildYearResult(aparPlanMap, nonAparPlanMap));
         log.info("fetchAndAppendPreviousYear: previousYear={}, aparCount={}, nonAparCount={}",
                 previousYear, aparPlanMap.size(), nonAparPlanMap.size());
+    }
+
+    /**
+     * Parses contextData for every plan once and returns the results keyed by planId.
+     * Plans whose contextData fails to parse are excluded — evaluateAccessControl treats
+     * absence as a parse error and denies access for that plan.
+     */
+    private Map<String, Map<String, Object>> parseContextDataForPlans(List<Map<String, Object>> plans) {
+        Map<String, Map<String, Object>> result = new HashMap<>();
+        for (Map<String, Object> plan : plans) {
+            String planId = (String) plan.get(Constants.PLAN_ID);
+            Object contextDataObj = plan.get(Constants.CONTEXT_DATA_REQUEST);
+            if (StringUtils.isBlank(planId) || Objects.isNull(contextDataObj)) {
+                continue;
+            }
+            try {
+                Map<String, Object> parsed = parseContextDataObj(contextDataObj);
+                normalizeV3CriteriaKeyValues(parsed);
+                result.put(planId, parsed);
+            } catch (JsonProcessingException e) {
+                log.debug("parseContextDataForPlans: Failed to parse contextData for planId={}", planId, e);
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Converts a raw content list entry to a V4 content item map without exception-as-control-flow.
+     * V3 plain IDs (e.g. {@code do_123}) are detected by the absence of a leading '{' and returned
+     * as {@code {identifier, mandatory=false}} with no Jackson call.
+     * V4 JSON objects are parsed; if they carry an {@code identifier} key they are returned as-is,
+     * otherwise fall back to plain-ID form.
+     *
+     * @param itemStr string representation of one content list entry
+     * @return content item with at minimum identifier and mandatory fields
+     */
+    private Map<String, Object> toContentItem(String itemStr) {
+        try {
+            Object parsed = mapper.readValue(itemStr, Object.class);
+            if (parsed instanceof Map<?, ?> parsedMap && parsedMap.containsKey(Constants.IDENTIFIER)) {
+                return (Map<String, Object>) parsedMap;
+            }
+        } catch (JsonProcessingException e) {
+            log.debug("toContentItem: not valid JSON, treating as plain ID - item={}", itemStr);
+        }
+        return buildPlainContentItem(itemStr);
+    }
+
+    /**
+     * Builds a minimal content item map for a plain identifier with {@code mandatory=false}.
+     *
+     * @param identifier content identifier
+     * @return map with identifier and mandatory fields
+     */
+    private Map<String, Object> buildPlainContentItem(String identifier) {
+        Map<String, Object> item = new HashMap<>();
+        item.put(Constants.IDENTIFIER, identifier);
+        item.put(Constants.MANDATORY, false);
+        return item;
+    }
+
+    private void buildPlanPartitions(List<Map<String, Object>> plans,
+                                     String userOrgId,
+                                     Map<String, String> userProfile,
+                                     Map<String, Map<String, Object>> aparPlanMap,
+                                     Map<String, Map<String, Object>> nonAparPlanMap) {
+        Map<String, Map<String, Object>> parsedContextData = parseContextDataForPlans(plans);
+        Map<String, Map<String, Object>> prefetchedUserGroups = batchFetchUserGroupsForPlans(plans, userOrgId, parsedContextData);
+        processPlans(plans, userProfile, prefetchedUserGroups, parsedContextData, aparPlanMap, nonAparPlanMap);
+    }
+
+    /**
+     * Normalizes criteria map keys to lowercase-trimmed form in all fetched V4 user groups once,
+     * so {@code matchesSingleGroupCriteria} can look up keys directly without per-call allocation.
+     *
+     * @param groups mutable map of userGroupId → group entity returned by the lookup service
+     */
+    private void normalizeCriteriaKeysInGroups(Map<String, Map<String, Object>> groups) {
+        for (Map<String, Object> group : groups.values()) {
+            Object criteriaObj = group.get(Constants.COL_CRITERIA);
+            if (!(criteriaObj instanceof List<?> rawList) || rawList.isEmpty()) {
+                continue;
+            }
+            List<Map<String, Set<String>>> normalized = new ArrayList<>(rawList.size());
+            for (Object item : rawList) {
+                if (!(item instanceof Map<?, ?> criteriaMap)) {
+                    continue;
+                }
+                Map<String, Set<String>> normalizedEntry = new LinkedHashMap<>(criteriaMap.size());
+                for (Map.Entry<?, ?> entry : criteriaMap.entrySet()) {
+                    String normalizedKey = entry.getKey().toString().toLowerCase().trim();
+                    normalizedEntry.put(normalizedKey, buildNormalizedValueSet(entry.getValue()));
+                }
+                normalized.add(normalizedEntry);
+            }
+            group.put(Constants.COL_CRITERIA, normalized);
+        }
+    }
+
+    /**
+     * Normalizes V3 criteriaKey values to lowercase-trimmed form in parsed contextData once,
+     * so {@code matchesV3Criteria} can use the key directly without per-call allocation.
+     *
+     * @param contextData mutable contextData map parsed from the plan's contextData JSON
+     */
+    private void normalizeV3CriteriaKeyValues(Map<String, Object> contextData) {
+        Object accessControlObj = contextData.get(Constants.ACCESS_CONTROL);
+        if (!(accessControlObj instanceof Map<?, ?> accessControl)) {
+            return;
+        }
+        Object userGroupsObj = accessControl.get(Constants.USER_GROUPS);
+        if (!(userGroupsObj instanceof List<?> userGroupsList)) {
+            return;
+        }
+        for (Object userGroupObj : userGroupsList) {
+            if (userGroupObj instanceof Map<?, ?> userGroup) {
+                normalizeUserGroupCriteria(userGroup);
+            }
+        }
+    }
+
+    private void normalizeUserGroupCriteria(Map<?, ?> userGroup) {
+        Object criteriaListObj = userGroup.get(Constants.USER_GROUP_CRITERIA_LIST);
+        if (!(criteriaListObj instanceof List<?> criteriaList)) {
+            return;
+        }
+        for (Object criteriaObj : criteriaList) {
+            if (!(criteriaObj instanceof Map<?, ?> criteria)
+                    || !(criteria.get(Constants.CRITERIA_KEY) instanceof String criteriaKey)) {
+                continue;
+            }
+            Map<String, Object> criteriaMap = (Map<String, Object>) criteria;
+            criteriaMap.put(Constants.CRITERIA_KEY, criteriaKey.toLowerCase().trim());
+            criteriaMap.put(Constants.CRITERIA_VALUE, buildNormalizedValueSet(criteriaMap.get(Constants.CRITERIA_VALUE)));
+        }
+    }
+
+    /**
+     * Converts a raw criteria value (List or scalar) to a lowercase-trimmed Set<String>
+     * for O(1) contains lookups during criteria evaluation, replacing the per-call stream pipeline.
+     *
+     * @param rawValue raw value from Cassandra or Jackson (may be List, String, or Boolean)
+     * @return set of lowercase-trimmed string values; empty set if null
+     */
+    private Set<String> buildNormalizedValueSet(Object rawValue) {
+        if (rawValue instanceof List<?> list) {
+            Set<String> result = new HashSet<>(list.size());
+            for (Object v : list) {
+                if (v != null) {
+                    result.add(v.toString().toLowerCase());
+                }
+            }
+            return result;
+        }
+        if (rawValue != null) {
+            return Collections.singleton(rawValue.toString().toLowerCase());
+        }
+        return Collections.emptySet();
     }
 
 }

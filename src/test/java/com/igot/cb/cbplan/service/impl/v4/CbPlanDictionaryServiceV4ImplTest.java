@@ -3,6 +3,7 @@ package com.igot.cb.cbplan.service.impl.v4;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.igot.cb.cache.CbPlanCacheMgrV3;
 import com.igot.cb.cache.RedisCacheMgr;
+import com.igot.cb.cbplan.service.impl.CbPlanContentLookupServiceV3Impl;
 import com.igot.cb.cbplan.service.impl.CbPlanDataTransformServiceV3Impl;
 import com.igot.cb.cbplan.service.impl.CbPlanEnrichmentServiceV3Impl;
 import com.igot.cb.cassandra.CassandraOperation;
@@ -39,6 +40,7 @@ class CbPlanDictionaryServiceV4ImplTest {
     private static final String TEST_PLAN_YEAR = "2026-27";
     private static final String TEST_AUTH_TOKEN = "valid_token";
     private static final String TEST_PLAN_ID = "plan_001";
+    private static final String TEST_CA_ID = "ca_do_live_001";
 
     @Mock
     private CassandraOperation cassandraOperation;
@@ -64,6 +66,9 @@ class CbPlanDictionaryServiceV4ImplTest {
     @Mock
     private CbPlanDataTransformServiceV3Impl dataTransformService;
 
+    @Mock
+    private CbPlanContentLookupServiceV3Impl contentLookupService;
+
     @Spy
     private ObjectMapper mapper = new ObjectMapper();
 
@@ -73,7 +78,7 @@ class CbPlanDictionaryServiceV4ImplTest {
     private ApiRequest testRequest;
 
     @BeforeEach
-    void setUp() {
+    void setUp() throws Exception {
         testRequest = new ApiRequest();
         Map<String, Object> requestMap = new HashMap<>();
         requestMap.put(Constants.REQUEST_PARAM_PLAN_YEAR, TEST_PLAN_YEAR);
@@ -81,6 +86,7 @@ class CbPlanDictionaryServiceV4ImplTest {
 
         lenient().when(serverProperties.getCbPlanV3RedisCacheTtlSeconds()).thenReturn(3600);
         lenient().when(serverProperties.getCassandraQueryLimitPrimaryKey()).thenReturn(1);
+        lenient().when(contentLookupService.getContentMetadata(anyString())).thenReturn(buildLiveMetadata());
     }
 
     @Test
@@ -564,6 +570,7 @@ class CbPlanDictionaryServiceV4ImplTest {
         plan.put(Constants.NAME, "Test Plan " + planId);
         plan.put(Constants.IS_APAR, isApar);
         plan.put(Constants.ORG_ID_LIST, List.of(TEST_ORG_ID));
+        plan.put(Constants.CA_LINKED_ID_DB, TEST_CA_ID);
 
         if (contextData != null) {
             plan.put(Constants.CONTEXT_DATA_REQUEST, contextData);
@@ -616,12 +623,33 @@ class CbPlanDictionaryServiceV4ImplTest {
         return userGroup;
     }
 
+    private Map<String, Object> buildLiveMetadata() {
+        Map<String, Object> metadata = new HashMap<>();
+        metadata.put(Constants.STATUS, Constants.LIVE);
+        return metadata;
+    }
+
+    private Map<String, Object> buildNonLiveMetadata(String status) {
+        Map<String, Object> metadata = new HashMap<>();
+        metadata.put(Constants.STATUS, status);
+        return metadata;
+    }
+
+    private Map<String, Object> createMockPlanWithCaId(String planId, boolean isApar, String caLinkedId) {
+        Map<String, Object> plan = createMockPlan(planId, isApar, null);
+        if (caLinkedId != null) {
+            plan.put(Constants.CA_LINKED_ID_DB, caLinkedId);
+        }
+        return plan;
+    }
+
     @Test
     void getCBPlanDictionaryForUser_v3ContentList_addsMandatoryFalse() {
         setupValidUserProfileMocks();
         when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
 
         Map<String, Object> planWithV3ContentList = createMockPlan("plan_v3_content", false, null);
+        planWithV3ContentList.put(Constants.CA_LINKED_ID_DB, TEST_CA_ID);
         planWithV3ContentList.put(Constants.CONTENT_LIST, List.of(
                 "do_114376977434968064182",
                 "do_114378386987417600180"
@@ -655,6 +683,7 @@ class CbPlanDictionaryServiceV4ImplTest {
         when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
 
         Map<String, Object> planWithV4ContentList = createMockPlan("plan_v4_content", false, null);
+        planWithV4ContentList.put(Constants.CA_LINKED_ID_DB, TEST_CA_ID);
         planWithV4ContentList.put(Constants.CONTENT_LIST, List.of(
                 "{\"identifier\":\"do_114467322178428928111\",\"mandatory\":true}",
                 "{\"identifier\":\"do_114378386987417600180\",\"mandatory\":false}"
@@ -740,6 +769,7 @@ class CbPlanDictionaryServiceV4ImplTest {
         when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
 
         Map<String, Object> planWithInvalidJson = createMockPlan("plan_invalid_json", false, null);
+        planWithInvalidJson.put(Constants.CA_LINKED_ID_DB, TEST_CA_ID);
         planWithInvalidJson.put(Constants.CONTENT_LIST, List.of(
                 "{\"id\":\"do_123\"}",
                 "plain_string_do_456"
@@ -773,6 +803,7 @@ class CbPlanDictionaryServiceV4ImplTest {
         when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
 
         Map<String, Object> planWithSingleItem = createMockPlan("plan_single_item", false, null);
+        planWithSingleItem.put(Constants.CA_LINKED_ID_DB, TEST_CA_ID);
         planWithSingleItem.put(Constants.CONTENT_LIST, List.of("do_1143558909548953601106"));
 
         when(cbPlanCacheMgrV3.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
@@ -801,6 +832,7 @@ class CbPlanDictionaryServiceV4ImplTest {
         when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
 
         Map<String, Object> aparPlanWithContentList = createMockPlan("apar_plan_content", true, null);
+        aparPlanWithContentList.put(Constants.CA_LINKED_ID_DB, TEST_CA_ID);
         aparPlanWithContentList.put(Constants.CONTENT_LIST, List.of(
                 "{\"identifier\":\"do_apar_123\",\"mandatory\":true}"
         ));
@@ -831,6 +863,7 @@ class CbPlanDictionaryServiceV4ImplTest {
         when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
 
         Map<String, Object> planWithNestedObjects = createMockPlan("plan_nested_obj", false, null);
+        planWithNestedObjects.put(Constants.CA_LINKED_ID_DB, TEST_CA_ID);
         Map<String, Object> content1 = new HashMap<>();
         content1.put(Constants.IDENTIFIER, "do_114467322178428928111");
         content1.put(Constants.MANDATORY, true);
@@ -868,12 +901,15 @@ class CbPlanDictionaryServiceV4ImplTest {
         when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
 
         Map<String, Object> v3Plan = createMockPlan("plan_v3_mix", false, null);
+        v3Plan.put(Constants.CA_LINKED_ID_DB, TEST_CA_ID);
         v3Plan.put(Constants.CONTENT_LIST, List.of("do_v3_plain"));
 
         Map<String, Object> v4Plan = createMockPlan("plan_v4_mix", false, null);
+        v4Plan.put(Constants.CA_LINKED_ID_DB, TEST_CA_ID);
         v4Plan.put(Constants.CONTENT_LIST, List.of("{\"identifier\":\"do_v4_json\",\"mandatory\":true}"));
 
         Map<String, Object> nestedPlan = createMockPlan("plan_nested_mix", false, null);
+        nestedPlan.put(Constants.CA_LINKED_ID_DB, TEST_CA_ID);
         Map<String, Object> nestedContent = new HashMap<>();
         nestedContent.put(Constants.IDENTIFIER, "do_nested_obj");
         nestedContent.put(Constants.MANDATORY, false);
@@ -1545,5 +1581,307 @@ class CbPlanDictionaryServiceV4ImplTest {
         Map<String, Object> planEntry = nonAparList.values().iterator().next();
         assertThat(planEntry.get(Constants.CREATED_BY_ORG_NAME)).isNull();
         assertThat(planEntry.get(Constants.CREATED_BY_ORG_LOGO)).isNull();
+    }
+
+    @Test
+    void getCBPlanDictionaryForUser_planWithNullCaLinkedId_planRemovedFromResponse() throws Exception {
+        setupValidUserProfileMocks();
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
+
+        Map<String, Object> plan = createMockPlan("plan_null_ca", false, null);
+        plan.remove(Constants.CA_LINKED_ID_DB);
+        plan.put(Constants.CONTENT_LIST, List.of("do_content_001"));
+
+        when(cbPlanCacheMgrV3.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+                .thenReturn(List.of(plan));
+        lenient().when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), isNull()))
+                .thenReturn(Collections.emptyList());
+
+        ApiResponse response = dictionaryService.getCBPlanDictionaryForUser(testRequest, TEST_AUTH_TOKEN);
+
+        assertThat(response.getResponseCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> yearResult = (Map<String, Object>) response.getResult().get(TEST_PLAN_YEAR);
+        Map<String, Map<String, Object>> nonAparList =
+                (Map<String, Map<String, Object>>) yearResult.get(Constants.RESPONSE_KEY_NON_APAR_PLAN_LIST);
+        assertThat(nonAparList).doesNotContainKey("plan_null_ca");
+        assertThat(yearResult.get(Constants.RESPONSE_KEY_NON_APAR_PLAN_COUNT)).isEqualTo(0);
+    }
+
+    @Test
+    void getCBPlanDictionaryForUser_planWithDraftCaLinkedId_planRemovedFromResponse() throws Exception {
+        setupValidUserProfileMocks();
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
+        when(contentLookupService.getContentMetadata("ca_do_draft_001")).thenReturn(buildNonLiveMetadata("Draft"));
+
+        Map<String, Object> plan = createMockPlanWithCaId("plan_draft_ca", false, "ca_do_draft_001");
+        when(cbPlanCacheMgrV3.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+                .thenReturn(List.of(plan));
+        lenient().when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), isNull()))
+                .thenReturn(Collections.emptyList());
+
+        ApiResponse response = dictionaryService.getCBPlanDictionaryForUser(testRequest, TEST_AUTH_TOKEN);
+
+        assertThat(response.getResponseCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> yearResult = (Map<String, Object>) response.getResult().get(TEST_PLAN_YEAR);
+        Map<String, Map<String, Object>> nonAparList =
+                (Map<String, Map<String, Object>>) yearResult.get(Constants.RESPONSE_KEY_NON_APAR_PLAN_LIST);
+        assertThat(nonAparList).doesNotContainKey("plan_draft_ca");
+    }
+
+    @Test
+    void getCBPlanDictionaryForUser_planWithRetiredCaLinkedId_planRemovedFromResponse() throws Exception {
+        setupValidUserProfileMocks();
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
+        when(contentLookupService.getContentMetadata("ca_do_retired_001")).thenReturn(buildNonLiveMetadata("Retired"));
+
+        Map<String, Object> plan = createMockPlanWithCaId("plan_retired_ca", false, "ca_do_retired_001");
+        when(cbPlanCacheMgrV3.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+                .thenReturn(List.of(plan));
+        lenient().when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), isNull()))
+                .thenReturn(Collections.emptyList());
+
+        ApiResponse response = dictionaryService.getCBPlanDictionaryForUser(testRequest, TEST_AUTH_TOKEN);
+
+        assertThat(response.getResponseCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> yearResult = (Map<String, Object>) response.getResult().get(TEST_PLAN_YEAR);
+        Map<String, Map<String, Object>> nonAparList =
+                (Map<String, Map<String, Object>>) yearResult.get(Constants.RESPONSE_KEY_NON_APAR_PLAN_LIST);
+        assertThat(nonAparList).doesNotContainKey("plan_retired_ca");
+    }
+
+    @Test
+    void getCBPlanDictionaryForUser_planWithLiveCaLinkedId_planRetainedWithCaLinkedIdInResponse() throws Exception {
+        setupValidUserProfileMocks();
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
+
+        Map<String, Object> plan = createMockPlanWithCaId("plan_live_ca", false, "ca_do_live_999");
+        when(cbPlanCacheMgrV3.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+                .thenReturn(List.of(plan));
+        lenient().when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), isNull()))
+                .thenReturn(Collections.emptyList());
+
+        ApiResponse response = dictionaryService.getCBPlanDictionaryForUser(testRequest, TEST_AUTH_TOKEN);
+
+        assertThat(response.getResponseCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> yearResult = (Map<String, Object>) response.getResult().get(TEST_PLAN_YEAR);
+        Map<String, Map<String, Object>> nonAparList =
+                (Map<String, Map<String, Object>>) yearResult.get(Constants.RESPONSE_KEY_NON_APAR_PLAN_LIST);
+        assertThat(nonAparList).containsKey("plan_live_ca");
+        Map<String, Object> planEntry = nonAparList.get("plan_live_ca");
+        assertThat(planEntry.get(Constants.CA_LINKED_ID)).isEqualTo("ca_do_live_999");
+        assertThat(planEntry).doesNotContainKey("comprehensiveAssessment");
+    }
+
+    @Test
+    void getCBPlanDictionaryForUser_contentListNotFilteredRegardlessOfItemStatus() throws Exception {
+        setupValidUserProfileMocks();
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
+        when(contentLookupService.getContentMetadata("ca_do_live_filter")).thenReturn(buildLiveMetadata());
+
+        Map<String, Object> plan = createMockPlanWithCaId("plan_content_filter", false, "ca_do_live_filter");
+        plan.put(Constants.CONTENT_LIST, List.of("do_draft_content", "do_live_content"));
+
+        when(cbPlanCacheMgrV3.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+                .thenReturn(List.of(plan));
+        lenient().when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), isNull()))
+                .thenReturn(Collections.emptyList());
+
+        ApiResponse response = dictionaryService.getCBPlanDictionaryForUser(testRequest, TEST_AUTH_TOKEN);
+
+        assertThat(response.getResponseCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> yearResult = (Map<String, Object>) response.getResult().get(TEST_PLAN_YEAR);
+        Map<String, Map<String, Object>> nonAparList =
+                (Map<String, Map<String, Object>>) yearResult.get(Constants.RESPONSE_KEY_NON_APAR_PLAN_LIST);
+        assertThat(nonAparList).containsKey("plan_content_filter");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> contentList =
+                (List<Map<String, Object>>) nonAparList.get("plan_content_filter").get(Constants.CONTENT_LIST);
+        assertThat(contentList).hasSize(2);
+        verify(contentLookupService, never()).getContentMetadata("do_draft_content");
+        verify(contentLookupService, never()).getContentMetadata("do_live_content");
+    }
+
+    @Test
+    void getCBPlanDictionaryForUser_contentListItemsNotLookedUpViaExtendedRead() throws Exception {
+        setupValidUserProfileMocks();
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
+        when(contentLookupService.getContentMetadata("ca_do_live_allnon")).thenReturn(buildLiveMetadata());
+
+        Map<String, Object> plan = createMockPlanWithCaId("plan_all_draft_content", false, "ca_do_live_allnon");
+        plan.put(Constants.CONTENT_LIST, List.of("do_draft_1", "do_draft_2"));
+
+        when(cbPlanCacheMgrV3.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+                .thenReturn(List.of(plan));
+        lenient().when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), isNull()))
+                .thenReturn(Collections.emptyList());
+
+        ApiResponse response = dictionaryService.getCBPlanDictionaryForUser(testRequest, TEST_AUTH_TOKEN);
+
+        assertThat(response.getResponseCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> yearResult = (Map<String, Object>) response.getResult().get(TEST_PLAN_YEAR);
+        Map<String, Map<String, Object>> nonAparList =
+                (Map<String, Map<String, Object>>) yearResult.get(Constants.RESPONSE_KEY_NON_APAR_PLAN_LIST);
+        assertThat(nonAparList).containsKey("plan_all_draft_content");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> contentList =
+                (List<Map<String, Object>>) nonAparList.get("plan_all_draft_content").get(Constants.CONTENT_LIST);
+        assertThat(contentList).hasSize(2);
+        verify(contentLookupService, never()).getContentMetadata("do_draft_1");
+        verify(contentLookupService, never()).getContentMetadata("do_draft_2");
+    }
+
+    @Test
+    void getCBPlanDictionaryForUser_contentMetadataResolutionFails_planExcluded() throws Exception {
+        setupValidUserProfileMocks();
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
+        when(contentLookupService.getContentMetadata("ca_do_error")).thenThrow(new RuntimeException("connection timeout"));
+
+        Map<String, Object> plan = createMockPlanWithCaId("plan_ca_error", false, "ca_do_error");
+        when(cbPlanCacheMgrV3.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+                .thenReturn(List.of(plan));
+        lenient().when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), isNull()))
+                .thenReturn(Collections.emptyList());
+
+        ApiResponse response = dictionaryService.getCBPlanDictionaryForUser(testRequest, TEST_AUTH_TOKEN);
+
+        assertThat(response.getResponseCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> yearResult = (Map<String, Object>) response.getResult().get(TEST_PLAN_YEAR);
+        Map<String, Map<String, Object>> nonAparList =
+                (Map<String, Map<String, Object>>) yearResult.get(Constants.RESPONSE_KEY_NON_APAR_PLAN_LIST);
+        assertThat(nonAparList).doesNotContainKey("plan_ca_error");
+    }
+
+    @Test
+    void getCBPlanDictionaryForUser_noContentIdsInAnyPlan_contentLookupServiceNeverCalled() throws Exception {
+        setupValidUserProfileMocks();
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
+
+        Map<String, Object> plan = createMockPlan("plan_no_content", false, null);
+        plan.remove(Constants.CA_LINKED_ID_DB);
+        when(cbPlanCacheMgrV3.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+                .thenReturn(List.of(plan));
+        lenient().when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), isNull()))
+                .thenReturn(Collections.emptyList());
+
+        dictionaryService.getCBPlanDictionaryForUser(testRequest, TEST_AUTH_TOKEN);
+
+        verify(contentLookupService, never()).getContentMetadata(anyString());
+    }
+
+    @Test
+    void getCBPlanDictionaryForUser_sharedCaLinkedIdAcrossPlans_contentLookupCalledOncePerUniqueId() throws Exception {
+        setupValidUserProfileMocks();
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
+
+        Map<String, Object> plan1 = createMockPlanWithCaId("plan_share_1", false, "ca_do_shared");
+        Map<String, Object> plan2 = createMockPlanWithCaId("plan_share_2", false, "ca_do_shared");
+
+        when(cbPlanCacheMgrV3.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+                .thenReturn(List.of(plan1, plan2));
+        lenient().when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), isNull()))
+                .thenReturn(Collections.emptyList());
+
+        dictionaryService.getCBPlanDictionaryForUser(testRequest, TEST_AUTH_TOKEN);
+
+        verify(contentLookupService, times(1)).getContentMetadata("ca_do_shared");
+    }
+
+    @Test
+    void getCBPlanDictionaryForUser_aparPlanWithNullCaLinkedId_removedFromAparList() throws Exception {
+        setupValidUserProfileMocks();
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
+
+        Map<String, Object> aparPlan = createMockPlan("plan_apar_null_ca", true, null);
+        aparPlan.remove(Constants.CA_LINKED_ID_DB);
+        aparPlan.put(Constants.CONTENT_LIST, List.of("do_some_content"));
+
+        when(cbPlanCacheMgrV3.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+                .thenReturn(List.of(aparPlan));
+        lenient().when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), isNull()))
+                .thenReturn(Collections.emptyList());
+
+        ApiResponse response = dictionaryService.getCBPlanDictionaryForUser(testRequest, TEST_AUTH_TOKEN);
+
+        assertThat(response.getResponseCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> yearResult = (Map<String, Object>) response.getResult().get(TEST_PLAN_YEAR);
+        Map<String, Map<String, Object>> aparList =
+                (Map<String, Map<String, Object>>) yearResult.get(Constants.RESPONSE_KEY_APAR_PLAN_LIST);
+        assertThat(aparList).doesNotContainKey("plan_apar_null_ca");
+        assertThat(yearResult.get(Constants.RESPONSE_KEY_APAR_PLAN_COUNT)).isEqualTo(0);
+    }
+
+    @Test
+    void getCBPlanDictionaryForUser_aparLiveAndNonAparDraftCaLinkedId_filteredIndependently() throws Exception {
+        setupValidUserProfileMocks();
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
+        when(contentLookupService.getContentMetadata("ca_apar_live")).thenReturn(buildLiveMetadata());
+        when(contentLookupService.getContentMetadata("ca_nonapar_draft")).thenReturn(buildNonLiveMetadata("Draft"));
+
+        Map<String, Object> aparPlan = createMockPlanWithCaId("plan_apar_live_ca", true, "ca_apar_live");
+        Map<String, Object> nonAparPlan = createMockPlanWithCaId("plan_nonapar_draft_ca", false, "ca_nonapar_draft");
+
+        when(cbPlanCacheMgrV3.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+                .thenReturn(List.of(aparPlan, nonAparPlan));
+        lenient().when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), isNull()))
+                .thenReturn(Collections.emptyList());
+
+        ApiResponse response = dictionaryService.getCBPlanDictionaryForUser(testRequest, TEST_AUTH_TOKEN);
+
+        assertThat(response.getResponseCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> yearResult = (Map<String, Object>) response.getResult().get(TEST_PLAN_YEAR);
+        Map<String, Map<String, Object>> aparList =
+                (Map<String, Map<String, Object>>) yearResult.get(Constants.RESPONSE_KEY_APAR_PLAN_LIST);
+        Map<String, Map<String, Object>> nonAparList =
+                (Map<String, Map<String, Object>>) yearResult.get(Constants.RESPONSE_KEY_NON_APAR_PLAN_LIST);
+        assertThat(aparList).containsKey("plan_apar_live_ca");
+        assertThat(nonAparList).doesNotContainKey("plan_nonapar_draft_ca");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getCBPlanDictionaryForUser_previousYearPlanWithNullCaLinkedId_removedFromPreviousYearResult() throws Exception {
+        setupValidUserProfileMocks();
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
+
+        Map<String, Object> prevYearPlan = createMockPlan("plan_prev_null_ca", false, null);
+        prevYearPlan.remove(Constants.CA_LINKED_ID_DB);
+        prevYearPlan.put(Constants.CONTENT_LIST, List.of("do_prev_content"));
+
+        when(cbPlanCacheMgrV3.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+                .thenReturn(Collections.emptyList());
+        when(cbPlanCacheMgrV3.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq("2025-26"), any(AtomicBoolean.class)))
+                .thenReturn(List.of(prevYearPlan));
+        lenient().when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), isNull()))
+                .thenReturn(Collections.emptyList());
+
+        ApiResponse response = dictionaryService.getCBPlanDictionaryForUser(testRequest, TEST_AUTH_TOKEN);
+
+        assertThat(response.getResponseCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> prevYearResult = (Map<String, Object>) response.getResult().get("2025-26");
+        Map<String, Map<String, Object>> prevNonAparList =
+                (Map<String, Map<String, Object>>) prevYearResult.get(Constants.RESPONSE_KEY_NON_APAR_PLAN_LIST);
+        assertThat(prevNonAparList).doesNotContainKey("plan_prev_null_ca");
+        assertThat(prevYearResult.get(Constants.RESPONSE_KEY_NON_APAR_PLAN_COUNT)).isEqualTo(0);
+    }
+
+    @Test
+    void getCBPlanDictionaryForUser_contentMetadataReturnsEmpty_planExcluded() throws Exception {
+        setupValidUserProfileMocks();
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
+        when(contentLookupService.getContentMetadata("ca_do_empty_meta")).thenReturn(Collections.emptyMap());
+
+        Map<String, Object> plan = createMockPlanWithCaId("plan_empty_meta_ca", false, "ca_do_empty_meta");
+        when(cbPlanCacheMgrV3.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+                .thenReturn(List.of(plan));
+        lenient().when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), isNull()))
+                .thenReturn(Collections.emptyList());
+
+        ApiResponse response = dictionaryService.getCBPlanDictionaryForUser(testRequest, TEST_AUTH_TOKEN);
+
+        assertThat(response.getResponseCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> yearResult = (Map<String, Object>) response.getResult().get(TEST_PLAN_YEAR);
+        Map<String, Map<String, Object>> nonAparList =
+                (Map<String, Map<String, Object>>) yearResult.get(Constants.RESPONSE_KEY_NON_APAR_PLAN_LIST);
+        assertThat(nonAparList).doesNotContainKey("plan_empty_meta_ca");
     }
 }

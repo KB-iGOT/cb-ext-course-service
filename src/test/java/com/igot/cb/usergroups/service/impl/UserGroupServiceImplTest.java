@@ -6,6 +6,7 @@ import static org.mockito.Mockito.*;
 
 import java.util.*;
 import java.util.function.BooleanSupplier;
+import java.util.function.Supplier;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.igot.cb.cassandra.CassandraOperation;
@@ -20,6 +21,8 @@ import com.igot.cb.util.UserProfileUtil;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
@@ -50,6 +53,9 @@ class UserGroupServiceImplTest {
     private ObjectMapper objectMapper;
 
     private UserGroupServiceImpl userGroupService;
+
+    @Captor
+    private ArgumentCaptor<Supplier<Boolean>> preCommitCaptor;
 
     @BeforeEach
     void setUp() {
@@ -338,6 +344,32 @@ class UserGroupServiceImplTest {
         assertEquals(HttpStatus.OK, response.getResponseCode());
         assertEquals(Constants.MSG_USER_GROUP_ARCHIVED, response.get(Constants.RESPONSE));
         verify(cassandraOperation, times(1)).updateRecord(anyString(), anyString(), anyMap(), anyMap(), any(), any());
+    }
+
+    @Test
+    void deleteUserGroup_preCommitValidator_receivesMutableMapForEsFiltering() {
+        Map<String, Object> cassandraRow = createCassandraRow();
+
+        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(TEST_AUTH_TOKEN), any())).thenReturn(TEST_USER_ID);
+        when(userProfileUtil.buildUserProfile(eq(TEST_USER_ID), any())).thenReturn(createUserProfile());
+        when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), anyMap(), anyList(), any()))
+                .thenReturn(List.of(cassandraRow));
+        when(validationService.validateUserGroupId(anyString(), any())).thenReturn(true);
+        when(validationService.validateUserGroupNotInUse(anyString(), any())).thenReturn(true);
+        when(dataTransformService.entityToResponseMap(any())).thenReturn(new HashMap<>());
+        when(cassandraOperation.updateRecord(anyString(), anyString(), anyMap(), anyMap(),
+                preCommitCaptor.capture(), any()))
+                .thenReturn(Map.of(Constants.RESPONSE, Constants.SUCCESS));
+        // mirrors EsUtilServiceImpl.updateDocument, which filters the map it is handed in place
+        when(esService.tryUpdateDocument(anyString(), anyMap())).thenAnswer(invocation -> {
+            Map<String, Object> esDocument = invocation.getArgument(1);
+            esDocument.entrySet().removeIf(entry -> false);
+            return true;
+        });
+
+        userGroupService.deleteUserGroup(TEST_USER_GROUP_ID, TEST_AUTH_TOKEN);
+
+        assertTrue(preCommitCaptor.getValue().get());
     }
 
     @Test

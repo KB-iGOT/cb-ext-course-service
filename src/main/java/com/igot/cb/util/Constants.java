@@ -794,7 +794,6 @@ public class Constants {
     public static final String RESPONSE_KEY_NON_APAR_PLAN_LIST = "nonAparPlanList";
     public static final String RESPONSE_KEY_APAR_PLAN_COUNT = "aparPlanCount";
     public static final String RESPONSE_KEY_NON_APAR_PLAN_COUNT = "nonAparPlanCount";
-    public static final String COMPREHENSIVE_ASSESSMENT = "comprehensiveAssessment";
     public static final String CREATED_BY_ORG_ID = "createdByOrgId";
     public static final String CREATED_BY_ORG_NAME = "createdByOrgName";
     public static final String MSG_ROOTORGID_REQUIRED_NON_CCA = "rootOrgId is required in criteria for non-CCA organizations";

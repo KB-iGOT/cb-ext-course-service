@@ -1584,7 +1584,7 @@ class CbPlanDictionaryServiceV4ImplTest {
     }
 
     @Test
-    void getCBPlanDictionaryForUser_planWithNullCaLinkedId_planRemovedFromResponse() throws Exception {
+    void getCBPlanDictionaryForUser_planWithNullCaLinkedId_planRemovedFromResponse() {
         setupValidUserProfileMocks();
         when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
 
@@ -1604,7 +1604,7 @@ class CbPlanDictionaryServiceV4ImplTest {
         Map<String, Map<String, Object>> nonAparList =
                 (Map<String, Map<String, Object>>) yearResult.get(Constants.RESPONSE_KEY_NON_APAR_PLAN_LIST);
         assertThat(nonAparList).doesNotContainKey("plan_null_ca");
-        assertThat(yearResult.get(Constants.RESPONSE_KEY_NON_APAR_PLAN_COUNT)).isEqualTo(0);
+        assertThat(yearResult).containsEntry(Constants.RESPONSE_KEY_NON_APAR_PLAN_COUNT, 0);
     }
 
     @Test
@@ -1650,7 +1650,7 @@ class CbPlanDictionaryServiceV4ImplTest {
     }
 
     @Test
-    void getCBPlanDictionaryForUser_planWithLiveCaLinkedId_planRetainedWithCaLinkedIdInResponse() throws Exception {
+    void getCBPlanDictionaryForUser_planWithLiveCaLinkedId_planRetainedWithCaLinkedIdInResponse() {
         setupValidUserProfileMocks();
         when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
 
@@ -1668,7 +1668,7 @@ class CbPlanDictionaryServiceV4ImplTest {
                 (Map<String, Map<String, Object>>) yearResult.get(Constants.RESPONSE_KEY_NON_APAR_PLAN_LIST);
         assertThat(nonAparList).containsKey("plan_live_ca");
         Map<String, Object> planEntry = nonAparList.get("plan_live_ca");
-        assertThat(planEntry.get(Constants.CA_LINKED_ID)).isEqualTo("ca_do_live_999");
+        assertThat(planEntry).containsEntry(Constants.CA_LINKED_ID, "ca_do_live_999");
         assertThat(planEntry).doesNotContainKey("comprehensiveAssessment");
     }
 
@@ -1787,7 +1787,7 @@ class CbPlanDictionaryServiceV4ImplTest {
     }
 
     @Test
-    void getCBPlanDictionaryForUser_aparPlanWithNullCaLinkedId_removedFromAparList() throws Exception {
+    void getCBPlanDictionaryForUser_aparPlanWithNullCaLinkedId_removedFromAparList() {
         setupValidUserProfileMocks();
         when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
 
@@ -1807,7 +1807,7 @@ class CbPlanDictionaryServiceV4ImplTest {
         Map<String, Map<String, Object>> aparList =
                 (Map<String, Map<String, Object>>) yearResult.get(Constants.RESPONSE_KEY_APAR_PLAN_LIST);
         assertThat(aparList).doesNotContainKey("plan_apar_null_ca");
-        assertThat(yearResult.get(Constants.RESPONSE_KEY_APAR_PLAN_COUNT)).isEqualTo(0);
+        assertThat(yearResult).containsEntry(Constants.RESPONSE_KEY_APAR_PLAN_COUNT, 0);
     }
 
     @Test
@@ -1839,7 +1839,7 @@ class CbPlanDictionaryServiceV4ImplTest {
 
     @Test
     @SuppressWarnings("unchecked")
-    void getCBPlanDictionaryForUser_previousYearPlanWithNullCaLinkedId_removedFromPreviousYearResult() throws Exception {
+    void getCBPlanDictionaryForUser_previousYearPlanWithNullCaLinkedId_removedFromPreviousYearResult() {
         setupValidUserProfileMocks();
         when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
 
@@ -1861,7 +1861,7 @@ class CbPlanDictionaryServiceV4ImplTest {
         Map<String, Map<String, Object>> prevNonAparList =
                 (Map<String, Map<String, Object>>) prevYearResult.get(Constants.RESPONSE_KEY_NON_APAR_PLAN_LIST);
         assertThat(prevNonAparList).doesNotContainKey("plan_prev_null_ca");
-        assertThat(prevYearResult.get(Constants.RESPONSE_KEY_NON_APAR_PLAN_COUNT)).isEqualTo(0);
+        assertThat(prevYearResult).containsEntry(Constants.RESPONSE_KEY_NON_APAR_PLAN_COUNT, 0);
     }
 
     @Test

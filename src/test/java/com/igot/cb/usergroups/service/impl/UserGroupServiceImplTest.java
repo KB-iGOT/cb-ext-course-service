@@ -325,6 +325,7 @@ class UserGroupServiceImplTest {
         when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), anyMap(), anyList(), any()))
                 .thenReturn(List.of(cassandraRow));
         when(validationService.validateUserGroupId(anyString(), any())).thenReturn(true);
+        when(validationService.validateUserGroupNotInUse(anyString(), any())).thenReturn(true);
         when(dataTransformService.entityToResponseMap(any())).thenReturn(new HashMap<>());
         when(cassandraOperation.updateRecord(anyString(), anyString(), anyMap(), anyMap(), any(), any())).thenReturn(Map.of(Constants.RESPONSE, Constants.SUCCESS));
 
@@ -416,6 +417,7 @@ class UserGroupServiceImplTest {
         when(userProfileUtil.buildUserProfile(eq(TEST_USER_ID), any())).thenReturn(createUserProfile());
         when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), anyMap(), anyList(), any())).thenReturn(List.of(cassandraRow));
         when(validationService.validateUserGroupId(anyString(), any())).thenReturn(true);
+        when(validationService.validateUserGroupNotInUse(anyString(), any())).thenReturn(true);
         when(dataTransformService.entityToResponseMap(any())).thenReturn(new HashMap<>());
         when(cassandraOperation.updateRecord(anyString(), anyString(), anyMap(), anyMap(), any(), any())).thenReturn(Map.of(Constants.RESPONSE, Constants.FAILED));
 
@@ -425,6 +427,32 @@ class UserGroupServiceImplTest {
         assertEquals(Constants.FAILED, response.getParams().getStatus());
         assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getResponseCode());
         verify(cassandraOperation, times(1)).updateRecord(anyString(), anyString(), anyMap(), anyMap(), any(), any());
+    }
+
+    @Test
+    void deleteUserGroup_whenReferencedByCbPlan_shouldReturnFailedResponseWithoutArchiving() {
+        Map<String, Object> cassandraRow = createCassandraRow();
+
+        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(TEST_AUTH_TOKEN), any())).thenReturn(TEST_USER_ID);
+        when(userProfileUtil.buildUserProfile(eq(TEST_USER_ID), any())).thenReturn(createUserProfile());
+        when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), anyMap(), anyList(), any()))
+                .thenReturn(List.of(cassandraRow));
+        when(validationService.validateUserGroupId(anyString(), any())).thenReturn(true);
+        when(validationService.validateUserGroupNotInUse(anyString(), any())).thenAnswer(invocation -> {
+            ApiResponse checkedResponse = invocation.getArgument(1);
+            checkedResponse.getParams().setStatus(Constants.FAILED);
+            checkedResponse.getParams().setErr(Constants.MSG_USERGROUP_IN_USE);
+            checkedResponse.setResponseCode(HttpStatus.CONFLICT);
+            return false;
+        });
+
+        ApiResponse response = userGroupService.deleteUserGroup(TEST_USER_GROUP_ID, TEST_AUTH_TOKEN);
+
+        assertNotNull(response);
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(Constants.MSG_USERGROUP_IN_USE, response.getParams().getErr());
+        assertEquals(HttpStatus.CONFLICT, response.getResponseCode());
+        verify(cassandraOperation, never()).updateRecord(anyString(), anyString(), anyMap(), anyMap(), any(), any());
     }
 
     // Helper methods

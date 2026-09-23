@@ -1,5 +1,8 @@
 package com.igot.cb.usergroups.service.impl;
 
+import com.igot.cb.elasticsearch.dto.SearchCriteria;
+import com.igot.cb.elasticsearch.dto.SearchResult;
+import com.igot.cb.elasticsearch.service.EsUtilService;
 import com.igot.cb.model.ApiResponse;
 import com.igot.cb.service.UserAndOrgServiceImpl;
 import com.igot.cb.usergroups.model.CriteriaItem;
@@ -26,11 +29,14 @@ public class UserGroupValidationServiceImpl {
 
     private final CbExtServerProperties serverProperties;
     private final UserAndOrgServiceImpl userAndOrgService;
+    private final EsUtilService esUtilService;
 
     public UserGroupValidationServiceImpl(CbExtServerProperties serverProperties,
-                                          UserAndOrgServiceImpl userAndOrgService) {
+                                          UserAndOrgServiceImpl userAndOrgService,
+                                          EsUtilService esUtilService) {
         this.serverProperties = serverProperties;
         this.userAndOrgService = userAndOrgService;
+        this.esUtilService = esUtilService;
     }
 
     public boolean validateCreateRequest(String userGroupName, List<CriteriaItem> criteria,
@@ -310,5 +316,53 @@ public class UserGroupValidationServiceImpl {
 
         log.debug("rootOrgId validation passed for non-CCA org");
         return true;
+    }
+
+    /**
+     * Blocks archiving a user group that is still referenced by any CB Plan. Checked against
+     * the {@code contextDataV4} field indexed by CB Plan V4 (see
+     * {@code CbPlanElasticSearchServiceV4Impl.convertContextDataForEs}) — a plain ES filter on
+     * userGroupId, page size 1, since only existence matters.
+     * Fails closed: if the ES check itself cannot be completed, the archive is blocked rather
+     * than silently allowed, since this is a data-integrity safeguard, not a best-effort cache.
+     *
+     * @param userGroupId user group ID
+     * @param response    API response, populated with an error when in use or the check fails
+     * @return true when the group is free to archive
+     */
+    public boolean validateUserGroupNotInUse(String userGroupId, ApiResponse response) {
+        try {
+            SearchCriteria searchCriteria = new SearchCriteria();
+            HashMap<String, Object> filter = new HashMap<>();
+            filter.put(Constants.CONTEXT_DATA_ES_FIELD_V4, userGroupId);
+            searchCriteria.setFilter(filter);
+            searchCriteria.setRequestedFields(List.of(Constants.ID));
+            searchCriteria.setPageSize(1);
+            SearchResult searchResult = esUtilService.searchDocumentsV2(
+                    serverProperties.getCpPlanIndex(), searchCriteria, serverProperties.getElasticCbPlanJsonPath());
+            if (searchResult == null) {
+                log.error("validateUserGroupNotInUse: CB Plan reference search returned null for userGroupId={}", userGroupId);
+                return failUsageCheck(response);
+            }
+            if (searchResult.getTotalCount() > 0) {
+                log.warn("validateUserGroupNotInUse: userGroupId={} is referenced by {} CB Plan(s), blocking archive",
+                        userGroupId, searchResult.getTotalCount());
+                response.getParams().setStatus(Constants.FAILED);
+                response.getParams().setErr(Constants.MSG_USERGROUP_IN_USE);
+                response.setResponseCode(HttpStatus.CONFLICT);
+                return false;
+            }
+            return true;
+        } catch (Exception e) {
+            log.error("validateUserGroupNotInUse: Failed to check CB Plan references for userGroupId={}", userGroupId, e);
+            return failUsageCheck(response);
+        }
+    }
+
+    private boolean failUsageCheck(ApiResponse response) {
+        response.getParams().setStatus(Constants.FAILED);
+        response.getParams().setErr(Constants.ERR_USERGROUP_USAGE_CHECK_FAILED);
+        response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
+        return false;
     }
 }

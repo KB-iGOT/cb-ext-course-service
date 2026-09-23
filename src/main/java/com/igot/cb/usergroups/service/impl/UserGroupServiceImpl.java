@@ -260,6 +260,10 @@ public class UserGroupServiceImpl implements UserGroupService {
                 return response;
             }
 
+            if (!validationService.validateUserGroupNotInUse(userGroupId, response)) {
+                return response;
+            }
+
             Map<String, Object> archiveProps = Map.of(Constants.COL_STATUS, Constants.ARCHIVED);
             Map<String, Object> esSnapshot = dataTransformService.entityToResponseMap(entity);
             if (transactionalUpdateFailed(userGroupId, userRootOrgId, archiveProps,

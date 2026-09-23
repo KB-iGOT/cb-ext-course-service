@@ -1,14 +1,22 @@
 package com.igot.cb.cbplan.service.impl.v4;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.igot.cb.elasticsearch.service.EsUtilService;
 import com.igot.cb.util.CbExtServerProperties;
 import com.igot.cb.util.Constants;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -22,10 +30,14 @@ import java.util.Map;
 public class CbPlanElasticSearchServiceV4Impl {
     private final EsUtilService esUtilService;
     private final CbExtServerProperties serverProperties;
+    private final ObjectMapper mapper;
 
     public CbPlanElasticSearchServiceV4Impl(EsUtilService esUtilService, CbExtServerProperties serverProperties) {
         this.esUtilService = esUtilService;
         this.serverProperties = serverProperties;
+        this.mapper = new ObjectMapper()
+                .registerModule(new JavaTimeModule())
+                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
     }
 
     /**
@@ -75,6 +87,7 @@ public class CbPlanElasticSearchServiceV4Impl {
             }
         }
         alignKeysWithEsSchema(sanitized);
+        convertContextDataForEs(sanitized);
         return sanitized;
     }
 
@@ -181,5 +194,73 @@ public class CbPlanElasticSearchServiceV4Impl {
         if (!tryUpdatePlan(planId, previousState)) {
             log.error("ES_CASSANDRA_DIVERGENCE: ES rollback for update failed for planId={} — manual reconciliation required", planId);
         }
+    }
+
+    /**
+     * Extracts the V4-format userGroupIds referenced in contextData (see
+     * {@link #extractV4UserGroupIds}) into a flat list under a V4-only ES field
+     * ({@link Constants#CONTEXT_DATA_ES_FIELD_V4}), shaped like {@code orgIdList} so it filters
+     * the same way. Nothing else from contextData is indexed — no criteria, scope, or
+     * userGroupName. A separate field name is required since this ES index/schema is shared with
+     * V2/V3, which still write contextData as a plain string — reusing that field name would
+     * conflict.
+     *
+     * @param sanitized document being prepared for indexing, mutated in place
+     */
+    private void convertContextDataForEs(Map<String, Object> sanitized) {
+        Map<String, Object> contextDataMap = parseContextData(sanitized.get(Constants.CONTEXT_DATA_REQUEST));
+        List<String> userGroupIds = extractV4UserGroupIds(contextDataMap);
+        if (!userGroupIds.isEmpty()) {
+            sanitized.put(Constants.CONTEXT_DATA_ES_FIELD_V4, userGroupIds);
+        }
+    }
+
+    /**
+     * Parses the persisted contextData value into a {@code Map}, handling both the normal case
+     * (a JSON string, as persisted in Cassandra's {@code contextdata} text column) and an
+     * already-deserialized {@code Map} defensively.
+     *
+     * @param contextData raw contextData value from the plan map
+     * @return parsed contextData map, empty when absent, blank, or unparseable
+     */
+    private Map<String, Object> parseContextData(Object contextData) {
+        if (contextData instanceof String contextDataJson && StringUtils.isNotBlank(contextDataJson)) {
+            try {
+                return mapper.readValue(contextDataJson, new TypeReference<Map<String, Object>>() {
+                });
+            } catch (JsonProcessingException e) {
+                log.error("Failed to parse contextData JSON for ES indexing", e);
+                return Map.of();
+            }
+        }
+        if (contextData instanceof Map<?, ?> contextDataMap) {
+            return (Map<String, Object>) contextDataMap;
+        }
+        return Map.of();
+    }
+
+    /**
+     * Walks {@code contextData.accessControl.userGroups[]} and collects the {@code userGroupId}
+     * of every V4-format entry. V3-format entries (no userGroupId) contribute nothing.
+     *
+     * @param contextDataMap parsed contextData
+     * @return userGroupIds referenced by contextData, empty when none found
+     */
+    private List<String> extractV4UserGroupIds(Map<String, Object> contextDataMap) {
+        if (!(contextDataMap.get(Constants.ACCESS_CONTROL) instanceof Map<?, ?> accessControl)) {
+            return List.of();
+        }
+        if (!(accessControl.get(Constants.USER_GROUPS) instanceof List<?> userGroups)) {
+            return List.of();
+        }
+        List<String> userGroupIds = new ArrayList<>();
+        for (Object entry : userGroups) {
+            if (entry instanceof Map<?, ?> groupEntry
+                    && groupEntry.get(Constants.USER_GROUP_ID) instanceof String userGroupId
+                    && StringUtils.isNotBlank(userGroupId)) {
+                userGroupIds.add(userGroupId);
+            }
+        }
+        return userGroupIds;
     }
 }

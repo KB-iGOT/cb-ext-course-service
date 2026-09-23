@@ -120,5 +120,14 @@
   },
   "caLinkedId": {
     "type": "keyword"
+  },
+  "contextDataV4": {
+    "type": "text",
+    "fields": {
+      "keyword": {
+        "type": "keyword",
+        "ignore_above": 256
+      }
+    }
   }
 }

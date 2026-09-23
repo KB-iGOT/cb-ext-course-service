@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.igot.cb.cache.RedisCacheMgr;
 import com.igot.cb.cbplan.service.CbPlanServiceV4;
+import com.igot.cb.cbplan.util.CbPlanYearUtil;
 import com.igot.cb.model.ApiRequest;
 import com.igot.cb.model.ApiResponse;
 import com.igot.cb.service.CourseAccessServiceImpl;
@@ -450,6 +451,9 @@ public final class ContentInfoUtil {
     /**
      * Fetches CB Plan V4 user dictionary and partitions content identifiers into
      * {@code apar}, {@code trainingPlan}, and {@code aiCbp} categories.
+     * The current financial year is requested explicitly so that, when it has
+     * no accessible plans, the dictionary service's own previous-year fallback
+     * is triggered and its content is merged in below.
      *
      * @param authToken user's auth token
      * @return map keyed by {@link Constants#APAR}, {@link Constants#TRAINING_PLAN},
@@ -458,7 +462,9 @@ public final class ContentInfoUtil {
     public Map<String, List<String>> getCbPlanV4ContentIds(String authToken) {
         Map<String, List<String>> result = initCbPlanIdsMap();
         try {
-            ApiResponse cbPlanResponse = cbPlanServiceV4.getCBPlanDictionaryForUser(new ApiRequest(), authToken);
+            ApiRequest request = new ApiRequest();
+            request.setRequest(Map.of(Constants.REQUEST_PARAM_PLAN_YEAR, CbPlanYearUtil.resolveCurrentFinancialYear()));
+            ApiResponse cbPlanResponse = cbPlanServiceV4.getCBPlanDictionaryForUser(request, authToken);
             if (cbPlanResponse == null || MapUtils.isEmpty(cbPlanResponse.getResult())) {
                 return result;
             }
@@ -486,6 +492,9 @@ public final class ContentInfoUtil {
                 (Map<String, Map<String, Object>>) yearData.get(Constants.RESPONSE_KEY_APAR_PLAN_LIST);
         Map<String, Map<String, Object>> nonAparPlanList =
                 (Map<String, Map<String, Object>>) yearData.get(Constants.RESPONSE_KEY_NON_APAR_PLAN_LIST);
+        if (MapUtils.isEmpty(aparPlanList) && MapUtils.isEmpty(nonAparPlanList)) {
+            return;
+        }
         Set<String> aiCbpIds = collectAiCbpIdentifiers(aparPlanList, nonAparPlanList);
         collectNonAiCbpFromPlanList(aparPlanList, aiCbpIds, output.get(Constants.APAR));
         collectNonAiCbpFromPlanList(nonAparPlanList, aiCbpIds, output.get(Constants.TRAINING_PLAN));

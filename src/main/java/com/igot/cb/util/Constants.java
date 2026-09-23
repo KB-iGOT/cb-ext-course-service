@@ -794,7 +794,6 @@ public class Constants {
     public static final String RESPONSE_KEY_NON_APAR_PLAN_LIST = "nonAparPlanList";
     public static final String RESPONSE_KEY_APAR_PLAN_COUNT = "aparPlanCount";
     public static final String RESPONSE_KEY_NON_APAR_PLAN_COUNT = "nonAparPlanCount";
-    public static final String COMPREHENSIVE_ASSESSMENT = "comprehensiveAssessment";
     public static final String CREATED_BY_ORG_ID = "createdByOrgId";
     public static final String CREATED_BY_ORG_NAME = "createdByOrgName";
     public static final String MSG_ROOTORGID_REQUIRED_NON_CCA = "rootOrgId is required in criteria for non-CCA organizations";
@@ -810,6 +809,9 @@ public class Constants {
     public static final String API_CBPLAN_V3_SEARCH = "api.cbplan.v3.search";
     public static final String MSG_USERGROUP_NAME_EXISTS = "A user group with this name already exists in the organisation";
     public static final String PUBLISHED_BY_NAME = "publishedByName";
+    public static final String CONTEXT_DATA_ES_FIELD_V4 = "contextDataV4";
+    public static final String MSG_USERGROUP_IN_USE = "User group is referenced by one or more CB Plans and cannot be archived";
+    public static final String ERR_USERGROUP_USAGE_CHECK_FAILED = "Failed to verify user group usage; archive blocked as a precaution";
 
     private Constants() {
     }

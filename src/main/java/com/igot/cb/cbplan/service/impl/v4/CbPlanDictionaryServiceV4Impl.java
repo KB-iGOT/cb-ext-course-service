@@ -1,6 +1,8 @@
 package com.igot.cb.cbplan.service.impl.v4;
 
 import java.util.ArrayList;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -25,6 +27,7 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.igot.cb.cache.CbPlanCacheMgrV3;
 import com.igot.cb.cache.RedisCacheMgr;
+import com.igot.cb.cbplan.service.impl.CbPlanContentLookupServiceV3Impl;
 import com.igot.cb.cbplan.service.impl.CbPlanDataTransformServiceV3Impl;
 import com.igot.cb.cbplan.service.impl.CbPlanEnrichmentServiceV3Impl;
 import com.igot.cb.cassandra.CassandraOperation;
@@ -58,6 +61,7 @@ public class CbPlanDictionaryServiceV4Impl {
     private final CbExtServerProperties serverProperties;
     private final CbPlanEnrichmentServiceV3Impl enrichmentService;
     private final CbPlanDataTransformServiceV3Impl dataTransformService;
+    private final CbPlanContentLookupServiceV3Impl contentLookupService;
     private final ObjectMapper mapper;
     private static final TypeReference<Map<String, Object>> MAP_TYPE_REF = new TypeReference<>() {};
 
@@ -68,7 +72,8 @@ public class CbPlanDictionaryServiceV4Impl {
                                          RedisCacheMgr redisCacheMgr,
                                          CbExtServerProperties serverProperties,
                                          CbPlanEnrichmentServiceV3Impl enrichmentService,
-                                         CbPlanDataTransformServiceV3Impl dataTransformService) {
+                                         CbPlanDataTransformServiceV3Impl dataTransformService,
+                                         CbPlanContentLookupServiceV3Impl contentLookupService) {
         this.cassandraOperation = cassandraOperation;
         this.cbPlanCacheMgrV3 = cbPlanCacheMgrV3;
         this.userGroupLookupService = userGroupLookupService;
@@ -77,6 +82,7 @@ public class CbPlanDictionaryServiceV4Impl {
         this.serverProperties = serverProperties;
         this.enrichmentService = enrichmentService;
         this.dataTransformService = dataTransformService;
+        this.contentLookupService = contentLookupService;
         this.mapper = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
@@ -143,6 +149,7 @@ public class CbPlanDictionaryServiceV4Impl {
             Map<String, Map<String, String>> orgDetailsMap = fetchOrgDetails(orgIds);
             enrichOrgDetails(aparPlanMap, orgDetailsMap);
             enrichOrgDetails(nonAparPlanMap, orgDetailsMap);
+            filterLiveContentInPlans(aparPlanMap, nonAparPlanMap);
             Map<String, Object> yearResult = buildYearResult(aparPlanMap, nonAparPlanMap);
             response.getResult().put(planYear, yearResult);
             if (StringUtils.isNotBlank(requestedPlanYear) && aparPlanMap.isEmpty() && nonAparPlanMap.isEmpty()) {
@@ -538,7 +545,7 @@ public class CbPlanDictionaryServiceV4Impl {
         entry.put(Constants.END_DATE_REQUEST, plan.get(Constants.END_DATE_REQUEST));
         entry.put(Constants.PLAN_TYPE, plan.get(Constants.PLAN_TYPE));
         entry.put(Constants.CONTENT_LIST, parseContentList(plan.get(Constants.CONTENT_LIST)));
-        entry.put(Constants.COMPREHENSIVE_ASSESSMENT, plan.get(Constants.CA_LINKED_ID_DB));
+        entry.put(Constants.CA_LINKED_ID, plan.get(Constants.CA_LINKED_ID_DB));
         String createdByOrgId = extractCreatedByOrgId(plan);
         entry.put(Constants.CREATED_BY_ORG_ID, createdByOrgId);
         entry.put(Constants.CREATED_BY_ORG_NAME, null);
@@ -769,6 +776,7 @@ public class CbPlanDictionaryServiceV4Impl {
         Map<String, Map<String, String>> orgDetailsMap = fetchOrgDetails(orgIds);
         enrichOrgDetails(aparPlanMap, orgDetailsMap);
         enrichOrgDetails(nonAparPlanMap, orgDetailsMap);
+        filterLiveContentInPlans(aparPlanMap, nonAparPlanMap);
         response.getResult().put(previousYear, buildYearResult(aparPlanMap, nonAparPlanMap));
         log.info("fetchAndAppendPreviousYear: previousYear={}, aparCount={}, nonAparCount={}",
                 previousYear, aparPlanMap.size(), nonAparPlanMap.size());
@@ -930,6 +938,47 @@ public class CbPlanDictionaryServiceV4Impl {
             return Collections.singleton(rawValue.toString().toLowerCase());
         }
         return Collections.emptySet();
+    }
+
+    /**
+     * Removes plans with a null/blank or non-Live caLinkedId from both plan maps.
+     * Each unique caLinkedId is resolved exactly once via extended content read.
+     */
+    private void filterLiveContentInPlans(Map<String, Map<String, Object>> aparPlanMap,
+                                           Map<String, Map<String, Object>> nonAparPlanMap) {
+        Set<String> caIds = Stream.concat(aparPlanMap.values().stream(), nonAparPlanMap.values().stream())
+                .map(e -> e.get(Constants.CA_LINKED_ID))
+                .filter(String.class::isInstance)
+                .map(String.class::cast)
+                .filter(StringUtils::isNotBlank)
+                .collect(Collectors.toSet());
+        Set<String> liveIds = caIds.isEmpty() ? Collections.emptySet() : resolveLiveCaLinkedIds(caIds);
+        log.debug("filterLiveContentInPlans: liveCount={}, totalCount={}", liveIds.size(), caIds.size());
+        aparPlanMap.entrySet().removeIf(e -> isLiveCaLinkedId(e.getValue(), liveIds));
+        nonAparPlanMap.entrySet().removeIf(e -> isLiveCaLinkedId(e.getValue(), liveIds));
+    }
+
+    private Set<String> resolveLiveCaLinkedIds(Set<String> caIds) {
+        Set<String> liveIds = new HashSet<>();
+        for (String id : caIds) {
+            try {
+                Map<String, Object> meta = contentLookupService.getContentMetadata(id);
+                if (MapUtils.isNotEmpty(meta) && Constants.LIVE.equalsIgnoreCase((String) meta.get(Constants.STATUS))) {
+                    liveIds.add(id);
+                } else {
+                    log.debug("resolveLiveCaLinkedIds: Non-Live caLinkedId={}, status={}", id,
+                            MapUtils.isNotEmpty(meta) ? meta.get(Constants.STATUS) : "not found");
+                }
+            } catch (Exception e) {
+                log.warn("resolveLiveCaLinkedIds: Metadata read failed - caLinkedId={}", id, e);
+            }
+        }
+        return liveIds;
+    }
+
+    private boolean isLiveCaLinkedId(Map<String, Object> planEntry, Set<String> liveIds) {
+        Object caId = planEntry.get(Constants.CA_LINKED_ID);
+        return !(caId instanceof String id) || !StringUtils.isNotBlank(id) || !liveIds.contains(id);
     }
 
 }

@@ -5,6 +5,9 @@ import static org.mockito.Mockito.*;
 
 import java.util.*;
 
+import com.igot.cb.elasticsearch.dto.SearchCriteria;
+import com.igot.cb.elasticsearch.dto.SearchResult;
+import com.igot.cb.elasticsearch.service.EsUtilService;
 import com.igot.cb.model.ApiResponse;
 import com.igot.cb.service.UserAndOrgServiceImpl;
 import com.igot.cb.util.ProjectUtil;
@@ -30,6 +33,8 @@ class UserGroupValidationServiceImplTest {
     private static final String TEST_USER_ROLES = "MDO_LEADER,USER";
     private static final String TEST_UNAUTHORIZED_MSG = "You are not authorised to edit this user group. It belongs to a different organisation.";
     private static final String TEST_MISSING_ROLE_MSG = "You are not authorised to edit this user group. Only the MDO Leader or the group creator can make changes.";
+    private static final String TEST_CB_PLAN_INDEX = "cb_plan_v2";
+    private static final String TEST_CB_PLAN_JSON_PATH = "/EsRequiredFields/EsRequiredFieldsCbPlan.json";
 
     @Mock
     private CbExtServerProperties serverProperties;
@@ -37,12 +42,15 @@ class UserGroupValidationServiceImplTest {
     @Mock
     private UserAndOrgServiceImpl userAndOrgService;
 
+    @Mock
+    private EsUtilService esUtilService;
+
     private UserGroupValidationServiceImpl validationService;
 
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
-        validationService = new UserGroupValidationServiceImpl(serverProperties, userAndOrgService);
+        validationService = new UserGroupValidationServiceImpl(serverProperties, userAndOrgService, esUtilService);
 
         Map<String, Object> orgMap = new HashMap<>();
         orgMap.put(Constants.IS_CCA, false);
@@ -449,5 +457,66 @@ class UserGroupValidationServiceImplTest {
                 new CriteriaItem("department", List.of("HR", "Finance")),
                 new CriteriaItem("role", List.of("Manager"))
         );
+    }
+
+    @Test
+    void validateUserGroupNotInUse_whenNotReferenced_shouldReturnTrue() {
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_USER_GROUP_DELETE);
+        when(serverProperties.getCpPlanIndex()).thenReturn(TEST_CB_PLAN_INDEX);
+        when(serverProperties.getElasticCbPlanJsonPath()).thenReturn(TEST_CB_PLAN_JSON_PATH);
+        when(esUtilService.searchDocumentsV2(eq(TEST_CB_PLAN_INDEX), any(SearchCriteria.class), eq(TEST_CB_PLAN_JSON_PATH)))
+                .thenReturn(new SearchResult(List.of(), Map.of(), 0L, List.of()));
+
+        boolean result = validationService.validateUserGroupNotInUse(TEST_USER_GROUP_ID, response);
+
+        assertTrue(result);
+    }
+
+    @Test
+    void validateUserGroupNotInUse_whenReferencedByCbPlan_shouldReturnFalse() {
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_USER_GROUP_DELETE);
+        when(serverProperties.getCpPlanIndex()).thenReturn(TEST_CB_PLAN_INDEX);
+        when(serverProperties.getElasticCbPlanJsonPath()).thenReturn(TEST_CB_PLAN_JSON_PATH);
+        when(esUtilService.searchDocumentsV2(eq(TEST_CB_PLAN_INDEX), any(SearchCriteria.class), eq(TEST_CB_PLAN_JSON_PATH)))
+                .thenReturn(new SearchResult(List.of(Map.of(Constants.ID, "cb_plan_1")), Map.of(), 1L, List.of()));
+
+        boolean result = validationService.validateUserGroupNotInUse(TEST_USER_GROUP_ID, response);
+
+        assertFalse(result);
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(Constants.MSG_USERGROUP_IN_USE, response.getParams().getErr());
+        assertEquals(HttpStatus.CONFLICT, response.getResponseCode());
+    }
+
+    @Test
+    void validateUserGroupNotInUse_whenSearchReturnsNull_shouldReturnFalse() {
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_USER_GROUP_DELETE);
+        when(serverProperties.getCpPlanIndex()).thenReturn(TEST_CB_PLAN_INDEX);
+        when(serverProperties.getElasticCbPlanJsonPath()).thenReturn(TEST_CB_PLAN_JSON_PATH);
+        when(esUtilService.searchDocumentsV2(eq(TEST_CB_PLAN_INDEX), any(SearchCriteria.class), eq(TEST_CB_PLAN_JSON_PATH)))
+                .thenReturn(null);
+
+        boolean result = validationService.validateUserGroupNotInUse(TEST_USER_GROUP_ID, response);
+
+        assertFalse(result);
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(Constants.ERR_USERGROUP_USAGE_CHECK_FAILED, response.getParams().getErr());
+        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getResponseCode());
+    }
+
+    @Test
+    void validateUserGroupNotInUse_whenSearchThrows_shouldReturnFalse() {
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_USER_GROUP_DELETE);
+        when(serverProperties.getCpPlanIndex()).thenReturn(TEST_CB_PLAN_INDEX);
+        when(serverProperties.getElasticCbPlanJsonPath()).thenReturn(TEST_CB_PLAN_JSON_PATH);
+        when(esUtilService.searchDocumentsV2(eq(TEST_CB_PLAN_INDEX), any(SearchCriteria.class), eq(TEST_CB_PLAN_JSON_PATH)))
+                .thenThrow(new RuntimeException("ES unavailable"));
+
+        boolean result = validationService.validateUserGroupNotInUse(TEST_USER_GROUP_ID, response);
+
+        assertFalse(result);
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(Constants.ERR_USERGROUP_USAGE_CHECK_FAILED, response.getParams().getErr());
+        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getResponseCode());
     }
 }

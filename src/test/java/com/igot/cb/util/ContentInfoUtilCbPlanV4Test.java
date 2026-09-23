@@ -3,14 +3,17 @@ package com.igot.cb.util;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.igot.cb.cache.RedisCacheMgr;
 import com.igot.cb.cbplan.service.CbPlanServiceV4;
+import com.igot.cb.cbplan.util.CbPlanYearUtil;
 import com.igot.cb.model.ApiRequest;
 import com.igot.cb.model.ApiResponse;
 import com.igot.cb.service.CourseAccessServiceImpl;
 import com.igot.cb.service.OutboundRequestHandlerServiceImpl;
 import com.igot.cb.service.UserAndOrgServiceImpl;
+import org.assertj.core.api.InstanceOfAssertFactories;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -23,6 +26,8 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -331,4 +336,73 @@ class ContentInfoUtilCbPlanV4Test {
         planMap.put(Constants.CONTENT_LIST, contentList);
         return planMap;
     }
+
+    @Test
+    void getCbPlanV4ContentIds_buildsRequestWithCurrentFinancialYear() {
+        when(cbPlanServiceV4.getCBPlanDictionaryForUser(any(ApiRequest.class), anyString()))
+                .thenReturn(buildResponse(YEAR_KEY, Collections.emptyMap(), Collections.emptyMap()));
+        ArgumentCaptor<ApiRequest> requestCaptor = ArgumentCaptor.forClass(ApiRequest.class);
+
+        contentInfoUtil.getCbPlanV4ContentIds(AUTH_TOKEN);
+
+        verify(cbPlanServiceV4).getCBPlanDictionaryForUser(requestCaptor.capture(), eq(AUTH_TOKEN));
+        assertThat(requestCaptor.getValue().getRequest())
+                .asInstanceOf(InstanceOfAssertFactories.MAP)
+                .containsEntry(Constants.REQUEST_PARAM_PLAN_YEAR, CbPlanYearUtil.resolveCurrentFinancialYear());
+    }
+
+    @Test
+    void getCbPlanV4ContentIds_currentYearEmptyPreviousYearHasData_aggregatesPreviousYearContent() {
+        ApiResponse response = new ApiResponse();
+        Map<String, Object> resultMap = new HashMap<>();
+        resultMap.put("2026-27", yearEntry(Collections.emptyMap(), Collections.emptyMap()));
+        resultMap.put("2025-26", yearEntry(
+                planList(PLAN_ID_APAR, "APAR", List.of(CONTENT_ID_1)),
+                planList(PLAN_ID_NON_APAR, "trainingPlan", List.of(CONTENT_ID_2))));
+        response.setResult(resultMap);
+        when(cbPlanServiceV4.getCBPlanDictionaryForUser(any(ApiRequest.class), anyString()))
+                .thenReturn(response);
+
+        Map<String, List<String>> result = contentInfoUtil.getCbPlanV4ContentIds(AUTH_TOKEN);
+
+        assertThat(result.get(Constants.APAR)).containsExactly(CONTENT_ID_1);
+        assertThat(result.get(Constants.TRAINING_PLAN)).containsExactly(CONTENT_ID_2);
+        assertThat(result.get(Constants.AI_CBP)).isEmpty();
+    }
+
+    @Test
+    void getCbPlanV4ContentIds_emptyYearEntryAmongMultipleYears_skippedWithoutError() {
+        ApiResponse response = new ApiResponse();
+        Map<String, Object> resultMap = new HashMap<>();
+        resultMap.put("2026-27", yearEntry(Collections.emptyMap(), Collections.emptyMap()));
+        resultMap.put("2025-26", yearEntry(
+                planList(PLAN_ID_APAR, "APAR", List.of(CONTENT_ID_1)),
+                Collections.emptyMap()));
+        response.setResult(resultMap);
+        when(cbPlanServiceV4.getCBPlanDictionaryForUser(any(ApiRequest.class), anyString()))
+                .thenReturn(response);
+
+        Map<String, List<String>> result = contentInfoUtil.getCbPlanV4ContentIds(AUTH_TOKEN);
+
+        assertThat(result.get(Constants.APAR)).containsExactly(CONTENT_ID_1);
+        assertThat(result.get(Constants.TRAINING_PLAN)).isEmpty();
+        assertThat(result.get(Constants.AI_CBP)).isEmpty();
+    }
+
+    @Test
+    void getCbPlanV4ContentIds_yearEntryWithNullPlanLists_skippedWithoutError() {
+        ApiResponse response = new ApiResponse();
+        Map<String, Object> resultMap = new HashMap<>();
+        resultMap.put("2026-27", new HashMap<>());
+        response.setResult(resultMap);
+        when(cbPlanServiceV4.getCBPlanDictionaryForUser(any(ApiRequest.class), anyString()))
+                .thenReturn(response);
+
+        Map<String, List<String>> result = contentInfoUtil.getCbPlanV4ContentIds(AUTH_TOKEN);
+
+        assertThat(result.get(Constants.APAR)).isEmpty();
+        assertThat(result.get(Constants.TRAINING_PLAN)).isEmpty();
+        assertThat(result.get(Constants.AI_CBP)).isEmpty();
+    }
+
 }

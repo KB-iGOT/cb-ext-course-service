@@ -302,4 +302,48 @@ class CbPlanElasticSearchServiceV4ImplTest {
 
         assertDoesNotThrow(() -> elasticSearchService.rollbackUpdate(PLAN_ID, previousState));
     }
+
+    @Test
+    void sanitizeForElastic_withV4FormatContextData_extractsUserGroupIds() {
+        String contextDataJson = "{\"accessControl\":{\"userGroups\":[{\"userGroupId\":\"id1\"},{\"userGroupId\":\"id2\"}]}}";
+        Map<String, Object> input = new HashMap<>();
+        input.put(Constants.CONTEXT_DATA_REQUEST, contextDataJson);
+        input.put(Constants.NAME, "planName");
+
+        Map<String, Object> sanitized = elasticSearchService.sanitizeForElastic(input);
+
+        assertEquals(List.of("id1", "id2"), sanitized.get(Constants.CONTEXT_DATA_ES_FIELD_V4));
+    }
+
+    @Test
+    void sanitizeForElastic_withV3FormatContextData_doesNotAddContextDataV4() {
+        String contextDataJson = "{\"accessControl\":{\"userGroups\":[{\"userGroupName\":\"Group A\","
+                + "\"userGroupCriteriaList\":[{\"criteriaKey\":\"rootOrgId\",\"criteriaValue\":[\"org1\"]}]}]}}";
+        Map<String, Object> input = new HashMap<>();
+        input.put(Constants.CONTEXT_DATA_REQUEST, contextDataJson);
+
+        Map<String, Object> sanitized = elasticSearchService.sanitizeForElastic(input);
+
+        assertFalse(sanitized.containsKey(Constants.CONTEXT_DATA_ES_FIELD_V4));
+    }
+
+    @Test
+    void sanitizeForElastic_withoutContextData_doesNotAddContextDataV4() {
+        Map<String, Object> input = new HashMap<>();
+        input.put(Constants.NAME, "planName");
+
+        Map<String, Object> sanitized = elasticSearchService.sanitizeForElastic(input);
+
+        assertFalse(sanitized.containsKey(Constants.CONTEXT_DATA_ES_FIELD_V4));
+    }
+
+    @Test
+    void sanitizeForElastic_withMalformedContextDataJson_doesNotThrowAndSkipsContextDataV4() {
+        Map<String, Object> input = new HashMap<>();
+        input.put(Constants.CONTEXT_DATA_REQUEST, "not-valid-json");
+
+        Map<String, Object> sanitized = assertDoesNotThrow(() -> elasticSearchService.sanitizeForElastic(input));
+
+        assertFalse(sanitized.containsKey(Constants.CONTEXT_DATA_ES_FIELD_V4));
+    }
 }

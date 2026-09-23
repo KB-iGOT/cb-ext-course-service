@@ -214,7 +214,7 @@ public class UserGroupServiceImpl implements UserGroupService {
             Map<String, Object> updateProps = dataTransformService.buildUpdateProperties(userGroupName, criteria, userId);
             Map<String, Object> esSnapshot = dataTransformService.entityToResponseMap(existingEntity);
             if (transactionalUpdateFailed(userGroupId, userRootOrgId, updateProps,
-                    () -> esService.tryUpdateDocument(userGroupId, updateProps),
+                    () -> esService.tryUpdateDocument(userGroupId, new HashMap<>(updateProps)),
                     () -> esService.rollbackUpdate(userGroupId, esSnapshot),
                     response)) {
                 return response;
@@ -260,10 +260,14 @@ public class UserGroupServiceImpl implements UserGroupService {
                 return response;
             }
 
+            if (!validationService.validateUserGroupNotInUse(userGroupId, response)) {
+                return response;
+            }
+
             Map<String, Object> archiveProps = Map.of(Constants.COL_STATUS, Constants.ARCHIVED);
             Map<String, Object> esSnapshot = dataTransformService.entityToResponseMap(entity);
             if (transactionalUpdateFailed(userGroupId, userRootOrgId, archiveProps,
-                    () -> esService.tryUpdateDocument(userGroupId, archiveProps),
+                    () -> esService.tryUpdateDocument(userGroupId, new HashMap<>(archiveProps)),
                     () -> esService.rollbackUpdate(userGroupId, esSnapshot),
                     response)) {
                 return response;

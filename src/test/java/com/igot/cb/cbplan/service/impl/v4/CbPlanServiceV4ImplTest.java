@@ -10,7 +10,7 @@ import com.igot.cb.cbplan.dto.CbPlanReadResponseDto;
 import com.igot.cb.cbplan.service.CbPlanServiceV3;
 import com.igot.cb.cbplan.service.impl.CbPlanContentLookupServiceV3Impl;
 import com.igot.cb.cbplan.service.impl.CbPlanDataTransformServiceV3Impl;
-import com.igot.cb.cbplan.service.impl.CbPlanOrgLookupServiceV3Impl;
+import com.igot.cb.cbplan.service.impl.v4.CbPlanOrgLookupServiceV4Impl;
 import com.igot.cb.elasticsearch.service.EsUtilService;
 import com.igot.cb.model.ApiRequest;
 import com.igot.cb.model.ApiResponse;
@@ -18,6 +18,7 @@ import com.igot.cb.util.AccessTokenValidator;
 import com.igot.cb.util.CbExtServerProperties;
 import com.igot.cb.util.Constants;
 import com.igot.cb.util.UserProfileUtil;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -73,7 +74,7 @@ class CbPlanServiceV4ImplTest {
     private CbPlanElasticSearchServiceV4Impl elasticSearchService;
 
     @Mock
-    private CbPlanOrgLookupServiceV3Impl orgLookupService;
+    private CbPlanOrgLookupServiceV4Impl orgLookupService;
 
     @Mock
     private CbPlanReadServiceV4Impl readService;
@@ -101,6 +102,12 @@ class CbPlanServiceV4ImplTest {
 
     @InjectMocks
     private CbPlanServiceV4Impl cbPlanService;
+
+    @BeforeEach
+    void setUp() {
+        lenient().when(serverProperties.getCbPlanV4Keyspace()).thenReturn(Constants.KEYSPACE_SUNBIRD);
+        lenient().when(serverProperties.getCbPlanV4PlanTable()).thenReturn(Constants.TABLE_CB_PLAN_V3);
+    }
 
     private static ApiRequest apiRequest(Map<String, Object> requestMap) {
         ApiRequest request = new ApiRequest();

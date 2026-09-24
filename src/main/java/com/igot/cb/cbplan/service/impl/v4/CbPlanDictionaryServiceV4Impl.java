@@ -144,7 +144,7 @@ public class CbPlanDictionaryServiceV4Impl {
             }
             Map<String, Map<String, Object>> aparPlanMap = new LinkedHashMap<>();
             Map<String, Map<String, Object>> nonAparPlanMap = new LinkedHashMap<>();
-            buildPlanPartitions(activePlans, userOrgId, userProfile, aparPlanMap, nonAparPlanMap);
+            buildPlanPartitions(activePlans, userProfile, aparPlanMap, nonAparPlanMap);
             Set<String> orgIds = collectCreatedByOrgIds(aparPlanMap, nonAparPlanMap);
             Map<String, Map<String, String>> orgDetailsMap = fetchOrgDetails(orgIds);
             enrichOrgDetails(aparPlanMap, orgDetailsMap);
@@ -312,22 +312,35 @@ public class CbPlanDictionaryServiceV4Impl {
     }
 
     /**
-     * Pre-fetches all V4 userGroupIds referenced across the plan list in one batch call per org,
-     * avoiding per-plan Cassandra lookups in the access-control evaluation loop.
+     * Pre-fetches all V4 userGroupIds referenced across the plan list, grouped by each plan's
+     * creator orgId (orgidlist[0]). User groups are partitioned by their creator org in Cassandra,
+     * so the lookup must use the plan's orgId, not the requesting user's orgId.
      */
     private Map<String, Map<String, Object>> batchFetchUserGroupsForPlans(List<Map<String, Object>> plans,
-                                                                          String userOrgId,
                                                                           Map<String, Map<String, Object>> parsedContextData) {
-        Set<String> userGroupIds = new HashSet<>();
+        Map<String, Set<String>> orgToGroupIds = new HashMap<>();
         for (Map<String, Object> plan : plans) {
-            collectV4UserGroupIds(plan, userGroupIds, parsedContextData);
+            String planOrgId = extractCreatedByOrgId(plan);
+            if (StringUtils.isBlank(planOrgId)) {
+                continue;
+            }
+            Set<String> groupIds = new HashSet<>();
+            collectV4UserGroupIds(plan, groupIds, parsedContextData);
+            if (CollectionUtils.isNotEmpty(groupIds)) {
+                orgToGroupIds.computeIfAbsent(planOrgId, k -> new HashSet<>()).addAll(groupIds);
+            }
         }
-        if (userGroupIds.isEmpty()) {
+        if (orgToGroupIds.isEmpty()) {
             return Collections.emptyMap();
         }
-        log.debug("batchFetchUserGroupsForPlans: Pre-fetching {} unique userGroupIds for orgId={}",
-                userGroupIds.size(), userOrgId);
-        Map<String, Map<String, Object>> groups = userGroupLookupService.fetchUserGroupsByIds(new ArrayList<>(userGroupIds), userOrgId);
+        int totalGroups = orgToGroupIds.values().stream().mapToInt(Set::size).sum();
+        log.debug("batchFetchUserGroupsForPlans: Pre-fetching {} user groups across {} plan orgIds",
+                totalGroups, orgToGroupIds.size());
+        Map<String, Map<String, Object>> groups = new HashMap<>();
+        for (Map.Entry<String, Set<String>> entry : orgToGroupIds.entrySet()) {
+            groups.putAll(userGroupLookupService.fetchUserGroupsByIds(
+                    new ArrayList<>(entry.getValue()), entry.getKey()));
+        }
         normalizeCriteriaKeysInGroups(groups);
         return groups;
     }
@@ -771,7 +784,7 @@ public class CbPlanDictionaryServiceV4Impl {
         }
         Map<String, Map<String, Object>> aparPlanMap = new LinkedHashMap<>();
         Map<String, Map<String, Object>> nonAparPlanMap = new LinkedHashMap<>();
-        buildPlanPartitions(prevPlans, userOrgId, userProfile, aparPlanMap, nonAparPlanMap);
+        buildPlanPartitions(prevPlans, userProfile, aparPlanMap, nonAparPlanMap);
         Set<String> orgIds = collectCreatedByOrgIds(aparPlanMap, nonAparPlanMap);
         Map<String, Map<String, String>> orgDetailsMap = fetchOrgDetails(orgIds);
         enrichOrgDetails(aparPlanMap, orgDetailsMap);
@@ -842,12 +855,11 @@ public class CbPlanDictionaryServiceV4Impl {
     }
 
     private void buildPlanPartitions(List<Map<String, Object>> plans,
-                                     String userOrgId,
                                      Map<String, String> userProfile,
                                      Map<String, Map<String, Object>> aparPlanMap,
                                      Map<String, Map<String, Object>> nonAparPlanMap) {
         Map<String, Map<String, Object>> parsedContextData = parseContextDataForPlans(plans);
-        Map<String, Map<String, Object>> prefetchedUserGroups = batchFetchUserGroupsForPlans(plans, userOrgId, parsedContextData);
+        Map<String, Map<String, Object>> prefetchedUserGroups = batchFetchUserGroupsForPlans(plans, parsedContextData);
         processPlans(plans, userProfile, prefetchedUserGroups, parsedContextData, aparPlanMap, nonAparPlanMap);
     }
 

@@ -1000,6 +1000,7 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
             return;
         }
         CbPlanReadResponseDto enrichedData = readService.buildEnrichedPlanData(cbPlan, cbPlanId);
+        enrichCreatedByName(enrichedData);
         response.getResult().put(Constants.CONTENT, enrichedData);
         log.info("CbPlanServiceV4Impl.readCbPlan: Successfully retrieved CB Plan - cbPlanId={}", cbPlanId);
     }
@@ -1076,6 +1077,7 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
             return;
         }
         CbPlanReadResponseDto enrichedData = readService.buildEnrichedPlanData(cbPlan, cbPlanId);
+        enrichCreatedByName(enrichedData);
         response.getResult().put(Constants.CONTENT, enrichedData);
         log.info("CbPlanServiceV4Impl.readCbPlanAdmin: Successfully retrieved CB Plan - cbPlanId={}", cbPlanId);
     }
@@ -1523,5 +1525,19 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
         entry.put(Constants.IDENTIFIER, item);
         entry.put(Constants.MANDATORY, false);
         return entry;
+    }
+
+    /**
+     * Resolves the createdBy user ID to a display name and sets it on the DTO.
+     *
+     * @param dto read response DTO to enrich
+     */
+    private void enrichCreatedByName(CbPlanReadResponseDto dto) {
+        String createdBy = dto.getCreatedBy();
+        if (StringUtils.isBlank(createdBy)) {
+            return;
+        }
+        Map<String, String> userIdToName = userProfileUtil.buildUserProfiles(List.of(createdBy));
+        dto.setCreatedByName(userIdToName.getOrDefault(createdBy, StringUtils.EMPTY));
     }
 }

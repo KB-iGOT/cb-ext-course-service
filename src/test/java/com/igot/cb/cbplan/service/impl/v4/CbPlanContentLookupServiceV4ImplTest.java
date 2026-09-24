@@ -5,7 +5,6 @@ import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.service.OutboundRequestHandlerServiceImpl;
 import com.igot.cb.util.CbExtServerProperties;
 import com.igot.cb.util.Constants;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -53,11 +52,6 @@ class CbPlanContentLookupServiceV4ImplTest {
     @InjectMocks
     private CbPlanContentLookupServiceV4Impl contentLookupService;
 
-    @BeforeEach
-    void setUp() {
-        when(serverProperties.getCbPlanV4ContentLookupTable()).thenReturn(V4_TABLE);
-    }
-
     private static Map<String, Object> lookupRow(String... planIds) {
         Map<String, Object> row = new HashMap<>();
         row.put(Constants.PLAN_ID, new HashSet<>(Set.of(planIds)));
@@ -65,6 +59,7 @@ class CbPlanContentLookupServiceV4ImplTest {
     }
 
     private void stubLookupRows(List<Map<String, Object>> rows) {
+        when(serverProperties.getCbPlanV4ContentLookupTable()).thenReturn(V4_TABLE);
         when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), anyMap(), any(), any()))
                 .thenReturn(rows);
     }
@@ -122,6 +117,7 @@ class CbPlanContentLookupServiceV4ImplTest {
 
     @Test
     void updateContentLookupForModifiedPlan_handlesAddsAndDeletes() {
+        when(serverProperties.getCbPlanV4ContentLookupTable()).thenReturn(V4_TABLE);
         Map<String, Object> updatedRequest = new HashMap<>();
         updatedRequest.put(Constants.CONTENT_LIST, List.of("content1", "content2"));
         Map<String, Object> existingCbPlan = new HashMap<>();

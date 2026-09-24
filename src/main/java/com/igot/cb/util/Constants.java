@@ -789,6 +789,9 @@ public class Constants {
     public static final String SYSTEM_USER = "SYSTEM";
     public static final String EXISTS = "exists";
     public static final String API_CBPLAN_V4_GET_USER_DICTIONARY = "api.cbplan.v4.user.dictionary";
+    public static final String API_CBPLAN_V4_ASSESSMENT_ELIGIBILITY = "api.cbplan.v4.user.assessment.eligibility";
+    public static final String ELIGIBLE = "eligible";
+    public static final String MANDATORY_COURSES = "mandatoryCourses";
     public static final String CB_PLAN_V4_REDIS_KEY_PREFIX = "cbplan:v4:userlookup:";
     public static final String RESPONSE_KEY_APAR_PLAN_LIST = "aparPlanList";
     public static final String RESPONSE_KEY_NON_APAR_PLAN_LIST = "nonAparPlanList";

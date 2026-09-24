@@ -178,6 +178,144 @@ public class CbPlanDictionaryServiceV4Impl {
     }
 
     /**
+     * Checks whether the given Comprehensive Assessment do_id is linked (via caLinkedId) to any
+     * plan the user is eligible for, searching the current financial year then the previous year -
+     * unlike getCBPlanDictionaryForUser, this always searches both, since callers here never pass
+     * an explicit planYear to opt into the fallback. Reuses the same per-year plan-resolution
+     * pipeline (org/ministry scoping, access-control rule evaluation, live-content filtering) and
+     * the same per-year Redis cache as the dictionary endpoint, so a warm dictionary cache is
+     * reused here too, and a miss here populates the same cache the dictionary endpoint would use.
+     *
+     * @param doId CA content identifier to check eligibility for
+     * @param authToken authentication token
+     * @return ApiResponse with result = {eligible: boolean, mandatoryCourses: List<String>}
+     */
+    public ApiResponse getComprehensiveAssessmentEligibility(String doId, String authToken) {
+        log.debug("getComprehensiveAssessmentEligibility: Entry - doId={}", doId);
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_CBPLAN_V4_ASSESSMENT_ELIGIBILITY);
+        try {
+            String userId = accessTokenValidator.fetchUserIdFromAccessToken(authToken, response);
+            if (StringUtils.isBlank(userId)) {
+                log.warn("getComprehensiveAssessmentEligibility: Invalid or missing token");
+                response.getParams().setErr("Invalid or missing authentication token");
+                response.setResponseCode(HttpStatus.UNAUTHORIZED);
+                return response;
+            }
+            Map<String, String> userProfile = buildUserProfile(userId, response);
+            if (userProfile.isEmpty()) {
+                return response;
+            }
+            String userOrgId = userProfile.get(Constants.USER_ROOT_ORG_ID);
+            AtomicBoolean isCacheEnabled = new AtomicBoolean(false);
+            String currentYear = CbPlanYearUtil.resolveCurrentFinancialYear();
+            for (String planYear : List.of(currentYear, CbPlanYearUtil.resolvePreviousYear(currentYear))) {
+                Map<String, Object> yearResult = resolveYearResult(userId, userProfile, userOrgId, planYear, isCacheEnabled);
+                Map<String, Object> match = findPlanByCaLinkedId(yearResult, doId);
+                if (Objects.nonNull(match)) {
+                    log.info("getComprehensiveAssessmentEligibility: Match found - userId={}, doId={}, planYear={}", userId, doId, planYear);
+                    response.getResult().put(Constants.ELIGIBLE, true);
+                    response.getResult().put(Constants.MANDATORY_COURSES, extractMandatoryCourseIds(match));
+                    response.setParams(new ApiRespParam());
+                    response.getParams().setStatus(Constants.SUCCESS);
+                    response.setResponseCode(HttpStatus.OK);
+                    return response;
+                }
+            }
+            log.info("getComprehensiveAssessmentEligibility: No match - userId={}, doId={}", userId, doId);
+            response.getResult().put(Constants.ELIGIBLE, false);
+            response.getResult().put(Constants.MANDATORY_COURSES, List.of());
+            response.setParams(new ApiRespParam());
+            response.getParams().setStatus(Constants.SUCCESS);
+            response.setResponseCode(HttpStatus.OK);
+        } catch (Exception e) {
+            log.error("getComprehensiveAssessmentEligibility: Unexpected error - doId={}", doId, e);
+            response.getParams().setStatus(Constants.FAILED);
+            response.getParams().setErr("Failed to check assessment eligibility");
+            response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+        return response;
+    }
+
+    /**
+     * Resolves one year's eligible-plan result via the same pipeline and the same per-year Redis
+     * cache key getCBPlanDictionaryForUser's cache-miss path uses - this does not modify or call
+     * into that method, it independently drives the same already-existing, already-shared steps
+     * (fetchPlansForUser, buildPlanPartitions, org enrichment, live-content filtering) so this is
+     * purely additive: getCBPlanDictionaryForUser's own code path is untouched.
+     */
+    private Map<String, Object> resolveYearResult(String userId, Map<String, String> userProfile,
+            String userOrgId, String planYear, AtomicBoolean isCacheEnabled) {
+        String cacheKey = Constants.CB_PLAN_V4_REDIS_KEY_PREFIX + userId + ":" + planYear + ":dict";
+        String cachedJson = redisCacheMgr.getFromCache(cacheKey);
+        if (StringUtils.isNotBlank(cachedJson)) {
+            try {
+                return mapper.readValue(cachedJson, MAP_TYPE_REF);
+            } catch (JsonProcessingException e) {
+                log.warn("resolveYearResult: Failed to deserialize cache - key={}", cacheKey, e);
+            }
+        }
+        List<Map<String, Object>> activePlans = fetchPlansForUser(userProfile, userOrgId, planYear, isCacheEnabled);
+        if (CollectionUtils.isEmpty(activePlans)) {
+            Map<String, Object> empty = buildYearResult(new LinkedHashMap<>(), new LinkedHashMap<>());
+            cacheResult(cacheKey, empty, isCacheEnabled.get());
+            return empty;
+        }
+        Map<String, Map<String, Object>> aparPlanMap = new LinkedHashMap<>();
+        Map<String, Map<String, Object>> nonAparPlanMap = new LinkedHashMap<>();
+        buildPlanPartitions(activePlans, userProfile, aparPlanMap, nonAparPlanMap);
+        Set<String> orgIds = collectCreatedByOrgIds(aparPlanMap, nonAparPlanMap);
+        Map<String, Map<String, String>> orgDetailsMap = fetchOrgDetails(orgIds);
+        enrichOrgDetails(aparPlanMap, orgDetailsMap);
+        enrichOrgDetails(nonAparPlanMap, orgDetailsMap);
+        filterLiveContentInPlans(aparPlanMap, nonAparPlanMap);
+        Map<String, Object> yearResult = buildYearResult(aparPlanMap, nonAparPlanMap);
+        cacheResult(cacheKey, yearResult, isCacheEnabled.get());
+        return yearResult;
+    }
+
+    /**
+     * Scans a year's aparPlanList/nonAparPlanList for the plan whose caLinkedId equals doId.
+     */
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> findPlanByCaLinkedId(Map<String, Object> yearResult, String doId) {
+        for (String listKey : List.of(Constants.RESPONSE_KEY_APAR_PLAN_LIST, Constants.RESPONSE_KEY_NON_APAR_PLAN_LIST)) {
+            Object listObj = yearResult.get(listKey);
+            if (!(listObj instanceof Map)) {
+                continue;
+            }
+            for (Object planObj : ((Map<String, Object>) listObj).values()) {
+                if (planObj instanceof Map) {
+                    Map<String, Object> plan = (Map<String, Object>) planObj;
+                    if (doId.equals(plan.get(Constants.CA_LINKED_ID))) {
+                        return plan;
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Extracts identifiers of contentList entries marked mandatory:true.
+     */
+    @SuppressWarnings("unchecked")
+    private List<String> extractMandatoryCourseIds(Map<String, Object> plan) {
+        Object contentListObj = plan.get(Constants.CONTENT_LIST);
+        List<String> mandatoryIds = new ArrayList<>();
+        if (contentListObj instanceof List) {
+            for (Object entryObj : (List<Object>) contentListObj) {
+                if (entryObj instanceof Map) {
+                    Map<String, Object> entry = (Map<String, Object>) entryObj;
+                    if (Boolean.TRUE.equals(entry.get(Constants.MANDATORY)) && entry.get(Constants.IDENTIFIER) != null) {
+                        mandatoryIds.add((String) entry.get(Constants.IDENTIFIER));
+                    }
+                }
+            }
+        }
+        return mandatoryIds;
+    }
+
+    /**
      * Resolves the plan year: uses the requested year if valid, otherwise defaults to the current financial year.
      */
     private String resolvePlanYear(String requestedPlanYear, ApiResponse response) {

@@ -163,4 +163,21 @@ public class CbPlanWithAccessSettingsV4 {
         ApiResponse response = cbPlanServiceV4.getCBPlanDictionaryForUser(request, token);
         return new ResponseEntity<>(response, response.getResponseCode());
     }
+
+    /**
+     * Checks whether the given Comprehensive Assessment do_id is linked (via caLinkedId) to any
+     * plan the authenticated user is eligible for, searching the current and previous financial
+     * year server-side. Returns just {eligible, mandatoryCourses} rather than the full dictionary.
+     *
+     * @param doId  CA content identifier to check eligibility for
+     * @param token the authentication token
+     * @return ResponseEntity containing ApiResponse with eligibility + mandatory course identifiers
+     */
+    @GetMapping("/user/assessment/{doId}/eligibility")
+    public ResponseEntity<ApiResponse> getComprehensiveAssessmentEligibility(
+            @PathVariable String doId,
+            @RequestHeader(Constants.X_AUTH_TOKEN) String token) {
+        ApiResponse response = cbPlanServiceV4.getComprehensiveAssessmentEligibility(doId, token);
+        return new ResponseEntity<>(response, response.getResponseCode());
+    }
 }

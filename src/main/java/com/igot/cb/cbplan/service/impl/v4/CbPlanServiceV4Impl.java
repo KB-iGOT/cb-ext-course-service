@@ -4,9 +4,7 @@ import java.time.Instant;
 import java.util.*;
 
 import com.igot.cb.cbplan.service.CbPlanServiceV3;
-import com.igot.cb.cbplan.service.impl.CbPlanContentLookupServiceV3Impl;
 import com.igot.cb.cbplan.service.impl.CbPlanDataTransformServiceV3Impl;
-import com.igot.cb.cbplan.service.impl.v4.CbPlanOrgLookupServiceV4Impl;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -47,7 +45,7 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
     private final CbExtServerProperties serverProperties;
     private final CbPlanValidationServiceV4Impl validationService;
     private final CbPlanDataTransformServiceV3Impl dataTransformService;
-    private final CbPlanContentLookupServiceV3Impl contentLookupService;
+    private final CbPlanContentLookupServiceV4Impl contentLookupService;
     private final CbPlanElasticSearchServiceV4Impl elasticSearchService;
     private final CbPlanOrgLookupServiceV4Impl orgLookupService;
     private final CbPlanReadServiceV4Impl readService;
@@ -65,7 +63,7 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
                                CbExtServerProperties serverProperties,
                                CbPlanValidationServiceV4Impl validationService,
                                CbPlanDataTransformServiceV3Impl dataTransformService,
-                               CbPlanContentLookupServiceV3Impl contentLookupService,
+                               CbPlanContentLookupServiceV4Impl contentLookupService,
                                CbPlanElasticSearchServiceV4Impl elasticSearchService,
                                CbPlanOrgLookupServiceV4Impl orgLookupService,
                                CbPlanReadServiceV4Impl readService,

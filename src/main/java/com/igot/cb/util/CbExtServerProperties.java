@@ -214,6 +214,9 @@ public class CbExtServerProperties {
     @Value("${cbplan.v4.lookup.by.ministryorstateid.table}")
     private String cbPlanV4LookupByMinistryOrStateIdTable;
 
+    @Value("${cbplan.v4.content.lookup.table}")
+    private String cbPlanV4ContentLookupTable;
+
     public List<String> getCbPlanEnrichedContentFieldsList() {
         return Arrays.asList(cbPlanEnrichedContentFields.split(",", -1));
     }

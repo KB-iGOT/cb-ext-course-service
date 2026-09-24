@@ -8,7 +8,7 @@ import com.igot.cb.cache.RedisCacheMgr;
 import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.cbplan.dto.CbPlanReadResponseDto;
 import com.igot.cb.cbplan.service.CbPlanServiceV3;
-import com.igot.cb.cbplan.service.impl.CbPlanContentLookupServiceV3Impl;
+import com.igot.cb.cbplan.service.impl.v4.CbPlanContentLookupServiceV4Impl;
 import com.igot.cb.cbplan.service.impl.CbPlanDataTransformServiceV3Impl;
 import com.igot.cb.cbplan.service.impl.v4.CbPlanOrgLookupServiceV4Impl;
 import com.igot.cb.elasticsearch.service.EsUtilService;
@@ -70,7 +70,7 @@ class CbPlanServiceV4ImplTest {
     private CbPlanDataTransformServiceV3Impl dataTransformService;
 
     @Mock
-    private CbPlanContentLookupServiceV3Impl contentLookupService;
+    private CbPlanContentLookupServiceV4Impl contentLookupService;
 
     @Mock
     private CbPlanElasticSearchServiceV4Impl elasticSearchService;

@@ -173,7 +173,7 @@ public class CbPlanWithAccessSettingsV4 {
      * @param token the authentication token
      * @return ResponseEntity containing ApiResponse with eligibility + mandatory course identifiers
      */
-    @GetMapping("/user/assessment/{doId}/eligibility")
+    @GetMapping("/user/assessment/eligibility/{doId}")
     public ResponseEntity<ApiResponse> getComprehensiveAssessmentEligibility(
             @PathVariable String doId,
             @RequestHeader(Constants.X_AUTH_TOKEN) String token) {

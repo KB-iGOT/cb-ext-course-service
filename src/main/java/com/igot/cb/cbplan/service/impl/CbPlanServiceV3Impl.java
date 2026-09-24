@@ -18,6 +18,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.igot.cb.cache.CbPlanCacheMgrV3;
+import com.igot.cb.cbplan.util.AccessRuleEvaluator;
 import com.igot.cb.cache.RedisCacheMgr;
 import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.cbplan.dto.CbPlanContentOccurrence;
@@ -63,6 +64,7 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
     private final CbPlanElasticSearchServiceV3Impl elasticSearchService;
     private final CbPlanEnrichmentServiceV3Impl enrichmentService;
     private final CbPlanCacheMgrV3 cbPlanCacheMgrV3;
+    private final AccessRuleEvaluator accessRuleEvaluator;
     private final RedisCacheMgr redisCacheMgr;
 
     public CbPlanServiceV3Impl(AccessTokenValidator accessTokenValidator,
@@ -87,6 +89,7 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
         this.esUtilService = esUtilService;
         this.contentService = contentService;
         this.cbPlanCacheMgrV3 = cbPlanCacheMgrV3;
+        this.accessRuleEvaluator = new AccessRuleEvaluator();
         this.redisCacheMgr = redisCacheMgr;
         this.mapper = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -660,22 +663,26 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
                                     Map<String, Object> existingCbPlan, ApiResponse response) {
         String planYear = (String) existingCbPlan.get(Constants.PLAN_YEAR);
         Map<String, Object> updateData = dataTransformService.prepareArchiveUpdate(comment, userId);
+        Map<String, Object> sanitizedMap = prepareArchiveEsDocument(cbPlanId, existingCbPlan, updateData);
+        Map<String, Object> sanitizedExisting = elasticSearchService.sanitizeForElastic(new HashMap<>(existingCbPlan));
         Map<String, Object> resp = cassandraOperation.updateRecord(
                 Constants.KEYSPACE_SUNBIRD,
                 Constants.TABLE_CB_PLAN_V3,
                 updateData,
-                Map.of(Constants.PLAN_ID, cbPlanId));
+                Map.of(Constants.PLAN_ID, cbPlanId),
+                () -> Objects.nonNull(esUtilService.updateDocument(serverProperties.getCpPlanIndex(),
+                        Constants.INDEX_TYPE, cbPlanId, sanitizedMap, serverProperties.getElasticCbPlanJsonPath())),
+                () -> rollbackArchiveEsSync(cbPlanId, sanitizedExisting));
         if (Constants.SUCCESS.equals(resp.get(Constants.RESPONSE))) {
-            processSuccessfulArchive(cbPlanId, planYear, existingCbPlan, updateData, response);
+            processSuccessfulArchive(cbPlanId, planYear, existingCbPlan, response);
         } else {
             processFailedArchive(cbPlanId, resp, response);
         }
     }
 
     private void processSuccessfulArchive(String cbPlanId, String planYear, Map<String, Object> existingCbPlan,
-                                          Map<String, Object> updateData, ApiResponse response) {
+                                          ApiResponse response) {
         contentLookupService.removeFromContentLookup(cbPlanId, existingCbPlan);
-        elasticSearchService.updateElasticSearchForArchive(cbPlanId, existingCbPlan, updateData);
         orgLookupService.deactivateOrgLookupEntries(cbPlanId, planYear, existingCbPlan, response);
         if (Constants.SUCCESS.equalsIgnoreCase(response.getParams().getStatus())
                 || Objects.isNull(response.getParams().getStatus())) {
@@ -701,7 +708,7 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
     @Override
     public ApiResponse searchCbPlan(SearchCriteria searchCriteria, String userOrgId, String authToken) {
         log.info("CbPlanServiceV3Impl.searchCbPlan: Searching CB Plans for orgId: {}", userOrgId);
-        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_COMMUNITY_SEARCH);
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_CBPLAN_V3_SEARCH);
         try {
             String userId = validationService.validateAndExtractUserId(authToken, response);
             if (StringUtils.isEmpty(userId)) {
@@ -1103,95 +1110,10 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
                     cbPlan.get(Constants.PLAN_ID));
             return true;
         }
-        try {
-            Map<String, Object> contextDataMap = parseContextData(contextDataObj);
-            if (MapUtils.isEmpty(contextDataMap)) {
-                return true;
-            }
-            boolean hasAccess = evaluateContextAccessRule(contextDataMap, userProfile);
-            log.debug("evaluateAccessControl: planId={}, hasAccess={}", cbPlan.get(Constants.PLAN_ID), hasAccess);
-            return hasAccess;
-        } catch (Exception e) {
-            log.error("evaluateAccessControl: Failed for planId={}", cbPlan.get(Constants.PLAN_ID), e);
-            return false;
-        }
-    }
-
-    private Map<String, Object> parseContextData(Object contextDataObj) throws JsonProcessingException {
-        if (contextDataObj instanceof String str && StringUtils.isNotBlank(str)) {
-            return mapper.readValue(str, new TypeReference<Map<String, Object>>() {
-            });
-        } else if (contextDataObj instanceof Map<?, ?> map) {
-            return (Map<String, Object>) map;
-        }
-        return Map.of();
-    }
-
-    private boolean evaluateContextAccessRule(Map<String, Object> accessSettingIdMap, Map<String, String> userProfile) {
-        if (MapUtils.isEmpty(accessSettingIdMap) || MapUtils.isEmpty(userProfile)) {
-            return false;
-        }
-        Map<String, Object> accessControl = (Map<String, Object>) accessSettingIdMap.get(Constants.ACCESS_CONTROL);
-        if (MapUtils.isEmpty(accessControl)) {
-            return false;
-        }
-        List<Map<String, Object>> userGroups = (List<Map<String, Object>>) accessControl.get(Constants.USER_GROUPS);
-        if (CollectionUtils.isEmpty(userGroups)) {
-            return false;
-        }
-        for (Map<String, Object> userGroup : userGroups) {
-            if (matchesUserGroup(userGroup, userProfile)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private boolean matchesUserGroup(Map<String, Object> userGroup, Map<String, String> userProfile) {
-        List<Map<String, Object>> criteriaList =
-                (List<Map<String, Object>>) userGroup.get(Constants.USER_GROUP_CRITERIA_LIST);
-        if (CollectionUtils.isEmpty(criteriaList)) {
-            return false;
-        }
-        for (Map<String, Object> criteria : criteriaList) {
-            if (!matchesCriteria(criteria, userProfile)) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    private boolean matchesCriteria(Map<String, Object> criteria, Map<String, String> userProfile) {
-        String criteriaKey = ((String) criteria.get(Constants.CRITERIA_KEY)).toLowerCase().trim();
-        Object rawCriteriaValue = criteria.get(Constants.CRITERIA_VALUE);
-        if (Constants.CENTRAL_DEPUTATION.equalsIgnoreCase(criteriaKey)) {
-            boolean expectedValue = Boolean.parseBoolean(String.valueOf(rawCriteriaValue));
-            boolean actualValue = Boolean.parseBoolean(userProfile.getOrDefault(Constants.CENTRAL_DEPUTATION_LOWER_KEY, "false"));
-            return expectedValue == actualValue;
-        }
-        List<String> expectedValues = parseExpectedValues(rawCriteriaValue);
-        if (CollectionUtils.isEmpty(expectedValues)) {
-            return false;
-        }
-        String actualValue = userProfile.get(criteriaKey);
-        if (Objects.isNull(actualValue)) {
-            return false;
-        }
-        return expectedValues.stream()
-                .map(String::toLowerCase)
-                .anyMatch(expected -> expected.equals(actualValue.toLowerCase()));
-    }
-
-    private List<String> parseExpectedValues(Object rawCriteriaValue) {
-        if (rawCriteriaValue instanceof List<?> list) {
-            return list.stream()
-                    .filter(Objects::nonNull)
-                    .map(Object::toString)
-                    .toList();
-        } else if (Objects.nonNull(rawCriteriaValue)) {
-            return Collections.singletonList(rawCriteriaValue.toString());
-        }
-        return Collections.emptyList();
+        boolean hasAccess = accessRuleEvaluator.hasAccess(contextDataObj, userProfile,
+                cbPlan.get(Constants.PLAN_ID));
+        log.debug("evaluateAccessControl: planId={}, hasAccess={}", cbPlan.get(Constants.PLAN_ID), hasAccess);
+        return hasAccess;
     }
 
     private boolean isContentAccessible(String contentId, Map<String, String> userProfile, String userOrgId) {
@@ -1613,7 +1535,7 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
         }
         if (dataInDraftObject.containsKey(Constants.CONTEXT_DATA_REQUEST)) {
             extractedFields.put(Constants.CONTEXT_DATA_REQUEST,
-                    mapper.writeValueAsString(dataInDraftObject.get(Constants.CONTEXT_DATA_REQUEST)));
+                    serializeContextData(dataInDraftObject.get(Constants.CONTEXT_DATA_REQUEST)));
         }
         if (dataInDraftObject.containsKey(Constants.END_DATE_REQUEST)) {
             extractedFields.put(Constants.END_DATE_REQUEST,
@@ -1686,6 +1608,20 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
         }
         log.info("publishCbPlanByAdmin: Publishing AI CBP plan for targetedOrganisation={}", targetedOrganisation);
         return aiCBPPublishCbPlan(request, targetedOrganisation, authToken, Collections.emptyList(), true);
+    }
+
+
+    /**
+     * Serializes contextData to a JSON string. A value that is already a
+     * serialized JSON string is returned as-is, so it is never double-encoded
+     * (a draft stores contextData as a string; publish/update must not wrap it
+     * into a quoted JSON string literal again).
+     */
+    private String serializeContextData(Object contextData) throws JsonProcessingException {
+        if (contextData instanceof String str) {
+            return str;
+        }
+        return mapper.writeValueAsString(contextData);
     }
 
     /**
@@ -1840,6 +1776,37 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
         List<Map<String, Object>> ministryPlans = cbPlanCacheMgrV3.getCbPlanForMinistryOrStateId(
                 ministryOrStateId, planYear);
         return dataTransformService.mergePlanLists(orgPlans, ministryPlans);
+    }
+
+    /**
+     * Builds and sanitizes the ES document for an archive operation.
+     *
+     * @param cbPlanId      plan ID
+     * @param existingCbPlan existing plan data from Cassandra
+     * @param updateData    archive update fields (status, updatedAt, comment)
+     * @return sanitized document ready for ES indexing
+     */
+    private Map<String, Object> prepareArchiveEsDocument(String cbPlanId, Map<String, Object> existingCbPlan,
+                                                         Map<String, Object> updateData) {
+        Map<String, Object> esDocument = new HashMap<>(existingCbPlan);
+        esDocument.putAll(updateData);
+        esDocument.put(Constants.ID, cbPlanId);
+        esDocument.put(Constants.STATUS, Constants.CB_RETIRE);
+        return elasticSearchService.sanitizeForElastic(esDocument);
+    }
+
+    /**
+     * Best-effort ES rollback after a Cassandra commit failure during archive.
+     * Logs a divergence alert if the rollback itself also fails.
+     *
+     * @param cbPlanId         plan ID
+     * @param sanitizedExisting pre-archive ES document to restore
+     */
+    private void rollbackArchiveEsSync(String cbPlanId, Map<String, Object> sanitizedExisting) {
+        if (Objects.isNull(esUtilService.updateDocument(serverProperties.getCpPlanIndex(),
+                Constants.INDEX_TYPE, cbPlanId, sanitizedExisting, serverProperties.getElasticCbPlanJsonPath()))) {
+            log.error("ES_CASSANDRA_DIVERGENCE: ES rollback failed for cbPlanId={} — manual reconciliation required", cbPlanId);
+        }
     }
 
 }

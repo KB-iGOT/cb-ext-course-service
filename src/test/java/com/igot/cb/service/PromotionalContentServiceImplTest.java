@@ -23,6 +23,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.*;
+
+import org.roaringbitmap.RoaringBitmap;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -548,7 +550,7 @@ class PromotionalContentServiceImplTest {
     }
 
     @Test
-    void testEvaluateAccessSettingRule_CriteriaValueNotInBitSet() {
+    void testEvaluateAccessSettingRule_CriteriaValueNotInBitmap() {
         Map<String, Integer> userProfile = Map.of("designation", 5);
         List<CachedAccessSettingRule> rules = createMockAccessRulesForNonMatchingTest();
         when(accessTokenValidator.fetchUserIdFromAccessToken(eq(AUTH_TOKEN), any(ApiResponse.class)))
@@ -573,9 +575,9 @@ class PromotionalContentServiceImplTest {
         List<Map<String, Object>> criteriaList = new ArrayList<>();
         Map<String, Object> criteria = new HashMap<>();
         criteria.put(Constants.CRITERIA_KEY, "designation");
-        BitSet bitSet = new BitSet();
-        bitSet.set(1);
-        bitSet.set(2);
+        RoaringBitmap bitSet = new RoaringBitmap();
+        bitSet.add(1);
+        bitSet.add(2);
         criteria.put(Constants.CRITERIA_VALUE, bitSet);
         criteriaList.add(criteria);
         userGroup.put(Constants.USER_GROUP_CRITERIA_LIST, criteriaList);
@@ -599,9 +601,9 @@ class PromotionalContentServiceImplTest {
         List<Map<String, Object>> criteriaList = new ArrayList<>();
         Map<String, Object> criteria = new HashMap<>();
         criteria.put(Constants.CRITERIA_KEY, "designation");
-        BitSet bitSet = new BitSet();
-        bitSet.set(1);
-        bitSet.set(2);
+        RoaringBitmap bitSet = new RoaringBitmap();
+        bitSet.add(1);
+        bitSet.add(2);
         criteria.put(Constants.CRITERIA_VALUE, bitSet);
         criteriaList.add(criteria);
         userGroup.put(Constants.USER_GROUP_CRITERIA_LIST, criteriaList);
@@ -642,8 +644,8 @@ class PromotionalContentServiceImplTest {
         List<Map<String, Object>> criteriaList = new ArrayList<>();
         Map<String, Object> criteria = new HashMap<>();
         criteria.put(Constants.CRITERIA_KEY, "designation");
-        BitSet bitSet = new BitSet();
-        bitSet.set(1);
+        RoaringBitmap bitSet = new RoaringBitmap();
+        bitSet.add(1);
         criteria.put(Constants.CRITERIA_VALUE, bitSet);
         criteriaList.add(criteria);
         userGroup.put(Constants.USER_GROUP_CRITERIA_LIST, criteriaList);
@@ -666,14 +668,14 @@ class PromotionalContentServiceImplTest {
         List<Map<String, Object>> criteriaList = new ArrayList<>();
         Map<String, Object> criteria1 = new HashMap<>();
         criteria1.put(Constants.CRITERIA_KEY, "designation");
-        BitSet bitSet1 = new BitSet();
-        bitSet1.set(1);
+        RoaringBitmap bitSet1 = new RoaringBitmap();
+        bitSet1.add(1);
         criteria1.put(Constants.CRITERIA_VALUE, bitSet1);
         criteriaList.add(criteria1);
         Map<String, Object> criteria2 = new HashMap<>();
         criteria2.put(Constants.CRITERIA_KEY, "cadre");
-        BitSet bitSet2 = new BitSet();
-        bitSet2.set(2);
+        RoaringBitmap bitSet2 = new RoaringBitmap();
+        bitSet2.add(2);
         criteria2.put(Constants.CRITERIA_VALUE, bitSet2);
         criteriaList.add(criteria2);
         userGroup.put(Constants.USER_GROUP_CRITERIA_LIST, criteriaList);
@@ -696,8 +698,8 @@ class PromotionalContentServiceImplTest {
         List<Map<String, Object>> criteriaList1 = new ArrayList<>();
         Map<String, Object> criteria1 = new HashMap<>();
         criteria1.put(Constants.CRITERIA_KEY, "designation");
-        BitSet bitSet1 = new BitSet();
-        bitSet1.set(99);
+        RoaringBitmap bitSet1 = new RoaringBitmap();
+        bitSet1.add(99);
         criteria1.put(Constants.CRITERIA_VALUE, bitSet1);
         criteriaList1.add(criteria1);
         userGroup1.put(Constants.USER_GROUP_CRITERIA_LIST, criteriaList1);
@@ -707,14 +709,14 @@ class PromotionalContentServiceImplTest {
         List<Map<String, Object>> criteriaList2 = new ArrayList<>();
         Map<String, Object> criteria2 = new HashMap<>();
         criteria2.put(Constants.CRITERIA_KEY, "designation");
-        BitSet bitSet2 = new BitSet();
-        bitSet2.set(1);
+        RoaringBitmap bitSet2 = new RoaringBitmap();
+        bitSet2.add(1);
         criteria2.put(Constants.CRITERIA_VALUE, bitSet2);
         criteriaList2.add(criteria2);
         Map<String, Object> criteria3 = new HashMap<>();
         criteria3.put(Constants.CRITERIA_KEY, "cadre");
-        BitSet bitSet3 = new BitSet();
-        bitSet3.set(2);
+        RoaringBitmap bitSet3 = new RoaringBitmap();
+        bitSet3.add(2);
         criteria3.put(Constants.CRITERIA_VALUE, bitSet3);
         criteriaList2.add(criteria3);
         userGroup2.put(Constants.USER_GROUP_CRITERIA_LIST, criteriaList2);

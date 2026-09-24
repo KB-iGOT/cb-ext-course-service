@@ -17,7 +17,9 @@ RUN apt-get update && \
 COPY cb-ext-course-service-0.0.1-SNAPSHOT.jar /opt/
 
 RUN chown -R appuser:appuser /opt
+
 USER appuser
+
 WORKDIR /opt
 
 CMD ["/bin/bash", "-c", "java -XX:+PrintFlagsFinal $JAVA_OPTIONS -XX:+UnlockExperimentalVMOptions -jar /opt/cb-ext-course-service-0.0.1-SNAPSHOT.jar"]

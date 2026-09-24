@@ -427,4 +427,64 @@ class CbPlanCacheMgrV3Test {
                 eq(Constants.TABLE_CB_PLAN_V3_LOOKUP_BY_MINISTRY_OR_STATE_ID),
                 anyMap(), any(), any());
     }
+
+    // ---------------- invalidatePlan ----------------
+
+    private static Map<String, Object> fullPlanWithCa(String planId, String caLinkedId) {
+        Map<String, Object> plan = fullPlan(planId, Constants.LIVE);
+        plan.put(Constants.CA_LINKED_ID_DB, caLinkedId);
+        return plan;
+    }
+
+    @Test
+    void testInvalidatePlanEvictsOnlyListsHoldingThatPlanAndKeepsLookupLists() {
+        // org1 sees plan1 (org) + plan2 (all-org); org2 sees only plan2 (all-org)
+        stubOrgLookup(List.of());
+        when(cassandraOperation.getRecordsByProperties(anyString(), eq(Constants.TABLE_CB_PLAN_V3_LOOKUP_BY_ORG),
+                eq(Map.of(Constants.ORG_ID, ORG_ID, Constants.PLAN_YEAR, PLAN_YEAR)), any(), any()))
+                .thenReturn(List.of(lookupEntry("plan1", true, Instant.parse("2026-12-31T00:00:00Z"))));
+        stubAllOrgLookup(List.of(lookupEntry("plan2", true, Instant.parse("2026-06-30T00:00:00Z"))));
+        stubFullPlanFetch(List.of(fullPlanWithCa("plan1", null), fullPlanWithCa("plan2", null)));
+
+        cbPlanCacheMgrV3.getCbPlanForAllAndOrgId(ORG_ID, PLAN_YEAR, new AtomicBoolean(false));
+        cbPlanCacheMgrV3.getCbPlanForAllAndOrgId("org2", PLAN_YEAR, new AtomicBoolean(false));
+        // lookups: org1, org2, all-org = 3 calls; full-plan batch fetch: plan1+plan2 once (org2 hits planIdCache)
+        verify(cassandraOperation, times(1)).getRecordsByProperties(anyString(), eq(Constants.TABLE_CB_PLAN_V3),
+                anyMap(), any(), any());
+
+        cbPlanCacheMgrV3.invalidatePlan("plan1");
+
+        // org2's combined list did not contain plan1 -> still cached, no new Cassandra calls at all
+        cbPlanCacheMgrV3.getCbPlanForAllAndOrgId("org2", PLAN_YEAR, new AtomicBoolean(false));
+        verify(cassandraOperation, times(1)).getRecordsByProperties(anyString(), eq(Constants.TABLE_CB_PLAN_V3),
+                anyMap(), any(), any());
+        verify(cassandraOperation, times(1)).getRecordsByProperties(anyString(),
+                eq(Constants.TABLE_CB_PLAN_V3_LOOKUP_BY_ALL_ORG), anyMap(), any(), any());
+
+        // org1's combined list held plan1 -> rebuilt from still-cached lookup lists + one fetch of plan1 only
+        cbPlanCacheMgrV3.getCbPlanForAllAndOrgId(ORG_ID, PLAN_YEAR, new AtomicBoolean(false));
+        verify(cassandraOperation, times(2)).getRecordsByProperties(anyString(), eq(Constants.TABLE_CB_PLAN_V3),
+                anyMap(), any(), any());
+        verify(cassandraOperation).getRecordsByProperties(anyString(), eq(Constants.TABLE_CB_PLAN_V3),
+                eq(Map.of(Constants.PLAN_ID, List.of("plan1"))), any(), any());
+        verify(cassandraOperation, times(1)).getRecordsByProperties(anyString(),
+                eq(Constants.TABLE_CB_PLAN_V3_LOOKUP_BY_ALL_ORG), anyMap(), any(), any());
+        verify(cassandraOperation, times(2)).getRecordsByProperties(anyString(),
+                eq(Constants.TABLE_CB_PLAN_V3_LOOKUP_BY_ORG), anyMap(), any(), any());
+    }
+
+    @Test
+    void testInvalidatePlanWithUnknownOrNullPlanIdIsNoOp() {
+        stubOrgLookup(List.of(lookupEntry("plan1", true, Instant.EPOCH)));
+        stubAllOrgLookup(List.of());
+        stubFullPlanFetch(List.of(fullPlanWithCa("plan1", "do_ca")));
+        cbPlanCacheMgrV3.getCbPlanForAllAndOrgId(ORG_ID, PLAN_YEAR, new AtomicBoolean(false));
+
+        cbPlanCacheMgrV3.invalidatePlan("does-not-exist");
+        cbPlanCacheMgrV3.invalidatePlan(null);
+
+        cbPlanCacheMgrV3.getCbPlanForAllAndOrgId(ORG_ID, PLAN_YEAR, new AtomicBoolean(false));
+        verify(cassandraOperation, times(1)).getRecordsByProperties(anyString(), eq(Constants.TABLE_CB_PLAN_V3),
+                anyMap(), any(), any());
+    }
 }

@@ -157,6 +157,39 @@ public class CbExtServerProperties {
     @Value("${cassandra.query.limit.user.extended.profile}")
     private int cassandraQueryLimitUserExtendedProfile;
 
+    @Value("${usergroup.update.authorized.role}")
+    private String userGroupUpdateAuthorizedRole;
+
+    @Value("${cb.plan.v4.usergroup.batch.size}")
+    private int cbPlanV4UserGroupBatchSize;
+
+    @Value("${user.group.index}")
+    private String userGroupIndex;
+
+    @Value("${elastic.required.field.user.group.json.path}")
+    private String elasticUserGroupJsonPath;
+
+    @Value("${sb.search.service.host}")
+    private String sbSearchServiceHost;
+
+    @Value("${sb.composite.v4.search}")
+    private String sbCompositeV4Search;
+
+    @Value("${moderated.course.search.request}")
+    private String moderatedCourseSearchRequest;
+
+    @Value("${enrolment.dictionary.url}")
+    private String enrolmentDictionaryUrl;
+
+    @Value("${lms.host}")
+    private String lmsServiceHost;
+
+    @Value("${standalone.assessment.search.request}")
+    private String standaloneAssessmentSearchRequest;
+
+    @Value("${lms.enrollment.details.url}")
+    private String enrollmentDetailsUrl;
+
     public List<String> getCbPlanEnrichedContentFieldsList() {
         return Arrays.asList(cbPlanEnrichedContentFields.split(",", -1));
     }

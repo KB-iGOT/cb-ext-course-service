@@ -190,7 +190,8 @@ public class CbPlanLearnerServiceImpl {
             Object contextDataObj = cbPlan.get(Constants.CONTEXT_DATA_REQUEST);
             try {
                 if (contextDataObj != null) {
-                    Map<String, Object> contextDataMap = parseContextData(contextDataObj);
+                    Map<String, Object> contextDataMap = parseContextData(contextDataObj,
+                            cbPlan.get(Constants.PLAN_ID));
                     if (MapUtils.isNotEmpty(contextDataMap)
                             && !evaluateContextAccessRule(contextDataMap, userProfile)) {
                         log.info("User does not have access to cbPlan: {}", cbPlan.get(Constants.PLAN_ID));
@@ -275,6 +276,12 @@ public class CbPlanLearnerServiceImpl {
 
             contentDetails = contentService.readContent(courseId, null);
 
+            if (MapUtils.isNotEmpty(contentDetails)
+                    && Constants.RETIRED.equalsIgnoreCase((String) contentDetails.get(Constants.STATUS))) {
+                logger.info("Skipping retired course from CB plan for courseId: {}", courseId);
+                continue;
+            }
+
             if (MapUtils.isNotEmpty(contentDetails)) {
                 if (courseId.contains("_rc")) {
                     if (Constants.VERIFIED.equalsIgnoreCase(userProfile.get(Constants.PROFILE_STATUS_LOWER_KEY))) {
@@ -314,15 +321,24 @@ public class CbPlanLearnerServiceImpl {
 
 
     private Map<String, Object> parseContextData(Object contextDataObj) {
+        return parseContextData(contextDataObj, null);
+    }
+
+    private Map<String, Object> parseContextData(Object contextDataObj, Object planId) {
         if (!(contextDataObj instanceof String)) {
             return Collections.emptyMap();
         }
 
         try {
             String json = (String) contextDataObj;
+            // Tolerate double-encoded rows: a JSON string literal ("{\"...\"}") is unwrapped first
+            if (json.trim().startsWith("\"")) {
+                logger.warn("contextData is double-encoded (JSON string literal) for planId={} - record should be fixed in DB", planId);
+                json = mapper.readValue(json, String.class);
+            }
             return mapper.readValue(json, new TypeReference<Map<String, Object>>() {});
         } catch (Exception e) {
-            logger.warn("Failed to parse contextData: {}", contextDataObj, e);
+            logger.warn("Failed to parse contextData for planId={}: {}", planId, contextDataObj, e);
             return Collections.emptyMap();
         }
     }

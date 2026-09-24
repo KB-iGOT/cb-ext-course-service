@@ -294,6 +294,8 @@ public class EsUtilServiceImpl implements EsUtilService{
                     return buildMatchQuery((Map<String, Object>) value);
                 case Constants.RANGE:
                     return buildRangeQuery((Map<String, Object>) value);
+                case Constants.EXISTS:
+                    return buildExistsQuery((Map<String, Object>) value);
                 case Constants.MUST_NOT:
                     if (value instanceof List) {
                         BoolQuery.Builder boolQueryBuilder = QueryBuilders.bool();
@@ -386,7 +388,7 @@ public class EsUtilServiceImpl implements EsUtilService{
         log.info("search::buildTermQuery");
         BoolQuery.Builder boolQueryBuilder = QueryBuilders.bool();
         for (Map.Entry<String, Object> entry : termMap.entrySet()) {
-            boolQueryBuilder.must(QueryBuilders.term(t -> t.field(entry.getKey()).value((FieldValue) entry.getValue())));
+            boolQueryBuilder.must(QueryBuilders.term(t -> t.field(entry.getKey()).value(convertToFieldValue(entry.getValue()))));
         }
         return boolQueryBuilder.build()._toQuery();
     }
@@ -548,6 +550,138 @@ public class EsUtilServiceImpl implements EsUtilService{
             log.error("Error reading json schema", e);
             throw new CustomException("error reading json schema", e.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR);
         }
+    }
+
+    /**
+     * Converts a Java object to Elasticsearch FieldValue type.
+     * Handles type-safe conversion for String, Long, Integer, Double, Boolean types.
+     * Uses Java 17 pattern matching for instanceof checks.
+     *
+     * @param value the object to convert (String, Long, Integer, Double, Boolean, or FieldValue)
+     * @return FieldValue instance created using appropriate FieldValue.of() factory method
+     */
+    private FieldValue convertToFieldValue(Object value) {
+        if (value instanceof FieldValue fieldValue) {
+            return fieldValue;
+        } else if (value instanceof String stringValue) {
+            return FieldValue.of(stringValue);
+        } else if (value instanceof Long longValue) {
+            return FieldValue.of(longValue);
+        } else if (value instanceof Integer intValue) {
+            return FieldValue.of(intValue.longValue());
+        } else if (value instanceof Double doubleValue) {
+            return FieldValue.of(doubleValue);
+        } else if (value instanceof Boolean boolValue) {
+            return FieldValue.of(boolValue);
+        } else {
+            return FieldValue.of(value.toString());
+        }
+    }
+
+    /**
+     * Builds an Elasticsearch exists query to check for field presence or absence.
+     * Used for filtering documents based on whether a field has a value (not null/empty).
+     * Example: {"exists": {"field": "caLinkedId"}} checks if caLinkedId exists.
+     *
+     * @param existsMap map containing "field" key with the field name to check
+     * @return Query object representing the exists query
+     * @throws IllegalArgumentException if "field" key is missing from existsMap
+     */
+    private Query buildExistsQuery(Map<String, Object> existsMap) {
+        log.info("search::buildExistsQuery");
+        if (existsMap.containsKey("field")) {
+            String field = (String) existsMap.get("field");
+            return QueryBuilders.exists().field(field).build()._toQuery();
+        }
+        throw new IllegalArgumentException("exists query requires 'field' parameter");
+    }
+
+    /**
+     * V2 implementation of Elasticsearch document search with corrected query filter application.
+     * This version fixes the issue where user query filters were built but not applied to the search.
+     * Applies query AFTER all filters (filter, searchString, facets, user query) are added to boolQueryBuilder.
+     * Used by CB Plan V4 API to ensure query filters (bool, term, exists) are correctly applied.
+     *
+     * @param esIndexName    the Elasticsearch index name to search
+     * @param searchCriteria the search criteria containing filters, query, pagination, facets
+     * @param jsonFilePath   the JSON schema file path for field validation
+     * @return SearchResult containing matched documents, facets, and total count, or null on error
+     */
+    @Override
+    public SearchResult searchDocumentsV2(String esIndexName, SearchCriteria searchCriteria, String jsonFilePath) {
+        SearchRequest.Builder searchRequestBuilder = buildSearchRequestV2(searchCriteria, jsonFilePath);
+        if (searchRequestBuilder == null) {
+            log.error("Failed to build search request - searchRequestBuilder is null");
+            return null;
+        }
+        searchRequestBuilder.index(esIndexName);
+        try {
+            if (searchCriteria != null) {
+                int pageNumber = searchCriteria.getPageNumber();
+                int pageSize = searchCriteria.getPageSize();
+                int from = pageNumber * pageSize;
+                searchRequestBuilder.from(from);
+                if (pageSize > 0) {
+                    searchRequestBuilder.size(pageSize);
+                }
+            }
+            SearchRequest searchRequest = searchRequestBuilder.build();
+            log.info("Final search query V2: {}", searchRequest);
+            SearchResponse<Object> paginatedSearchResponse =
+                    elasticsearchClient.search(searchRequest, Object.class);
+            List<Map<String, Object>> paginatedResult = extractPaginatedResult(paginatedSearchResponse);
+            Map<String, List<FacetDTO>> fieldAggregations =
+                    extractFacetData(paginatedSearchResponse, searchCriteria);
+            SearchResult searchResult = new SearchResult();
+            searchResult.setData(paginatedResult);
+            searchResult.setFacets(fieldAggregations);
+            long totalHits = 0L;
+            var hitsMeta = paginatedSearchResponse.hits();
+            if (hitsMeta != null) {
+                var totalObj = hitsMeta.total();
+                if (totalObj != null) {
+                    totalHits = totalObj.value();
+                }
+            }
+            searchResult.setTotalCount(totalHits);
+            return searchResult;
+        } catch (IOException e) {
+            log.error("Error while fetching details from elastic search V2", e);
+            return null;
+        }
+    }
+
+    /**
+     * V2 implementation of search request builder with corrected query application order.
+     * Fixes the bug where user query was added to boolQueryBuilder AFTER query was set on searchSourceBuilder.
+     * Correct order: build filter query → add sort/fields/searchString/facets → add user query → set final query.
+     *
+     * @param searchCriteria the search criteria containing all search parameters
+     * @param jsonFilePath   the JSON schema file path for validation
+     * @return SearchRequest.Builder with query correctly applied, or null if searchCriteria is invalid
+     */
+    private SearchRequest.Builder buildSearchRequestV2(SearchCriteria searchCriteria, String jsonFilePath) {
+        log.info("Building search query V2");
+        if (searchCriteria == null || searchCriteria.toString().isEmpty()) {
+            log.error("Search criteria body is missing");
+            return null;
+        }
+        BoolQuery.Builder boolQueryBuilder = buildFilterQuery(searchCriteria.getFilter());
+        SearchRequest.Builder searchSourceBuilder = new SearchRequest.Builder();
+        addSortToSearchSourceBuilder(searchCriteria, searchSourceBuilder, jsonFilePath);
+        addRequestedFieldsToSearchSourceBuilder(searchCriteria, searchSourceBuilder);
+        String searchString = searchCriteria.getSearchString();
+        if (isNotBlank(searchString)) {
+            boolQueryBuilder.must(
+                    Query.of(q -> q.match(m -> m.field(Constants.NAME).query(searchString)))
+            );
+        }
+        addFacetsToSearchSourceBuilder(searchCriteria.getFacets(), searchSourceBuilder);
+        Query queryPart = buildQueryPart(searchCriteria.getQuery());
+        boolQueryBuilder.must(queryPart);
+        searchSourceBuilder.query(boolQueryBuilder.build()._toQuery());
+        log.info("final search query result V2: {}", searchSourceBuilder);
+        return searchSourceBuilder;
     }
 }
 

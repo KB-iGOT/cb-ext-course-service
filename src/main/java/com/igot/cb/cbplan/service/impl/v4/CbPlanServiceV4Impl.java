@@ -6,7 +6,7 @@ import java.util.*;
 import com.igot.cb.cbplan.service.CbPlanServiceV3;
 import com.igot.cb.cbplan.service.impl.CbPlanContentLookupServiceV3Impl;
 import com.igot.cb.cbplan.service.impl.CbPlanDataTransformServiceV3Impl;
-import com.igot.cb.cbplan.service.impl.CbPlanOrgLookupServiceV3Impl;
+import com.igot.cb.cbplan.service.impl.v4.CbPlanOrgLookupServiceV4Impl;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -49,7 +49,7 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
     private final CbPlanDataTransformServiceV3Impl dataTransformService;
     private final CbPlanContentLookupServiceV3Impl contentLookupService;
     private final CbPlanElasticSearchServiceV4Impl elasticSearchService;
-    private final CbPlanOrgLookupServiceV3Impl orgLookupService;
+    private final CbPlanOrgLookupServiceV4Impl orgLookupService;
     private final CbPlanReadServiceV4Impl readService;
     private final CbPlanSearchServiceV4Impl searchService;
     private final CbPlanServiceV3 cbPlanServiceV3;
@@ -67,7 +67,7 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
                                CbPlanDataTransformServiceV3Impl dataTransformService,
                                CbPlanContentLookupServiceV3Impl contentLookupService,
                                CbPlanElasticSearchServiceV4Impl elasticSearchService,
-                               CbPlanOrgLookupServiceV3Impl orgLookupService,
+                               CbPlanOrgLookupServiceV4Impl orgLookupService,
                                CbPlanReadServiceV4Impl readService,
                                CbPlanSearchServiceV4Impl searchService,
                                CbPlanServiceV3 cbPlanServiceV3,
@@ -308,7 +308,7 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
      */
     private Map<String, Object> fetchExistingPlan(String cbPlanId, ApiResponse response) {
         List<Map<String, Object>> cbPlanMapInfo = cassandraOperation.getRecordsByProperties(
-                Constants.KEYSPACE_SUNBIRD, Constants.TABLE_CB_PLAN_V3,
+                serverProperties.getCbPlanV4Keyspace(), serverProperties.getCbPlanV4PlanTable(),
                 Map.of(Constants.PLAN_ID, cbPlanId), null, serverProperties.getCassandraQueryLimitPrimaryKey());
         if (CollectionUtils.isEmpty(cbPlanMapInfo)) {
             log.warn("CbPlanServiceV4Impl.fetchExistingPlan: CB Plan not found - cbPlanId={}", cbPlanId);
@@ -479,8 +479,8 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
                                      ApiResponse response) throws JsonProcessingException {
         String draftData = mapper.writeValueAsString(updatedCbPlan);
         String planId = (String) existingCbPlan.get(Constants.PLAN_ID);
-        Map<String, Object> resp = cassandraOperation.updateRecord(Constants.KEYSPACE_SUNBIRD,
-                Constants.TABLE_CB_PLAN_V3, Map.of(Constants.DRAFT_DATA, draftData),
+        Map<String, Object> resp = cassandraOperation.updateRecord(serverProperties.getCbPlanV4Keyspace(),
+                serverProperties.getCbPlanV4PlanTable(), Map.of(Constants.DRAFT_DATA, draftData),
                 Map.of(Constants.PLAN_ID, planId));
         if (Constants.SUCCESS.equals(resp.get(Constants.RESPONSE))) {
             log.info("CbPlanServiceV4Impl.saveLivePlanAsDraft: Staged update as draft - cbPlanId={}", planId);
@@ -809,8 +809,8 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
         Map<String, Object> sanitizedMapForEs = prepareDataForElasticsearch(sanitizedMap);
         Map<String, Object> sanitizedExisting = elasticSearchService.sanitizeForElastic(existingCbPlan);
         Map<String, Object> resp = cassandraOperation.updateRecord(
-                Constants.KEYSPACE_SUNBIRD,
-                Constants.TABLE_CB_PLAN_V3,
+                serverProperties.getCbPlanV4Keyspace(),
+                serverProperties.getCbPlanV4PlanTable(),
                 updatedRequest,
                 Map.of(Constants.PLAN_ID, cbPlanId),
                 () -> Objects.nonNull(esUtilService.updateDocument(serverProperties.getCpPlanIndex(), Constants.INDEX_TYPE,
@@ -1310,8 +1310,8 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
         updateMap.put(Constants.UPDATED_BY, updatedBy);
         updateMap.put(Constants.UPDATED_AT, Instant.now());
         Map<String, Object> resp = cassandraOperation.updateRecord(
-                Constants.KEYSPACE_SUNBIRD,
-                Constants.TABLE_CB_PLAN_V3,
+                serverProperties.getCbPlanV4Keyspace(),
+                serverProperties.getCbPlanV4PlanTable(),
                 updateMap,
                 Map.of(Constants.PLAN_ID, cbPlanId));
         if (!Constants.SUCCESS.equals(resp.get(Constants.RESPONSE))) {
@@ -1409,8 +1409,8 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
             Map<String, Object> planDataForEs = prepareDataForElasticsearch(planData);
 
             Map<String, Object> insertResult = cassandraOperation.insertRecord(
-                    Constants.KEYSPACE_SUNBIRD,
-                    Constants.TABLE_CB_PLAN_V3,
+                    serverProperties.getCbPlanV4Keyspace(),
+                    serverProperties.getCbPlanV4PlanTable(),
                     planData,
                     () -> elasticSearchService.tryIndexPlan(planId, planDataForEs),
                     () -> elasticSearchService.rollbackCreate(planId)
@@ -1455,8 +1455,8 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
     private void executeDraftPlanUpdateTransactional(String cbPlanId, Map<String, Object> updatedRequest,
                                                       Map<String, Object> existingCbPlan, ApiResponse response) {
         Map<String, Object> resp = cassandraOperation.updateRecord(
-                Constants.KEYSPACE_SUNBIRD,
-                Constants.TABLE_CB_PLAN_V3,
+                serverProperties.getCbPlanV4Keyspace(),
+                serverProperties.getCbPlanV4PlanTable(),
                 updatedRequest,
                 Map.of(Constants.PLAN_ID, cbPlanId),
                 () -> elasticSearchService.tryUpdatePlan(cbPlanId, updatedRequest),

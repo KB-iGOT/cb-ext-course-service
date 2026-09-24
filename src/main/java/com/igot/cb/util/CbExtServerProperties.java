@@ -196,6 +196,24 @@ public class CbExtServerProperties {
     @Value("${usergroup.edit.missing.role.msg}")
     private String userGroupEditMissingRoleMsg;
 
+    @Value("${cbplan.v4.keyspace}")
+    private String cbPlanV4Keyspace;
+
+    @Value("${cbplan.v4.plan.table}")
+    private String cbPlanV4PlanTable;
+
+    @Value("${cbplan.v4.usergroup.table}")
+    private String cbPlanV4UserGroupTable;
+
+    @Value("${cbplan.v4.lookup.by.org.table}")
+    private String cbPlanV4LookupByOrgTable;
+
+    @Value("${cbplan.v4.lookup.by.all.org.table}")
+    private String cbPlanV4LookupByAllOrgTable;
+
+    @Value("${cbplan.v4.lookup.by.ministryorstateid.table}")
+    private String cbPlanV4LookupByMinistryOrStateIdTable;
+
     public List<String> getCbPlanEnrichedContentFieldsList() {
         return Arrays.asList(cbPlanEnrichedContentFields.split(",", -1));
     }

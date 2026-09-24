@@ -175,7 +175,7 @@ public class CbPlanWithAccessSettingsV4 {
      */
     @GetMapping("/user/assessment/eligibility/{doId}")
     public ResponseEntity<ApiResponse> getComprehensiveAssessmentEligibility(
-            @PathVariable String doId,
+            @PathVariable("doId") String doId,
             @RequestHeader(Constants.X_AUTH_TOKEN) String token) {
         ApiResponse response = cbPlanServiceV4.getComprehensiveAssessmentEligibility(doId, token);
         return new ResponseEntity<>(response, response.getResponseCode());

@@ -1584,7 +1584,7 @@ class CbPlanDictionaryServiceV4ImplTest {
     }
 
     @Test
-    void getCBPlanDictionaryForUser_planWithNullCaLinkedId_planRemovedFromResponse() {
+    void getCBPlanDictionaryForUser_planWithNullCaLinkedId_planKeptInResponse() {
         setupValidUserProfileMocks();
         when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
 
@@ -1603,8 +1603,8 @@ class CbPlanDictionaryServiceV4ImplTest {
         Map<String, Object> yearResult = (Map<String, Object>) response.getResult().get(TEST_PLAN_YEAR);
         Map<String, Map<String, Object>> nonAparList =
                 (Map<String, Map<String, Object>>) yearResult.get(Constants.RESPONSE_KEY_NON_APAR_PLAN_LIST);
-        assertThat(nonAparList).doesNotContainKey("plan_null_ca");
-        assertThat(yearResult).containsEntry(Constants.RESPONSE_KEY_NON_APAR_PLAN_COUNT, 0);
+        assertThat(nonAparList).containsKey("plan_null_ca");
+        assertThat(yearResult).containsEntry(Constants.RESPONSE_KEY_NON_APAR_PLAN_COUNT, 1);
     }
 
     @Test
@@ -1787,7 +1787,7 @@ class CbPlanDictionaryServiceV4ImplTest {
     }
 
     @Test
-    void getCBPlanDictionaryForUser_aparPlanWithNullCaLinkedId_removedFromAparList() {
+    void getCBPlanDictionaryForUser_aparPlanWithNullCaLinkedId_keptInAparList() {
         setupValidUserProfileMocks();
         when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
 
@@ -1806,8 +1806,8 @@ class CbPlanDictionaryServiceV4ImplTest {
         Map<String, Object> yearResult = (Map<String, Object>) response.getResult().get(TEST_PLAN_YEAR);
         Map<String, Map<String, Object>> aparList =
                 (Map<String, Map<String, Object>>) yearResult.get(Constants.RESPONSE_KEY_APAR_PLAN_LIST);
-        assertThat(aparList).doesNotContainKey("plan_apar_null_ca");
-        assertThat(yearResult).containsEntry(Constants.RESPONSE_KEY_APAR_PLAN_COUNT, 0);
+        assertThat(aparList).containsKey("plan_apar_null_ca");
+        assertThat(yearResult).containsEntry(Constants.RESPONSE_KEY_APAR_PLAN_COUNT, 1);
     }
 
     @Test
@@ -1839,7 +1839,7 @@ class CbPlanDictionaryServiceV4ImplTest {
 
     @Test
     @SuppressWarnings("unchecked")
-    void getCBPlanDictionaryForUser_previousYearPlanWithNullCaLinkedId_removedFromPreviousYearResult() {
+    void getCBPlanDictionaryForUser_previousYearPlanWithNullCaLinkedId_keptInPreviousYearResult() {
         setupValidUserProfileMocks();
         when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
 
@@ -1860,8 +1860,8 @@ class CbPlanDictionaryServiceV4ImplTest {
         Map<String, Object> prevYearResult = (Map<String, Object>) response.getResult().get("2025-26");
         Map<String, Map<String, Object>> prevNonAparList =
                 (Map<String, Map<String, Object>>) prevYearResult.get(Constants.RESPONSE_KEY_NON_APAR_PLAN_LIST);
-        assertThat(prevNonAparList).doesNotContainKey("plan_prev_null_ca");
-        assertThat(prevYearResult).containsEntry(Constants.RESPONSE_KEY_NON_APAR_PLAN_COUNT, 0);
+        assertThat(prevNonAparList).containsKey("plan_prev_null_ca");
+        assertThat(prevYearResult).containsEntry(Constants.RESPONSE_KEY_NON_APAR_PLAN_COUNT, 1);
     }
 
     @Test

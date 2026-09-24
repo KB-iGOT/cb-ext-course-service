@@ -941,7 +941,8 @@ public class CbPlanDictionaryServiceV4Impl {
     }
 
     /**
-     * Removes plans with a null/blank or non-Live caLinkedId from both plan maps.
+     * Removes plans whose caLinkedId is present but resolves to a non-Live status.
+     * Plans with a null/blank caLinkedId are kept — they are valid training plans with no CA link.
      * Each unique caLinkedId is resolved exactly once via extended content read.
      */
     private void filterLiveContentInPlans(Map<String, Map<String, Object>> aparPlanMap,
@@ -978,7 +979,10 @@ public class CbPlanDictionaryServiceV4Impl {
 
     private boolean isLiveCaLinkedId(Map<String, Object> planEntry, Set<String> liveIds) {
         Object caId = planEntry.get(Constants.CA_LINKED_ID);
-        return !(caId instanceof String id) || !StringUtils.isNotBlank(id) || !liveIds.contains(id);
+        if (!(caId instanceof String id) || StringUtils.isBlank(id)) {
+            return false;
+        }
+        return !liveIds.contains(id);
     }
 
 }

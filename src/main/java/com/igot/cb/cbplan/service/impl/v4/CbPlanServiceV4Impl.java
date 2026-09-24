@@ -1338,6 +1338,14 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
     }
 
     /**
+     * {@inheritDoc}
+     */
+    @Override
+    public ApiResponse getComprehensiveAssessmentEligibility(String doId, String authToken) {
+        return dictionaryService.getComprehensiveAssessmentEligibility(doId, authToken);
+    }
+
+    /**
      * Prepares plan data for Elasticsearch indexing by deserializing contentList from JSON strings to objects.
      * ES mapping expects nested objects, not JSON strings.
      * Converts from: ['{"identifier":"do_123","mandatory":true}']

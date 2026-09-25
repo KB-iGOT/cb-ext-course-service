@@ -103,4 +103,14 @@ public class CbPlanReadResponseDto {
      * V4-specific field for linking CB Plan to Competency Assessment.
      */
     private String caLinkedId;
+
+    /**
+     * Root org ID of the plan creator. Extracted from orgIdList[0] at read time.
+     */
+    private String createdByOrgId;
+
+    /**
+     * Display name of the org that created the plan. Enriched from Cassandra at read time.
+     */
+    private String createdByOrgName;
 }

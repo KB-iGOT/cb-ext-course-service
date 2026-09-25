@@ -25,7 +25,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import com.igot.cb.cache.CbPlanCacheMgrV3;
+import com.igot.cb.cache.CbPlanCacheMgrV4;
 import com.igot.cb.cache.RedisCacheMgr;
 import com.igot.cb.cbplan.service.impl.CbPlanContentLookupServiceV3Impl;
 import com.igot.cb.cbplan.service.impl.CbPlanDataTransformServiceV3Impl;
@@ -54,7 +54,7 @@ import lombok.extern.slf4j.Slf4j;
 public class CbPlanDictionaryServiceV4Impl {
 
     private final CassandraOperation cassandraOperation;
-    private final CbPlanCacheMgrV3 cbPlanCacheMgrV3;
+    private final CbPlanCacheMgrV4 cbPlanCacheMgrV4;
     private final CbPlanUserGroupLookupServiceV4Impl userGroupLookupService;
     private final AccessTokenValidator accessTokenValidator;
     private final RedisCacheMgr redisCacheMgr;
@@ -66,7 +66,7 @@ public class CbPlanDictionaryServiceV4Impl {
     private static final TypeReference<Map<String, Object>> MAP_TYPE_REF = new TypeReference<>() {};
 
     public CbPlanDictionaryServiceV4Impl(CassandraOperation cassandraOperation,
-                                         CbPlanCacheMgrV3 cbPlanCacheMgrV3,
+                                         CbPlanCacheMgrV4 cbPlanCacheMgrV4,
                                          CbPlanUserGroupLookupServiceV4Impl userGroupLookupService,
                                          AccessTokenValidator accessTokenValidator,
                                          RedisCacheMgr redisCacheMgr,
@@ -75,7 +75,7 @@ public class CbPlanDictionaryServiceV4Impl {
                                          CbPlanDataTransformServiceV3Impl dataTransformService,
                                          CbPlanContentLookupServiceV3Impl contentLookupService) {
         this.cassandraOperation = cassandraOperation;
-        this.cbPlanCacheMgrV3 = cbPlanCacheMgrV3;
+        this.cbPlanCacheMgrV4 = cbPlanCacheMgrV4;
         this.userGroupLookupService = userGroupLookupService;
         this.accessTokenValidator = accessTokenValidator;
         this.redisCacheMgr = redisCacheMgr;
@@ -443,13 +443,13 @@ public class CbPlanDictionaryServiceV4Impl {
      */
     private List<Map<String, Object>> fetchPlansForUser(Map<String, String> userProfile, String userOrgId,
                                                         String planYear, AtomicBoolean isCacheEnabled) {
-        List<Map<String, Object>> orgPlans = cbPlanCacheMgrV3.getCbPlanForAllAndOrgId(userOrgId, planYear, isCacheEnabled);
+        List<Map<String, Object>> orgPlans = cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(userOrgId, planYear, isCacheEnabled);
         String ministryOrStateId = userProfile.get(Constants.MINISTRY_OR_STATE_ID_RQST);
         if (StringUtils.isBlank(ministryOrStateId)) {
             return orgPlans;
         }
         log.info("fetchPlansForUser: Fetching ministry plans - ministryOrStateId={}", ministryOrStateId);
-        List<Map<String, Object>> ministryPlans = cbPlanCacheMgrV3.getCbPlanForMinistryOrStateId(ministryOrStateId, planYear);
+        List<Map<String, Object>> ministryPlans = cbPlanCacheMgrV4.getCbPlanForMinistryOrStateId(ministryOrStateId, planYear);
         return dataTransformService.mergePlanLists(orgPlans, ministryPlans);
     }
 

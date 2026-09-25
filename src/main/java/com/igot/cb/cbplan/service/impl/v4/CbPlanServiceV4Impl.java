@@ -16,7 +16,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import com.igot.cb.cache.CbPlanCacheMgrV3;
+import com.igot.cb.cache.CbPlanCacheMgrV4;
 import com.igot.cb.cache.RedisCacheMgr;
 import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.cbplan.dto.CbPlanReadResponseDto;
@@ -56,7 +56,7 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
     private final UserProfileUtil userProfileUtil;
     private final CbPlanDictionaryServiceV4Impl dictionaryService;
     private final RedisCacheMgr redisCacheMgr;
-    private final CbPlanCacheMgrV3 cbPlanCacheMgrV3;
+    private final CbPlanCacheMgrV4 cbPlanCacheMgrV4;
     private final ObjectMapper mapper;
 
     public CbPlanServiceV4Impl(CassandraOperation cassandraOperation,
@@ -74,7 +74,7 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
                                UserProfileUtil userProfileUtil,
                                CbPlanDictionaryServiceV4Impl dictionaryService,
                                RedisCacheMgr redisCacheMgr,
-                               CbPlanCacheMgrV3 cbPlanCacheMgrV3) {
+                               CbPlanCacheMgrV4 cbPlanCacheMgrV4) {
         this.cassandraOperation = cassandraOperation;
         this.serverProperties = serverProperties;
         this.validationService = validationService;
@@ -90,7 +90,7 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
         this.userProfileUtil = userProfileUtil;
         this.dictionaryService = dictionaryService;
         this.redisCacheMgr = redisCacheMgr;
-        this.cbPlanCacheMgrV3 = cbPlanCacheMgrV3;
+        this.cbPlanCacheMgrV4 = cbPlanCacheMgrV4;
         this.mapper = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
@@ -999,6 +999,7 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
         }
         CbPlanReadResponseDto enrichedData = readService.buildEnrichedPlanData(cbPlan, cbPlanId);
         enrichCreatedByName(enrichedData);
+        enrichCreatedByOrgName(enrichedData);
         response.getResult().put(Constants.CONTENT, enrichedData);
         log.info("CbPlanServiceV4Impl.readCbPlan: Successfully retrieved CB Plan - cbPlanId={}", cbPlanId);
     }
@@ -1076,6 +1077,7 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
         }
         CbPlanReadResponseDto enrichedData = readService.buildEnrichedPlanData(cbPlan, cbPlanId);
         enrichCreatedByName(enrichedData);
+        enrichCreatedByOrgName(enrichedData);
         response.getResult().put(Constants.CONTENT, enrichedData);
         log.info("CbPlanServiceV4Impl.readCbPlanAdmin: Successfully retrieved CB Plan - cbPlanId={}", cbPlanId);
     }
@@ -1320,7 +1322,7 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
             return false;
         }
         elasticSearchService.updateElasticSearchForPlan(cbPlanId, updateMap);
-        cbPlanCacheMgrV3.invalidatePlan(cbPlanId);
+        cbPlanCacheMgrV4.invalidatePlan(cbPlanId);
         redisCacheMgr.deleteKeysByPatternAsync(Constants.CB_PLAN_V4_REDIS_KEY_PREFIX + "*");
         log.info("CbPlanServiceV4Impl.updateCaLinkedId: Updated - cbPlanId={}, caLinkedId={}, updatedBy={}",
                 cbPlanId, caLinkedId, updatedBy);
@@ -1556,5 +1558,29 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
         }
         Map<String, String> userIdToName = userProfileUtil.buildUserProfiles(List.of(createdBy));
         dto.setCreatedByName(userIdToName.getOrDefault(createdBy, StringUtils.EMPTY));
+    }
+
+    /**
+     * Resolves the createdByOrgId to an org display name and sets it on the DTO.
+     * Failures are swallowed — org name is best-effort, not required.
+     *
+     * @param dto read response DTO to enrich
+     */
+    private void enrichCreatedByOrgName(CbPlanReadResponseDto dto) {
+        String createdByOrgId = dto.getCreatedByOrgId();
+        if (StringUtils.isBlank(createdByOrgId)) {
+            return;
+        }
+        try {
+            List<Map<String, Object>> orgList = cassandraOperation.getRecordsByProperties(
+                    Constants.KEYSPACE_SUNBIRD, Constants.ORG_TABLE,
+                    Map.of(Constants.ID, List.of(createdByOrgId)),
+                    List.of(Constants.ID, Constants.ORG_NAME), null);
+            if (CollectionUtils.isNotEmpty(orgList)) {
+                dto.setCreatedByOrgName((String) orgList.get(0).get(Constants.ORG_NAME));
+            }
+        } catch (Exception e) {
+            log.warn("CbPlanServiceV4Impl.enrichCreatedByOrgName: Failed to fetch org name for orgId={}", createdByOrgId, e);
+        }
     }
 }

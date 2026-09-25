@@ -190,6 +190,8 @@ public class UserGroupValidationServiceImpl {
 
         if (isCCA) {
             return validateRootOrgIdForCCA(rootOrgIdsInCriteria);
+        } else if (serverProperties.isUserGroupAllowMultipleRootOrgIds()) {
+            return !rootOrgIdsInCriteria.isEmpty();
         } else {
             return validateRootOrgIdForNonCCA(rootOrgIdsInCriteria, userRootOrgId, isAdmin, response);
         }

@@ -267,9 +267,7 @@ public class CbPlanDictionaryServiceV4Impl {
         }
         List<Map<String, Object>> activePlans = fetchPlansForUser(userProfile, userOrgId, planYear, isCacheEnabled);
         if (CollectionUtils.isEmpty(activePlans)) {
-            Map<String, Object> empty = buildYearResult(new LinkedHashMap<>(), new LinkedHashMap<>());
-            cacheResult(cacheKey, empty, isCacheEnabled.get());
-            return empty;
+            return buildYearResult(new LinkedHashMap<>(), new LinkedHashMap<>());
         }
         Map<String, Map<String, Object>> aparPlanMap = new LinkedHashMap<>();
         Map<String, Map<String, Object>> nonAparPlanMap = new LinkedHashMap<>();
@@ -279,9 +277,7 @@ public class CbPlanDictionaryServiceV4Impl {
         enrichOrgDetails(aparPlanMap, orgDetailsMap);
         enrichOrgDetails(nonAparPlanMap, orgDetailsMap);
         filterLiveContentInPlans(aparPlanMap, nonAparPlanMap);
-        Map<String, Object> yearResult = buildYearResult(aparPlanMap, nonAparPlanMap);
-        cacheResult(cacheKey, yearResult, isCacheEnabled.get());
-        return yearResult;
+        return buildYearResult(aparPlanMap, nonAparPlanMap);
     }
 
     /**

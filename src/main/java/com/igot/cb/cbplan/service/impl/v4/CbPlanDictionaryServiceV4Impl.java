@@ -210,11 +210,14 @@ public class CbPlanDictionaryServiceV4Impl {
             String currentYear = CbPlanYearUtil.resolveCurrentFinancialYear();
             for (String planYear : List.of(currentYear, CbPlanYearUtil.resolvePreviousYear(currentYear))) {
                 Map<String, Object> yearResult = resolveYearResult(userId, userProfile, userOrgId, planYear, isCacheEnabled);
+                log.info("yearResult={}, ", yearResult);
                 Map<String, Object> match = findPlanByCaLinkedId(yearResult, doId);
                 if (Objects.nonNull(match)) {
+                    List<String> mandatoryCourseIds = extractMandatoryCourseIds(match);
                     log.info("getComprehensiveAssessmentEligibility: Match found - userId={}, doId={}, planYear={}", userId, doId, planYear);
+                    log.info("getComprehensiveAssessmentEligibility: Result - userId={}, doId={}, eligible=true, mandatoryCourses={}", userId, doId, mandatoryCourseIds);
                     response.getResult().put(Constants.ELIGIBLE, true);
-                    response.getResult().put(Constants.MANDATORY_COURSES, extractMandatoryCourseIds(match));
+                    response.getResult().put(Constants.MANDATORY_COURSES, mandatoryCourseIds);
                     response.setParams(new ApiRespParam());
                     response.getParams().setStatus(Constants.SUCCESS);
                     response.setResponseCode(HttpStatus.OK);
@@ -222,6 +225,7 @@ public class CbPlanDictionaryServiceV4Impl {
                 }
             }
             log.info("getComprehensiveAssessmentEligibility: No match - userId={}, doId={}", userId, doId);
+            log.info("getComprehensiveAssessmentEligibility: Result - userId={}, doId={}, eligible=false, mandatoryCourses=[]", userId, doId);
             response.getResult().put(Constants.ELIGIBLE, false);
             response.getResult().put(Constants.MANDATORY_COURSES, List.of());
             response.setParams(new ApiRespParam());

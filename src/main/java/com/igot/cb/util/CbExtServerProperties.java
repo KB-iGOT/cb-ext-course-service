@@ -217,6 +217,9 @@ public class CbExtServerProperties {
     @Value("${cbplan.v4.content.lookup.table}")
     private String cbPlanV4ContentLookupTable;
 
+    @Value("${usergroup.allow.multiple.root.org.ids:false}")
+    private boolean userGroupAllowMultipleRootOrgIds;
+
     public List<String> getCbPlanEnrichedContentFieldsList() {
         return Arrays.asList(cbPlanEnrichedContentFields.split(",", -1));
     }

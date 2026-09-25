@@ -253,7 +253,14 @@ public class CbPlanDictionaryServiceV4Impl {
         String cachedJson = redisCacheMgr.getFromCache(cacheKey);
         if (StringUtils.isNotBlank(cachedJson)) {
             try {
-                return mapper.readValue(cachedJson, MAP_TYPE_REF);
+                Map<String, Object> cachedResult = mapper.readValue(cachedJson, MAP_TYPE_REF);
+                // The dictionary endpoint caches its full result keyed by plan year, while this
+                // method normally works with the unwrapped year result.
+                Object yearResult = cachedResult.get(planYear);
+                if (yearResult instanceof Map<?, ?>) {
+                    return (Map<String, Object>) yearResult;
+                }
+                return cachedResult;
             } catch (JsonProcessingException e) {
                 log.warn("resolveYearResult: Failed to deserialize cache - key={}", cacheKey, e);
             }

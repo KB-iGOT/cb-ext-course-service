@@ -207,7 +207,7 @@ public class CbPlanDictionaryServiceV4Impl {
             }
             String userOrgId = userProfile.get(Constants.USER_ROOT_ORG_ID);
             AtomicBoolean isCacheEnabled = new AtomicBoolean(false);
-            String currentYear = CbPlanYearUtil.resolveCurrentFinancialYear();
+            String currentYear = CbPlanYearUtil.resolveCurrentCalendarPlanYear();
             for (String planYear : List.of(currentYear, CbPlanYearUtil.resolvePreviousYear(currentYear))) {
                 Map<String, Object> yearResult = resolveYearResult(userId, userProfile, userOrgId, planYear, isCacheEnabled);
                 log.info("yearResult={}, ", yearResult);

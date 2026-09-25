@@ -8,7 +8,7 @@ import com.igot.cb.cache.RedisCacheMgr;
 import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.cbplan.dto.CbPlanReadResponseDto;
 import com.igot.cb.cbplan.service.CbPlanServiceV3;
-import com.igot.cb.cbplan.service.impl.CbPlanContentLookupServiceV3Impl;
+import com.igot.cb.cbplan.service.impl.v4.CbPlanContentLookupServiceV4Impl;
 import com.igot.cb.cbplan.service.impl.CbPlanDataTransformServiceV3Impl;
 import com.igot.cb.cbplan.service.impl.v4.CbPlanOrgLookupServiceV4Impl;
 import com.igot.cb.elasticsearch.service.EsUtilService;
@@ -32,6 +32,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -45,6 +46,7 @@ import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import org.mockito.ArgumentCaptor;
 
 @ExtendWith(MockitoExtension.class)
 class CbPlanServiceV4ImplTest {
@@ -68,7 +70,7 @@ class CbPlanServiceV4ImplTest {
     private CbPlanDataTransformServiceV3Impl dataTransformService;
 
     @Mock
-    private CbPlanContentLookupServiceV3Impl contentLookupService;
+    private CbPlanContentLookupServiceV4Impl contentLookupService;
 
     @Mock
     private CbPlanElasticSearchServiceV4Impl elasticSearchService;
@@ -315,6 +317,7 @@ class CbPlanServiceV4ImplTest {
         when(validationService.validateRequest(any(), anyBoolean(), anyString(), any())).thenReturn(true);
         Map<String, Object> updatedRequest = new HashMap<>();
         when(dataTransformService.prepareCbPlanForUpdate(anyMap(), eq(USER_ID))).thenReturn(updatedRequest);
+        when(elasticSearchService.sanitizeForElastic(any())).thenReturn(new HashMap<>());
         when(cassandraOperation.updateRecord(anyString(), anyString(), anyMap(), anyMap(),
                 any(Supplier.class), any(Runnable.class)))
                 .thenReturn(Map.of(Constants.RESPONSE, Constants.SUCCESS));
@@ -359,6 +362,7 @@ class CbPlanServiceV4ImplTest {
         when(validationService.isUnauthorizedToUpdate(eq(USER_ID), anyMap(), any(), any())).thenReturn(false);
         when(validationService.validateRequest(any(), anyBoolean(), anyString(), any())).thenReturn(true);
         when(dataTransformService.prepareCbPlanForUpdate(anyMap(), eq(USER_ID))).thenReturn(new HashMap<>());
+        when(elasticSearchService.sanitizeForElastic(any())).thenReturn(new HashMap<>());
         when(cassandraOperation.updateRecord(anyString(), anyString(), anyMap(), anyMap(),
                 any(Supplier.class), any(Runnable.class)))
                 .thenReturn(Map.of(Constants.RESPONSE, Constants.FAILED));
@@ -367,6 +371,50 @@ class CbPlanServiceV4ImplTest {
 
         assertEquals(Constants.FAILED, response.getParams().getStatus());
         assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
+    }
+
+    @Test
+    void updateCbPlan_draftPreCommitLambda_passesDeserializedContentListToEs() throws JsonProcessingException {
+        mockAuthSuccess();
+        when(validationService.validatePlanIdExists(any(), any())).thenReturn(true);
+        Map<String, Object> existingCbPlan = new HashMap<>();
+        existingCbPlan.put(Constants.CREATED_BY, USER_ID);
+        existingCbPlan.put(Constants.STATUS, Constants.DRAFT);
+        mockExistingPlan(existingCbPlan);
+        when(validationService.isUnauthorizedToUpdate(eq(USER_ID), anyMap(), any(), any())).thenReturn(false);
+        when(validationService.validateRequest(any(), anyBoolean(), anyString(), any())).thenReturn(true);
+        String contentItemJson = "{\"identifier\":\"do_123\",\"mandatory\":true}";
+        Map<String, Object> updatedRequestMap = new HashMap<>();
+        updatedRequestMap.put(Constants.CONTENT_LIST, List.of(contentItemJson));
+        when(dataTransformService.prepareCbPlanForUpdate(anyMap(), eq(USER_ID))).thenReturn(updatedRequestMap);
+        when(elasticSearchService.sanitizeForElastic(any()))
+                .thenAnswer(invocation -> new HashMap<>((Map<String, Object>) invocation.getArgument(0)));
+        when(serverProperties.getCpPlanIndex()).thenReturn("cbplan-index");
+        when(serverProperties.getElasticCbPlanJsonPath()).thenReturn("path.json");
+        when(esUtilService.updateDocument(anyString(), anyString(), anyString(), anyMap(), anyString()))
+                .thenReturn("updated");
+        when(cassandraOperation.updateRecord(anyString(), anyString(), anyMap(), anyMap(),
+                any(Supplier.class), any(Runnable.class)))
+                .thenAnswer(invocation -> {
+                    Supplier<Boolean> preCommit = invocation.getArgument(4);
+                    return preCommit.get()
+                            ? Map.of(Constants.RESPONSE, Constants.SUCCESS)
+                            : Map.of(Constants.RESPONSE, Constants.FAILED);
+                });
+        when(readService.extractIdentifiers(any())).thenReturn(List.of());
+
+        cbPlanService.updateCbPlan(requestWithPlanId(), TOKEN);
+
+        ArgumentCaptor<Map<String, Object>> esDocCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(esUtilService).updateDocument(eq("cbplan-index"), anyString(), eq(PLAN_ID),
+                esDocCaptor.capture(), eq("path.json"));
+        List<?> contentListInEs = (List<?>) esDocCaptor.getValue().get(Constants.CONTENT_LIST);
+        assertNotNull(contentListInEs);
+        assertFalse(contentListInEs.isEmpty());
+        assertInstanceOf(Map.class, contentListInEs.get(0));
+        Map<?, ?> firstItem = (Map<?, ?>) contentListInEs.get(0);
+        assertEquals("do_123", firstItem.get(Constants.IDENTIFIER));
+        assertEquals(true, firstItem.get(Constants.MANDATORY));
     }
 
     @Test
@@ -852,6 +900,7 @@ class CbPlanServiceV4ImplTest {
         when(validationService.validateRequest(any(), anyBoolean(), anyString(), any())).thenReturn(true);
         when(dataTransformService.prepareCbPlanForUpdate(anyMap(), eq(USER_ID)))
                 .thenReturn(new HashMap<>());
+        when(elasticSearchService.sanitizeForElastic(any())).thenReturn(new HashMap<>());
         when(cassandraOperation.updateRecord(anyString(), anyString(), anyMap(), anyMap(),
                 any(Supplier.class), any(Runnable.class)))
                 .thenReturn(Map.of(Constants.RESPONSE, Constants.SUCCESS));

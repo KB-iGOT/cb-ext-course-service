@@ -3,6 +3,7 @@ package com.igot.cb.cbplan.util;
 import lombok.extern.slf4j.Slf4j;
 
 import java.time.LocalDate;
+import java.time.Month;
 import java.time.ZoneId;
 import java.util.regex.Pattern;
 
@@ -14,16 +15,17 @@ import java.util.regex.Pattern;
 @Slf4j
 public final class CbPlanYearUtil {
     private static final Pattern PLAN_YEAR_PATTERN = Pattern.compile("^\\d{4}-\\d{2}$");
+    private static final Month FY_START_MONTH = Month.APRIL;
     private CbPlanYearUtil() {
     }
 
     /**
-     * Resolves the current plan year from the calendar year in Asia/Kolkata.
+     * Resolves the current financial year based on the April-March cycle.
      * Examples:
      * - Date: 2026-08-12 → Returns "2026-27"
-     * - Date: 2026-02-12 → Returns "2026-27"
+     * - Date: 2026-02-12 → Returns "2025-26"
      *
-     * @return current plan year in format "YYYY-YY"
+     * @return current financial year in format "YYYY-YY"
      */
     public static String resolveCurrentFinancialYear() {
         LocalDate today = LocalDate.now(ZoneId.of("Asia/Kolkata"));
@@ -31,13 +33,25 @@ public final class CbPlanYearUtil {
     }
 
     /**
-     * Resolves the plan year for a specific date using its calendar year.
+     * Resolves the financial year for a specific date.
      *
      * @param date the date to resolve FY for
-     * @return plan year in format "YYYY-YY"
+     * @return financial year in format "YYYY-YY"
      */
     public static String resolveFinancialYearForDate(LocalDate date) {
         int year = date.getYear();
+        if (date.getMonthValue() >= FY_START_MONTH.getValue()) {
+            return String.format("%d-%02d", year, (year + 1) % 100);
+        }
+        return String.format("%d-%02d", year - 1, year % 100);
+    }
+
+    /**
+     * Resolves the current calendar-based plan year for eligibility checks.
+     */
+    public static String resolveCurrentCalendarPlanYear() {
+        LocalDate today = LocalDate.now(ZoneId.of("Asia/Kolkata"));
+        int year = today.getYear();
         return String.format("%d-%02d", year, (year + 1) % 100);
     }
 

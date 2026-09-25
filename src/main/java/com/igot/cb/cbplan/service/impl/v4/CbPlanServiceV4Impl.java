@@ -4,9 +4,7 @@ import java.time.Instant;
 import java.util.*;
 
 import com.igot.cb.cbplan.service.CbPlanServiceV3;
-import com.igot.cb.cbplan.service.impl.CbPlanContentLookupServiceV3Impl;
 import com.igot.cb.cbplan.service.impl.CbPlanDataTransformServiceV3Impl;
-import com.igot.cb.cbplan.service.impl.v4.CbPlanOrgLookupServiceV4Impl;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -47,7 +45,7 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
     private final CbExtServerProperties serverProperties;
     private final CbPlanValidationServiceV4Impl validationService;
     private final CbPlanDataTransformServiceV3Impl dataTransformService;
-    private final CbPlanContentLookupServiceV3Impl contentLookupService;
+    private final CbPlanContentLookupServiceV4Impl contentLookupService;
     private final CbPlanElasticSearchServiceV4Impl elasticSearchService;
     private final CbPlanOrgLookupServiceV4Impl orgLookupService;
     private final CbPlanReadServiceV4Impl readService;
@@ -65,7 +63,7 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
                                CbExtServerProperties serverProperties,
                                CbPlanValidationServiceV4Impl validationService,
                                CbPlanDataTransformServiceV3Impl dataTransformService,
-                               CbPlanContentLookupServiceV3Impl contentLookupService,
+                               CbPlanContentLookupServiceV4Impl contentLookupService,
                                CbPlanElasticSearchServiceV4Impl elasticSearchService,
                                CbPlanOrgLookupServiceV4Impl orgLookupService,
                                CbPlanReadServiceV4Impl readService,
@@ -1464,13 +1462,24 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
      */
     private void executeDraftPlanUpdateTransactional(String cbPlanId, Map<String, Object> updatedRequest,
                                                       Map<String, Object> existingCbPlan, ApiResponse response) {
+        Map<String, Object> esReadyUpdate = prepareDataForElasticsearch(
+                elasticSearchService.sanitizeForElastic(updatedRequest));
+        Map<String, Object> esReadyExisting = prepareDataForElasticsearch(
+                elasticSearchService.sanitizeForElastic(existingCbPlan));
         Map<String, Object> resp = cassandraOperation.updateRecord(
                 serverProperties.getCbPlanV4Keyspace(),
                 serverProperties.getCbPlanV4PlanTable(),
                 updatedRequest,
                 Map.of(Constants.PLAN_ID, cbPlanId),
-                () -> elasticSearchService.tryUpdatePlan(cbPlanId, updatedRequest),
-                () -> elasticSearchService.rollbackUpdate(cbPlanId, existingCbPlan)
+                () -> Objects.nonNull(esUtilService.updateDocument(serverProperties.getCpPlanIndex(),
+                        Constants.INDEX_TYPE, cbPlanId, esReadyUpdate, serverProperties.getElasticCbPlanJsonPath())),
+                () -> {
+                    String rollbackResult = esUtilService.updateDocument(serverProperties.getCpPlanIndex(),
+                            Constants.INDEX_TYPE, cbPlanId, esReadyExisting, serverProperties.getElasticCbPlanJsonPath());
+                    if (Objects.isNull(rollbackResult)) {
+                        log.error("ES_CASSANDRA_DIVERGENCE: ES rollback for draft update failed for planId={} — manual reconciliation required", cbPlanId);
+                    }
+                }
         );
         if (Constants.SUCCESS.equals(resp.get(Constants.RESPONSE))) {
             processDraftUpdateSuccessPostEsUpdate(cbPlanId, updatedRequest, existingCbPlan, response);

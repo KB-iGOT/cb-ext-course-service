@@ -810,10 +810,10 @@ public class Constants {
     public static final String API_CONTENT_INFO_V2 = "api.content.v2.user.info";
     public static final String API_CBPLAN_V4_SEARCH = "api.cbplan.v4.search";
     public static final String API_CBPLAN_V3_SEARCH = "api.cbplan.v3.search";
-    public static final String MSG_USERGROUP_NAME_EXISTS = "A user group with this name already exists in the organisation";
+    public static final String MSG_USERGROUP_NAME_EXISTS = "A user group with this name already exists in the organisation. Please choose a different name.";
     public static final String PUBLISHED_BY_NAME = "publishedByName";
     public static final String CONTEXT_DATA_ES_FIELD_V4 = "contextDataV4";
-    public static final String MSG_USERGROUP_IN_USE = "User group is referenced by one or more CB Plans and cannot be archived";
+    public static final String MSG_USERGROUP_IN_USE = "This user group is linked to one or more Training Plans and cannot be archived.";
     public static final String ERR_USERGROUP_USAGE_CHECK_FAILED = "Failed to verify user group usage; archive blocked as a precaution";
 
     private Constants() {

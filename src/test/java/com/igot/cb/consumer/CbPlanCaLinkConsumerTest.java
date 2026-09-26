@@ -34,6 +34,8 @@ class CbPlanCaLinkConsumerTest {
     private static final String PLAN_ID = "e39f6cf0-b314-11f1-9299-21ed79c92209";
     private static final String CA_ID = "do_11466125660417228812";
     private static final String OTHER_CA_ID = "do_other";
+    private static final String CB_PLAN_V4_KEYSPACE = "cb_plan_v4";
+    private static final String CB_PLAN_V4_TABLE = "cb_plan_v4";
 
     @Mock
     private CassandraOperation cassandraOperation;
@@ -50,6 +52,8 @@ class CbPlanCaLinkConsumerTest {
     void setUp() {
         consumer = new CbPlanCaLinkConsumer(new ObjectMapper(), cassandraOperation, serverProperties, cbPlanServiceV4);
         lenient().when(serverProperties.getCassandraQueryLimitPrimaryKey()).thenReturn(1);
+        lenient().when(serverProperties.getCbPlanV4Keyspace()).thenReturn(CB_PLAN_V4_KEYSPACE);
+        lenient().when(serverProperties.getCbPlanV4PlanTable()).thenReturn(CB_PLAN_V4_TABLE);
     }
 
     private static ConsumerRecord<String, String> record(String value) {
@@ -64,7 +68,7 @@ class CbPlanCaLinkConsumerTest {
         Map<String, Object> plan = new HashMap<>();
         plan.put(Constants.PLAN_ID, PLAN_ID);
         plan.put(Constants.CA_LINKED_ID_DB, currentCaLinkedId);
-        when(cassandraOperation.getRecordsByProperties(eq(Constants.KEYSPACE_SUNBIRD), eq(Constants.TABLE_CB_PLAN_V3),
+        when(cassandraOperation.getRecordsByProperties(eq(CB_PLAN_V4_KEYSPACE), eq(CB_PLAN_V4_TABLE),
                 eq(Map.of(Constants.PLAN_ID, PLAN_ID)), isNull(), anyInt())).thenReturn(List.of(plan));
     }
 

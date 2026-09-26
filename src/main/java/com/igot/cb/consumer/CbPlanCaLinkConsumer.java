@@ -79,7 +79,8 @@ public class CbPlanCaLinkConsumer {
         }
 
         List<Map<String, Object>> plans = cassandraOperation.getRecordsByProperties(
-                Constants.KEYSPACE_SUNBIRD, Constants.TABLE_CB_PLAN_V3,
+                serverProperties.getCbPlanV4Keyspace(),
+                serverProperties.getCbPlanV4PlanTable(),
                 Map.of(Constants.PLAN_ID, planId), null, serverProperties.getCassandraQueryLimitPrimaryKey());
         if (CollectionUtils.isEmpty(plans)) {
             logger.error("CbPlanCaLinkConsumer: CB Plan not found - planId={}, eventType={}, caIdentifier={}", planId, eventType, caIdentifier);

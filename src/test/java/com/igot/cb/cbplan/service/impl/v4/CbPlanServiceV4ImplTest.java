@@ -1,7 +1,7 @@
 package com.igot.cb.cbplan.service.impl.v4;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.igot.cb.cache.CbPlanCacheMgrV3;
+import com.igot.cb.cache.CbPlanCacheMgrV4;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 import com.igot.cb.cache.RedisCacheMgr;
@@ -35,6 +35,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -100,7 +101,7 @@ class CbPlanServiceV4ImplTest {
     private RedisCacheMgr redisCacheMgr;
 
     @Mock
-    private CbPlanCacheMgrV3 cbPlanCacheMgrV3;
+    private CbPlanCacheMgrV4 cbPlanCacheMgrV4;
 
     @InjectMocks
     private CbPlanServiceV4Impl cbPlanService;
@@ -925,7 +926,7 @@ class CbPlanServiceV4ImplTest {
                         && Constants.SYSTEM_USER.equals(m.get(Constants.UPDATED_BY))),
                 eq(Map.of(Constants.PLAN_ID, PLAN_ID)));
         verify(elasticSearchService).updateElasticSearchForPlan(eq(PLAN_ID), anyMap());
-        verify(cbPlanCacheMgrV3).invalidatePlan(PLAN_ID);
+        verify(cbPlanCacheMgrV4).invalidatePlan(PLAN_ID);
         verify(redisCacheMgr).deleteKeysByPatternAsync(Constants.CB_PLAN_V4_REDIS_KEY_PREFIX + "*");
     }
 
@@ -955,7 +956,7 @@ class CbPlanServiceV4ImplTest {
 
         assertFalse(result);
         verify(elasticSearchService, never()).updateElasticSearchForPlan(anyString(), anyMap());
-        verify(cbPlanCacheMgrV3, never()).invalidatePlan(anyString());
+        verify(cbPlanCacheMgrV4, never()).invalidatePlan(anyString());
         verify(redisCacheMgr, never()).deleteKeysByPatternAsync(anyString());
     }
 
@@ -1124,5 +1125,75 @@ class CbPlanServiceV4ImplTest {
 
         assertNotNull(result);
         assertTrue(result.isEmpty());
+    }
+
+    // ---------------- enrichCreatedByOrgName ----------------
+
+    @Test
+    void readCbPlan_livePlan_enrichesCreatedByOrgName() throws JsonProcessingException {
+        Map<String, Object> plan = new HashMap<>();
+        plan.put(Constants.STATUS, Constants.LIVE);
+        mockExistingPlan(plan);
+        CbPlanReadResponseDto dto = CbPlanReadResponseDto.builder().id(PLAN_ID).createdByOrgId(ORG_ID).build();
+        when(readService.buildEnrichedPlanData(plan, PLAN_ID)).thenReturn(dto);
+        Map<String, Object> orgRecord = new HashMap<>();
+        orgRecord.put(Constants.ORG_NAME, "Test Org");
+        when(cassandraOperation.getRecordsByProperties(
+                eq(Constants.KEYSPACE_SUNBIRD), eq(Constants.ORG_TABLE),
+                anyMap(), any(), any()))
+                .thenReturn(List.of(orgRecord));
+
+        cbPlanService.readCbPlan(PLAN_ID, TOKEN);
+
+        assertEquals("Test Org", dto.getCreatedByOrgName());
+    }
+
+    @Test
+    void readCbPlan_livePlan_orgNotFound_createdByOrgNameRemainsNull() throws JsonProcessingException {
+        Map<String, Object> plan = new HashMap<>();
+        plan.put(Constants.STATUS, Constants.LIVE);
+        mockExistingPlan(plan);
+        CbPlanReadResponseDto dto = CbPlanReadResponseDto.builder().id(PLAN_ID).createdByOrgId(ORG_ID).build();
+        when(readService.buildEnrichedPlanData(plan, PLAN_ID)).thenReturn(dto);
+        when(cassandraOperation.getRecordsByProperties(
+                eq(Constants.KEYSPACE_SUNBIRD), eq(Constants.ORG_TABLE),
+                anyMap(), any(), any()))
+                .thenReturn(List.of());
+
+        cbPlanService.readCbPlan(PLAN_ID, TOKEN);
+
+        assertNull(dto.getCreatedByOrgName());
+    }
+
+    @Test
+    void readCbPlan_livePlan_orgLookupThrows_requestSucceeds() throws JsonProcessingException {
+        Map<String, Object> plan = new HashMap<>();
+        plan.put(Constants.STATUS, Constants.LIVE);
+        mockExistingPlan(plan);
+        CbPlanReadResponseDto dto = CbPlanReadResponseDto.builder().id(PLAN_ID).createdByOrgId(ORG_ID).build();
+        when(readService.buildEnrichedPlanData(plan, PLAN_ID)).thenReturn(dto);
+        when(cassandraOperation.getRecordsByProperties(
+                eq(Constants.KEYSPACE_SUNBIRD), eq(Constants.ORG_TABLE),
+                anyMap(), any(), any()))
+                .thenThrow(new RuntimeException("cassandra down"));
+
+        ApiResponse response = cbPlanService.readCbPlan(PLAN_ID, TOKEN);
+
+        assertNotEquals(Constants.FAILED, response.getParams().getStatus());
+        assertNull(dto.getCreatedByOrgName());
+    }
+
+    @Test
+    void readCbPlan_livePlan_nullCreatedByOrgId_skipsOrgLookup() throws JsonProcessingException {
+        Map<String, Object> plan = new HashMap<>();
+        plan.put(Constants.STATUS, Constants.LIVE);
+        mockExistingPlan(plan);
+        CbPlanReadResponseDto dto = CbPlanReadResponseDto.builder().id(PLAN_ID).build();
+        when(readService.buildEnrichedPlanData(plan, PLAN_ID)).thenReturn(dto);
+
+        cbPlanService.readCbPlan(PLAN_ID, TOKEN);
+
+        verify(cassandraOperation, never()).getRecordsByProperties(
+                anyString(), eq(Constants.ORG_TABLE), anyMap(), any(), any());
     }
 }

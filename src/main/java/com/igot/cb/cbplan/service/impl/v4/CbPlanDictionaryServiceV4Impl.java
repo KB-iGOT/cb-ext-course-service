@@ -25,7 +25,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import com.igot.cb.cache.CbPlanCacheMgrV3;
+import com.igot.cb.cache.CbPlanCacheMgrV4;
 import com.igot.cb.cache.RedisCacheMgr;
 import com.igot.cb.cbplan.service.impl.CbPlanContentLookupServiceV3Impl;
 import com.igot.cb.cbplan.service.impl.CbPlanDataTransformServiceV3Impl;
@@ -54,7 +54,7 @@ import lombok.extern.slf4j.Slf4j;
 public class CbPlanDictionaryServiceV4Impl {
 
     private final CassandraOperation cassandraOperation;
-    private final CbPlanCacheMgrV3 cbPlanCacheMgrV3;
+    private final CbPlanCacheMgrV4 cbPlanCacheMgrV4;
     private final CbPlanUserGroupLookupServiceV4Impl userGroupLookupService;
     private final AccessTokenValidator accessTokenValidator;
     private final RedisCacheMgr redisCacheMgr;
@@ -66,7 +66,7 @@ public class CbPlanDictionaryServiceV4Impl {
     private static final TypeReference<Map<String, Object>> MAP_TYPE_REF = new TypeReference<>() {};
 
     public CbPlanDictionaryServiceV4Impl(CassandraOperation cassandraOperation,
-                                         CbPlanCacheMgrV3 cbPlanCacheMgrV3,
+                                         CbPlanCacheMgrV4 cbPlanCacheMgrV4,
                                          CbPlanUserGroupLookupServiceV4Impl userGroupLookupService,
                                          AccessTokenValidator accessTokenValidator,
                                          RedisCacheMgr redisCacheMgr,
@@ -75,7 +75,7 @@ public class CbPlanDictionaryServiceV4Impl {
                                          CbPlanDataTransformServiceV3Impl dataTransformService,
                                          CbPlanContentLookupServiceV3Impl contentLookupService) {
         this.cassandraOperation = cassandraOperation;
-        this.cbPlanCacheMgrV3 = cbPlanCacheMgrV3;
+        this.cbPlanCacheMgrV4 = cbPlanCacheMgrV4;
         this.userGroupLookupService = userGroupLookupService;
         this.accessTokenValidator = accessTokenValidator;
         this.redisCacheMgr = redisCacheMgr;
@@ -144,7 +144,7 @@ public class CbPlanDictionaryServiceV4Impl {
             }
             Map<String, Map<String, Object>> aparPlanMap = new LinkedHashMap<>();
             Map<String, Map<String, Object>> nonAparPlanMap = new LinkedHashMap<>();
-            buildPlanPartitions(activePlans, userOrgId, userProfile, aparPlanMap, nonAparPlanMap);
+            buildPlanPartitions(activePlans, userProfile, aparPlanMap, nonAparPlanMap);
             Set<String> orgIds = collectCreatedByOrgIds(aparPlanMap, nonAparPlanMap);
             Map<String, Map<String, String>> orgDetailsMap = fetchOrgDetails(orgIds);
             enrichOrgDetails(aparPlanMap, orgDetailsMap);
@@ -175,6 +175,151 @@ public class CbPlanDictionaryServiceV4Impl {
             response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
         }
         return response;
+    }
+
+    /**
+     * Checks whether the given Comprehensive Assessment do_id is linked (via caLinkedId) to any
+     * plan the user is eligible for, searching the current financial year then the previous year -
+     * unlike getCBPlanDictionaryForUser, this always searches both, since callers here never pass
+     * an explicit planYear to opt into the fallback. Reuses the same per-year plan-resolution
+     * pipeline (org/ministry scoping, access-control rule evaluation, live-content filtering) and
+     * the same per-year Redis cache as the dictionary endpoint, so a warm dictionary cache is
+     * reused here too, and a miss here populates the same cache the dictionary endpoint would use.
+     *
+     * @param doId CA content identifier to check eligibility for
+     * @param authToken authentication token
+     * @return ApiResponse with result = {eligible: boolean, mandatoryCourses: List<String>}
+     */
+    public ApiResponse getComprehensiveAssessmentEligibility(String doId, String authToken) {
+        log.debug("getComprehensiveAssessmentEligibility: Entry - doId={}", doId);
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_CBPLAN_V4_ASSESSMENT_ELIGIBILITY);
+        try {
+            String userId = accessTokenValidator.fetchUserIdFromAccessToken(authToken, response);
+            if (StringUtils.isBlank(userId)) {
+                log.warn("getComprehensiveAssessmentEligibility: Invalid or missing token");
+                response.getParams().setErr("Invalid or missing authentication token");
+                response.setResponseCode(HttpStatus.UNAUTHORIZED);
+                return response;
+            }
+            Map<String, String> userProfile = buildUserProfile(userId, response);
+            if (userProfile.isEmpty()) {
+                return response;
+            }
+            String userOrgId = userProfile.get(Constants.USER_ROOT_ORG_ID);
+            AtomicBoolean isCacheEnabled = new AtomicBoolean(false);
+            String currentYear = CbPlanYearUtil.resolveCurrentCalendarPlanYear();
+            for (String planYear : List.of(currentYear, CbPlanYearUtil.resolvePreviousYear(currentYear))) {
+                Map<String, Object> yearResult = resolveYearResult(userId, userProfile, userOrgId, planYear, isCacheEnabled);
+                log.info("yearResult={}, ", yearResult);
+                Map<String, Object> match = findPlanByCaLinkedId(yearResult, doId);
+                if (Objects.nonNull(match)) {
+                    List<String> mandatoryCourseIds = extractMandatoryCourseIds(match);
+                    log.info("getComprehensiveAssessmentEligibility: Match found - userId={}, doId={}, planYear={}", userId, doId, planYear);
+                    log.info("getComprehensiveAssessmentEligibility: Result - userId={}, doId={}, eligible=true, mandatoryCourses={}", userId, doId, mandatoryCourseIds);
+                    response.getResult().put(Constants.ELIGIBLE, true);
+                    response.getResult().put(Constants.MANDATORY_COURSES, mandatoryCourseIds);
+                    response.setParams(new ApiRespParam());
+                    response.getParams().setStatus(Constants.SUCCESS);
+                    response.setResponseCode(HttpStatus.OK);
+                    return response;
+                }
+            }
+            log.info("getComprehensiveAssessmentEligibility: No match - userId={}, doId={}", userId, doId);
+            log.info("getComprehensiveAssessmentEligibility: Result - userId={}, doId={}, eligible=false, mandatoryCourses=[]", userId, doId);
+            response.getResult().put(Constants.ELIGIBLE, false);
+            response.getResult().put(Constants.MANDATORY_COURSES, List.of());
+            response.setParams(new ApiRespParam());
+            response.getParams().setStatus(Constants.SUCCESS);
+            response.setResponseCode(HttpStatus.OK);
+        } catch (Exception e) {
+            log.error("getComprehensiveAssessmentEligibility: Unexpected error - doId={}", doId, e);
+            response.getParams().setStatus(Constants.FAILED);
+            response.getParams().setErr("Failed to check assessment eligibility");
+            response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+        return response;
+    }
+
+    /**
+     * Resolves one year's eligible-plan result via the same pipeline and the same per-year Redis
+     * cache key getCBPlanDictionaryForUser's cache-miss path uses - this does not modify or call
+     * into that method, it independently drives the same already-existing, already-shared steps
+     * (fetchPlansForUser, buildPlanPartitions, org enrichment, live-content filtering) so this is
+     * purely additive: getCBPlanDictionaryForUser's own code path is untouched.
+     */
+    private Map<String, Object> resolveYearResult(String userId, Map<String, String> userProfile,
+            String userOrgId, String planYear, AtomicBoolean isCacheEnabled) {
+        String cacheKey = Constants.CB_PLAN_V4_REDIS_KEY_PREFIX + userId + ":" + planYear + ":dict";
+        String cachedJson = redisCacheMgr.getFromCache(cacheKey);
+        if (StringUtils.isNotBlank(cachedJson)) {
+            try {
+                Map<String, Object> cachedResult = mapper.readValue(cachedJson, MAP_TYPE_REF);
+                // The dictionary endpoint caches its full result keyed by plan year, while this
+                // method normally works with the unwrapped year result.
+                Object yearResult = cachedResult.get(planYear);
+                if (yearResult instanceof Map<?, ?>) {
+                    return (Map<String, Object>) yearResult;
+                }
+                return cachedResult;
+            } catch (JsonProcessingException e) {
+                log.warn("resolveYearResult: Failed to deserialize cache - key={}", cacheKey, e);
+            }
+        }
+        List<Map<String, Object>> activePlans = fetchPlansForUser(userProfile, userOrgId, planYear, isCacheEnabled);
+        if (CollectionUtils.isEmpty(activePlans)) {
+            return buildYearResult(new LinkedHashMap<>(), new LinkedHashMap<>());
+        }
+        Map<String, Map<String, Object>> aparPlanMap = new LinkedHashMap<>();
+        Map<String, Map<String, Object>> nonAparPlanMap = new LinkedHashMap<>();
+        buildPlanPartitions(activePlans, userProfile, aparPlanMap, nonAparPlanMap);
+        Set<String> orgIds = collectCreatedByOrgIds(aparPlanMap, nonAparPlanMap);
+        Map<String, Map<String, String>> orgDetailsMap = fetchOrgDetails(orgIds);
+        enrichOrgDetails(aparPlanMap, orgDetailsMap);
+        enrichOrgDetails(nonAparPlanMap, orgDetailsMap);
+        filterLiveContentInPlans(aparPlanMap, nonAparPlanMap);
+        return buildYearResult(aparPlanMap, nonAparPlanMap);
+    }
+
+    /**
+     * Scans a year's aparPlanList/nonAparPlanList for the plan whose caLinkedId equals doId.
+     */
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> findPlanByCaLinkedId(Map<String, Object> yearResult, String doId) {
+        for (String listKey : List.of(Constants.RESPONSE_KEY_APAR_PLAN_LIST, Constants.RESPONSE_KEY_NON_APAR_PLAN_LIST)) {
+            Object listObj = yearResult.get(listKey);
+            if (!(listObj instanceof Map)) {
+                continue;
+            }
+            for (Object planObj : ((Map<String, Object>) listObj).values()) {
+                if (planObj instanceof Map) {
+                    Map<String, Object> plan = (Map<String, Object>) planObj;
+                    if (doId.equals(plan.get(Constants.CA_LINKED_ID))) {
+                        return plan;
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Extracts identifiers of contentList entries marked mandatory:true.
+     */
+    @SuppressWarnings("unchecked")
+    private List<String> extractMandatoryCourseIds(Map<String, Object> plan) {
+        Object contentListObj = plan.get(Constants.CONTENT_LIST);
+        List<String> mandatoryIds = new ArrayList<>();
+        if (contentListObj instanceof List) {
+            for (Object entryObj : (List<Object>) contentListObj) {
+                if (entryObj instanceof Map) {
+                    Map<String, Object> entry = (Map<String, Object>) entryObj;
+                    if (Boolean.TRUE.equals(entry.get(Constants.MANDATORY)) && entry.get(Constants.IDENTIFIER) != null) {
+                        mandatoryIds.add((String) entry.get(Constants.IDENTIFIER));
+                    }
+                }
+            }
+        }
+        return mandatoryIds;
     }
 
     /**
@@ -301,33 +446,46 @@ public class CbPlanDictionaryServiceV4Impl {
      */
     private List<Map<String, Object>> fetchPlansForUser(Map<String, String> userProfile, String userOrgId,
                                                         String planYear, AtomicBoolean isCacheEnabled) {
-        List<Map<String, Object>> orgPlans = cbPlanCacheMgrV3.getCbPlanForAllAndOrgId(userOrgId, planYear, isCacheEnabled);
+        List<Map<String, Object>> orgPlans = cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(userOrgId, planYear, isCacheEnabled);
         String ministryOrStateId = userProfile.get(Constants.MINISTRY_OR_STATE_ID_RQST);
         if (StringUtils.isBlank(ministryOrStateId)) {
             return orgPlans;
         }
         log.info("fetchPlansForUser: Fetching ministry plans - ministryOrStateId={}", ministryOrStateId);
-        List<Map<String, Object>> ministryPlans = cbPlanCacheMgrV3.getCbPlanForMinistryOrStateId(ministryOrStateId, planYear);
+        List<Map<String, Object>> ministryPlans = cbPlanCacheMgrV4.getCbPlanForMinistryOrStateId(ministryOrStateId, planYear);
         return dataTransformService.mergePlanLists(orgPlans, ministryPlans);
     }
 
     /**
-     * Pre-fetches all V4 userGroupIds referenced across the plan list in one batch call per org,
-     * avoiding per-plan Cassandra lookups in the access-control evaluation loop.
+     * Pre-fetches all V4 userGroupIds referenced across the plan list, grouped by each plan's
+     * creator orgId (orgidlist[0]). User groups are partitioned by their creator org in Cassandra,
+     * so the lookup must use the plan's orgId, not the requesting user's orgId.
      */
     private Map<String, Map<String, Object>> batchFetchUserGroupsForPlans(List<Map<String, Object>> plans,
-                                                                          String userOrgId,
                                                                           Map<String, Map<String, Object>> parsedContextData) {
-        Set<String> userGroupIds = new HashSet<>();
+        Map<String, Set<String>> orgToGroupIds = new HashMap<>();
         for (Map<String, Object> plan : plans) {
-            collectV4UserGroupIds(plan, userGroupIds, parsedContextData);
+            String planOrgId = extractCreatedByOrgId(plan);
+            if (StringUtils.isBlank(planOrgId)) {
+                continue;
+            }
+            Set<String> groupIds = new HashSet<>();
+            collectV4UserGroupIds(plan, groupIds, parsedContextData);
+            if (CollectionUtils.isNotEmpty(groupIds)) {
+                orgToGroupIds.computeIfAbsent(planOrgId, k -> new HashSet<>()).addAll(groupIds);
+            }
         }
-        if (userGroupIds.isEmpty()) {
+        if (orgToGroupIds.isEmpty()) {
             return Collections.emptyMap();
         }
-        log.debug("batchFetchUserGroupsForPlans: Pre-fetching {} unique userGroupIds for orgId={}",
-                userGroupIds.size(), userOrgId);
-        Map<String, Map<String, Object>> groups = userGroupLookupService.fetchUserGroupsByIds(new ArrayList<>(userGroupIds), userOrgId);
+        int totalGroups = orgToGroupIds.values().stream().mapToInt(Set::size).sum();
+        log.debug("batchFetchUserGroupsForPlans: Pre-fetching {} user groups across {} plan orgIds",
+                totalGroups, orgToGroupIds.size());
+        Map<String, Map<String, Object>> groups = new HashMap<>();
+        for (Map.Entry<String, Set<String>> entry : orgToGroupIds.entrySet()) {
+            groups.putAll(userGroupLookupService.fetchUserGroupsByIds(
+                    new ArrayList<>(entry.getValue()), entry.getKey()));
+        }
         normalizeCriteriaKeysInGroups(groups);
         return groups;
     }
@@ -771,7 +929,7 @@ public class CbPlanDictionaryServiceV4Impl {
         }
         Map<String, Map<String, Object>> aparPlanMap = new LinkedHashMap<>();
         Map<String, Map<String, Object>> nonAparPlanMap = new LinkedHashMap<>();
-        buildPlanPartitions(prevPlans, userOrgId, userProfile, aparPlanMap, nonAparPlanMap);
+        buildPlanPartitions(prevPlans, userProfile, aparPlanMap, nonAparPlanMap);
         Set<String> orgIds = collectCreatedByOrgIds(aparPlanMap, nonAparPlanMap);
         Map<String, Map<String, String>> orgDetailsMap = fetchOrgDetails(orgIds);
         enrichOrgDetails(aparPlanMap, orgDetailsMap);
@@ -842,12 +1000,11 @@ public class CbPlanDictionaryServiceV4Impl {
     }
 
     private void buildPlanPartitions(List<Map<String, Object>> plans,
-                                     String userOrgId,
                                      Map<String, String> userProfile,
                                      Map<String, Map<String, Object>> aparPlanMap,
                                      Map<String, Map<String, Object>> nonAparPlanMap) {
         Map<String, Map<String, Object>> parsedContextData = parseContextDataForPlans(plans);
-        Map<String, Map<String, Object>> prefetchedUserGroups = batchFetchUserGroupsForPlans(plans, userOrgId, parsedContextData);
+        Map<String, Map<String, Object>> prefetchedUserGroups = batchFetchUserGroupsForPlans(plans, parsedContextData);
         processPlans(plans, userProfile, prefetchedUserGroups, parsedContextData, aparPlanMap, nonAparPlanMap);
     }
 
@@ -941,7 +1098,8 @@ public class CbPlanDictionaryServiceV4Impl {
     }
 
     /**
-     * Removes plans with a null/blank or non-Live caLinkedId from both plan maps.
+     * Removes plans whose caLinkedId is present but resolves to a non-Live status.
+     * Plans with a null/blank caLinkedId are kept — they are valid training plans with no CA link.
      * Each unique caLinkedId is resolved exactly once via extended content read.
      */
     private void filterLiveContentInPlans(Map<String, Map<String, Object>> aparPlanMap,
@@ -978,7 +1136,10 @@ public class CbPlanDictionaryServiceV4Impl {
 
     private boolean isLiveCaLinkedId(Map<String, Object> planEntry, Set<String> liveIds) {
         Object caId = planEntry.get(Constants.CA_LINKED_ID);
-        return !(caId instanceof String id) || !StringUtils.isNotBlank(id) || !liveIds.contains(id);
+        if (!(caId instanceof String id) || StringUtils.isBlank(id)) {
+            return false;
+        }
+        return !liveIds.contains(id);
     }
 
 }

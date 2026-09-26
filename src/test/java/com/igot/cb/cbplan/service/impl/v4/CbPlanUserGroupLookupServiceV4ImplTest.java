@@ -1,12 +1,16 @@
 package com.igot.cb.cbplan.service.impl.v4;
 
 import com.igot.cb.cassandra.CassandraOperation;
+import com.igot.cb.util.CbExtServerProperties;
 import com.igot.cb.util.Constants;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+
+import static org.mockito.Mockito.lenient;
 
 import java.util.HashMap;
 import java.util.List;
@@ -32,8 +36,17 @@ class CbPlanUserGroupLookupServiceV4ImplTest {
     @Mock
     private CassandraOperation cassandraOperation;
 
+    @Mock
+    private CbExtServerProperties serverProperties;
+
     @InjectMocks
     private CbPlanUserGroupLookupServiceV4Impl lookupService;
+
+    @BeforeEach
+    void setUp() {
+        lenient().when(serverProperties.getCbPlanV4Keyspace()).thenReturn(Constants.KEYSPACE_SUNBIRD);
+        lenient().when(serverProperties.getCbPlanV4UserGroupTable()).thenReturn(Constants.TABLE_USER_GROUP_INFO);
+    }
 
     private static Map<String, Object> userGroupEntity(List<Map<String, List<String>>> criteria) {
         Map<String, Object> entity = new HashMap<>();

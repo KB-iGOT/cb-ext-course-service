@@ -98,6 +98,16 @@ public interface CbPlanServiceV4 {
     ApiResponse getCBPlanDictionaryForUser(ApiRequest request, String authToken);
 
     /**
+     * Checks whether the given Comprehensive Assessment do_id is linked (via caLinkedId) to any
+     * plan the user is eligible for, searching the current and previous financial year.
+     *
+     * @param doId      CA content identifier to check eligibility for
+     * @param authToken the authentication token
+     * @return ApiResponse with result = {eligible: boolean, mandatoryCourses: List<String>}
+     */
+    ApiResponse getComprehensiveAssessmentEligibility(String doId, String authToken);
+
+    /**
      * Sets or clears the Comprehensive Assessment link (calinkedid) on a CB Plan, syncs the
      * ElasticSearch document and invalidates the plan/dictionary caches.
      * Used by the authenticated update API and by the training-plan CA-link Kafka consumer.

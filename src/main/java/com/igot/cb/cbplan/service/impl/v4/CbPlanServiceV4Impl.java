@@ -4,9 +4,7 @@ import java.time.Instant;
 import java.util.*;
 
 import com.igot.cb.cbplan.service.CbPlanServiceV3;
-import com.igot.cb.cbplan.service.impl.CbPlanContentLookupServiceV3Impl;
 import com.igot.cb.cbplan.service.impl.CbPlanDataTransformServiceV3Impl;
-import com.igot.cb.cbplan.service.impl.CbPlanOrgLookupServiceV3Impl;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -18,7 +16,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import com.igot.cb.cache.CbPlanCacheMgrV3;
+import com.igot.cb.cache.CbPlanCacheMgrV4;
 import com.igot.cb.cache.RedisCacheMgr;
 import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.cbplan.dto.CbPlanReadResponseDto;
@@ -47,9 +45,9 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
     private final CbExtServerProperties serverProperties;
     private final CbPlanValidationServiceV4Impl validationService;
     private final CbPlanDataTransformServiceV3Impl dataTransformService;
-    private final CbPlanContentLookupServiceV3Impl contentLookupService;
+    private final CbPlanContentLookupServiceV4Impl contentLookupService;
     private final CbPlanElasticSearchServiceV4Impl elasticSearchService;
-    private final CbPlanOrgLookupServiceV3Impl orgLookupService;
+    private final CbPlanOrgLookupServiceV4Impl orgLookupService;
     private final CbPlanReadServiceV4Impl readService;
     private final CbPlanSearchServiceV4Impl searchService;
     private final CbPlanServiceV3 cbPlanServiceV3;
@@ -58,16 +56,16 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
     private final UserProfileUtil userProfileUtil;
     private final CbPlanDictionaryServiceV4Impl dictionaryService;
     private final RedisCacheMgr redisCacheMgr;
-    private final CbPlanCacheMgrV3 cbPlanCacheMgrV3;
+    private final CbPlanCacheMgrV4 cbPlanCacheMgrV4;
     private final ObjectMapper mapper;
 
     public CbPlanServiceV4Impl(CassandraOperation cassandraOperation,
                                CbExtServerProperties serverProperties,
                                CbPlanValidationServiceV4Impl validationService,
                                CbPlanDataTransformServiceV3Impl dataTransformService,
-                               CbPlanContentLookupServiceV3Impl contentLookupService,
+                               CbPlanContentLookupServiceV4Impl contentLookupService,
                                CbPlanElasticSearchServiceV4Impl elasticSearchService,
-                               CbPlanOrgLookupServiceV3Impl orgLookupService,
+                               CbPlanOrgLookupServiceV4Impl orgLookupService,
                                CbPlanReadServiceV4Impl readService,
                                CbPlanSearchServiceV4Impl searchService,
                                CbPlanServiceV3 cbPlanServiceV3,
@@ -76,7 +74,7 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
                                UserProfileUtil userProfileUtil,
                                CbPlanDictionaryServiceV4Impl dictionaryService,
                                RedisCacheMgr redisCacheMgr,
-                               CbPlanCacheMgrV3 cbPlanCacheMgrV3) {
+                               CbPlanCacheMgrV4 cbPlanCacheMgrV4) {
         this.cassandraOperation = cassandraOperation;
         this.serverProperties = serverProperties;
         this.validationService = validationService;
@@ -92,7 +90,7 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
         this.userProfileUtil = userProfileUtil;
         this.dictionaryService = dictionaryService;
         this.redisCacheMgr = redisCacheMgr;
-        this.cbPlanCacheMgrV3 = cbPlanCacheMgrV3;
+        this.cbPlanCacheMgrV4 = cbPlanCacheMgrV4;
         this.mapper = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
@@ -308,7 +306,7 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
      */
     private Map<String, Object> fetchExistingPlan(String cbPlanId, ApiResponse response) {
         List<Map<String, Object>> cbPlanMapInfo = cassandraOperation.getRecordsByProperties(
-                Constants.KEYSPACE_SUNBIRD, Constants.TABLE_CB_PLAN_V3,
+                serverProperties.getCbPlanV4Keyspace(), serverProperties.getCbPlanV4PlanTable(),
                 Map.of(Constants.PLAN_ID, cbPlanId), null, serverProperties.getCassandraQueryLimitPrimaryKey());
         if (CollectionUtils.isEmpty(cbPlanMapInfo)) {
             log.warn("CbPlanServiceV4Impl.fetchExistingPlan: CB Plan not found - cbPlanId={}", cbPlanId);
@@ -479,8 +477,8 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
                                      ApiResponse response) throws JsonProcessingException {
         String draftData = mapper.writeValueAsString(updatedCbPlan);
         String planId = (String) existingCbPlan.get(Constants.PLAN_ID);
-        Map<String, Object> resp = cassandraOperation.updateRecord(Constants.KEYSPACE_SUNBIRD,
-                Constants.TABLE_CB_PLAN_V3, Map.of(Constants.DRAFT_DATA, draftData),
+        Map<String, Object> resp = cassandraOperation.updateRecord(serverProperties.getCbPlanV4Keyspace(),
+                serverProperties.getCbPlanV4PlanTable(), Map.of(Constants.DRAFT_DATA, draftData),
                 Map.of(Constants.PLAN_ID, planId));
         if (Constants.SUCCESS.equals(resp.get(Constants.RESPONSE))) {
             log.info("CbPlanServiceV4Impl.saveLivePlanAsDraft: Staged update as draft - cbPlanId={}", planId);
@@ -809,8 +807,8 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
         Map<String, Object> sanitizedMapForEs = prepareDataForElasticsearch(sanitizedMap);
         Map<String, Object> sanitizedExisting = elasticSearchService.sanitizeForElastic(existingCbPlan);
         Map<String, Object> resp = cassandraOperation.updateRecord(
-                Constants.KEYSPACE_SUNBIRD,
-                Constants.TABLE_CB_PLAN_V3,
+                serverProperties.getCbPlanV4Keyspace(),
+                serverProperties.getCbPlanV4PlanTable(),
                 updatedRequest,
                 Map.of(Constants.PLAN_ID, cbPlanId),
                 () -> Objects.nonNull(esUtilService.updateDocument(serverProperties.getCpPlanIndex(), Constants.INDEX_TYPE,
@@ -1000,6 +998,8 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
             return;
         }
         CbPlanReadResponseDto enrichedData = readService.buildEnrichedPlanData(cbPlan, cbPlanId);
+        enrichCreatedByName(enrichedData);
+        enrichCreatedByOrgName(enrichedData);
         response.getResult().put(Constants.CONTENT, enrichedData);
         log.info("CbPlanServiceV4Impl.readCbPlan: Successfully retrieved CB Plan - cbPlanId={}", cbPlanId);
     }
@@ -1076,6 +1076,8 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
             return;
         }
         CbPlanReadResponseDto enrichedData = readService.buildEnrichedPlanData(cbPlan, cbPlanId);
+        enrichCreatedByName(enrichedData);
+        enrichCreatedByOrgName(enrichedData);
         response.getResult().put(Constants.CONTENT, enrichedData);
         log.info("CbPlanServiceV4Impl.readCbPlanAdmin: Successfully retrieved CB Plan - cbPlanId={}", cbPlanId);
     }
@@ -1310,8 +1312,8 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
         updateMap.put(Constants.UPDATED_BY, updatedBy);
         updateMap.put(Constants.UPDATED_AT, Instant.now());
         Map<String, Object> resp = cassandraOperation.updateRecord(
-                Constants.KEYSPACE_SUNBIRD,
-                Constants.TABLE_CB_PLAN_V3,
+                serverProperties.getCbPlanV4Keyspace(),
+                serverProperties.getCbPlanV4PlanTable(),
                 updateMap,
                 Map.of(Constants.PLAN_ID, cbPlanId));
         if (!Constants.SUCCESS.equals(resp.get(Constants.RESPONSE))) {
@@ -1320,7 +1322,7 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
             return false;
         }
         elasticSearchService.updateElasticSearchForPlan(cbPlanId, updateMap);
-        cbPlanCacheMgrV3.invalidatePlan(cbPlanId);
+        cbPlanCacheMgrV4.invalidatePlan(cbPlanId);
         redisCacheMgr.deleteKeysByPatternAsync(Constants.CB_PLAN_V4_REDIS_KEY_PREFIX + "*");
         log.info("CbPlanServiceV4Impl.updateCaLinkedId: Updated - cbPlanId={}, caLinkedId={}, updatedBy={}",
                 cbPlanId, caLinkedId, updatedBy);
@@ -1333,6 +1335,14 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
     @Override
     public ApiResponse getCBPlanDictionaryForUser(ApiRequest request, String authToken) {
         return dictionaryService.getCBPlanDictionaryForUser(request, authToken);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public ApiResponse getComprehensiveAssessmentEligibility(String doId, String authToken) {
+        return dictionaryService.getComprehensiveAssessmentEligibility(doId, authToken);
     }
 
     /**
@@ -1409,8 +1419,8 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
             Map<String, Object> planDataForEs = prepareDataForElasticsearch(planData);
 
             Map<String, Object> insertResult = cassandraOperation.insertRecord(
-                    Constants.KEYSPACE_SUNBIRD,
-                    Constants.TABLE_CB_PLAN_V3,
+                    serverProperties.getCbPlanV4Keyspace(),
+                    serverProperties.getCbPlanV4PlanTable(),
                     planData,
                     () -> elasticSearchService.tryIndexPlan(planId, planDataForEs),
                     () -> elasticSearchService.rollbackCreate(planId)
@@ -1454,13 +1464,24 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
      */
     private void executeDraftPlanUpdateTransactional(String cbPlanId, Map<String, Object> updatedRequest,
                                                       Map<String, Object> existingCbPlan, ApiResponse response) {
+        Map<String, Object> esReadyUpdate = prepareDataForElasticsearch(
+                elasticSearchService.sanitizeForElastic(updatedRequest));
+        Map<String, Object> esReadyExisting = prepareDataForElasticsearch(
+                elasticSearchService.sanitizeForElastic(existingCbPlan));
         Map<String, Object> resp = cassandraOperation.updateRecord(
-                Constants.KEYSPACE_SUNBIRD,
-                Constants.TABLE_CB_PLAN_V3,
+                serverProperties.getCbPlanV4Keyspace(),
+                serverProperties.getCbPlanV4PlanTable(),
                 updatedRequest,
                 Map.of(Constants.PLAN_ID, cbPlanId),
-                () -> elasticSearchService.tryUpdatePlan(cbPlanId, updatedRequest),
-                () -> elasticSearchService.rollbackUpdate(cbPlanId, existingCbPlan)
+                () -> Objects.nonNull(esUtilService.updateDocument(serverProperties.getCpPlanIndex(),
+                        Constants.INDEX_TYPE, cbPlanId, esReadyUpdate, serverProperties.getElasticCbPlanJsonPath())),
+                () -> {
+                    String rollbackResult = esUtilService.updateDocument(serverProperties.getCpPlanIndex(),
+                            Constants.INDEX_TYPE, cbPlanId, esReadyExisting, serverProperties.getElasticCbPlanJsonPath());
+                    if (Objects.isNull(rollbackResult)) {
+                        log.error("ES_CASSANDRA_DIVERGENCE: ES rollback for draft update failed for planId={} — manual reconciliation required", cbPlanId);
+                    }
+                }
         );
         if (Constants.SUCCESS.equals(resp.get(Constants.RESPONSE))) {
             processDraftUpdateSuccessPostEsUpdate(cbPlanId, updatedRequest, existingCbPlan, response);
@@ -1523,5 +1544,43 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
         entry.put(Constants.IDENTIFIER, item);
         entry.put(Constants.MANDATORY, false);
         return entry;
+    }
+
+    /**
+     * Resolves the createdBy user ID to a display name and sets it on the DTO.
+     *
+     * @param dto read response DTO to enrich
+     */
+    private void enrichCreatedByName(CbPlanReadResponseDto dto) {
+        String createdBy = dto.getCreatedBy();
+        if (StringUtils.isBlank(createdBy)) {
+            return;
+        }
+        Map<String, String> userIdToName = userProfileUtil.buildUserProfiles(List.of(createdBy));
+        dto.setCreatedByName(userIdToName.getOrDefault(createdBy, StringUtils.EMPTY));
+    }
+
+    /**
+     * Resolves the createdByOrgId to an org display name and sets it on the DTO.
+     * Failures are swallowed — org name is best-effort, not required.
+     *
+     * @param dto read response DTO to enrich
+     */
+    private void enrichCreatedByOrgName(CbPlanReadResponseDto dto) {
+        String createdByOrgId = dto.getCreatedByOrgId();
+        if (StringUtils.isBlank(createdByOrgId)) {
+            return;
+        }
+        try {
+            List<Map<String, Object>> orgList = cassandraOperation.getRecordsByProperties(
+                    Constants.KEYSPACE_SUNBIRD, Constants.ORG_TABLE,
+                    Map.of(Constants.ID, List.of(createdByOrgId)),
+                    List.of(Constants.ID, Constants.ORG_NAME), null);
+            if (CollectionUtils.isNotEmpty(orgList)) {
+                dto.setCreatedByOrgName((String) orgList.get(0).get(Constants.ORG_NAME));
+            }
+        } catch (Exception e) {
+            log.warn("CbPlanServiceV4Impl.enrichCreatedByOrgName: Failed to fetch org name for orgId={}", createdByOrgId, e);
+        }
     }
 }

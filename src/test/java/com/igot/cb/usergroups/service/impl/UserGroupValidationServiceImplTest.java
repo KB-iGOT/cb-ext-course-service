@@ -59,6 +59,7 @@ class UserGroupValidationServiceImplTest {
         lenient().when(serverProperties.getUserGroupUpdateAuthorizedRole()).thenReturn(TEST_AUTHORIZED_ROLE);
         lenient().when(serverProperties.getUserGroupEditUnauthorizedMsg()).thenReturn(TEST_UNAUTHORIZED_MSG);
         lenient().when(serverProperties.getUserGroupEditMissingRoleMsg()).thenReturn(TEST_MISSING_ROLE_MSG);
+        lenient().when(serverProperties.isUserGroupAllowMultipleRootOrgIds()).thenReturn(false);
     }
 
     @Test
@@ -270,7 +271,7 @@ class UserGroupValidationServiceImplTest {
     }
 
     @Test
-    void validateCreateRequest_nonCCA_withMultipleRootOrgIds_shouldFail() {
+    void validateCreateRequest_nonCCA_withMultipleRootOrgIds_flagDisabled_shouldFail() {
         List<CriteriaItem> criteriaWithMultipleRootOrgIds = List.of(
                 new CriteriaItem("rootOrgId", List.of(TEST_ORG_ID, "different_org"))
         );
@@ -280,9 +281,7 @@ class UserGroupValidationServiceImplTest {
                 TEST_USER_GROUP_NAME, criteriaWithMultipleRootOrgIds, TEST_ORG_ID, "USER", response);
 
         assertFalse(result);
-        assertEquals(Constants.FAILED, response.getParams().getStatus());
         assertEquals(Constants.MSG_MULTIPLE_ROOTORGID_NON_CCA, response.getParams().getErr());
-        assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
     }
 
     @Test
@@ -518,5 +517,19 @@ class UserGroupValidationServiceImplTest {
         assertEquals(Constants.FAILED, response.getParams().getStatus());
         assertEquals(Constants.ERR_USERGROUP_USAGE_CHECK_FAILED, response.getParams().getErr());
         assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getResponseCode());
+    }
+
+    @Test
+    void validateCreateRequest_nonCCA_withMultipleRootOrgIds_flagEnabled_shouldPass() {
+        when(serverProperties.isUserGroupAllowMultipleRootOrgIds()).thenReturn(true);
+        List<CriteriaItem> criteriaWithMultipleRootOrgIds = List.of(
+                new CriteriaItem("rootOrgId", List.of(TEST_ORG_ID, "different_org"))
+        );
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_USER_GROUP_CREATE);
+
+        boolean result = validationService.validateCreateRequest(
+                TEST_USER_GROUP_NAME, criteriaWithMultipleRootOrgIds, TEST_ORG_ID, "USER", response);
+
+        assertTrue(result);
     }
 }

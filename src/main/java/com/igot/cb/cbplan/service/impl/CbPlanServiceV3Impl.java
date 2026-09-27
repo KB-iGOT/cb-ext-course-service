@@ -667,8 +667,8 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
         Map<String, Object> sanitizedExisting = elasticSearchService.sanitizeForElastic(new HashMap<>(existingCbPlan));
         deserializeContentListForEs(sanitizedExisting);
         Map<String, Object> resp = cassandraOperation.updateRecord(
-                Constants.KEYSPACE_SUNBIRD,
-                Constants.TABLE_CB_PLAN_V3,
+                serverProperties.getCbPlanV4Keyspace(),
+                serverProperties.getCbPlanV4PlanTable(),
                 updateData,
                 Map.of(Constants.PLAN_ID, cbPlanId),
                 () -> Objects.nonNull(esUtilService.updateDocument(serverProperties.getCpPlanIndex(),

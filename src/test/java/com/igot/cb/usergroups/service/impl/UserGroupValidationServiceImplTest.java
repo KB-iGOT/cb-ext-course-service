@@ -27,6 +27,7 @@ class UserGroupValidationServiceImplTest {
 
     private static final String TEST_USER_ID = "user_123";
     private static final String TEST_ORG_ID = "org_456";
+    private static final String L0_ORG_ID = "l0_org_123";
     private static final String TEST_USER_GROUP_ID = "ug_789";
     private static final String TEST_USER_GROUP_NAME = "Test Group";
     private static final String TEST_AUTHORIZED_ROLE = "MDO_LEADER";
@@ -529,6 +530,108 @@ class UserGroupValidationServiceImplTest {
 
         boolean result = validationService.validateCreateRequest(
                 TEST_USER_GROUP_NAME, criteriaWithMultipleRootOrgIds, TEST_ORG_ID, "USER", response);
+
+        assertTrue(result);
+    }
+
+
+    @Test
+    void validateCreateRequest_ministryOrStateId_validL0TargetOrg_shouldPass() {
+        Map<String, Object> l0OrgMap = new HashMap<>();
+        l0OrgMap.put(Constants.MINISTRY_OR_STATETYPE_DB, Constants.SPV);
+        when(userAndOrgService.readOrgFromDB(eq(L0_ORG_ID), any())).thenReturn(l0OrgMap);
+
+        List<CriteriaItem> criteria = List.of(
+                new CriteriaItem(Constants.MINISTRY_OR_STATEID, List.of(L0_ORG_ID))
+        );
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_USER_GROUP_CREATE);
+
+        boolean result = validationService.validateCreateRequest(
+                TEST_USER_GROUP_NAME, criteria, TEST_ORG_ID, "USER", response);
+
+        assertTrue(result);
+    }
+
+    @Test
+    void validateCreateRequest_ministryOrStateId_nonL0TargetOrg_shouldFail() {
+        Map<String, Object> nonL0OrgMap = new HashMap<>();
+        nonL0OrgMap.put(Constants.MINISTRY_OR_STATETYPE_DB, "NON_SPV");
+        when(userAndOrgService.readOrgFromDB(eq(L0_ORG_ID), any())).thenReturn(nonL0OrgMap);
+
+        List<CriteriaItem> criteria = List.of(
+                new CriteriaItem(Constants.MINISTRY_OR_STATEID, List.of(L0_ORG_ID))
+        );
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_USER_GROUP_CREATE);
+
+        boolean result = validationService.validateCreateRequest(
+                TEST_USER_GROUP_NAME, criteria, TEST_ORG_ID, "USER", response);
+
+        assertFalse(result);
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(String.format(Constants.ERR_ORG_NOT_L0, L0_ORG_ID), response.getParams().getErr());
+        assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
+    }
+
+    @Test
+    void validateCreateRequest_ministryOrStateId_targetOrgNotFound_shouldFail() {
+        when(userAndOrgService.readOrgFromDB(eq(L0_ORG_ID), any())).thenReturn(null);
+
+        List<CriteriaItem> criteria = List.of(
+                new CriteriaItem(Constants.MINISTRY_OR_STATEID, List.of(L0_ORG_ID))
+        );
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_USER_GROUP_CREATE);
+
+        boolean result = validationService.validateCreateRequest(
+                TEST_USER_GROUP_NAME, criteria, TEST_ORG_ID, "USER", response);
+
+        assertFalse(result);
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(String.format(Constants.ERR_ORG_NOT_FOUND_FOR_L0_VALIDATION, L0_ORG_ID), response.getParams().getErr());
+        assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
+    }
+
+    @Test
+    void validateCreateRequest_L0Caller_rootOrgIdAndMinistryOrStateIdMixed_shouldFail() {
+        // L0_ORG_ID must be a valid L0 target so target validation passes and we reach the mixing guard
+        Map<String, Object> l0TargetOrgMap = new HashMap<>();
+        l0TargetOrgMap.put(Constants.MINISTRY_OR_STATETYPE_DB, Constants.SPV);
+        when(userAndOrgService.readOrgFromDB(eq(L0_ORG_ID), any())).thenReturn(l0TargetOrgMap);
+
+        // Caller org (TEST_ORG_ID) is L0: CCA=false + SPV type
+        Map<String, Object> l0CallerOrgMap = new HashMap<>();
+        l0CallerOrgMap.put(Constants.IS_CCA, false);
+        l0CallerOrgMap.put(Constants.MINISTRY_OR_STATETYPE_DB, Constants.SPV);
+        when(userAndOrgService.readOrgFromDB(eq(TEST_ORG_ID), any())).thenReturn(l0CallerOrgMap);
+
+        List<CriteriaItem> criteria = List.of(
+                new CriteriaItem("rootOrgId", List.of("other_org")),
+                new CriteriaItem(Constants.MINISTRY_OR_STATEID, List.of(L0_ORG_ID))
+        );
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_USER_GROUP_CREATE);
+
+        boolean result = validationService.validateCreateRequest(
+                TEST_USER_GROUP_NAME, criteria, TEST_ORG_ID, "USER", response);
+
+        assertFalse(result);
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(Constants.ERR_BOTH_ROOT_ORG_AND_MINISTRY_USED, response.getParams().getErr());
+        assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
+    }
+
+    @Test
+    void validateCreateRequest_nonL0Caller_rootOrgIdAndMinistryOrStateIdMixed_mixingCheckSkipped_shouldPass() {
+        Map<String, Object> l0OrgMap = new HashMap<>();
+        l0OrgMap.put(Constants.MINISTRY_OR_STATETYPE_DB, Constants.SPV);
+        when(userAndOrgService.readOrgFromDB(eq(L0_ORG_ID), any())).thenReturn(l0OrgMap);
+
+        List<CriteriaItem> criteria = List.of(
+                new CriteriaItem("rootOrgId", List.of(TEST_ORG_ID)),
+                new CriteriaItem(Constants.MINISTRY_OR_STATEID, List.of(L0_ORG_ID))
+        );
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_USER_GROUP_CREATE);
+
+        boolean result = validationService.validateCreateRequest(
+                TEST_USER_GROUP_NAME, criteria, TEST_ORG_ID, "USER", response);
 
         assertTrue(result);
     }

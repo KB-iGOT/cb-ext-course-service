@@ -190,6 +190,19 @@ public class UserGroupValidationServiceImpl {
 
         if (isCCA) {
             return validateRootOrgIdForCCA(rootOrgIdsInCriteria);
+        } else if (hasMinistryOrStateIdCriteria(criteria)) {
+            if (!validateMinistryOrStateIdCriteria(criteria, response)) {
+                return false;
+            }
+            boolean userIsL0 = checkUserOrgIsL0(userRootOrgId);
+            if (!rootOrgIdsInCriteria.isEmpty() && userIsL0) {
+                log.warn("validateRootOrgIdCriteria: L0 org cannot use both rootOrgId and ministryOrStateId criteria");
+                response.getParams().setStatus(Constants.FAILED);
+                response.getParams().setErr(Constants.ERR_BOTH_ROOT_ORG_AND_MINISTRY_USED);
+                response.setResponseCode(HttpStatus.BAD_REQUEST);
+                return false;
+            }
+            return true;
         } else if (serverProperties.isUserGroupAllowMultipleRootOrgIds()) {
             return !rootOrgIdsInCriteria.isEmpty();
         } else {
@@ -366,5 +379,96 @@ public class UserGroupValidationServiceImpl {
         response.getParams().setErr(Constants.ERR_USERGROUP_USAGE_CHECK_FAILED);
         response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
         return false;
+    }
+
+    /**
+     * Checks if the user's organization is a Level 0 (L0) organization.
+     * Same logic as {@code CbPlanRequestValidatorImpl.checkUserOrgIsL0}.
+     *
+     * @param userOrgId user's organization ID
+     * @return true when the organization is L0 (ministryOrStateType = SPV), false otherwise or when not found
+     */
+    private boolean checkUserOrgIsL0(String userOrgId) {
+        Map<String, Object> orgMap = userAndOrgService.readOrgFromDB(userOrgId,
+                List.of(Constants.ID, Constants.MINISTRY_OR_STATETYPE));
+        if (MapUtils.isEmpty(orgMap)) {
+            return false;
+        }
+        String ministryOrStateType = (String) orgMap.get(Constants.MINISTRY_OR_STATETYPE_DB);
+        boolean isL0 = Constants.SPV.equalsIgnoreCase(ministryOrStateType);
+        log.debug("checkUserOrgIsL0: userOrgId={}, ministryOrStateType={}, isL0={}", userOrgId, ministryOrStateType, isL0);
+        return isL0;
+    }
+
+    /**
+     * Returns true if any criteria item uses {@code ministryOrStateId} as its key.
+     *
+     * @param criteria list of criteria items from the user group request
+     * @return true when at least one item has criteriaKey {@code "ministryOrStateId"}
+     */
+    private boolean hasMinistryOrStateIdCriteria(List<CriteriaItem> criteria) {
+        return criteria.stream()
+                .anyMatch(item -> Constants.MINISTRY_OR_STATEID.equalsIgnoreCase(item.criteriaKey()));
+    }
+
+    /**
+     * Validates that every organization ID listed under {@code ministryOrStateId} criteria is a
+     * Level 0 (L0) organization (ministryOrStateType = "SPV"). Collects all org IDs first, batch-fetches
+     * them, then validates — same structure as {@code CbPlanRequestValidatorImpl.validateAndCollectMinistryOrStateIds}.
+     *
+     * @param criteria list of criteria items; only items with key {@code "ministryOrStateId"} are inspected
+     * @param response API response, populated with an error when any org fails the L0 check
+     * @return true when all referenced organizations are valid L0 orgs
+     */
+    private boolean validateMinistryOrStateIdCriteria(List<CriteriaItem> criteria, ApiResponse response) {
+        List<String> orgIds = new ArrayList<>();
+        for (CriteriaItem item : criteria) {
+            if (Constants.MINISTRY_OR_STATEID.equalsIgnoreCase(item.criteriaKey())) {
+                orgIds.addAll(item.criteriaValue());
+            }
+        }
+        Map<String, String> orgMinistryTypeMap = batchFetchOrgMinistryOrStateTypes(new HashSet<>(orgIds));
+        for (String orgId : orgIds) {
+            if (!orgMinistryTypeMap.containsKey(orgId)) {
+                log.warn("validateMinistryOrStateIdCriteria: Org not found for orgId={}", orgId);
+                response.getParams().setStatus(Constants.FAILED);
+                response.getParams().setErr(String.format(Constants.ERR_ORG_NOT_FOUND_FOR_L0_VALIDATION, orgId));
+                response.setResponseCode(HttpStatus.BAD_REQUEST);
+                return false;
+            }
+            String ministryOrStateType = orgMinistryTypeMap.get(orgId);
+            if (!Constants.SPV.equalsIgnoreCase(ministryOrStateType)) {
+                log.warn("validateMinistryOrStateIdCriteria: Org {} is not L0, ministryOrStateType={}", orgId, ministryOrStateType);
+                response.getParams().setStatus(Constants.FAILED);
+                response.getParams().setErr(String.format(Constants.ERR_ORG_NOT_L0, orgId));
+                response.setResponseCode(HttpStatus.BAD_REQUEST);
+                return false;
+            }
+        }
+        log.debug("validateMinistryOrStateIdCriteria: All {} ministryOrStateId org(s) are valid L0 orgs", orgIds.size());
+        return true;
+    }
+
+    /**
+     * Batch-fetches ministryOrStateType values for multiple organization IDs.
+     * Same logic as {@code CbPlanRequestValidatorImpl.batchFetchOrgMinistryOrStateTypes}.
+     *
+     * @param orgIds set of organization IDs to fetch
+     * @return map of orgId to ministryOrStateType; absent entries mean the org was not found
+     */
+    private Map<String, String> batchFetchOrgMinistryOrStateTypes(Set<String> orgIds) {
+        if (CollectionUtils.isEmpty(orgIds)) {
+            return Collections.emptyMap();
+        }
+        Map<String, String> orgMinistryTypeMap = new HashMap<>();
+        for (String orgId : orgIds) {
+            Map<String, Object> orgMap = userAndOrgService.readOrgFromDB(orgId,
+                    List.of(Constants.ID, Constants.MINISTRY_OR_STATETYPE));
+            if (MapUtils.isNotEmpty(orgMap)) {
+                orgMinistryTypeMap.put(orgId, (String) orgMap.get(Constants.MINISTRY_OR_STATETYPE_DB));
+            }
+        }
+        log.debug("batchFetchOrgMinistryOrStateTypes: Fetched {} ministryOrStateType value(s)", orgMinistryTypeMap.size());
+        return orgMinistryTypeMap;
     }
 }

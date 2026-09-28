@@ -7,10 +7,7 @@ import java.util.function.Supplier;
 import com.igot.cb.cache.RedisCacheMgr;
 import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.cbplan.dto.CbPlanReadResponseDto;
-import com.igot.cb.cbplan.service.CbPlanServiceV3;
-import com.igot.cb.cbplan.service.impl.v4.CbPlanContentLookupServiceV4Impl;
 import com.igot.cb.cbplan.service.impl.CbPlanDataTransformServiceV3Impl;
-import com.igot.cb.cbplan.service.impl.v4.CbPlanOrgLookupServiceV4Impl;
 import com.igot.cb.elasticsearch.service.EsUtilService;
 import com.igot.cb.model.ApiRequest;
 import com.igot.cb.model.ApiResponse;
@@ -84,9 +81,6 @@ class CbPlanServiceV4ImplTest {
 
     @Mock
     private CbPlanSearchServiceV4Impl searchService;
-
-    @Mock
-    private CbPlanServiceV3 cbPlanServiceV3;
 
     @Mock
     private EsUtilService esUtilService;
@@ -803,59 +797,186 @@ class CbPlanServiceV4ImplTest {
     }
 
     @Test
-    void retireCbPlan_withValidRequest_delegatesToV3Service() {
-        ApiRequest request = requestWithPlanId();
-        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(TOKEN), any(ApiResponse.class))).thenReturn(USER_ID);
-        Map<String, String> userProfile = new HashMap<>();
-        userProfile.put(Constants.USER_ROOT_ORG_ID, ORG_ID);
-        userProfile.put(Constants.ROLES, "MDO_LEADER,USER");
-        when(userProfileUtil.buildUserProfile(eq(USER_ID), any(ApiResponse.class))).thenReturn(userProfile);
+    void retireCbPlan_invalidToken_returnsError() {
+        when(validationService.validateAndExtractUserId(eq(TOKEN), any())).thenReturn("");
 
-        ApiResponse retireResponse = new ApiResponse();
-        retireResponse.setResponseCode(HttpStatus.OK);
-        when(cbPlanServiceV3.retireCbPlan(request, ORG_ID, TOKEN, List.of("MDO_LEADER", "USER")))
-                .thenReturn(retireResponse);
+        ApiResponse response = cbPlanService.retireCbPlan(requestWithPlanId(), TOKEN);
 
-        ApiResponse response = cbPlanService.retireCbPlan(request, TOKEN);
-
-        assertEquals(HttpStatus.OK, response.getResponseCode());
-        verify(cbPlanServiceV3).retireCbPlan(request, ORG_ID, TOKEN, List.of("MDO_LEADER", "USER"));
+        assertNotNull(response);
+        verify(cassandraOperation, never()).updateRecord(anyString(), anyString(), anyMap(), anyMap(), any(), any());
     }
 
     @Test
-    void retireCbPlan_withNoRoles_delegatesWithEmptyRolesList() {
-        ApiRequest request = requestWithPlanId();
-        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(TOKEN), any(ApiResponse.class))).thenReturn(USER_ID);
-        Map<String, String> userProfile = new HashMap<>();
-        userProfile.put(Constants.USER_ROOT_ORG_ID, ORG_ID);
-        userProfile.put(Constants.ROLES, null);
-        when(userProfileUtil.buildUserProfile(eq(USER_ID), any(ApiResponse.class))).thenReturn(userProfile);
-
-        ApiResponse retireResponse = new ApiResponse();
-        retireResponse.setResponseCode(HttpStatus.OK);
-        when(cbPlanServiceV3.retireCbPlan(request, ORG_ID, TOKEN, List.of()))
-                .thenReturn(retireResponse);
-
-        ApiResponse response = cbPlanService.retireCbPlan(request, TOKEN);
-
-        assertEquals(HttpStatus.OK, response.getResponseCode());
-        verify(cbPlanServiceV3).retireCbPlan(request, ORG_ID, TOKEN, List.of());
-    }
-
-    @Test
-    void retireCbPlan_missingOrgId_returnsError() {
-        ApiRequest request = requestWithPlanId();
-        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(TOKEN), any(ApiResponse.class))).thenReturn(USER_ID);
+    void retireCbPlan_missingOrgId_returns400() {
+        when(validationService.validateAndExtractUserId(eq(TOKEN), any())).thenReturn(USER_ID);
         Map<String, String> userProfile = new HashMap<>();
         userProfile.put(Constants.USER_ROOT_ORG_ID, "");
-        when(userProfileUtil.buildUserProfile(eq(USER_ID), any(ApiResponse.class))).thenReturn(userProfile);
+        when(userProfileUtil.buildUserProfile(eq(USER_ID), any())).thenReturn(userProfile);
 
-        ApiResponse response = cbPlanService.retireCbPlan(request, TOKEN);
+        ApiResponse response = cbPlanService.retireCbPlan(requestWithPlanId(), TOKEN);
 
         assertEquals(Constants.FAILED, response.getParams().getStatus());
         assertEquals(Constants.ERR_USER_ORG_NOT_FOUND, response.getParams().getErr());
         assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
-        verify(cbPlanServiceV3, never()).retireCbPlan(any(), anyString(), anyString(), any());
+        verify(cassandraOperation, never()).updateRecord(anyString(), anyString(), anyMap(), anyMap(), any(), any());
+    }
+
+    @Test
+    void retireCbPlan_missingPlanId_returns400() {
+        mockRetireAuthSuccess();
+
+        ApiResponse response = cbPlanService.retireCbPlan(apiRequest(new HashMap<>()), TOKEN);
+
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(Constants.ERR_CB_PLAN_ID_MISSING, response.getParams().getErr());
+        assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
+        verify(cassandraOperation, never()).updateRecord(anyString(), anyString(), anyMap(), anyMap(), any(), any());
+    }
+
+    @Test
+    void retireCbPlan_blankPlanId_returns400() {
+        mockRetireAuthSuccess();
+        Map<String, Object> requestMap = new HashMap<>();
+        requestMap.put(Constants.ID, "   ");
+
+        ApiResponse response = cbPlanService.retireCbPlan(apiRequest(requestMap), TOKEN);
+
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(Constants.ERR_CB_PLAN_ID_MISSING, response.getParams().getErr());
+        assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
+    }
+
+    @Test
+    void retireCbPlan_planNotFound_returns400() {
+        mockRetireAuthSuccess();
+        mockNoExistingPlan();
+
+        ApiResponse response = cbPlanService.retireCbPlan(requestWithPlanId(), TOKEN);
+
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
+        verify(cassandraOperation, never()).updateRecord(anyString(), anyString(), anyMap(), anyMap(), any(), any());
+    }
+
+    @Test
+    void retireCbPlan_unauthorized_returns403() {
+        mockRetireAuthSuccess();
+        Map<String, Object> existingCbPlan = new HashMap<>();
+        existingCbPlan.put(Constants.STATUS, Constants.DRAFT);
+        mockExistingPlan(existingCbPlan);
+        when(validationService.isUnauthorizedToUpdate(eq(USER_ID), anyMap(), any(), any())).thenAnswer(inv -> {
+            markFailed(inv.getArgument(3), HttpStatus.FORBIDDEN);
+            return true;
+        });
+
+        ApiResponse response = cbPlanService.retireCbPlan(requestWithPlanId(), TOKEN);
+
+        assertEquals(HttpStatus.FORBIDDEN, response.getResponseCode());
+        verify(cassandraOperation, never()).updateRecord(anyString(), anyString(), anyMap(), anyMap(), any(), any());
+    }
+
+    @Test
+    void retireCbPlan_alreadyRetired_returns400() {
+        mockRetireAuthSuccess();
+        Map<String, Object> existingCbPlan = new HashMap<>();
+        existingCbPlan.put(Constants.CREATED_BY, USER_ID);
+        existingCbPlan.put(Constants.STATUS, Constants.CB_RETIRE);
+        mockExistingPlan(existingCbPlan);
+        when(validationService.isUnauthorizedToUpdate(eq(USER_ID), anyMap(), any(), any())).thenReturn(false);
+
+        ApiResponse response = cbPlanService.retireCbPlan(requestWithPlanId(), TOKEN);
+
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
+        verify(cassandraOperation, never()).updateRecord(anyString(), anyString(), anyMap(), anyMap(), any(), any());
+    }
+
+    @Test
+    void retireCbPlan_success_returnsUpdated() {
+        mockRetireAuthSuccess();
+        Map<String, Object> existingCbPlan = new HashMap<>();
+        existingCbPlan.put(Constants.CREATED_BY, USER_ID);
+        existingCbPlan.put(Constants.STATUS, Constants.DRAFT);
+        existingCbPlan.put(Constants.PLAN_YEAR, PLAN_YEAR);
+        mockExistingPlan(existingCbPlan);
+        when(validationService.isUnauthorizedToUpdate(eq(USER_ID), anyMap(), any(), any())).thenReturn(false);
+        when(dataTransformService.prepareArchiveUpdate(any(), eq(USER_ID))).thenReturn(new HashMap<>());
+        when(elasticSearchService.sanitizeForElastic(anyMap())).thenAnswer(inv -> new HashMap<>(inv.getArgument(0)));
+        when(cassandraOperation.updateRecord(anyString(), anyString(), anyMap(), anyMap(), any(), any()))
+                .thenReturn(Map.of(Constants.RESPONSE, Constants.SUCCESS));
+        Map<String, Object> requestMap = new HashMap<>();
+        requestMap.put(Constants.ID, PLAN_ID);
+        requestMap.put(Constants.COMMENT, "archiving");
+
+        ApiResponse response = cbPlanService.retireCbPlan(apiRequest(requestMap), TOKEN);
+
+        assertEquals(Constants.UPDATED, response.getResult().get(Constants.STATUS));
+        assertNotEquals(Constants.FAILED, response.getParams().getStatus());
+        verify(contentLookupService).removeFromContentLookup(eq(PLAN_ID), anyMap());
+        verify(orgLookupService).deactivateOrgLookupEntries(eq(PLAN_ID), eq(PLAN_YEAR), anyMap(), any());
+    }
+
+    @Test
+    void retireCbPlan_noRoles_successWithEmptyRolesList() {
+        when(validationService.validateAndExtractUserId(eq(TOKEN), any())).thenReturn(USER_ID);
+        Map<String, String> userProfile = new HashMap<>();
+        userProfile.put(Constants.USER_ROOT_ORG_ID, ORG_ID);
+        userProfile.put(Constants.ROLES, null);
+        when(userProfileUtil.buildUserProfile(eq(USER_ID), any())).thenReturn(userProfile);
+        Map<String, Object> existingCbPlan = new HashMap<>();
+        existingCbPlan.put(Constants.CREATED_BY, USER_ID);
+        existingCbPlan.put(Constants.STATUS, Constants.DRAFT);
+        existingCbPlan.put(Constants.PLAN_YEAR, PLAN_YEAR);
+        mockExistingPlan(existingCbPlan);
+        when(validationService.isUnauthorizedToUpdate(eq(USER_ID), anyMap(), eq(List.of()), any())).thenReturn(false);
+        when(dataTransformService.prepareArchiveUpdate(any(), eq(USER_ID))).thenReturn(new HashMap<>());
+        when(elasticSearchService.sanitizeForElastic(anyMap())).thenAnswer(inv -> new HashMap<>(inv.getArgument(0)));
+        when(cassandraOperation.updateRecord(anyString(), anyString(), anyMap(), anyMap(), any(), any()))
+                .thenReturn(Map.of(Constants.RESPONSE, Constants.SUCCESS));
+
+        ApiResponse response = cbPlanService.retireCbPlan(requestWithPlanId(), TOKEN);
+
+        assertEquals(Constants.UPDATED, response.getResult().get(Constants.STATUS));
+        verify(validationService).isUnauthorizedToUpdate(eq(USER_ID), anyMap(), eq(List.of()), any());
+    }
+
+    @Test
+    void retireCbPlan_cassandraUpdateFails_returns400() {
+        mockRetireAuthSuccess();
+        Map<String, Object> existingCbPlan = new HashMap<>();
+        existingCbPlan.put(Constants.CREATED_BY, USER_ID);
+        existingCbPlan.put(Constants.STATUS, Constants.DRAFT);
+        mockExistingPlan(existingCbPlan);
+        when(validationService.isUnauthorizedToUpdate(eq(USER_ID), anyMap(), any(), any())).thenReturn(false);
+        when(dataTransformService.prepareArchiveUpdate(any(), eq(USER_ID))).thenReturn(new HashMap<>());
+        when(elasticSearchService.sanitizeForElastic(anyMap())).thenAnswer(inv -> new HashMap<>(inv.getArgument(0)));
+        when(cassandraOperation.updateRecord(anyString(), anyString(), anyMap(), anyMap(), any(), any()))
+                .thenReturn(Map.of(Constants.RESPONSE, Constants.FAILED, Constants.ERROR_MESSAGE, "update failed"));
+
+        ApiResponse response = cbPlanService.retireCbPlan(requestWithPlanId(), TOKEN);
+
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
+        verify(contentLookupService, never()).removeFromContentLookup(anyString(), anyMap());
+    }
+
+    @Test
+    void retireCbPlan_unexpectedException_returns500() {
+        when(validationService.validateAndExtractUserId(eq(TOKEN), any()))
+                .thenThrow(new RuntimeException("unexpected"));
+
+        ApiResponse response = cbPlanService.retireCbPlan(requestWithPlanId(), TOKEN);
+
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getResponseCode());
+    }
+
+    private void mockRetireAuthSuccess() {
+        when(validationService.validateAndExtractUserId(eq(TOKEN), any())).thenReturn(USER_ID);
+        Map<String, String> userProfile = new HashMap<>();
+        userProfile.put(Constants.USER_ROOT_ORG_ID, ORG_ID);
+        userProfile.put(Constants.ROLES, "MDO_LEADER,USER");
+        when(userProfileUtil.buildUserProfile(eq(USER_ID), any())).thenReturn(userProfile);
     }
 
     @Test

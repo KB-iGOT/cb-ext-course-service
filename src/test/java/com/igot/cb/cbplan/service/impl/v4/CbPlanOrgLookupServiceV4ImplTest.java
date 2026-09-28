@@ -14,6 +14,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -50,6 +52,9 @@ class CbPlanOrgLookupServiceV4ImplTest {
     private static final String TEST_END_DATE_STR = "2026-12-31T18:29:59Z";
     private static final String INVALID_JSON = "not-valid-json";
     private static final String V4_KEYSPACE = "sunbird_v4_test";
+    private static final String USER_GROUP_ID_1 = "ug-001";
+    private static final String USER_GROUP_ID_2 = "ug-002";
+    private static final String CREATOR_ORG = "creator-org-001";
     private static final String V4_ORG_TABLE = "v4_cb_plan_lookup_by_org";
     private static final String V4_ALL_ORG_TABLE = "v4_cb_plan_lookup_by_all_org";
     private static final String V4_MINISTRY_TABLE = "v4_cb_plan_lookup_by_ministry";
@@ -59,6 +64,9 @@ class CbPlanOrgLookupServiceV4ImplTest {
 
     @Mock
     private CbExtServerProperties serverProperties;
+
+    @Mock
+    private CbPlanUserGroupLookupServiceV4Impl userGroupLookupService;
 
     @InjectMocks
     private CbPlanOrgLookupServiceV4Impl orgLookupService;
@@ -273,10 +281,11 @@ class CbPlanOrgLookupServiceV4ImplTest {
     @Test
     void deactivateOrgLookupEntries_singleScope_callsInsertBulkRecord() {
         when(cassandraOperation.insertBulkRecord(anyString(), anyString(), anyList())).thenReturn(cassandraSuccess());
-        Map<String, Object> existingCbPlan = new HashMap<>();
-        existingCbPlan.put(Constants.ORG_SCOPE, Constants.SINGLE);
-        existingCbPlan.put(Constants.CONTEXT_DATA_REQUEST,
-                contextDataWithOrgs(Constants.ROOT_ORG_ID, List.of(ORG_1)));
+        Map<String, Object> existingCbPlan = buildV4Plan(Constants.SINGLE, List.of(USER_GROUP_ID_1), CREATOR_ORG);
+        Map<String, Map<String, Object>> groupsMap = Map.of(USER_GROUP_ID_1, new HashMap<>());
+        when(userGroupLookupService.fetchUserGroupsByIds(List.of(USER_GROUP_ID_1), CREATOR_ORG)).thenReturn(groupsMap);
+        when(userGroupLookupService.extractRootOrgIds(any())).thenReturn(Set.of(ORG_1));
+        when(userGroupLookupService.extractMinistryOrStateIds(any())).thenReturn(Collections.emptySet());
         ApiResponse response = new ApiResponse();
 
         orgLookupService.deactivateOrgLookupEntries(PLAN_ID, PLAN_YEAR, existingCbPlan, response);
@@ -566,6 +575,100 @@ class CbPlanOrgLookupServiceV4ImplTest {
 
     @Test
     void constructor_validDeps_createsInstance() {
-        assertNotNull(new CbPlanOrgLookupServiceV4Impl(cassandraOperation, serverProperties));
+        assertNotNull(new CbPlanOrgLookupServiceV4Impl(cassandraOperation, serverProperties, userGroupLookupService));
+    }
+
+    // ── deactivateOrgLookupEntries — V4 paths ─────────────────────────────────
+
+    @Test
+    void deactivateOrgLookupEntries_singleScope_noContextData_skipsLookupDeactivation() {
+        Map<String, Object> existingCbPlan = new HashMap<>();
+        existingCbPlan.put(Constants.ORG_SCOPE, Constants.SINGLE);
+        ApiResponse response = new ApiResponse();
+
+        orgLookupService.deactivateOrgLookupEntries(PLAN_ID, PLAN_YEAR, existingCbPlan, response);
+
+        verify(cassandraOperation, never()).insertBulkRecord(anyString(), anyString(), anyList());
+        verify(cassandraOperation, never()).insertRecord(anyString(), anyString(), any());
+        assertNotEquals(Constants.FAILED, response.getParams().getStatus());
+    }
+
+    @Test
+    void deactivateOrgLookupEntries_customScope_multipleUserGroups_deactivatesMergedOrgIds() {
+        when(cassandraOperation.insertBulkRecord(anyString(), anyString(), anyList())).thenReturn(cassandraSuccess());
+        Map<String, Object> existingCbPlan = buildV4Plan(
+                Constants.CUSTOM, List.of(USER_GROUP_ID_1, USER_GROUP_ID_2), CREATOR_ORG);
+        Map<String, Map<String, Object>> groupsMap = Map.of(
+                USER_GROUP_ID_1, new HashMap<>(),
+                USER_GROUP_ID_2, new HashMap<>());
+        when(userGroupLookupService.fetchUserGroupsByIds(
+                anyList(), eq(CREATOR_ORG))).thenReturn(groupsMap);
+        when(userGroupLookupService.extractRootOrgIds(any()))
+                .thenReturn(Set.of(ORG_1))
+                .thenReturn(Set.of(ORG_2));
+        when(userGroupLookupService.extractMinistryOrStateIds(any())).thenReturn(Collections.emptySet());
+        ApiResponse response = new ApiResponse();
+
+        orgLookupService.deactivateOrgLookupEntries(PLAN_ID, PLAN_YEAR, existingCbPlan, response);
+
+        ArgumentCaptor<List<Map<String, Object>>> captor = ArgumentCaptor.forClass(List.class);
+        verify(cassandraOperation).insertBulkRecord(anyString(), anyString(), captor.capture());
+        assertEquals(2, captor.getValue().size());
+        assertNotEquals(Constants.FAILED, response.getParams().getStatus());
+    }
+
+    @Test
+    void deactivateOrgLookupEntries_allScope_withMinistryIdsFromUserGroups_deactivatesMinistryTable() {
+        when(cassandraOperation.insertBulkRecord(anyString(), anyString(), anyList())).thenReturn(cassandraSuccess());
+        Map<String, Object> existingCbPlan = buildV4Plan(
+                Constants.ALL, List.of(USER_GROUP_ID_1), CREATOR_ORG);
+        Map<String, Map<String, Object>> groupsMap = Map.of(USER_GROUP_ID_1, new HashMap<>());
+        when(userGroupLookupService.fetchUserGroupsByIds(List.of(USER_GROUP_ID_1), CREATOR_ORG)).thenReturn(groupsMap);
+        when(userGroupLookupService.extractRootOrgIds(any())).thenReturn(Collections.emptySet());
+        when(userGroupLookupService.extractMinistryOrStateIds(any())).thenReturn(Set.of(MINISTRY_ORG_001));
+        ApiResponse response = new ApiResponse();
+
+        orgLookupService.deactivateOrgLookupEntries(PLAN_ID, PLAN_YEAR, existingCbPlan, response);
+
+        verify(cassandraOperation, never()).insertRecord(anyString(), anyString(), any());
+        verify(cassandraOperation).insertBulkRecord(eq(V4_KEYSPACE), eq(V4_MINISTRY_TABLE), anyList());
+        assertNotEquals(Constants.FAILED, response.getParams().getStatus());
+    }
+
+    @Test
+    void deactivateOrgLookupEntries_singleScope_userGroupNotFound_skipsLookupGracefully() {
+        Map<String, Object> existingCbPlan = buildV4Plan(Constants.SINGLE, List.of(USER_GROUP_ID_1), CREATOR_ORG);
+        when(userGroupLookupService.fetchUserGroupsByIds(List.of(USER_GROUP_ID_1), CREATOR_ORG))
+                .thenReturn(Collections.emptyMap());
+        ApiResponse response = new ApiResponse();
+
+        orgLookupService.deactivateOrgLookupEntries(PLAN_ID, PLAN_YEAR, existingCbPlan, response);
+
+        verify(cassandraOperation, never()).insertBulkRecord(anyString(), anyString(), anyList());
+        assertNotEquals(Constants.FAILED, response.getParams().getStatus());
+    }
+
+    // ── helpers ───────────────────────────────────────────────────────────────
+
+    private Map<String, Object> buildV4Plan(String orgScope, List<String> userGroupIds, String creatorOrgId) {
+        Map<String, Object> plan = new HashMap<>();
+        plan.put(Constants.ORG_SCOPE, orgScope);
+        plan.put(Constants.ORG_ID_LIST, new ArrayList<>(List.of(creatorOrgId)));
+        plan.put(Constants.CONTEXT_DATA_REQUEST, buildContextData(userGroupIds));
+        return plan;
+    }
+
+    private Map<String, Object> buildContextData(List<String> userGroupIds) {
+        List<Map<String, Object>> userGroups = new ArrayList<>();
+        for (String ugId : userGroupIds) {
+            Map<String, Object> userGroup = new HashMap<>();
+            userGroup.put(Constants.USER_GROUP_ID, ugId);
+            userGroups.add(userGroup);
+        }
+        Map<String, Object> accessControl = new HashMap<>();
+        accessControl.put(Constants.USER_GROUPS, userGroups);
+        Map<String, Object> contextData = new HashMap<>();
+        contextData.put(Constants.ACCESS_CONTROL, accessControl);
+        return contextData;
     }
 }

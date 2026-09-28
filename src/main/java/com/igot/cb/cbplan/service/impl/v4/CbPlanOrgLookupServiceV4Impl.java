@@ -4,6 +4,8 @@ import java.time.Instant;
 import java.util.*;
 
 import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections.MapUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
@@ -29,12 +31,15 @@ import lombok.extern.slf4j.Slf4j;
 public class CbPlanOrgLookupServiceV4Impl {
     private final CassandraOperation cassandraOperation;
     private final CbExtServerProperties serverProperties;
+    private final CbPlanUserGroupLookupServiceV4Impl userGroupLookupService;
     private final ObjectMapper mapper;
 
     public CbPlanOrgLookupServiceV4Impl(CassandraOperation cassandraOperation,
-                                         CbExtServerProperties serverProperties) {
+                                         CbExtServerProperties serverProperties,
+                                         CbPlanUserGroupLookupServiceV4Impl userGroupLookupService) {
         this.cassandraOperation = cassandraOperation;
         this.serverProperties = serverProperties;
+        this.userGroupLookupService = userGroupLookupService;
         this.mapper = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
@@ -184,11 +189,15 @@ public class CbPlanOrgLookupServiceV4Impl {
                                            ApiResponse response) {
         String orgScope = (String) existingCbPlan.get(Constants.ORG_SCOPE);
         Instant endDate = (Instant) existingCbPlan.get(Constants.END_DATE_REQUEST);
-        Set<String> rootOrgIds = extractUniqueRootOrgIds(existingCbPlan);
-        Set<String> ministryOrStateIds = extractMinistryOrStateIds(existingCbPlan);
+        Set<String> rootOrgIds = resolveRootOrgIdsFromUserGroups(existingCbPlan);
+        Set<String> ministryOrStateIds = resolveMinistryOrStateIdsFromUserGroups(existingCbPlan);
         ApiResponse lookupResp = null;
         if (Constants.SINGLE.equalsIgnoreCase(orgScope) || Constants.CUSTOM.equalsIgnoreCase(orgScope)) {
-            lookupResp = upsertCustomOrgLookup(cbPlanId, planYear, rootOrgIds, endDate, false);
+            if (CollectionUtils.isEmpty(rootOrgIds)) {
+                log.warn("CbPlanOrgLookupServiceV4.deactivateOrgLookupEntries: No org lookup entries to deactivate for cbPlanId={}, planYear={}", cbPlanId, planYear);
+            } else {
+                lookupResp = upsertCustomOrgLookup(cbPlanId, planYear, rootOrgIds, endDate, false);
+            }
         } else if (Constants.ALL.equalsIgnoreCase(orgScope) && CollectionUtils.isEmpty(ministryOrStateIds)) {
             lookupResp = upsertAllOrgLookup(cbPlanId, planYear, endDate, false);
         }
@@ -422,5 +431,123 @@ public class CbPlanOrgLookupServiceV4Impl {
                         cbPlanId);
             }
         }
+    }
+
+    /**
+     * Re-resolves the target rootOrgIds at retire time by fetching the referenced
+     * userGroup records from {@code user_group_info}, mirroring the publish-time path.
+     *
+     * @param existingCbPlan plan record from Cassandra
+     * @return set of rootOrgId values resolved from all referenced userGroups
+     */
+    private Set<String> resolveRootOrgIdsFromUserGroups(Map<String, Object> existingCbPlan) {
+        List<String> userGroupIds = extractUserGroupIdsFromContextData(existingCbPlan);
+        if (CollectionUtils.isEmpty(userGroupIds)) {
+            log.debug("CbPlanOrgLookupServiceV4.resolveRootOrgIdsFromUserGroups: no userGroupIds in contextData, skipping rootOrgId resolution");
+            return Collections.emptySet();
+        }
+        String orgId = extractCreatorOrgId(existingCbPlan);
+        if (StringUtils.isBlank(orgId)) {
+            log.warn("CbPlanOrgLookupServiceV4.resolveRootOrgIdsFromUserGroups: orgIdList is missing or empty on plan");
+            return Collections.emptySet();
+        }
+        log.debug("CbPlanOrgLookupServiceV4.resolveRootOrgIdsFromUserGroups: fetching {} userGroup(s) for orgId={}", userGroupIds.size(), orgId);
+        Map<String, Map<String, Object>> groups = userGroupLookupService.fetchUserGroupsByIds(userGroupIds, orgId);
+        if (MapUtils.isEmpty(groups)) {
+            log.warn("CbPlanOrgLookupServiceV4.resolveRootOrgIdsFromUserGroups: no userGroups found in user_group_info for orgId={}, userGroupIds={}", orgId, userGroupIds);
+            return Collections.emptySet();
+        }
+        Set<String> rootOrgIds = new HashSet<>();
+        for (Map<String, Object> group : groups.values()) {
+            rootOrgIds.addAll(userGroupLookupService.extractRootOrgIds(group));
+        }
+        log.info("CbPlanOrgLookupServiceV4.resolveRootOrgIdsFromUserGroups: resolved {} rootOrgId(s) from {} userGroup(s)", rootOrgIds.size(), groups.size());
+        return rootOrgIds;
+    }
+
+    /**
+     * Re-resolves the ministryOrStateIds at retire time by fetching the referenced
+     * userGroup records from {@code user_group_info}, mirroring the publish-time path.
+     *
+     * @param existingCbPlan plan record from Cassandra
+     * @return set of ministryOrStateId values resolved from all referenced userGroups
+     */
+    private Set<String> resolveMinistryOrStateIdsFromUserGroups(Map<String, Object> existingCbPlan) {
+        List<String> userGroupIds = extractUserGroupIdsFromContextData(existingCbPlan);
+        if (CollectionUtils.isEmpty(userGroupIds)) {
+            log.debug("CbPlanOrgLookupServiceV4.resolveMinistryOrStateIdsFromUserGroups: no userGroupIds in contextData, skipping ministryOrStateId resolution");
+            return Collections.emptySet();
+        }
+        String orgId = extractCreatorOrgId(existingCbPlan);
+        if (StringUtils.isBlank(orgId)) {
+            log.warn("CbPlanOrgLookupServiceV4.resolveMinistryOrStateIdsFromUserGroups: orgIdList is missing or empty on plan");
+            return Collections.emptySet();
+        }
+        log.debug("CbPlanOrgLookupServiceV4.resolveMinistryOrStateIdsFromUserGroups: fetching {} userGroup(s) for orgId={}", userGroupIds.size(), orgId);
+        Map<String, Map<String, Object>> groups = userGroupLookupService.fetchUserGroupsByIds(userGroupIds, orgId);
+        if (MapUtils.isEmpty(groups)) {
+            log.warn("CbPlanOrgLookupServiceV4.resolveMinistryOrStateIdsFromUserGroups: no userGroups found in user_group_info for orgId={}, userGroupIds={}", orgId, userGroupIds);
+            return Collections.emptySet();
+        }
+        Set<String> ministryOrStateIds = new HashSet<>();
+        for (Map<String, Object> group : groups.values()) {
+            ministryOrStateIds.addAll(userGroupLookupService.extractMinistryOrStateIds(group));
+        }
+        log.info("CbPlanOrgLookupServiceV4.resolveMinistryOrStateIdsFromUserGroups: resolved {} ministryOrStateId(s) from {} userGroup(s)", ministryOrStateIds.size(), groups.size());
+        return ministryOrStateIds;
+    }
+
+    /**
+     * Parses the plan's contextData and collects every {@code userGroupId} reference.
+     *
+     * @param existingCbPlan plan record from Cassandra
+     * @return list of userGroupId strings; empty when contextData is absent or malformed
+     */
+    private List<String> extractUserGroupIdsFromContextData(Map<String, Object> existingCbPlan) {
+        Object contextDataObj = existingCbPlan.get(Constants.CONTEXT_DATA_REQUEST);
+        if (Objects.isNull(contextDataObj)) {
+            return Collections.emptyList();
+        }
+        Map<String, Object> contextData;
+        try {
+            if (contextDataObj instanceof String stringData) {
+                contextData = mapper.readValue(stringData, new TypeReference<Map<String, Object>>() {
+                });
+            } else if (contextDataObj instanceof Map) {
+                contextData = (Map<String, Object>) contextDataObj;
+            } else {
+                return Collections.emptyList();
+            }
+        } catch (Exception e) {
+            log.warn("CbPlanOrgLookupServiceV4.extractUserGroupIdsFromContextData: Failed to parse contextData", e);
+            return Collections.emptyList();
+        }
+        Map<String, Object> accessControl = (Map<String, Object>) contextData.getOrDefault(
+                Constants.ACCESS_CONTROL, Collections.emptyMap());
+        List<Map<String, Object>> userGroups = (List<Map<String, Object>>) accessControl.getOrDefault(
+                Constants.USER_GROUPS, Collections.emptyList());
+        List<String> userGroupIds = new ArrayList<>();
+        for (Map<String, Object> userGroup : userGroups) {
+            String userGroupId = (String) userGroup.get(Constants.USER_GROUP_ID);
+            if (StringUtils.isNotBlank(userGroupId)) {
+                userGroupIds.add(userGroupId);
+            }
+        }
+        return userGroupIds;
+    }
+
+    /**
+     * Returns the first entry from {@code orgIdList} — the plan creator's own org,
+     * which is the partition key owner of the referenced userGroups in {@code user_group_info}.
+     *
+     * @param existingCbPlan plan record from Cassandra
+     * @return creator's rootOrgId, or {@code null} when orgIdList is absent
+     */
+    private String extractCreatorOrgId(Map<String, Object> existingCbPlan) {
+        Object orgIdListObj = existingCbPlan.get(Constants.ORG_ID_LIST);
+        if (orgIdListObj instanceof List<?> list && CollectionUtils.isNotEmpty(list)) {
+            return (String) list.get(0);
+        }
+        return null;
     }
 }

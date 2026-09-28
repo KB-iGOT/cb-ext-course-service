@@ -55,6 +55,7 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
     private final CbPlanDictionaryServiceV4Impl dictionaryService;
     private final RedisCacheMgr redisCacheMgr;
     private final CbPlanCacheMgrV4 cbPlanCacheMgrV4;
+    private final CbPlanContentSyncServiceV4Impl contentSyncService;
     private final ObjectMapper mapper;
 
     public CbPlanServiceV4Impl(CassandraOperation cassandraOperation,
@@ -71,7 +72,8 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
                                UserProfileUtil userProfileUtil,
                                CbPlanDictionaryServiceV4Impl dictionaryService,
                                RedisCacheMgr redisCacheMgr,
-                               CbPlanCacheMgrV4 cbPlanCacheMgrV4) {
+                               CbPlanCacheMgrV4 cbPlanCacheMgrV4,
+                               CbPlanContentSyncServiceV4Impl contentSyncService) {
         this.cassandraOperation = cassandraOperation;
         this.serverProperties = serverProperties;
         this.validationService = validationService;
@@ -87,6 +89,7 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
         this.dictionaryService = dictionaryService;
         this.redisCacheMgr = redisCacheMgr;
         this.cbPlanCacheMgrV4 = cbPlanCacheMgrV4;
+        this.contentSyncService = contentSyncService;
         this.mapper = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
@@ -817,6 +820,7 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
             updatedRequest.put(Constants.EXISTING_MINISTRY_OR_STATE_IDS, existingMinistryOrStateIds);
             updatedRequest.put(Constants.NEW_MINISTRY_OR_STATE_IDS, newMinistryOrStateIds);
             updateOrgLookupTables(cbPlanId, planYear, updatedRequest, existingCbPlan, existingStatus, response);
+            syncContentNodeAfterPublish(updatedRequest, existingCbPlan);
         } else {
             response.getParams().setStatus(Constants.FAILED);
             response.getParams().setErr((String) resp.get(Constants.ERROR_MESSAGE) + " for cbPlanId: " + cbPlanId);
@@ -1792,5 +1796,24 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
             return null;
         }
         return cbPlanId;
+    }
+
+    /**
+     * Fires an async sync of the linked content node's {@code trainingPlan_v2} after a
+     * successful publish. Only fires when {@code contentList} was staged in draftData
+     * (i.e., it actually changed in this publish cycle).
+     * Skips when the plan has no {@code caLinkedId} or contentList did not change.
+     *
+     * @param updatedRequest applied publish update map (contains contentList only when changed)
+     * @param existingCbPlan pre-publish plan record
+     */
+    private void syncContentNodeAfterPublish(Map<String, Object> updatedRequest,
+                                             Map<String, Object> existingCbPlan) {
+        String caLinkedId = (String) existingCbPlan.get(Constants.CA_LINKED_ID_DB);
+        if (StringUtils.isBlank(caLinkedId) || !updatedRequest.containsKey(Constants.CONTENT_LIST)) {
+            return;
+        }
+        List<String> contentList = (List<String>) updatedRequest.get(Constants.CONTENT_LIST);
+        contentSyncService.syncContentNodeTrainingPlan(caLinkedId, contentList);
     }
 }

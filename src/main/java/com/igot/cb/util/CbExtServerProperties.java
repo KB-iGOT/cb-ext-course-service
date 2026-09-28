@@ -220,6 +220,9 @@ public class CbExtServerProperties {
     @Value("${usergroup.allow.multiple.root.org.ids:false}")
     private boolean userGroupAllowMultipleRootOrgIds;
 
+    @Value("${cbplan.content.sync.async:true}")
+    private boolean cbPlanContentSyncAsync;
+
     public List<String> getCbPlanEnrichedContentFieldsList() {
         return Arrays.asList(cbPlanEnrichedContentFields.split(",", -1));
     }

@@ -815,6 +815,7 @@ public class Constants {
     public static final String CONTEXT_DATA_ES_FIELD_V4 = "contextDataV4";
     public static final String MSG_USERGROUP_IN_USE = "This user group is linked to one or more Training Plans and cannot be archived.";
     public static final String ERR_USERGROUP_USAGE_CHECK_FAILED = "Failed to verify user group usage; archive blocked as a precaution";
+    public static final String TRAINING_PLAN_V2 = "trainingPlan_v2";
 
     private Constants() {
     }

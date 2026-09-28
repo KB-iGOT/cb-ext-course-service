@@ -860,7 +860,7 @@ public class CbPlanDictionaryServiceV4Impl {
         }
         try {
             String json = mapper.writeValueAsString(result);
-            redisCacheMgr.putInCache(cacheKey, json, serverProperties.getCbPlanV3RedisCacheTtlSeconds());
+            redisCacheMgr.putInCache(cacheKey, json, serverProperties.getCbPlanV4DictionaryRedisCacheTtlSeconds());
             log.debug("cacheResult: Cached dictionary result - key={}", cacheKey);
         } catch (JsonProcessingException e) {
             log.warn("cacheResult: Failed to serialize result for caching - key={}", cacheKey, e);

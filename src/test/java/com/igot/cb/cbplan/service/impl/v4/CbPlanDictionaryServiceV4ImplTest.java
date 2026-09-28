@@ -85,7 +85,7 @@ class CbPlanDictionaryServiceV4ImplTest {
         requestMap.put(Constants.REQUEST_PARAM_PLAN_YEAR, TEST_PLAN_YEAR);
         testRequest.setRequest(requestMap);
 
-        lenient().when(serverProperties.getCbPlanV3RedisCacheTtlSeconds()).thenReturn(3600);
+        lenient().when(serverProperties.getCbPlanV4DictionaryRedisCacheTtlSeconds()).thenReturn(3600);
         lenient().when(serverProperties.getCassandraQueryLimitPrimaryKey()).thenReturn(1);
         lenient().when(contentLookupService.getContentMetadata(anyString())).thenReturn(buildLiveMetadata());
     }

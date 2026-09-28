@@ -223,6 +223,9 @@ public class CbExtServerProperties {
     @Value("${cbplan.content.sync.async:true}")
     private boolean cbPlanContentSyncAsync;
 
+    @Value("${cbplan.v4.retire.ca.linked.error}")
+    private String cbPlanV4RetireCaLinkedError;
+
     public List<String> getCbPlanEnrichedContentFieldsList() {
         return Arrays.asList(cbPlanEnrichedContentFields.split(",", -1));
     }

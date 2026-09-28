@@ -87,15 +87,16 @@ public class CbPlanCaLinkConsumer {
             return;
         }
         String currentCaLinkedId = (String) plans.get(0).get(Constants.CA_LINKED_ID_DB);
+        List<String> orgIdList = (List<String>) plans.get(0).get(Constants.ORG_ID_LIST);
 
         if (isAdd) {
-            handleAdd(planId, caIdentifier, currentCaLinkedId);
+            handleAdd(planId, caIdentifier, currentCaLinkedId, orgIdList);
         } else {
-            handleRemove(planId, caIdentifier, currentCaLinkedId);
+            handleRemove(planId, caIdentifier, currentCaLinkedId, orgIdList);
         }
     }
 
-    private void handleAdd(String planId, String caIdentifier, String currentCaLinkedId) {
+    private void handleAdd(String planId, String caIdentifier, String currentCaLinkedId, List<String> orgIdList) {
         if (caIdentifier.equals(currentCaLinkedId)) {
             logger.info("CbPlanCaLinkConsumer: ADD skipped, already linked - planId={}, caIdentifier={}", planId, caIdentifier);
             return;
@@ -104,17 +105,17 @@ public class CbPlanCaLinkConsumer {
             logger.warn("CbPlanCaLinkConsumer: ADD replacing existing link - planId={}, existing={}, new={}",
                     planId, currentCaLinkedId, caIdentifier);
         }
-        boolean updated = cbPlanServiceV4.updateCaLinkedId(planId, caIdentifier, Constants.SYSTEM_USER);
+        boolean updated = cbPlanServiceV4.updateCaLinkedIdV2(planId, caIdentifier, Constants.SYSTEM_USER, orgIdList);
         logResult("ADD", planId, caIdentifier, updated);
     }
 
-    private void handleRemove(String planId, String caIdentifier, String currentCaLinkedId) {
+    private void handleRemove(String planId, String caIdentifier, String currentCaLinkedId, List<String> orgIdList) {
         if (!caIdentifier.equals(currentCaLinkedId)) {
             logger.warn("CbPlanCaLinkConsumer: REMOVE skipped, plan is not linked to this CA - planId={}, current={}, requested={}",
                     planId, currentCaLinkedId, caIdentifier);
             return;
         }
-        boolean updated = cbPlanServiceV4.updateCaLinkedId(planId, null, Constants.SYSTEM_USER);
+        boolean updated = cbPlanServiceV4.updateCaLinkedIdV2(planId, null, Constants.SYSTEM_USER, orgIdList);
         logResult("REMOVE", planId, caIdentifier, updated);
     }
 

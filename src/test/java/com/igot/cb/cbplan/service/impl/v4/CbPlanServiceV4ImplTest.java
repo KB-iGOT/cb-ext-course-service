@@ -1341,6 +1341,73 @@ class CbPlanServiceV4ImplTest {
     }
 
     @Test
+    void updateCaLinkedIdV2_success_withOrgIdList_invalidatesOrgScopedRedisPattern() {
+        when(cassandraOperation.updateRecord(eq(Constants.KEYSPACE_SUNBIRD),
+                eq(Constants.TABLE_CB_PLAN_V3), anyMap(), anyMap()))
+                .thenReturn(Map.of(Constants.RESPONSE, Constants.SUCCESS));
+
+        boolean result = cbPlanService.updateCaLinkedIdV2(PLAN_ID, CA_LINKED_ID_VALUE,
+                Constants.SYSTEM_USER, List.of(ORG_ID));
+
+        assertTrue(result);
+        verify(cassandraOperation).updateRecord(eq(Constants.KEYSPACE_SUNBIRD), eq(Constants.TABLE_CB_PLAN_V3),
+                argThat(m -> CA_LINKED_ID_VALUE.equals(m.get(Constants.CA_LINKED_ID_DB))
+                        && Constants.SYSTEM_USER.equals(m.get(Constants.UPDATED_BY))),
+                eq(Map.of(Constants.PLAN_ID, PLAN_ID)));
+        verify(elasticSearchService).updateElasticSearchForPlan(eq(PLAN_ID), anyMap());
+        verify(cbPlanCacheMgrV4).invalidatePlan(PLAN_ID);
+        verify(redisCacheMgr).deleteKeysByPatternAsync(
+                Constants.CB_PLAN_V4_REDIS_KEY_PREFIX + "*:" + ORG_ID + ":*");
+    }
+
+    @Test
+    void updateCaLinkedIdV2_success_emptyOrgIdList_invalidatesFullRedisPrefix() {
+        when(cassandraOperation.updateRecord(eq(Constants.KEYSPACE_SUNBIRD),
+                eq(Constants.TABLE_CB_PLAN_V3), anyMap(), anyMap()))
+                .thenReturn(Map.of(Constants.RESPONSE, Constants.SUCCESS));
+
+        boolean result = cbPlanService.updateCaLinkedIdV2(PLAN_ID, CA_LINKED_ID_VALUE,
+                Constants.SYSTEM_USER, List.of());
+
+        assertTrue(result);
+        verify(elasticSearchService).updateElasticSearchForPlan(eq(PLAN_ID), anyMap());
+        verify(cbPlanCacheMgrV4).invalidatePlan(PLAN_ID);
+        verify(redisCacheMgr).deleteKeysByPatternAsync(Constants.CB_PLAN_V4_REDIS_KEY_PREFIX + "*");
+    }
+
+    @Test
+    void updateCaLinkedIdV2_nullCaLinkedId_clearsLinkInCassandraAndEs() {
+        when(cassandraOperation.updateRecord(eq(Constants.KEYSPACE_SUNBIRD),
+                eq(Constants.TABLE_CB_PLAN_V3), anyMap(), anyMap()))
+                .thenReturn(Map.of(Constants.RESPONSE, Constants.SUCCESS));
+
+        boolean result = cbPlanService.updateCaLinkedIdV2(PLAN_ID, null,
+                Constants.SYSTEM_USER, List.of(ORG_ID));
+
+        assertTrue(result);
+        verify(cassandraOperation).updateRecord(eq(Constants.KEYSPACE_SUNBIRD), eq(Constants.TABLE_CB_PLAN_V3),
+                argThat(m -> m.containsKey(Constants.CA_LINKED_ID_DB) && m.get(Constants.CA_LINKED_ID_DB) == null),
+                anyMap());
+        verify(elasticSearchService).updateElasticSearchForPlan(eq(PLAN_ID),
+                argThat(m -> m.containsKey(Constants.CA_LINKED_ID_DB) && m.get(Constants.CA_LINKED_ID_DB) == null));
+    }
+
+    @Test
+    void updateCaLinkedIdV2_cassandraFailure_returnsFalseAndSkipsEsAndCaches() {
+        when(cassandraOperation.updateRecord(eq(Constants.KEYSPACE_SUNBIRD),
+                eq(Constants.TABLE_CB_PLAN_V3), anyMap(), anyMap()))
+                .thenReturn(Map.of(Constants.RESPONSE, Constants.FAILED));
+
+        boolean result = cbPlanService.updateCaLinkedIdV2(PLAN_ID, CA_LINKED_ID_VALUE,
+                Constants.SYSTEM_USER, List.of(ORG_ID));
+
+        assertFalse(result);
+        verify(elasticSearchService, never()).updateElasticSearchForPlan(anyString(), anyMap());
+        verify(cbPlanCacheMgrV4, never()).invalidatePlan(anyString());
+        verify(redisCacheMgr, never()).deleteKeysByPatternAsync(anyString());
+    }
+
+    @Test
     void retireCbPlan_noCaLinkedId_proceedsToExecuteRetire() {
         mockRetireAuthSuccess();
         Map<String, Object> existingCbPlan = new HashMap<>();

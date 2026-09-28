@@ -36,6 +36,7 @@ class CbPlanCaLinkConsumerTest {
     private static final String OTHER_CA_ID = "do_other";
     private static final String CB_PLAN_V4_KEYSPACE = "cb_plan_v4";
     private static final String CB_PLAN_V4_TABLE = "cb_plan_v4";
+    private static final List<String> PLAN_ORG_ID_LIST = List.of("org_plan_001");
 
     @Mock
     private CassandraOperation cassandraOperation;
@@ -68,6 +69,7 @@ class CbPlanCaLinkConsumerTest {
         Map<String, Object> plan = new HashMap<>();
         plan.put(Constants.PLAN_ID, PLAN_ID);
         plan.put(Constants.CA_LINKED_ID_DB, currentCaLinkedId);
+        plan.put(Constants.ORG_ID_LIST, PLAN_ORG_ID_LIST);
         when(cassandraOperation.getRecordsByProperties(eq(CB_PLAN_V4_KEYSPACE), eq(CB_PLAN_V4_TABLE),
                 eq(Map.of(Constants.PLAN_ID, PLAN_ID)), isNull(), anyInt())).thenReturn(List.of(plan));
     }
@@ -75,11 +77,11 @@ class CbPlanCaLinkConsumerTest {
     @Test
     void add_whenNotLinked_setsCaLinkedId() {
         mockPlan(null);
-        when(cbPlanServiceV4.updateCaLinkedId(PLAN_ID, CA_ID, Constants.SYSTEM_USER)).thenReturn(true);
+        when(cbPlanServiceV4.updateCaLinkedIdV2(PLAN_ID, CA_ID, Constants.SYSTEM_USER, PLAN_ORG_ID_LIST)).thenReturn(true);
 
         consumer.consumeCaLinkEvent(record(event("ADD", PLAN_ID, CA_ID)));
 
-        verify(cbPlanServiceV4).updateCaLinkedId(PLAN_ID, CA_ID, Constants.SYSTEM_USER);
+        verify(cbPlanServiceV4).updateCaLinkedIdV2(PLAN_ID, CA_ID, Constants.SYSTEM_USER, PLAN_ORG_ID_LIST);
     }
 
     @Test
@@ -88,27 +90,27 @@ class CbPlanCaLinkConsumerTest {
 
         consumer.consumeCaLinkEvent(record(event("ADD", PLAN_ID, CA_ID)));
 
-        verify(cbPlanServiceV4, never()).updateCaLinkedId(anyString(), any(), anyString());
+        verify(cbPlanServiceV4, never()).updateCaLinkedIdV2(anyString(), any(), anyString(), any());
     }
 
     @Test
     void add_whenLinkedToDifferentCa_overwrites() {
         mockPlan(OTHER_CA_ID);
-        when(cbPlanServiceV4.updateCaLinkedId(PLAN_ID, CA_ID, Constants.SYSTEM_USER)).thenReturn(true);
+        when(cbPlanServiceV4.updateCaLinkedIdV2(PLAN_ID, CA_ID, Constants.SYSTEM_USER, PLAN_ORG_ID_LIST)).thenReturn(true);
 
         consumer.consumeCaLinkEvent(record(event("ADD", PLAN_ID, CA_ID)));
 
-        verify(cbPlanServiceV4).updateCaLinkedId(PLAN_ID, CA_ID, Constants.SYSTEM_USER);
+        verify(cbPlanServiceV4).updateCaLinkedIdV2(PLAN_ID, CA_ID, Constants.SYSTEM_USER, PLAN_ORG_ID_LIST);
     }
 
     @Test
     void remove_whenLinkedToSameCa_clearsCaLinkedId() {
         mockPlan(CA_ID);
-        when(cbPlanServiceV4.updateCaLinkedId(PLAN_ID, null, Constants.SYSTEM_USER)).thenReturn(true);
+        when(cbPlanServiceV4.updateCaLinkedIdV2(PLAN_ID, null, Constants.SYSTEM_USER, PLAN_ORG_ID_LIST)).thenReturn(true);
 
         consumer.consumeCaLinkEvent(record(event("REMOVE", PLAN_ID, CA_ID)));
 
-        verify(cbPlanServiceV4).updateCaLinkedId(PLAN_ID, null, Constants.SYSTEM_USER);
+        verify(cbPlanServiceV4).updateCaLinkedIdV2(PLAN_ID, null, Constants.SYSTEM_USER, PLAN_ORG_ID_LIST);
     }
 
     @Test
@@ -117,7 +119,7 @@ class CbPlanCaLinkConsumerTest {
 
         consumer.consumeCaLinkEvent(record(event("REMOVE", PLAN_ID, CA_ID)));
 
-        verify(cbPlanServiceV4, never()).updateCaLinkedId(anyString(), any(), anyString());
+        verify(cbPlanServiceV4, never()).updateCaLinkedIdV2(anyString(), any(), anyString(), any());
     }
 
     @Test
@@ -126,7 +128,7 @@ class CbPlanCaLinkConsumerTest {
 
         consumer.consumeCaLinkEvent(record(event("REMOVE", PLAN_ID, CA_ID)));
 
-        verify(cbPlanServiceV4, never()).updateCaLinkedId(anyString(), any(), anyString());
+        verify(cbPlanServiceV4, never()).updateCaLinkedIdV2(anyString(), any(), anyString(), any());
     }
 
     @Test
@@ -136,7 +138,7 @@ class CbPlanCaLinkConsumerTest {
 
         consumer.consumeCaLinkEvent(record(event("ADD", PLAN_ID, CA_ID)));
 
-        verify(cbPlanServiceV4, never()).updateCaLinkedId(anyString(), any(), anyString());
+        verify(cbPlanServiceV4, never()).updateCaLinkedIdV2(anyString(), any(), anyString(), any());
     }
 
     @Test
@@ -144,7 +146,7 @@ class CbPlanCaLinkConsumerTest {
         consumer.consumeCaLinkEvent(record(event("UPSERT", PLAN_ID, CA_ID)));
 
         verify(cassandraOperation, never()).getRecordsByProperties(anyString(), anyString(), anyMap(), any(), anyInt());
-        verify(cbPlanServiceV4, never()).updateCaLinkedId(anyString(), any(), anyString());
+        verify(cbPlanServiceV4, never()).updateCaLinkedIdV2(anyString(), any(), anyString(), any());
     }
 
     @Test
@@ -152,7 +154,7 @@ class CbPlanCaLinkConsumerTest {
         consumer.consumeCaLinkEvent(record("{\"eventType\":\"ADD\",\"trainingPlanId\":\"" + PLAN_ID + "\"}"));
         consumer.consumeCaLinkEvent(record("{\"eventType\":\"ADD\",\"caIdentifier\":\"" + CA_ID + "\"}"));
 
-        verify(cbPlanServiceV4, never()).updateCaLinkedId(anyString(), any(), anyString());
+        verify(cbPlanServiceV4, never()).updateCaLinkedIdV2(anyString(), any(), anyString(), any());
     }
 
     @Test
@@ -161,16 +163,16 @@ class CbPlanCaLinkConsumerTest {
         consumer.consumeCaLinkEvent(record(null));
         consumer.consumeCaLinkEvent(record("not-json"));
 
-        verify(cbPlanServiceV4, never()).updateCaLinkedId(anyString(), any(), anyString());
+        verify(cbPlanServiceV4, never()).updateCaLinkedIdV2(anyString(), any(), anyString(), any());
     }
 
     @Test
     void updateFailure_isLoggedNotThrown() {
         mockPlan(null);
-        when(cbPlanServiceV4.updateCaLinkedId(PLAN_ID, CA_ID, Constants.SYSTEM_USER)).thenReturn(false);
+        when(cbPlanServiceV4.updateCaLinkedIdV2(PLAN_ID, CA_ID, Constants.SYSTEM_USER, PLAN_ORG_ID_LIST)).thenReturn(false);
 
         consumer.consumeCaLinkEvent(record(event("ADD", PLAN_ID, CA_ID)));
 
-        verify(cbPlanServiceV4).updateCaLinkedId(PLAN_ID, CA_ID, Constants.SYSTEM_USER);
+        verify(cbPlanServiceV4).updateCaLinkedIdV2(PLAN_ID, CA_ID, Constants.SYSTEM_USER, PLAN_ORG_ID_LIST);
     }
 }

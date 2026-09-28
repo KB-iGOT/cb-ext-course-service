@@ -112,18 +112,18 @@ public class CbPlanDictionaryServiceV4Impl {
             if (Objects.isNull(planYear)) {
                 return response;
             }
-            String cacheKey = Constants.CB_PLAN_V4_REDIS_KEY_PREFIX + userId + ":" + planYear + ":dict";
-            String cachedJson = redisCacheMgr.getFromCache(cacheKey);
-            if (StringUtils.isNotBlank(cachedJson)) {
-                log.info("getCBPlanDictionaryForUser: Cache hit - userId={}, planYear={}", userId, planYear);
-                populateResponseFromCache(response, cachedJson, planYear);
-                return response;
-            }
             Map<String, String> userProfile = buildUserProfile(userId, response);
             if (userProfile.isEmpty()) {
                 return response;
             }
             String userOrgId = userProfile.get(Constants.USER_ROOT_ORG_ID);
+            String cacheKey = Constants.CB_PLAN_V4_REDIS_KEY_PREFIX + userId + ":" + userOrgId + ":" + planYear + ":dict";
+            String cachedJson = redisCacheMgr.getFromCache(cacheKey);
+            if (StringUtils.isNotBlank(cachedJson)) {
+                log.info("getCBPlanDictionaryForUser: Cache hit - userId={}, orgId={}, planYear={}", userId, userOrgId, planYear);
+                populateResponseFromCache(response, cachedJson, planYear);
+                return response;
+            }
             log.info("getCBPlanDictionaryForUser: Cache miss - userId={}, orgId={}, planYear={}", userId, userOrgId, planYear);
             AtomicBoolean isCacheEnabled = new AtomicBoolean(false);
             List<Map<String, Object>> activePlans = fetchPlansForUser(userProfile, userOrgId, planYear, isCacheEnabled);
@@ -249,7 +249,7 @@ public class CbPlanDictionaryServiceV4Impl {
      */
     private Map<String, Object> resolveYearResult(String userId, Map<String, String> userProfile,
             String userOrgId, String planYear, AtomicBoolean isCacheEnabled) {
-        String cacheKey = Constants.CB_PLAN_V4_REDIS_KEY_PREFIX + userId + ":" + planYear + ":dict";
+        String cacheKey = Constants.CB_PLAN_V4_REDIS_KEY_PREFIX + userId + ":" + userOrgId + ":" + planYear + ":dict";
         String cachedJson = redisCacheMgr.getFromCache(cacheKey);
         if (StringUtils.isNotBlank(cachedJson)) {
             try {

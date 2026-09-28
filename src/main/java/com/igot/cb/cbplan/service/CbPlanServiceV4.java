@@ -2,6 +2,7 @@ package com.igot.cb.cbplan.service;
 
 import com.igot.cb.model.ApiRequest;
 import com.igot.cb.model.ApiResponse;
+import java.util.List;
 
 /**
  * Service interface for CB Plan V4 operations.
@@ -118,4 +119,16 @@ public interface CbPlanServiceV4 {
      * @return true when Cassandra and ElasticSearch were updated, false when the Cassandra update failed
      */
     boolean updateCaLinkedId(String cbPlanId, String caLinkedId, String updatedBy);
+
+    /**
+     * Updates the caLinkedId on a CB Plan and invalidates only the dictionary cache entries
+     * belonging to the plan's owning org, derived from {@code orgIdList}.
+     *
+     * @param cbPlanId   CB Plan ID
+     * @param caLinkedId CA content identifier to link, or null to clear the link
+     * @param updatedBy  user or system identifier recorded in updatedBy
+     * @param orgIdList  orgIdList from the CB Plan record; first entry is used as the owning org
+     * @return true when Cassandra and ElasticSearch were updated, false when the Cassandra update failed
+     */
+    boolean updateCaLinkedIdV2(String cbPlanId, String caLinkedId, String updatedBy, List<String> orgIdList);
 }

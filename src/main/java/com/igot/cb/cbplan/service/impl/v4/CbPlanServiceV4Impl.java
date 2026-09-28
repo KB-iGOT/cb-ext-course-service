@@ -1841,4 +1841,46 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
         response.setResponseCode(HttpStatus.BAD_REQUEST);
         return true;
     }
+
+
+    /**
+     * Updates {@code calinkedid} on the CB Plan in Cassandra and syncs the change to ElasticSearch.
+     * Invalidates the per-plan Caffeine cache entry and asynchronously deletes Redis dictionary
+     * cache keys scoped to the plan's owning org ({@code orgIdList[0]}).
+     * If {@code orgIdList} is empty the entire V4 dictionary key prefix is flushed as a fallback.
+     *
+     * @param cbPlanId   CB Plan ID to update
+     * @param caLinkedId CA content identifier to set, or {@code null} to clear the link
+     * @param updatedBy  actor recorded in the {@code updatedBy} column (use {@code Constants.SYSTEM_USER} for consumer-driven updates)
+     * @param orgIdList  orgIdList from the CB Plan record; {@code orgIdList[0]} is the owning org used to scope Redis invalidation
+     * @return {@code true} when Cassandra and ElasticSearch were updated successfully; {@code false} on Cassandra failure
+     */
+    @Override
+    public boolean updateCaLinkedIdV2(String cbPlanId, String caLinkedId, String updatedBy,
+                                      List<String> orgIdList) {
+        Map<String, Object> updateMap = new HashMap<>();
+        updateMap.put(Constants.CA_LINKED_ID_DB, caLinkedId);
+        updateMap.put(Constants.UPDATED_BY, updatedBy);
+        updateMap.put(Constants.UPDATED_AT, Instant.now());
+        Map<String, Object> resp = cassandraOperation.updateRecord(
+                serverProperties.getCbPlanV4Keyspace(),
+                serverProperties.getCbPlanV4PlanTable(),
+                updateMap,
+                Map.of(Constants.PLAN_ID, cbPlanId));
+        if (!Constants.SUCCESS.equals(resp.get(Constants.RESPONSE))) {
+            log.error("CbPlanServiceV4Impl.updateCaLinkedIdV2: Cassandra update failed - cbPlanId={}, caLinkedId={}",
+                    cbPlanId, caLinkedId);
+            return false;
+        }
+        elasticSearchService.updateElasticSearchForPlan(cbPlanId, updateMap);
+        cbPlanCacheMgrV4.invalidatePlan(cbPlanId);
+        String orgId = CollectionUtils.isNotEmpty(orgIdList) ? (String) orgIdList.get(0) : null;
+        String deletePattern = StringUtils.isNotBlank(orgId)
+                ? Constants.CB_PLAN_V4_REDIS_KEY_PREFIX + "*:" + orgId + ":*"
+                : Constants.CB_PLAN_V4_REDIS_KEY_PREFIX + "*";
+        redisCacheMgr.deleteKeysByPatternAsync(deletePattern);
+        log.info("CbPlanServiceV4Impl.updateCaLinkedIdV2: Updated - cbPlanId={}, caLinkedId={}, updatedBy={}, orgId={}",
+                cbPlanId, caLinkedId, updatedBy, orgId);
+        return true;
+    }
 }

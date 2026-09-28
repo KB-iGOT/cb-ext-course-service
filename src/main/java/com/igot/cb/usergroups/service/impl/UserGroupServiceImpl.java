@@ -1,6 +1,7 @@
 package com.igot.cb.usergroups.service.impl;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.igot.cb.cache.UserGroupCacheMgrV4;
 import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.model.ApiRequest;
 import com.igot.cb.model.ApiResponse;
@@ -40,6 +41,7 @@ public class UserGroupServiceImpl implements UserGroupService {
     private final AccessTokenValidator accessTokenValidator;
     private final UserProfileUtil userProfileUtil;
     private final ObjectMapper objectMapper;
+    private final UserGroupCacheMgrV4 userGroupCacheMgrV4;
 
     public UserGroupServiceImpl(CassandraOperation cassandraOperation,
                                 UserGroupValidationServiceImpl validationService,
@@ -47,7 +49,8 @@ public class UserGroupServiceImpl implements UserGroupService {
                                 UserGroupElasticSearchServiceImpl esService,
                                 AccessTokenValidator accessTokenValidator,
                                 UserProfileUtil userProfileUtil,
-                                ObjectMapper objectMapper) {
+                                ObjectMapper objectMapper,
+                                UserGroupCacheMgrV4 userGroupCacheMgrV4) {
         this.cassandraOperation = cassandraOperation;
         this.validationService = validationService;
         this.dataTransformService = dataTransformService;
@@ -55,6 +58,7 @@ public class UserGroupServiceImpl implements UserGroupService {
         this.accessTokenValidator = accessTokenValidator;
         this.userProfileUtil = userProfileUtil;
         this.objectMapper = objectMapper;
+        this.userGroupCacheMgrV4 = userGroupCacheMgrV4;
     }
 
 
@@ -219,6 +223,7 @@ public class UserGroupServiceImpl implements UserGroupService {
                     response)) {
                 return response;
             }
+            userGroupCacheMgrV4.invalidateUserGroup(userRootOrgId, userGroupId);
             log.info("User group updated successfully: usergroupid={}", userGroupId);
             response.getParams().setStatus(Constants.SUCCESSFUL);
             response.setResponseCode(HttpStatus.OK);
@@ -272,6 +277,7 @@ public class UserGroupServiceImpl implements UserGroupService {
                     response)) {
                 return response;
             }
+            userGroupCacheMgrV4.invalidateUserGroup(userRootOrgId, userGroupId);
             log.info("User group archived successfully: usergroupid={}", userGroupId);
             response.getParams().setStatus(Constants.SUCCESSFUL);
             response.setResponseCode(HttpStatus.OK);

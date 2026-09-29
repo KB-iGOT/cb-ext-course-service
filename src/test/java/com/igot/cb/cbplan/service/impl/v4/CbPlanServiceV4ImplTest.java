@@ -1429,4 +1429,25 @@ class CbPlanServiceV4ImplTest {
         assertNull(response.getResult().get(Constants.WARNING));
     }
 
+    @Test
+    void retireCbPlan_planLinkedToCa_cassandraFails_noWarningAdded() {
+        mockRetireAuthSuccess();
+        Map<String, Object> existingCbPlan = new HashMap<>();
+        existingCbPlan.put(Constants.CREATED_BY, USER_ID);
+        existingCbPlan.put(Constants.STATUS, Constants.DRAFT);
+        existingCbPlan.put(Constants.PLAN_YEAR, PLAN_YEAR);
+        existingCbPlan.put(Constants.CA_LINKED_ID_DB, CA_LINKED_ID_VALUE);
+        mockExistingPlan(existingCbPlan);
+        when(validationService.isUnauthorizedToUpdate(eq(USER_ID), anyMap(), any(), any())).thenReturn(false);
+        when(dataTransformService.prepareArchiveUpdate(any(), eq(USER_ID))).thenReturn(new HashMap<>());
+        when(elasticSearchService.sanitizeForElastic(anyMap())).thenAnswer(inv -> new HashMap<>(inv.getArgument(0)));
+        when(cassandraOperation.updateRecord(anyString(), anyString(), anyMap(), anyMap(), any(), any()))
+                .thenReturn(Map.of(Constants.RESPONSE, Constants.FAILED));
+
+        ApiResponse response = cbPlanService.retireCbPlan(requestWithPlanId(), TOKEN);
+
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertNull(response.getResult().get(Constants.WARNING));
+    }
+
 }

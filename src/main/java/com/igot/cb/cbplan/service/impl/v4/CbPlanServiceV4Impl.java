@@ -1860,11 +1860,8 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
     }
 
     private void addCaLinkedWarningIfApplicable(Map<String, Object> existingCbPlan, ApiResponse response) {
-        if (!Constants.SUCCESSFUL.equals(response.getParams().getStatus())) {
-            return;
-        }
         String caLinkedId = (String) existingCbPlan.get(Constants.CA_LINKED_ID_DB);
-        if (StringUtils.isNotBlank(caLinkedId)) {
+        if (Constants.UPDATED.equals(response.getResult().get(Constants.STATUS)) && StringUtils.isNotBlank(caLinkedId)) {
             response.getResult().put(Constants.WARNING, serverProperties.getCbPlanV4CaLinkedRetireWarning());
         }
     }

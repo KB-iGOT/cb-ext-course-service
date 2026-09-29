@@ -59,7 +59,8 @@ public class UserGroupValidationServiceImpl {
         return validateRootOrgIdCriteria(criteria, userRootOrgId, userRoles, response);
     }
 
-    public boolean validateUpdateRequest(String userGroupId, String userGroupName, List<CriteriaItem> criteria, ApiResponse response) {
+    public boolean validateUpdateRequest(String userGroupId, String userGroupName, List<CriteriaItem> criteria,
+                                          String userRootOrgId, String userRoles, ApiResponse response) {
         log.debug("validateUpdateRequest: userGroupId={}", userGroupId);
 
         if (StringUtils.isBlank(userGroupId)) {
@@ -79,7 +80,10 @@ public class UserGroupValidationServiceImpl {
         }
 
         if (CollectionUtils.isNotEmpty(criteria)) {
-            return validateCriteria(criteria, response);
+            if (!validateCriteria(criteria, response)) {
+                return false;
+            }
+            return validateRootOrgIdCriteria(criteria, userRootOrgId, userRoles, response);
         }
 
         return true;
@@ -114,7 +118,9 @@ public class UserGroupValidationServiceImpl {
                 return false;
             }
 
-            if (CollectionUtils.isEmpty(item.criteriaValue())) {
+            boolean emptyRootOrgIdAllowed = serverProperties.isUserGroupAllowEmptyRootOrgIds()
+                    && Constants.ROOT_ORG_ID.equalsIgnoreCase(item.criteriaKey());
+            if (!emptyRootOrgIdAllowed && CollectionUtils.isEmpty(item.criteriaValue())) {
                 log.warn("Validation failed: criteriaValue is empty for criteriaKey={}", item.criteriaKey());
                 response.getParams().setStatus(Constants.FAILED);
                 response.getParams().setErr(Constants.MSG_CRITERIA_VALUE_EMPTY + " for criteriaKey: " + item.criteriaKey());

@@ -220,6 +220,9 @@ public class CbExtServerProperties {
     @Value("${usergroup.allow.multiple.root.org.ids:false}")
     private boolean userGroupAllowMultipleRootOrgIds;
 
+    @Value("${usergroup.allow.empty.root.org.ids:false}")
+    private boolean userGroupAllowEmptyRootOrgIds;
+
     @Value("${cbplan.content.sync.async:true}")
     private boolean cbPlanContentSyncAsync;
 

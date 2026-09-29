@@ -124,7 +124,8 @@ class UserGroupValidationServiceImplTest {
         List<CriteriaItem> criteria = createValidCriteriaList();
         ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_USER_GROUP_UPDATE);
 
-        boolean result = validationService.validateUpdateRequest(TEST_USER_GROUP_ID, TEST_USER_GROUP_NAME, criteria, response);
+        boolean result = validationService.validateUpdateRequest(
+                TEST_USER_GROUP_ID, TEST_USER_GROUP_NAME, criteria, TEST_ORG_ID, TEST_USER_ROLES, response);
 
         assertTrue(result);
     }
@@ -134,10 +135,43 @@ class UserGroupValidationServiceImplTest {
         List<CriteriaItem> criteria = createValidCriteriaList();
         ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_USER_GROUP_UPDATE);
 
-        boolean result = validationService.validateUpdateRequest("", TEST_USER_GROUP_NAME, criteria, response);
+        boolean result = validationService.validateUpdateRequest(
+                "", TEST_USER_GROUP_NAME, criteria, TEST_ORG_ID, TEST_USER_ROLES, response);
 
         assertFalse(result);
         assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
+    }
+
+    @Test
+    void validateUpdateRequest_CCA_withEmptyRootOrgId_flagEnabled_shouldPass() {
+        Map<String, Object> ccaOrgMap = new HashMap<>();
+        ccaOrgMap.put(Constants.IS_CCA, true);
+        when(userAndOrgService.readOrgFromDB(eq(TEST_ORG_ID), any())).thenReturn(ccaOrgMap);
+        when(serverProperties.isUserGroupAllowEmptyRootOrgIds()).thenReturn(true);
+
+        List<CriteriaItem> criteria = List.of(new CriteriaItem("rootOrgId", List.of()));
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_USER_GROUP_UPDATE);
+
+        boolean result = validationService.validateUpdateRequest(
+                TEST_USER_GROUP_ID, TEST_USER_GROUP_NAME, criteria, TEST_ORG_ID, "USER", response);
+
+        assertTrue(result);
+    }
+
+    @Test
+    void validateUpdateRequest_nonCCA_withEmptyRootOrgId_flagEnabled_shouldFail() {
+        when(serverProperties.isUserGroupAllowEmptyRootOrgIds()).thenReturn(true);
+
+        List<CriteriaItem> criteria = List.of(new CriteriaItem("rootOrgId", List.of()));
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_USER_GROUP_UPDATE);
+
+        boolean result = validationService.validateUpdateRequest(
+                TEST_USER_GROUP_ID, TEST_USER_GROUP_NAME, criteria, TEST_ORG_ID, "USER", response);
+
+        assertFalse(result);
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(Constants.MSG_ROOTORGID_REQUIRED_NON_CCA, response.getParams().getErr());
         assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
     }
 

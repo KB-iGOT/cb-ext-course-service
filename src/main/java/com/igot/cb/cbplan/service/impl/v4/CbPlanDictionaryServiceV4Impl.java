@@ -622,7 +622,8 @@ public class CbPlanDictionaryServiceV4Impl {
             String criteriaKey = entry.getKey();
             Set<String> allowedValues = entry.getValue();
             if (CollectionUtils.isEmpty(allowedValues)) {
-                return false;
+                return serverProperties.isUserGroupAllowEmptyRootOrgIds()
+                        && Constants.ROOT_ORG_ID.equalsIgnoreCase(criteriaKey);
             }
             if (Constants.CENTRAL_DEPUTATION_LOWER_KEY.equals(criteriaKey)) {
                 boolean expected = Boolean.parseBoolean(allowedValues.iterator().next());

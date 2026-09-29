@@ -191,7 +191,7 @@ public class UserGroupServiceImpl implements UserGroupService {
             List<CriteriaItem> criteria = userGroupRequest.criteria();
             log.info("updateUserGroup: userGroupId={}", userGroupId);
 
-            if (!validationService.validateUpdateRequest(userGroupId, userGroupName, criteria, response)) {
+            if (!validationService.validateUpdateRequest(userGroupId, userGroupName, criteria, userRootOrgId, userRoles, response)) {
                 return response;
             }
 

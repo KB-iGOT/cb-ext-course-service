@@ -226,8 +226,6 @@ public class CbExtServerProperties {
     @Value("${cbplan.content.sync.async:true}")
     private boolean cbPlanContentSyncAsync;
 
-    @Value("${cbplan.v4.retire.ca.linked.error}")
-    private String cbPlanV4RetireCaLinkedError;
 
     @Value("${cb.plan.v4.dictionary.redis.cache.ttl.seconds:3600}")
     private int cbPlanV4DictionaryRedisCacheTtlSeconds;

@@ -1357,7 +1357,7 @@ class CbPlanServiceV4ImplTest {
         verify(elasticSearchService).updateElasticSearchForPlan(eq(PLAN_ID), anyMap());
         verify(cbPlanCacheMgrV4).invalidatePlan(PLAN_ID);
         verify(redisCacheMgr).deleteKeysByPatternAsync(
-                Constants.CB_PLAN_V4_REDIS_KEY_PREFIX + "*:" + ORG_ID + ":*");
+                Constants.CB_PLAN_V4_REDIS_KEY_PREFIX + ORG_ID + ":*");
     }
 
     @Test

@@ -137,7 +137,7 @@ class CbPlanDictionaryServiceV4ImplTest {
 
         String userCacheKey = Constants.USER + ":basicProfile:" + TEST_USER_ID;
         String cachedUserProfile = "{\"id\":\"" + TEST_USER_ID + "\",\"rootOrgId\":\"" + TEST_ORG_ID + "\"}";
-        String dictCacheKey = Constants.CB_PLAN_V4_REDIS_KEY_PREFIX + TEST_USER_ID + ":" + TEST_ORG_ID + ":" + TEST_PLAN_YEAR + ":dict";
+        String dictCacheKey = Constants.CB_PLAN_V4_REDIS_KEY_PREFIX + TEST_ORG_ID + ":" + TEST_USER_ID + ":" + TEST_PLAN_YEAR + ":dict";
         String cachedJson = "{\"" + TEST_PLAN_YEAR + "\":{\"aparPlanList\":{},\"nonAparPlanList\":{}}}";
         when(redisCacheMgr.getFromCache(eq(userCacheKey))).thenReturn(cachedUserProfile);
         when(redisCacheMgr.getFromCache(eq(dictCacheKey))).thenReturn(cachedJson);
@@ -379,7 +379,7 @@ class CbPlanDictionaryServiceV4ImplTest {
 
         dictionaryService.getCBPlanDictionaryForUser(testRequest, TEST_AUTH_TOKEN);
 
-        String expectedCacheKey = Constants.CB_PLAN_V4_REDIS_KEY_PREFIX + TEST_USER_ID + ":" + TEST_ORG_ID + ":" + TEST_PLAN_YEAR + ":dict";
+        String expectedCacheKey = Constants.CB_PLAN_V4_REDIS_KEY_PREFIX + TEST_ORG_ID + ":" + TEST_USER_ID + ":" + TEST_PLAN_YEAR + ":dict";
         verify(redisCacheMgr, times(1)).putInCache(eq(expectedCacheKey), anyString(), anyInt());
     }
 
@@ -441,7 +441,7 @@ class CbPlanDictionaryServiceV4ImplTest {
                 .thenReturn(TEST_USER_ID);
 
         String userCacheKey = Constants.USER + ":basicProfile:" + TEST_USER_ID;
-        String dictCacheKey = Constants.CB_PLAN_V4_REDIS_KEY_PREFIX + TEST_USER_ID + ":" + TEST_ORG_ID + ":" + TEST_PLAN_YEAR + ":dict";
+        String dictCacheKey = Constants.CB_PLAN_V4_REDIS_KEY_PREFIX + TEST_ORG_ID + ":" + TEST_USER_ID + ":" + TEST_PLAN_YEAR + ":dict";
         String cachedUserProfile = "{\"id\":\"" + TEST_USER_ID + "\",\"rootOrgId\":\"" + TEST_ORG_ID + "\"}";
 
         when(redisCacheMgr.getFromCache(eq(userCacheKey))).thenReturn(cachedUserProfile);

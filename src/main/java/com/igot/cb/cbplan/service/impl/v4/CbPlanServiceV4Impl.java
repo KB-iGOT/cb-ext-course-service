@@ -1876,7 +1876,7 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
         cbPlanCacheMgrV4.invalidatePlan(cbPlanId);
         String orgId = CollectionUtils.isNotEmpty(orgIdList) ? (String) orgIdList.get(0) : null;
         String deletePattern = StringUtils.isNotBlank(orgId)
-                ? Constants.CB_PLAN_V4_REDIS_KEY_PREFIX + "*:" + orgId + ":*"
+                ? Constants.CB_PLAN_V4_REDIS_KEY_PREFIX + orgId + ":*"
                 : Constants.CB_PLAN_V4_REDIS_KEY_PREFIX + "*";
         redisCacheMgr.deleteKeysByPatternAsync(deletePattern);
         log.info("CbPlanServiceV4Impl.updateCaLinkedIdV2: Updated - cbPlanId={}, caLinkedId={}, updatedBy={}, orgId={}",

@@ -1254,6 +1254,7 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
                 return response;
             }
             executeRetirePlan(cbPlanId, comment, userId, existingCbPlan, response);
+            addCaLinkedWarningIfApplicable(existingCbPlan, response);
         } catch (Exception e) {
             log.error("CbPlanServiceV4Impl.retireCbPlan: Failed to archive CB Plan", e);
             response.getParams().setStatus(Constants.FAILED);
@@ -1856,5 +1857,15 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
         log.info("CbPlanServiceV4Impl.updateCaLinkedIdV2: Updated - cbPlanId={}, caLinkedId={}, updatedBy={}, orgId={}",
                 cbPlanId, caLinkedId, updatedBy, orgId);
         return true;
+    }
+
+    private void addCaLinkedWarningIfApplicable(Map<String, Object> existingCbPlan, ApiResponse response) {
+        if (!Constants.SUCCESSFUL.equals(response.getParams().getStatus())) {
+            return;
+        }
+        String caLinkedId = (String) existingCbPlan.get(Constants.CA_LINKED_ID_DB);
+        if (StringUtils.isNotBlank(caLinkedId)) {
+            response.getResult().put(Constants.WARNING, serverProperties.getCbPlanV4CaLinkedRetireWarning());
+        }
     }
 }

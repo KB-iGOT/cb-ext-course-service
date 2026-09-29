@@ -226,9 +226,11 @@ public class CbExtServerProperties {
     @Value("${cbplan.content.sync.async:true}")
     private boolean cbPlanContentSyncAsync;
 
-
     @Value("${cb.plan.v4.dictionary.redis.cache.ttl.seconds:3600}")
     private int cbPlanV4DictionaryRedisCacheTtlSeconds;
+
+    @Value("${cbplan.v4.retire.ca.linked.warning}")
+    private String cbPlanV4CaLinkedRetireWarning;
 
     public List<String> getCbPlanEnrichedContentFieldsList() {
         return Arrays.asList(cbPlanEnrichedContentFields.split(",", -1));

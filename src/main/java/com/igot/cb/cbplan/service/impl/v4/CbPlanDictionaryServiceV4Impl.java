@@ -1,17 +1,8 @@
 package com.igot.cb.cbplan.service.impl.v4;
 
-import java.util.ArrayList;
+import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.commons.collections.CollectionUtils;
@@ -484,8 +475,9 @@ public class CbPlanDictionaryServiceV4Impl {
                 totalGroups, orgToGroupIds.size());
         Map<String, Map<String, Object>> groups = new HashMap<>();
         for (Map.Entry<String, Set<String>> entry : orgToGroupIds.entrySet()) {
-            groups.putAll(userGroupCacheMgrV4.fetchUserGroupsByIds(
-                    new ArrayList<>(entry.getValue()), entry.getKey()));
+            userGroupCacheMgrV4.fetchUserGroupsByIds(
+                            new ArrayList<>(entry.getValue()), entry.getKey())
+                    .forEach((id, group) -> groups.put(id, new HashMap<>(group)));
         }
         normalizeCriteriaKeysInGroups(groups);
         return groups;
@@ -1084,9 +1076,9 @@ public class CbPlanDictionaryServiceV4Impl {
      * @return set of lowercase-trimmed string values; empty set if null
      */
     private Set<String> buildNormalizedValueSet(Object rawValue) {
-        if (rawValue instanceof List<?> list) {
-            Set<String> result = new HashSet<>(list.size());
-            for (Object v : list) {
+        if (rawValue instanceof Collection<?> col) {
+            Set<String> result = new HashSet<>(col.size());
+            for (Object v : col) {
                 if (v != null) {
                     result.add(v.toString().toLowerCase());
                 }

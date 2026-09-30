@@ -2001,4 +2001,61 @@ class CbPlanDictionaryServiceV4ImplTest {
                 (Map<String, Map<String, Object>>) yearResult.get(Constants.RESPONSE_KEY_NON_APAR_PLAN_LIST);
         assertThat(nonAparList).doesNotContainKey("plan_empty_meta_ca");
     }
+
+    @Test
+    void getCBPlanDictionaryForUser_v4DefensiveCopyPreventsCacheMutation_originalGroupUnchanged() {
+        setupUserWithDesignationMocks("Manager");
+
+        List<Map<String, List<String>>> originalCriteria = new ArrayList<>();
+        Map<String, List<String>> criteriaEntry = new HashMap<>();
+        criteriaEntry.put(Constants.DESIGNATION, new ArrayList<>(List.of("Manager")));
+        originalCriteria.add(criteriaEntry);
+
+        Map<String, Object> cachedUserGroup = new HashMap<>();
+        cachedUserGroup.put(Constants.COL_USERGROUPID, "ug_cache_mutation");
+        cachedUserGroup.put(Constants.COL_ORGID, TEST_ORG_ID);
+        cachedUserGroup.put("criteria", originalCriteria);
+
+        Map<String, Object> plan = createV4PlanWithUserGroups("plan_cache_mutation", List.of("ug_cache_mutation"));
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+                .thenReturn(List.of(plan));
+        when(userGroupCacheMgrV4.fetchUserGroupsByIds(anyList(), eq(TEST_ORG_ID)))
+                .thenReturn(Map.of("ug_cache_mutation", cachedUserGroup));
+        lenient().when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), isNull()))
+                .thenReturn(Collections.emptyList());
+
+        dictionaryService.getCBPlanDictionaryForUser(testRequest, TEST_AUTH_TOKEN);
+
+        assertThat(cachedUserGroup.get("criteria")).isSameAs(originalCriteria);
+        assertThat(criteriaEntry.get(Constants.DESIGNATION)).isInstanceOf(List.class);
+    }
+
+    @Test
+    void getCBPlanDictionaryForUser_v4CriteriaValueAsSet_matchesCorrectly() {
+        setupUserWithDesignationMocks("Manager");
+
+        Map<String, Object> criteriaEntry = new HashMap<>();
+        criteriaEntry.put(Constants.DESIGNATION, new HashSet<>(Set.of("Manager")));
+        Map<String, Object> userGroup = new HashMap<>();
+        userGroup.put(Constants.COL_USERGROUPID, "ug_set_val");
+        userGroup.put(Constants.COL_ORGID, TEST_ORG_ID);
+        userGroup.put("criteria", List.of(criteriaEntry));
+
+        Map<String, Object> plan = createV4PlanWithUserGroups("plan_set_val", List.of("ug_set_val"));
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+                .thenReturn(List.of(plan));
+        when(userGroupCacheMgrV4.fetchUserGroupsByIds(anyList(), eq(TEST_ORG_ID)))
+                .thenReturn(Map.of("ug_set_val", userGroup));
+        lenient().when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), isNull()))
+                .thenReturn(Collections.emptyList());
+
+        ApiResponse response = dictionaryService.getCBPlanDictionaryForUser(testRequest, TEST_AUTH_TOKEN);
+
+        assertThat(response.getResponseCode()).isEqualTo(HttpStatus.OK);
+        @SuppressWarnings("unchecked")
+        Map<String, Map<String, Object>> nonAparList =
+                (Map<String, Map<String, Object>>) ((Map<String, Object>) response.getResult()
+                        .get(TEST_PLAN_YEAR)).get(Constants.RESPONSE_KEY_NON_APAR_PLAN_LIST);
+        assertThat(nonAparList).containsKey("plan_set_val");
+    }
 }

@@ -146,4 +146,5 @@ class UserGroupCacheMgrV4Test {
 
         verify(userGroupLookupService, times(2)).fetchUserGroupById(UG_ID_1, ORG_ID);
     }
+
 }

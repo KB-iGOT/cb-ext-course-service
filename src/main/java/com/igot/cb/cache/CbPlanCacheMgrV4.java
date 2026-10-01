@@ -309,6 +309,14 @@ public class CbPlanCacheMgrV4 {
             cbPlanList = cbPlanList.stream()
                     .filter(plan -> Boolean.TRUE.equals(plan.get(Constants.IS_ACTIVE)))
                     .toList();
+            List<String> planIds = cbPlanList.stream()
+                    .map(plan -> (String) plan.get(Constants.PLAN_ID))
+                    .filter(Objects::nonNull)
+                    .toList();
+            List<Map<String, Object>> fullPlans = getCbPlansByPlanIdsInBatch(planIds);
+            cbPlanList = fullPlans.stream()
+                    .filter(plan -> Constants.LIVE.equalsIgnoreCase((String) plan.get(Constants.STATUS)))
+                    .toList();
             cbPlanCache.put(cacheKey, cbPlanList);
             log.info("getCbPlanForMinistryOrStateId: Loaded from Cassandra - ministryOrStateId={}, planYear={}, activeCount={}",
                     ministryOrStateId, planYear, cbPlanList.size());

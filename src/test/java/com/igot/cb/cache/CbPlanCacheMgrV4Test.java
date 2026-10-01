@@ -41,6 +41,7 @@ class CbPlanCacheMgrV4Test {
     private static final String V4_LOOKUP_BY_ORG_TABLE = "cb_plan_v4_lookup_by_org_test";
     private static final String V4_LOOKUP_BY_ALL_ORG_TABLE = "cb_plan_v4_lookup_by_all_org_test";
     private static final String V4_LOOKUP_BY_MINISTRY_TABLE = "cb_plan_v4_lookup_by_ministry_test";
+    private static final String MINISTRY_ID = "ministry1";
 
     @Mock
     private CassandraOperation cassandraOperation;
@@ -381,26 +382,26 @@ class CbPlanCacheMgrV4Test {
     // ---------------- getCbPlanForMinistryOrStateId ----------------
 
     @Test
-    void testGetCbPlanForMinistryOrStateIdFetchesFromCassandra() {
-        List<Map<String, Object>> lookupEntries = List.of(
+    void testGetCbPlanForMinistryOrStateIdFetchesAndEnrichesWithFullPlanData() {
+        stubMinistryLookup(List.of(
                 lookupEntry("plan1", true, null),
                 lookupEntry("plan2", true, null)
-        );
-        stubMinistryLookup(lookupEntries);
-        List<Map<String, Object>> result = cbPlanCacheMgrV4.getCbPlanForMinistryOrStateId("ORG_001", PLAN_YEAR);
+        ));
+        stubFullPlanFetch(List.of(fullPlan("plan1", Constants.LIVE), fullPlan("plan2", Constants.LIVE)));
+        List<Map<String, Object>> result = cbPlanCacheMgrV4.getCbPlanForMinistryOrStateId(MINISTRY_ID, PLAN_YEAR);
         assertEquals(2, result.size());
         assertEquals("plan1", result.get(0).get(Constants.PLAN_ID));
     }
 
     @Test
-    void testGetCbPlanForMinistryOrStateIdFiltersInactivePlans() {
-        List<Map<String, Object>> lookupEntries = List.of(
+    void testGetCbPlanForMinistryOrStateIdFiltersInactiveBeforeBatchFetch() {
+        stubMinistryLookup(List.of(
                 lookupEntry("plan1", true, null),
                 lookupEntry("plan2", false, null),
                 lookupEntry("plan3", true, null)
-        );
-        stubMinistryLookup(lookupEntries);
-        List<Map<String, Object>> result = cbPlanCacheMgrV4.getCbPlanForMinistryOrStateId("ORG_001", PLAN_YEAR);
+        ));
+        stubFullPlanFetch(List.of(fullPlan("plan1", Constants.LIVE), fullPlan("plan3", Constants.LIVE)));
+        List<Map<String, Object>> result = cbPlanCacheMgrV4.getCbPlanForMinistryOrStateId(MINISTRY_ID, PLAN_YEAR);
         assertEquals(2, result.size());
         assertEquals("plan1", result.get(0).get(Constants.PLAN_ID));
         assertEquals("plan3", result.get(1).get(Constants.PLAN_ID));
@@ -409,41 +410,41 @@ class CbPlanCacheMgrV4Test {
     @Test
     void testGetCbPlanForMinistryOrStateIdHandlesCassandraReturningNull() {
         stubMinistryLookup(null);
-        List<Map<String, Object>> result = cbPlanCacheMgrV4.getCbPlanForMinistryOrStateId("ORG_001", PLAN_YEAR);
+        List<Map<String, Object>> result = cbPlanCacheMgrV4.getCbPlanForMinistryOrStateId(MINISTRY_ID, PLAN_YEAR);
         assertTrue(result.isEmpty());
+        verify(cassandraOperation, never()).getRecordsByProperties(anyString(), eq(V4_PLAN_TABLE), anyMap(), any(), any());
     }
 
     @Test
-    void testGetCbPlanForMinistryOrStateIdCachesResult() {
+    void testGetCbPlanForMinistryOrStateIdCachesResultOnSecondCall() {
         stubMinistryLookup(List.of(lookupEntry("plan1", true, null)));
-        cbPlanCacheMgrV4.getCbPlanForMinistryOrStateId("ORG_001", PLAN_YEAR);
-        List<Map<String, Object>> second = cbPlanCacheMgrV4.getCbPlanForMinistryOrStateId("ORG_001", PLAN_YEAR);
+        stubFullPlanFetch(List.of(fullPlan("plan1", Constants.LIVE)));
+        cbPlanCacheMgrV4.getCbPlanForMinistryOrStateId(MINISTRY_ID, PLAN_YEAR);
+        List<Map<String, Object>> second = cbPlanCacheMgrV4.getCbPlanForMinistryOrStateId(MINISTRY_ID, PLAN_YEAR);
         assertEquals(1, second.size());
         verify(cassandraOperation, times(1)).getRecordsByProperties(
-                eq(Constants.KEYSPACE_SUNBIRD),
-                eq(V4_LOOKUP_BY_MINISTRY_TABLE),
-                anyMap(), any(), any());
+                eq(Constants.KEYSPACE_SUNBIRD), eq(V4_LOOKUP_BY_MINISTRY_TABLE), anyMap(), any(), any());
+        verify(cassandraOperation, times(1)).getRecordsByProperties(anyString(),
+                eq(V4_PLAN_TABLE), anyMap(), any(), any());
     }
 
     @Test
     void testGetCbPlanForMinistryOrStateIdCachesByMinistryIdAndYear() {
         when(serverProperties.getCbPlanV4Keyspace()).thenReturn(Constants.KEYSPACE_SUNBIRD);
         when(serverProperties.getCbPlanV4LookupByMinistryOrStateIdTable()).thenReturn(V4_LOOKUP_BY_MINISTRY_TABLE);
-        List<Map<String, Object>> lookupEntries1 = List.of(lookupEntry("plan1", true, null));
-        List<Map<String, Object>> lookupEntries2 = List.of(lookupEntry("plan2", true, null));
+        when(serverProperties.getCbPlanV4PlanTable()).thenReturn(V4_PLAN_TABLE);
         when(cassandraOperation.getRecordsByProperties(
-                eq(Constants.KEYSPACE_SUNBIRD),
-                eq(V4_LOOKUP_BY_MINISTRY_TABLE),
-                anyMap(), any(), any()))
-                .thenReturn(lookupEntries1)
-                .thenReturn(lookupEntries2);
-        cbPlanCacheMgrV4.getCbPlanForMinistryOrStateId("ORG_001", PLAN_YEAR);
-        List<Map<String, Object>> result2 = cbPlanCacheMgrV4.getCbPlanForMinistryOrStateId("ORG_002", PLAN_YEAR);
+                eq(Constants.KEYSPACE_SUNBIRD), eq(V4_LOOKUP_BY_MINISTRY_TABLE), anyMap(), any(), any()))
+                .thenReturn(List.of(lookupEntry("plan1", true, null)))
+                .thenReturn(List.of(lookupEntry("plan2", true, null)));
+        when(cassandraOperation.getRecordsByProperties(anyString(), eq(V4_PLAN_TABLE), anyMap(), any(), any()))
+                .thenReturn(List.of(fullPlan("plan1", Constants.LIVE)))
+                .thenReturn(List.of(fullPlan("plan2", Constants.LIVE)));
+        cbPlanCacheMgrV4.getCbPlanForMinistryOrStateId("ministry1", PLAN_YEAR);
+        List<Map<String, Object>> result2 = cbPlanCacheMgrV4.getCbPlanForMinistryOrStateId("ministry2", PLAN_YEAR);
         assertEquals("plan2", result2.get(0).get(Constants.PLAN_ID));
         verify(cassandraOperation, times(2)).getRecordsByProperties(
-                eq(Constants.KEYSPACE_SUNBIRD),
-                eq(V4_LOOKUP_BY_MINISTRY_TABLE),
-                anyMap(), any(), any());
+                eq(Constants.KEYSPACE_SUNBIRD), eq(V4_LOOKUP_BY_MINISTRY_TABLE), anyMap(), any(), any());
     }
 
     // ---------------- invalidatePlan ----------------
@@ -500,5 +501,60 @@ class CbPlanCacheMgrV4Test {
         cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(ORG_ID, PLAN_YEAR, new AtomicBoolean(false));
         verify(cassandraOperation, times(1)).getRecordsByProperties(anyString(), eq(V4_PLAN_TABLE),
                 anyMap(), any(), any());
+    }
+
+    @Test
+    void testGetCbPlanForMinistryOrStateIdAllInactiveNeverHitsPlanTable() {
+        stubMinistryLookup(List.of(
+                lookupEntry("plan1", false, null),
+                lookupEntry("plan2", false, null)
+        ));
+        List<Map<String, Object>> result = cbPlanCacheMgrV4.getCbPlanForMinistryOrStateId(MINISTRY_ID, PLAN_YEAR);
+        assertTrue(result.isEmpty());
+        verify(cassandraOperation, never()).getRecordsByProperties(anyString(), eq(V4_PLAN_TABLE), anyMap(), any(), any());
+    }
+
+    @Test
+    void testGetCbPlanForMinistryOrStateIdFiltersNonLivePlans() {
+        stubMinistryLookup(List.of(lookupEntry("plan1", true, null)));
+        stubFullPlanFetch(List.of(fullPlan("plan1", Constants.DRAFT)));
+        List<Map<String, Object>> result = cbPlanCacheMgrV4.getCbPlanForMinistryOrStateId(MINISTRY_ID, PLAN_YEAR);
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    void testGetCbPlanForMinistryOrStateIdReturnsOnlyLivePlansWhenMixed() {
+        stubMinistryLookup(List.of(
+                lookupEntry("plan1", true, null),
+                lookupEntry("plan2", true, null)
+        ));
+        stubFullPlanFetch(List.of(fullPlan("plan1", Constants.LIVE), fullPlan("plan2", Constants.DRAFT)));
+        List<Map<String, Object>> result = cbPlanCacheMgrV4.getCbPlanForMinistryOrStateId(MINISTRY_ID, PLAN_YEAR);
+        assertEquals(1, result.size());
+        assertEquals("plan1", result.get(0).get(Constants.PLAN_ID));
+    }
+
+    @Test
+    void testGetCbPlanForMinistryOrStateIdExcludesNullPlanIdFromBatchFetch() {
+        Map<String, Object> nullIdEntry = new HashMap<>();
+        nullIdEntry.put(Constants.PLAN_ID, null);
+        nullIdEntry.put(Constants.IS_ACTIVE, true);
+        stubMinistryLookup(List.of(nullIdEntry, lookupEntry("plan1", true, null)));
+        stubFullPlanFetch(List.of(fullPlan("plan1", Constants.LIVE)));
+        List<Map<String, Object>> result = cbPlanCacheMgrV4.getCbPlanForMinistryOrStateId(MINISTRY_ID, PLAN_YEAR);
+        assertEquals(1, result.size());
+        verify(cassandraOperation, times(1)).getRecordsByProperties(anyString(),
+                eq(V4_PLAN_TABLE), anyMap(), any(), any());
+    }
+
+    @Test
+    void testGetCbPlanForMinistryOrStateIdReturnsFullPlanDataNotLookupRow() {
+        stubMinistryLookup(List.of(lookupEntry("plan1", true, null)));
+        Map<String, Object> planData = fullPlan("plan1", Constants.LIVE);
+        planData.put(Constants.NAME, "Ministry Training Plan 2026");
+        stubFullPlanFetch(List.of(planData));
+        List<Map<String, Object>> result = cbPlanCacheMgrV4.getCbPlanForMinistryOrStateId(MINISTRY_ID, PLAN_YEAR);
+        assertEquals(1, result.size());
+        assertEquals("Ministry Training Plan 2026", result.get(0).get(Constants.NAME));
     }
 }

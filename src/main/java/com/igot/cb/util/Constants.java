@@ -817,6 +817,8 @@ public class Constants {
     public static final String ERR_USERGROUP_USAGE_CHECK_FAILED = "Failed to verify user group usage; archive blocked as a precaution";
     public static final String TRAINING_PLAN_V2 = "trainingPlan_v2";
     public static final String WARNING = "warning";
+    public static final String API_CB_PLAN_V4_AICBP_CREATE = "api.cb.plan.v4.aicbp.create";
+    public static final String API_CB_PLAN_V4_AICBP_PUBLISH = "api.cb.plan.v4.aicbp.publish";
 
     private Constants() {
     }

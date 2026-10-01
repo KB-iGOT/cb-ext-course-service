@@ -131,4 +131,27 @@ public interface CbPlanServiceV4 {
      * @return true when Cassandra and ElasticSearch were updated, false when the Cassandra update failed
      */
     boolean updateCaLinkedIdV2(String cbPlanId, String caLinkedId, String updatedBy, List<String> orgIdList);
+
+    /**
+     * Creates a CB Plan through the AI CBP admin flow using V4 logic.
+     * The target organisation is supplied in the request body as targetedOrganisation.
+     * The plan is tagged with planType = AICBP.
+     *
+     * @param request   the API request containing CB Plan details and targetedOrganisation
+     * @param authToken the authentication token
+     * @return ApiResponse containing the created plan ID and status
+     */
+    ApiResponse createCbPlanByAdmin(ApiRequest request, String authToken);
+
+    /**
+     * Publishes a CB Plan through the AI CBP admin flow using V4 logic.
+     * The target organisation is supplied in the request body as targetedOrganisation.
+     * Creator/role check is bypassed.
+     *
+     * @param request   the API request containing CB Plan ID, comment and targetedOrganisation
+     * @param authToken the authentication token
+     * @return ApiResponse containing the publish status
+     */
+    ApiResponse publishCbPlanByAdmin(ApiRequest request, String authToken);
+
 }

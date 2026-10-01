@@ -1450,4 +1450,201 @@ class CbPlanServiceV4ImplTest {
         assertNull(response.getResult().get(Constants.WARNING));
     }
 
+
+    @Test
+    void createCbPlanByAdmin_missingTargetedOrganisation_returns400WithoutInsert() {
+        ApiRequest request = apiRequest(new HashMap<>());
+
+        ApiResponse response = cbPlanService.createCbPlanByAdmin(request, TOKEN);
+
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
+        assertEquals(Constants.ERR_TARGETED_ORGANISATION_REQUIRED, response.getParams().getErr());
+        verify(cassandraOperation, never()).insertRecord(anyString(), anyString(), anyMap(),
+                any(BooleanSupplier.class), any(Runnable.class));
+    }
+
+    @Test
+    void createCbPlanByAdmin_blankTargetedOrganisation_returns400() {
+        Map<String, Object> requestMap = new HashMap<>();
+        requestMap.put(Constants.TARGETED_ORGANISATION, "  ");
+        ApiRequest request = apiRequest(requestMap);
+
+        ApiResponse response = cbPlanService.createCbPlanByAdmin(request, TOKEN);
+
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
+        verify(cassandraOperation, never()).insertRecord(anyString(), anyString(), anyMap(),
+                any(BooleanSupplier.class), any(Runnable.class));
+    }
+
+    @Test
+    void createCbPlanByAdmin_injectsOrgIdListAndPlanTypeBeforeCreate() throws JsonProcessingException {
+        Map<String, Object> requestMap = new HashMap<>();
+        requestMap.put(Constants.TARGETED_ORGANISATION, ORG_ID);
+        ApiRequest request = apiRequest(requestMap);
+        mockAuthSuccess();
+        when(validationService.validateRequest(any(), anyBoolean(), anyString(), any())).thenReturn(true);
+        Map<String, Object> planData = new HashMap<>();
+        planData.put(Constants.PLAN_ID, PLAN_ID);
+        when(dataTransformService.prepareCbPlanForInsert(any(), eq(USER_ID))).thenReturn(planData);
+        when(cassandraOperation.insertRecord(anyString(), anyString(), anyMap(),
+                any(BooleanSupplier.class), any(Runnable.class)))
+                .thenReturn(Map.of(Constants.RESPONSE, Constants.SUCCESS));
+
+        cbPlanService.createCbPlanByAdmin(request, TOKEN);
+
+        Map<String, Object> injected = (Map<String, Object>) request.getRequest();
+        assertEquals(List.of(ORG_ID), injected.get(Constants.ORG_ID_LIST));
+        assertEquals(Constants.PLAN_TYPE_AI_CBP, injected.get(Constants.PLAN_TYPE));
+    }
+
+    @Test
+    void createCbPlanByAdmin_validRequest_returnsCreated() throws JsonProcessingException {
+        Map<String, Object> requestMap = new HashMap<>();
+        requestMap.put(Constants.TARGETED_ORGANISATION, ORG_ID);
+        ApiRequest request = apiRequest(requestMap);
+        mockAuthSuccess();
+        when(validationService.validateRequest(any(), anyBoolean(), anyString(), any())).thenReturn(true);
+        Map<String, Object> planData = new HashMap<>();
+        planData.put(Constants.PLAN_ID, PLAN_ID);
+        when(dataTransformService.prepareCbPlanForInsert(any(), eq(USER_ID))).thenReturn(planData);
+        when(cassandraOperation.insertRecord(anyString(), anyString(), anyMap(),
+                any(BooleanSupplier.class), any(Runnable.class)))
+                .thenReturn(Map.of(Constants.RESPONSE, Constants.SUCCESS));
+
+        ApiResponse response = cbPlanService.createCbPlanByAdmin(request, TOKEN);
+
+        assertEquals(HttpStatus.CREATED, response.getResponseCode());
+        assertEquals(PLAN_ID, response.getResult().get(Constants.ID));
+    }
+
+    @Test
+    void createCbPlanByAdmin_tokenInvalid_fails() {
+        Map<String, Object> requestMap = new HashMap<>();
+        requestMap.put(Constants.TARGETED_ORGANISATION, ORG_ID);
+        when(validationService.validateAndExtractUserId(anyString(), any())).thenReturn("");
+
+        ApiResponse response = cbPlanService.createCbPlanByAdmin(apiRequest(requestMap), TOKEN);
+
+        assertNotNull(response);
+        verify(cassandraOperation, never()).insertRecord(anyString(), anyString(), anyMap(),
+                any(BooleanSupplier.class), any(Runnable.class));
+    }
+
+    // ---------------- publishCbPlanByAdmin ----------------
+
+    @Test
+    void publishCbPlanByAdmin_missingTargetedOrganisation_returns400WithoutPublish() {
+        ApiRequest request = apiRequest(new HashMap<>());
+
+        ApiResponse response = cbPlanService.publishCbPlanByAdmin(request, TOKEN);
+
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
+        assertEquals(Constants.ERR_TARGETED_ORGANISATION_REQUIRED, response.getParams().getErr());
+        verify(cassandraOperation, never()).updateRecord(anyString(), anyString(), anyMap(), anyMap(), any(), any());
+    }
+
+    @Test
+    void publishCbPlanByAdmin_blankTargetedOrganisation_returns400() {
+        Map<String, Object> requestMap = new HashMap<>();
+        requestMap.put(Constants.TARGETED_ORGANISATION, "   ");
+        ApiRequest request = apiRequest(requestMap);
+
+        ApiResponse response = cbPlanService.publishCbPlanByAdmin(request, TOKEN);
+
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
+    }
+
+    @Test
+    void publishCbPlanByAdmin_tokenInvalid_fails() {
+        Map<String, Object> requestMap = new HashMap<>();
+        requestMap.put(Constants.TARGETED_ORGANISATION, ORG_ID);
+        when(accessTokenValidator.fetchUserIdFromAccessToken(anyString(), any())).thenReturn("");
+
+        ApiResponse response = cbPlanService.publishCbPlanByAdmin(apiRequest(requestMap), TOKEN);
+
+        assertNotNull(response);
+        verify(cassandraOperation, never()).updateRecord(anyString(), anyString(), anyMap(), anyMap(), any(), any());
+    }
+
+    @Test
+    void publishCbPlanByAdmin_planIdMissing_returns400() {
+        Map<String, Object> requestMap = new HashMap<>();
+        requestMap.put(Constants.TARGETED_ORGANISATION, ORG_ID);
+        when(accessTokenValidator.fetchUserIdFromAccessToken(anyString(), any())).thenReturn(USER_ID);
+        when(validationService.validateAndExtractPlanId(anyMap(), any())).thenAnswer(invocation -> {
+            markFailed(invocation.getArgument(1), HttpStatus.BAD_REQUEST);
+            return "";
+        });
+
+        ApiResponse response = cbPlanService.publishCbPlanByAdmin(apiRequest(requestMap), TOKEN);
+
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
+    }
+
+    @Test
+    void publishCbPlanByAdmin_planNotFound_returns400() {
+        Map<String, Object> requestMap = new HashMap<>();
+        requestMap.put(Constants.TARGETED_ORGANISATION, ORG_ID);
+        requestMap.put(Constants.ID, PLAN_ID);
+        when(accessTokenValidator.fetchUserIdFromAccessToken(anyString(), any())).thenReturn(USER_ID);
+        when(validationService.validateAndExtractPlanId(anyMap(), any())).thenReturn(PLAN_ID);
+        mockNoExistingPlan();
+
+        ApiResponse response = cbPlanService.publishCbPlanByAdmin(apiRequest(requestMap), TOKEN);
+
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
+    }
+
+    @Test
+    void publishCbPlanByAdmin_skipsCreatorRoleCheck_andPublishesDraftPlan() {
+        Map<String, Object> requestMap = new HashMap<>();
+        requestMap.put(Constants.TARGETED_ORGANISATION, ORG_ID);
+        requestMap.put(Constants.ID, PLAN_ID);
+        when(accessTokenValidator.fetchUserIdFromAccessToken(anyString(), any())).thenReturn(USER_ID);
+        when(validationService.validateAndExtractPlanId(anyMap(), any())).thenReturn(PLAN_ID);
+        Map<String, Object> existingCbPlan = new HashMap<>();
+        existingCbPlan.put(Constants.CREATED_BY, "someOtherUser");
+        existingCbPlan.put(Constants.STATUS, Constants.DRAFT);
+        existingCbPlan.put(Constants.PLAN_YEAR, PLAN_YEAR);
+        existingCbPlan.put(Constants.ORG_SCOPE, Constants.SINGLE);
+        mockExistingPlan(existingCbPlan);
+        when(validationService.validateUserOrganization(eq(USER_ID), any())).thenReturn(ORG_ID);
+        when(validationService.validateOrgCCA(eq(ORG_ID), any())).thenReturn(false);
+        when(validationService.validateContextDataForLivePlanV4(anyMap(), anyBoolean(), anyString(), any(), any(), any()))
+                .thenAnswer(invocation -> {
+                    java.util.Set<String> rootOrgIdsOut = invocation.getArgument(3);
+                    rootOrgIdsOut.add(ORG_ID);
+                    return true;
+                });
+        when(cassandraOperation.updateRecord(anyString(), anyString(), anyMap(), anyMap(), any(), any()))
+                .thenReturn(Map.of(Constants.RESPONSE, Constants.SUCCESS));
+        when(orgLookupService.upsertCustomOrgLookup(eq(PLAN_ID), eq(PLAN_YEAR), any(), any(), eq(true)))
+                .thenReturn(successApiResponse());
+
+        ApiResponse response = cbPlanService.publishCbPlanByAdmin(apiRequest(requestMap), TOKEN);
+
+        verify(validationService, never()).isUnauthorizedToUpdate(any(), any(), any(), any());
+        assertEquals(HttpStatus.OK, response.getResponseCode());
+        assertNotEquals(Constants.FAILED, response.getParams().getStatus());
+    }
+
+    @Test
+    void publishCbPlanByAdmin_unexpectedException_returns500() {
+        Map<String, Object> requestMap = new HashMap<>();
+        requestMap.put(Constants.TARGETED_ORGANISATION, ORG_ID);
+        when(accessTokenValidator.fetchUserIdFromAccessToken(anyString(), any()))
+                .thenThrow(new RuntimeException("boom"));
+
+        ApiResponse response = cbPlanService.publishCbPlanByAdmin(apiRequest(requestMap), TOKEN);
+
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getResponseCode());
+    }
+
 }

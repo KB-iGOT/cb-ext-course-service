@@ -128,4 +128,54 @@ class CbPlanWithAccessSettingsV4Test {
     void constructor_wiresServiceDependency() {
         assertNotNull(new CbPlanWithAccessSettingsV4(cbPlanServiceV4));
     }
+
+    @Test
+    void createCbPlanByAdmin_delegatesToServiceAndReturnsCreated() {
+        ApiResponse mockResponse = successResponse();
+        mockResponse.setResponseCode(HttpStatus.CREATED);
+        when(cbPlanServiceV4.createCbPlanByAdmin(any(), anyString())).thenReturn(mockResponse);
+
+        ResponseEntity<ApiResponse> response = controller.createCbPlanByAdmin(apiRequest(), TOKEN);
+
+        assertEquals(HttpStatus.CREATED, response.getStatusCode());
+        assertEquals(Constants.SUCCESS, response.getBody().getParams().getStatus());
+        verify(cbPlanServiceV4).createCbPlanByAdmin(any(), eq(TOKEN));
+    }
+
+    @Test
+    void createCbPlanByAdmin_propagatesFailureStatusCode() {
+        ApiResponse mockResponse = new ApiResponse();
+        mockResponse.getParams().setStatus(Constants.FAILED);
+        mockResponse.setResponseCode(HttpStatus.BAD_REQUEST);
+        when(cbPlanServiceV4.createCbPlanByAdmin(any(), anyString())).thenReturn(mockResponse);
+
+        ResponseEntity<ApiResponse> response = controller.createCbPlanByAdmin(apiRequest(), TOKEN);
+
+        assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
+        assertEquals(Constants.FAILED, response.getBody().getParams().getStatus());
+    }
+
+    @Test
+    void publishCbPlanByAdmin_delegatesToServiceAndReturnsOk() {
+        when(cbPlanServiceV4.publishCbPlanByAdmin(any(), anyString())).thenReturn(successResponse());
+
+        ResponseEntity<ApiResponse> response = controller.publishCbPlanByAdmin(apiRequest(), TOKEN);
+
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertEquals(Constants.SUCCESS, response.getBody().getParams().getStatus());
+        verify(cbPlanServiceV4).publishCbPlanByAdmin(any(), eq(TOKEN));
+    }
+
+    @Test
+    void publishCbPlanByAdmin_propagatesFailureStatusCode() {
+        ApiResponse mockResponse = new ApiResponse();
+        mockResponse.getParams().setStatus(Constants.FAILED);
+        mockResponse.setResponseCode(HttpStatus.BAD_REQUEST);
+        when(cbPlanServiceV4.publishCbPlanByAdmin(any(), anyString())).thenReturn(mockResponse);
+
+        ResponseEntity<ApiResponse> response = controller.publishCbPlanByAdmin(apiRequest(), TOKEN);
+
+        assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
+        assertEquals(Constants.FAILED, response.getBody().getParams().getStatus());
+    }
 }

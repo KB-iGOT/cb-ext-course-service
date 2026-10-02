@@ -9,6 +9,7 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.igot.cb.cache.UserGroupCacheMgrV4;
 import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.model.ApiRequest;
 import com.igot.cb.model.ApiResponse;
@@ -51,6 +52,8 @@ class UserGroupServiceImplTest {
     private UserProfileUtil userProfileUtil;
     @Mock
     private ObjectMapper objectMapper;
+    @Mock
+    private UserGroupCacheMgrV4 userGroupCacheMgrV4;
 
     private UserGroupServiceImpl userGroupService;
 
@@ -66,7 +69,8 @@ class UserGroupServiceImplTest {
                 esService,
                 accessTokenValidator,
                 userProfileUtil,
-                objectMapper
+                objectMapper,
+                userGroupCacheMgrV4
         );
     }
 
@@ -188,7 +192,7 @@ class UserGroupServiceImplTest {
         when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), anyMap(), anyList(), any()))
                 .thenReturn(List.of(cassandraRow));
         when(dataTransformService.buildUpdateProperties(anyString(), anyList(), anyString())).thenReturn(updateProps);
-        when(validationService.validateUpdateRequest(anyString(), anyString(), anyList(), any())).thenReturn(true);
+        when(validationService.validateUpdateRequest(anyString(), anyString(), anyList(), anyString(), anyString(), any())).thenReturn(true);
         when(validationService.validateUpdateAuthorization(anyString(), anyString(), anyString(), anyString(), anyString(), any())).thenReturn(true);
         when(cassandraOperation.updateRecord(anyString(), anyString(), anyMap(), anyMap(), any(), any())).thenReturn(Map.of(Constants.RESPONSE, Constants.SUCCESS));
         when(dataTransformService.entityToResponseMap(any())).thenReturn(Map.of(Constants.COL_USERGROUPID, TEST_USER_GROUP_ID));
@@ -258,10 +262,10 @@ class UserGroupServiceImplTest {
         when(accessTokenValidator.fetchUserIdFromAccessToken(eq(TEST_AUTH_TOKEN), any())).thenReturn(TEST_USER_ID);
         when(userProfileUtil.buildUserProfile(eq(TEST_USER_ID), any())).thenReturn(createUserProfile());
         when(objectMapper.convertValue(any(), eq(UserGroupRequest.class))).thenReturn(userGroupRequest);
-        when(validationService.validateUpdateRequest(anyString(), anyString(), any(), any())).thenReturn(true);
+        when(validationService.validateUpdateRequest(anyString(), anyString(), any(), anyString(), anyString(), any())).thenReturn(true);
         when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), anyMap(), anyList(), any())).thenReturn(List.of(cassandraRow));
         when(validationService.validateUpdateAuthorization(anyString(), anyString(), anyString(), anyString(), anyString(), any())).thenReturn(true);
-        when(esService.isDuplicateGroupName(eq(newName), eq(TEST_ORG_ID), eq(TEST_USER_GROUP_ID))).thenReturn(true);
+        when(esService.isDuplicateGroupName(newName, TEST_ORG_ID, TEST_USER_GROUP_ID)).thenReturn(true);
 
         ApiResponse response = userGroupService.updateUserGroup(request, TEST_AUTH_TOKEN);
 
@@ -282,10 +286,10 @@ class UserGroupServiceImplTest {
         when(accessTokenValidator.fetchUserIdFromAccessToken(eq(TEST_AUTH_TOKEN), any())).thenReturn(TEST_USER_ID);
         when(userProfileUtil.buildUserProfile(eq(TEST_USER_ID), any())).thenReturn(createUserProfile());
         when(objectMapper.convertValue(any(), eq(UserGroupRequest.class))).thenReturn(userGroupRequest);
-        when(validationService.validateUpdateRequest(anyString(), anyString(), anyList(), any())).thenReturn(true);
+        when(validationService.validateUpdateRequest(anyString(), anyString(), anyList(), anyString(), anyString(), any())).thenReturn(true);
         when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), anyMap(), anyList(), any())).thenReturn(List.of(cassandraRow));
         when(validationService.validateUpdateAuthorization(anyString(), anyString(), anyString(), anyString(), anyString(), any())).thenReturn(true);
-        when(esService.isDuplicateGroupName(eq(TEST_USER_GROUP_NAME), eq(TEST_ORG_ID), eq(TEST_USER_GROUP_ID))).thenReturn(false);
+        when(esService.isDuplicateGroupName(TEST_USER_GROUP_NAME, TEST_ORG_ID, TEST_USER_GROUP_ID)).thenReturn(false);
         when(dataTransformService.buildUpdateProperties(anyString(), anyList(), anyString())).thenReturn(updateProps);
         when(cassandraOperation.updateRecord(anyString(), anyString(), anyMap(), anyMap(), any(), any())).thenReturn(Map.of(Constants.RESPONSE, Constants.SUCCESS));
         when(dataTransformService.entityToResponseMap(any())).thenReturn(Map.of(Constants.COL_USERGROUPID, TEST_USER_GROUP_ID));
@@ -307,7 +311,7 @@ class UserGroupServiceImplTest {
         when(accessTokenValidator.fetchUserIdFromAccessToken(eq(TEST_AUTH_TOKEN), any())).thenReturn(TEST_USER_ID);
         when(userProfileUtil.buildUserProfile(eq(TEST_USER_ID), any())).thenReturn(createUserProfile());
         when(objectMapper.convertValue(any(), eq(UserGroupRequest.class))).thenReturn(userGroupRequest);
-        when(validationService.validateUpdateRequest(anyString(), isNull(), anyList(), any())).thenReturn(true);
+        when(validationService.validateUpdateRequest(anyString(), isNull(), anyList(), anyString(), anyString(), any())).thenReturn(true);
         when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), anyMap(), anyList(), any())).thenReturn(List.of(cassandraRow));
         when(validationService.validateUpdateAuthorization(anyString(), anyString(), anyString(), anyString(), anyString(), any())).thenReturn(true);
         when(dataTransformService.buildUpdateProperties(isNull(), anyList(), anyString())).thenReturn(updateProps);
@@ -428,7 +432,7 @@ class UserGroupServiceImplTest {
         when(objectMapper.convertValue(any(), eq(UserGroupRequest.class))).thenReturn(userGroupRequest);
         when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), anyMap(), anyList(), any())).thenReturn(List.of(cassandraRow));
         when(dataTransformService.buildUpdateProperties(anyString(), anyList(), anyString())).thenReturn(updateProps);
-        when(validationService.validateUpdateRequest(anyString(), anyString(), anyList(), any())).thenReturn(true);
+        when(validationService.validateUpdateRequest(anyString(), anyString(), anyList(), anyString(), anyString(), any())).thenReturn(true);
         when(validationService.validateUpdateAuthorization(anyString(), anyString(), anyString(), anyString(), anyString(), any())).thenReturn(true);
         when(dataTransformService.entityToResponseMap(any())).thenReturn(new HashMap<>());
         when(cassandraOperation.updateRecord(anyString(), anyString(), anyMap(), anyMap(), any(), any())).thenReturn(Map.of(Constants.RESPONSE, Constants.FAILED));

@@ -2,6 +2,7 @@ package com.igot.cb.cbplan.service;
 
 import com.igot.cb.model.ApiRequest;
 import com.igot.cb.model.ApiResponse;
+import java.util.List;
 
 /**
  * Service interface for CB Plan V4 operations.
@@ -98,6 +99,16 @@ public interface CbPlanServiceV4 {
     ApiResponse getCBPlanDictionaryForUser(ApiRequest request, String authToken);
 
     /**
+     * Checks whether the given Comprehensive Assessment do_id is linked (via caLinkedId) to any
+     * plan the user is eligible for, searching the current and previous financial year.
+     *
+     * @param doId      CA content identifier to check eligibility for
+     * @param authToken the authentication token
+     * @return ApiResponse with result = {eligible: boolean, mandatoryCourses: List<String>}
+     */
+    ApiResponse getComprehensiveAssessmentEligibility(String doId, String authToken);
+
+    /**
      * Sets or clears the Comprehensive Assessment link (calinkedid) on a CB Plan, syncs the
      * ElasticSearch document and invalidates the plan/dictionary caches.
      * Used by the authenticated update API and by the training-plan CA-link Kafka consumer.
@@ -108,4 +119,39 @@ public interface CbPlanServiceV4 {
      * @return true when Cassandra and ElasticSearch were updated, false when the Cassandra update failed
      */
     boolean updateCaLinkedId(String cbPlanId, String caLinkedId, String updatedBy);
+
+    /**
+     * Updates the caLinkedId on a CB Plan and invalidates only the dictionary cache entries
+     * belonging to the plan's owning org, derived from {@code orgIdList}.
+     *
+     * @param cbPlanId   CB Plan ID
+     * @param caLinkedId CA content identifier to link, or null to clear the link
+     * @param updatedBy  user or system identifier recorded in updatedBy
+     * @param orgIdList  orgIdList from the CB Plan record; first entry is used as the owning org
+     * @return true when Cassandra and ElasticSearch were updated, false when the Cassandra update failed
+     */
+    boolean updateCaLinkedIdV2(String cbPlanId, String caLinkedId, String updatedBy, List<String> orgIdList);
+
+    /**
+     * Creates a CB Plan through the AI CBP admin flow using V4 logic.
+     * The target organisation is supplied in the request body as targetedOrganisation.
+     * The plan is tagged with planType = AICBP.
+     *
+     * @param request   the API request containing CB Plan details and targetedOrganisation
+     * @param authToken the authentication token
+     * @return ApiResponse containing the created plan ID and status
+     */
+    ApiResponse createCbPlanByAdmin(ApiRequest request, String authToken);
+
+    /**
+     * Publishes a CB Plan through the AI CBP admin flow using V4 logic.
+     * The target organisation is supplied in the request body as targetedOrganisation.
+     * Creator/role check is bypassed.
+     *
+     * @param request   the API request containing CB Plan ID, comment and targetedOrganisation
+     * @param authToken the authentication token
+     * @return ApiResponse containing the publish status
+     */
+    ApiResponse publishCbPlanByAdmin(ApiRequest request, String authToken);
+
 }

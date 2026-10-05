@@ -819,6 +819,11 @@ public class Constants {
     public static final String WARNING = "warning";
     public static final String API_CB_PLAN_V4_AICBP_CREATE = "api.cb.plan.v4.aicbp.create";
     public static final String API_CB_PLAN_V4_AICBP_PUBLISH = "api.cb.plan.v4.aicbp.publish";
+    public static final String MSG_SEARCH_FILTERS_REQUIRED = "Filters are required in request";
+    public static final String MSG_SEARCH_FILTERS_EMPTY = "Filters cannot be empty";
+    public static final String MSG_USERGROUPNAME_REQUIRED_IN_FILTERS = "userGroupName is required in filters";
+    public static final String MSG_ORGID_REQUIRED_IN_FILTERS = "rootOrgId (orgId) is required in filters";
+    public static final String MSG_USERGROUP_NOT_FOUND_BY_NAME_ORG = "User group not found with the provided name and organization";
 
     private Constants() {
     }

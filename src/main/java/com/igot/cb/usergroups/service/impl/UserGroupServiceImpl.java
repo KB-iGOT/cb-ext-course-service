@@ -636,4 +636,89 @@ public class UserGroupServiceImpl implements UserGroupService {
         insertMap.put(Constants.COL_STATUS, entity.getStatus());
         return insertMap;
     }
+
+    @Override
+    public ApiResponse searchUserGroupsV2(ApiRequest request, String authToken) {
+        log.info("searchUserGroupsV2: starting");
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_USER_GROUP_SEARCH);
+        try {
+            String userId = accessTokenValidator.fetchUserIdFromAccessToken(authToken, response);
+            if (StringUtils.isEmpty(userId)) {
+                return response;
+            }
+            Map<String, Object> filters = extractSearchFiltersV2(request, response);
+            if (Constants.FAILED.equals(response.getParams().getStatus())) {
+                return response;
+            }
+            int pageSize = extractPageSize(request);
+            int pageNumber = extractPageNumber(request);
+            String sortBy = extractSortField(request);
+            String sortOrder = extractSortOrder(request);
+            Map<String, Object> searchResult = esService.searchUserGroups(filters, pageSize, pageNumber, sortBy, sortOrder);
+            long count = searchResult.containsKey(Constants.COUNT) ? ((Number) searchResult.get(Constants.COUNT)).longValue() : 0;
+            if (count == 0) {
+                log.warn("searchUserGroupsV2: No user group found with userGroupName={}, orgId={}",
+                        filters.get(Constants.COL_USERGROUPNAME), filters.get(Constants.COL_ORGID));
+                response.getParams().setStatus(Constants.FAILED);
+                response.getParams().setErr(Constants.MSG_USERGROUP_NOT_FOUND_BY_NAME_ORG);
+                response.setResponseCode(HttpStatus.NOT_FOUND);
+                return response;
+            }
+            enrichSearchResultWithUserNames(searchResult);
+            response.getParams().setStatus(Constants.SUCCESSFUL);
+            response.setResponseCode(HttpStatus.OK);
+            response.putAll(searchResult);
+        } catch (Exception e) {
+            handleException(response, e);
+        }
+        return response;
+    }
+
+    /**
+     * Extracts search filters for V2 API (without forcing user's orgId).
+     * Validates that userGroupName and rootOrgId are present in the request.
+     * Status is always forced to ACTIVE from backend.
+     *
+     * @param request  API request
+     * @param response API response (for error reporting)
+     * @return filters map
+     */
+    private Map<String, Object> extractSearchFiltersV2(ApiRequest request, ApiResponse response) {
+        Map<String, Object> filters = new HashMap<>();
+        Map<String, Object> requestMap = (Map<String, Object>) request.getRequest();
+        if (MapUtils.isEmpty(requestMap) || !requestMap.containsKey(Constants.FILTERS)) {
+            log.warn("searchUserGroupsV2: filters are required in request");
+            response.getParams().setStatus(Constants.FAILED);
+            response.getParams().setErr(Constants.MSG_SEARCH_FILTERS_REQUIRED);
+            response.setResponseCode(HttpStatus.BAD_REQUEST);
+            return filters;
+        }
+        Map<String, Object> requestFilters = (Map<String, Object>) requestMap.get(Constants.FILTERS);
+        if (MapUtils.isEmpty(requestFilters)) {
+            log.warn("searchUserGroupsV2: filters cannot be empty");
+            response.getParams().setStatus(Constants.FAILED);
+            response.getParams().setErr(Constants.MSG_SEARCH_FILTERS_EMPTY);
+            response.setResponseCode(HttpStatus.BAD_REQUEST);
+            return filters;
+        }
+        if (!requestFilters.containsKey(Constants.COL_USERGROUPNAME)) {
+            log.warn("searchUserGroupsV2: userGroupName is required in filters");
+            response.getParams().setStatus(Constants.FAILED);
+            response.getParams().setErr(Constants.MSG_USERGROUPNAME_REQUIRED_IN_FILTERS);
+            response.setResponseCode(HttpStatus.BAD_REQUEST);
+            return filters;
+        }
+        if (!requestFilters.containsKey(Constants.COL_ORGID)) {
+            log.warn("searchUserGroupsV2: rootOrgId is required in filters");
+            response.getParams().setStatus(Constants.FAILED);
+            response.getParams().setErr(Constants.MSG_ORGID_REQUIRED_IN_FILTERS);
+            response.setResponseCode(HttpStatus.BAD_REQUEST);
+            return filters;
+        }
+        filters.putAll(requestFilters);
+        filters.put(Constants.COL_STATUS, Constants.ACTIVE);
+        log.debug("searchUserGroupsV2: filters extracted: userGroupName={}, orgId={}, status=ACTIVE (forced)",
+                  filters.get(Constants.COL_USERGROUPNAME), filters.get(Constants.COL_ORGID));
+        return filters;
+    }
 }

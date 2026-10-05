@@ -53,4 +53,17 @@ public interface UserGroupService {
      * @return API response with search results
      */
     ApiResponse searchUserGroups(ApiRequest request, String authToken);
+
+    /**
+     * Searches user groups by name and organization (V2).
+     * Auth token is used only for validation.
+     * userGroupName and rootOrgId must be provided in request filters.
+     * Status is always forced to ACTIVE from backend.
+     * Returns 404 if no user group found.
+     *
+     * @param request   API request containing userGroupName and rootOrgId in filters
+     * @param authToken authentication token (validation only)
+     * @return API response with search results (404 if not found)
+     */
+    ApiResponse searchUserGroupsV2(ApiRequest request, String authToken);
 }

@@ -95,4 +95,23 @@ public class UserGroupController {
         ApiResponse response = userGroupService.searchUserGroups(request, token);
         return new ResponseEntity<>(response, response.getResponseCode());
     }
+
+    /**
+     * Searches user groups by name and organization (V2).
+     * Auth token is used only for validation.
+     * userGroupName and rootOrgId must be provided in request body.
+     * Status is always forced to ACTIVE from backend.
+     * Returns 404 if no user group found.
+     *
+     * @param request API request with userGroupName and rootOrgId in filters
+     * @param token   authentication token (validation only)
+     * @return API response with search results (404 if not found)
+     */
+    @PostMapping("/searchV2")
+    public ResponseEntity<ApiResponse> searchUserGroupsV2(
+            @RequestBody ApiRequest request,
+            @RequestHeader(Constants.X_AUTH_TOKEN) String token) {
+        ApiResponse response = userGroupService.searchUserGroupsV2(request, token);
+        return new ResponseEntity<>(response, response.getResponseCode());
+    }
 }

@@ -543,4 +543,177 @@ class UserGroupServiceImplTest {
         row.put(Constants.COL_STATUS, "ACTIVE");
         return row;
     }
+
+    @Test
+    void searchUserGroupsV2_withValidRequest_shouldReturnResults() {
+        ApiRequest request = new ApiRequest();
+        Map<String, Object> filters = new HashMap<>();
+        filters.put(Constants.COL_USERGROUPNAME, TEST_USER_GROUP_NAME);
+        filters.put(Constants.COL_ORGID, TEST_ORG_ID);
+        request.setRequest(Map.of(Constants.FILTERS, filters));
+
+        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(TEST_AUTH_TOKEN), any())).thenReturn(TEST_USER_ID);
+
+        Map<String, Object> searchResult = new HashMap<>();
+        searchResult.put(Constants.COUNT, 1L);
+        searchResult.put(Constants.CONTENT, List.of(Map.of(
+            Constants.COL_USERGROUPID, TEST_USER_GROUP_ID,
+            Constants.COL_USERGROUPNAME, TEST_USER_GROUP_NAME
+        )));
+        when(esService.searchUserGroups(anyMap(), anyInt(), anyInt(), anyString(), anyString())).thenReturn(searchResult);
+
+        ApiResponse response = userGroupService.searchUserGroupsV2(request, TEST_AUTH_TOKEN);
+
+        assertEquals(Constants.SUCCESSFUL, response.getParams().getStatus());
+        assertEquals(HttpStatus.OK, response.getResponseCode());
+        assertEquals(1L, response.get(Constants.COUNT));
+        verify(esService, times(1)).searchUserGroups(anyMap(), anyInt(), anyInt(), anyString(), anyString());
+    }
+
+    @Test
+    void searchUserGroupsV2_withInvalidToken_shouldReturnError() {
+        ApiRequest request = createApiRequest();
+
+        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(TEST_AUTH_TOKEN), any())).thenReturn("");
+
+        ApiResponse response = userGroupService.searchUserGroupsV2(request, TEST_AUTH_TOKEN);
+
+        assertNotNull(response);
+        verify(esService, never()).searchUserGroups(anyMap(), anyInt(), anyInt(), anyString(), anyString());
+    }
+
+    @Test
+    void searchUserGroupsV2_withMissingFilters_shouldReturnBadRequest() {
+        ApiRequest request = new ApiRequest();
+        request.setRequest(Map.of());
+
+        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(TEST_AUTH_TOKEN), any())).thenReturn(TEST_USER_ID);
+
+        ApiResponse response = userGroupService.searchUserGroupsV2(request, TEST_AUTH_TOKEN);
+
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
+        assertEquals(Constants.MSG_SEARCH_FILTERS_REQUIRED, response.getParams().getErr());
+        verify(esService, never()).searchUserGroups(anyMap(), anyInt(), anyInt(), anyString(), anyString());
+    }
+
+    @Test
+    void searchUserGroupsV2_withEmptyFilters_shouldReturnBadRequest() {
+        ApiRequest request = new ApiRequest();
+        request.setRequest(Map.of(Constants.FILTERS, Map.of()));
+
+        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(TEST_AUTH_TOKEN), any())).thenReturn(TEST_USER_ID);
+
+        ApiResponse response = userGroupService.searchUserGroupsV2(request, TEST_AUTH_TOKEN);
+
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
+        assertEquals(Constants.MSG_SEARCH_FILTERS_EMPTY, response.getParams().getErr());
+        verify(esService, never()).searchUserGroups(anyMap(), anyInt(), anyInt(), anyString(), anyString());
+    }
+
+    @Test
+    void searchUserGroupsV2_withMissingUserGroupName_shouldReturnBadRequest() {
+        ApiRequest request = new ApiRequest();
+        Map<String, Object> filters = new HashMap<>();
+        filters.put(Constants.COL_ORGID, TEST_ORG_ID);
+        request.setRequest(Map.of(Constants.FILTERS, filters));
+
+        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(TEST_AUTH_TOKEN), any())).thenReturn(TEST_USER_ID);
+
+        ApiResponse response = userGroupService.searchUserGroupsV2(request, TEST_AUTH_TOKEN);
+
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
+        assertEquals(Constants.MSG_USERGROUPNAME_REQUIRED_IN_FILTERS, response.getParams().getErr());
+        verify(esService, never()).searchUserGroups(anyMap(), anyInt(), anyInt(), anyString(), anyString());
+    }
+
+    @Test
+    void searchUserGroupsV2_withMissingOrgId_shouldReturnBadRequest() {
+        ApiRequest request = new ApiRequest();
+        Map<String, Object> filters = new HashMap<>();
+        filters.put(Constants.COL_USERGROUPNAME, TEST_USER_GROUP_NAME);
+        request.setRequest(Map.of(Constants.FILTERS, filters));
+
+        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(TEST_AUTH_TOKEN), any())).thenReturn(TEST_USER_ID);
+
+        ApiResponse response = userGroupService.searchUserGroupsV2(request, TEST_AUTH_TOKEN);
+
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
+        assertEquals(Constants.MSG_ORGID_REQUIRED_IN_FILTERS, response.getParams().getErr());
+        verify(esService, never()).searchUserGroups(anyMap(), anyInt(), anyInt(), anyString(), anyString());
+    }
+
+    @Test
+    void searchUserGroupsV2_withNoResultsFound_shouldReturn404() {
+        ApiRequest request = new ApiRequest();
+        Map<String, Object> filters = new HashMap<>();
+        filters.put(Constants.COL_USERGROUPNAME, TEST_USER_GROUP_NAME);
+        filters.put(Constants.COL_ORGID, TEST_ORG_ID);
+        request.setRequest(Map.of(Constants.FILTERS, filters));
+
+        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(TEST_AUTH_TOKEN), any())).thenReturn(TEST_USER_ID);
+
+        Map<String, Object> searchResult = new HashMap<>();
+        searchResult.put(Constants.COUNT, 0L);
+        searchResult.put(Constants.CONTENT, List.of());
+        when(esService.searchUserGroups(anyMap(), anyInt(), anyInt(), anyString(), anyString())).thenReturn(searchResult);
+
+        ApiResponse response = userGroupService.searchUserGroupsV2(request, TEST_AUTH_TOKEN);
+
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(HttpStatus.NOT_FOUND, response.getResponseCode());
+        assertEquals(Constants.MSG_USERGROUP_NOT_FOUND_BY_NAME_ORG, response.getParams().getErr());
+        verify(esService, times(1)).searchUserGroups(anyMap(), anyInt(), anyInt(), anyString(), anyString());
+    }
+
+    @Test
+    void searchUserGroupsV2_withException_shouldReturnError() {
+        ApiRequest request = new ApiRequest();
+        Map<String, Object> filters = new HashMap<>();
+        filters.put(Constants.COL_USERGROUPNAME, TEST_USER_GROUP_NAME);
+        filters.put(Constants.COL_ORGID, TEST_ORG_ID);
+        request.setRequest(Map.of(Constants.FILTERS, filters));
+
+        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(TEST_AUTH_TOKEN), any())).thenReturn(TEST_USER_ID);
+        when(esService.searchUserGroups(anyMap(), anyInt(), anyInt(), anyString(), anyString()))
+            .thenThrow(new RuntimeException("ES connection failed"));
+
+        ApiResponse response = userGroupService.searchUserGroupsV2(request, TEST_AUTH_TOKEN);
+
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getResponseCode());
+    }
+
+    @Test
+    void searchUserGroupsV2_withStatusInRequest_shouldForceActiveStatus() {
+        ApiRequest request = new ApiRequest();
+        Map<String, Object> filters = new HashMap<>();
+        filters.put(Constants.COL_USERGROUPNAME, TEST_USER_GROUP_NAME);
+        filters.put(Constants.COL_ORGID, TEST_ORG_ID);
+        filters.put(Constants.COL_STATUS, Constants.INACTIVE);
+        request.setRequest(Map.of(Constants.FILTERS, filters));
+
+        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(TEST_AUTH_TOKEN), any())).thenReturn(TEST_USER_ID);
+
+        Map<String, Object> searchResult = new HashMap<>();
+        searchResult.put(Constants.COUNT, 1L);
+        searchResult.put(Constants.CONTENT, List.of(Map.of(
+            Constants.COL_USERGROUPID, TEST_USER_GROUP_ID,
+            Constants.COL_USERGROUPNAME, TEST_USER_GROUP_NAME,
+            Constants.COL_STATUS, Constants.ACTIVE
+        )));
+        when(esService.searchUserGroups(anyMap(), anyInt(), anyInt(), anyString(), anyString())).thenReturn(searchResult);
+
+        ApiResponse response = userGroupService.searchUserGroupsV2(request, TEST_AUTH_TOKEN);
+
+        assertEquals(Constants.SUCCESSFUL, response.getParams().getStatus());
+        assertEquals(HttpStatus.OK, response.getResponseCode());
+
+        ArgumentCaptor<Map<String, Object>> filtersCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(esService).searchUserGroups(filtersCaptor.capture(), anyInt(), anyInt(), anyString(), anyString());
+        assertEquals(Constants.ACTIVE, filtersCaptor.getValue().get(Constants.COL_STATUS));
+    }
 }

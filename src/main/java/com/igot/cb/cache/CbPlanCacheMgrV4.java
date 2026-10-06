@@ -8,6 +8,7 @@ import com.igot.cb.util.Constants;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -27,6 +28,9 @@ import java.util.stream.Collectors;
 @Component
 @Slf4j
 public class CbPlanCacheMgrV4 {
+    private static final String LOOKUP_SUFFIX = "-lookup:";
+    private static final String ALL_LOOKUP_PREFIX = "all-lookup:";
+    private static final String MINISTRY_PREFIX = "ministry:";
     @Value("${cb.plan.v4.cache.ttl.minutes:60}")
     private int ttlMinutes;
     @Value("${cb.plan.v4.batch.size:5}")
@@ -63,7 +67,7 @@ public class CbPlanCacheMgrV4 {
      * @return list of active CB Plans visible to all orgs, or empty list if none
      */
     public List<Map<String, Object>> getCbPlanForAllOrgs(String planYear) {
-        String cacheKey = "all-lookup:" + planYear;
+        String cacheKey = ALL_LOOKUP_PREFIX + planYear;
         List<Map<String, Object>> allCbPlanList = cbPlanCache.getIfPresent(cacheKey);
         if (Objects.isNull(allCbPlanList)) {
             log.debug("getCbPlanForAllOrgs: Caffeine cache miss - planYear={}", planYear);
@@ -99,7 +103,7 @@ public class CbPlanCacheMgrV4 {
      * @return list of active CB Plans for this org, or empty list if none
      */
     public List<Map<String, Object>> getCbPlanForOrgId(String orgId, String planYear) {
-        String cacheKey = orgId + "-lookup:" + planYear;
+        String cacheKey = orgId + LOOKUP_SUFFIX + planYear;
         List<Map<String, Object>> cbPlanList = cbPlanCache.getIfPresent(cacheKey);
         if (Objects.isNull(cbPlanList)) {
             log.debug("getCbPlanForOrgId: Caffeine cache miss - orgId={}, planYear={}", orgId, planYear);
@@ -287,7 +291,7 @@ public class CbPlanCacheMgrV4 {
      * @return list of active CB Plans for this ministry/state, or empty list if none
      */
     public List<Map<String, Object>> getCbPlanForMinistryOrStateId(String ministryOrStateId, String planYear) {
-        String cacheKey = "ministry:" + ministryOrStateId + "-lookup:" + planYear;
+        String cacheKey = MINISTRY_PREFIX + ministryOrStateId + LOOKUP_SUFFIX + planYear;
         List<Map<String, Object>> cbPlanList = cbPlanCache.getIfPresent(cacheKey);
         if (Objects.isNull(cbPlanList)) {
             log.debug("getCbPlanForMinistryOrStateId: Caffeine cache miss - ministryOrStateId={}, planYear={}",
@@ -348,5 +352,61 @@ public class CbPlanCacheMgrV4 {
                 .toList();
         cbPlanCache.invalidateAll(affectedKeys);
         log.info("CbPlanCacheMgrV4.invalidatePlan: planId={}, evicted {} list entries", planId, affectedKeys.size());
+    }
+
+    /**
+     * Evicts the org-scoped lookup list ({@code orgId-lookup:planYear}) and the combined
+     * dictionary list ({@code orgId:planYear}) for a single org, after that org's membership
+     * in the org-scope lookup table changes (e.g. a SINGLE/CUSTOM-scope plan is published,
+     * republished, or retired).
+     *
+     * @param orgId    organization ID whose lookup/combined lists are stale
+     * @param planYear plan year scoping the cache key
+     */
+    public void invalidateOrgLookup(String orgId, String planYear) {
+        if (StringUtils.isBlank(orgId) || StringUtils.isBlank(planYear)) {
+            return;
+        }
+        cbPlanCache.invalidate(orgId + LOOKUP_SUFFIX + planYear);
+        cbPlanCache.invalidate(orgId + ":" + planYear);
+        log.info("CbPlanCacheMgrV4.invalidateOrgLookup: orgId={}, planYear={}", orgId, planYear);
+    }
+
+    /**
+     * Evicts the all-org lookup list ({@code all-lookup:planYear}) and every combined
+     * dictionary list ({@code orgId:planYear}) for the given plan year, after an ALL-scope
+     * plan is published, republished, or retired. Every org's combined list must be dropped
+     * since an ALL-scope plan is visible to every org.
+     *
+     * @param planYear plan year scoping the cache keys
+     */
+    public void invalidateAllOrgLookup(String planYear) {
+        if (StringUtils.isBlank(planYear)) {
+            return;
+        }
+        cbPlanCache.invalidate(ALL_LOOKUP_PREFIX + planYear);
+        String combinedSuffix = ":" + planYear;
+        List<String> combinedKeys = cbPlanCache.asMap().keySet().stream()
+                .filter(key -> key.endsWith(combinedSuffix) && !key.contains(LOOKUP_SUFFIX))
+                .toList();
+        cbPlanCache.invalidateAll(combinedKeys);
+        log.info("CbPlanCacheMgrV4.invalidateAllOrgLookup: planYear={}, evicted {} combined entries",
+                planYear, combinedKeys.size());
+    }
+
+    /**
+     * Evicts the ministry/state lookup list ({@code ministry:<id>-lookup:planYear}) after
+     * that ministry/state's membership in the ministry-or-state-id lookup table changes.
+     *
+     * @param ministryOrStateId ministry or state ID whose lookup list is stale
+     * @param planYear          plan year scoping the cache key
+     */
+    public void invalidateMinistryLookup(String ministryOrStateId, String planYear) {
+        if (StringUtils.isBlank(ministryOrStateId) || StringUtils.isBlank(planYear)) {
+            return;
+        }
+        cbPlanCache.invalidate(MINISTRY_PREFIX + ministryOrStateId + LOOKUP_SUFFIX + planYear);
+        log.info("CbPlanCacheMgrV4.invalidateMinistryLookup: ministryOrStateId={}, planYear={}",
+                ministryOrStateId, planYear);
     }
 }

@@ -22,11 +22,15 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
+import org.springframework.test.util.ReflectionTestUtils;
 
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
@@ -40,6 +44,7 @@ import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -637,6 +642,10 @@ class CbPlanServiceV4ImplTest {
         assertEquals(HttpStatus.OK, response.getResponseCode());
         assertNotEquals(Constants.FAILED, response.getParams().getStatus());
         verify(orgLookupService).upsertCustomOrgLookup(eq(PLAN_ID), eq(PLAN_YEAR), any(), any(), eq(true));
+        verify(cbPlanCacheMgrV4).invalidatePlan(PLAN_ID);
+        verify(cbPlanCacheMgrV4).invalidateOrgLookup(ORG_ID, PLAN_YEAR);
+        verify(cbPlanCacheMgrV4, never()).invalidateAllOrgLookup(anyString());
+        verify(cbPlanCacheMgrV4, never()).invalidateMinistryLookup(anyString(), anyString());
     }
 
     private static ApiResponse successApiResponse() {
@@ -1647,4 +1656,143 @@ class CbPlanServiceV4ImplTest {
         assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getResponseCode());
     }
 
+    private static Map<String, Object> updatedRequestWithDiffSets(Set<String> newRootOrgIds, Set<String> existingRootOrgIds,
+                                                                    Set<String> newMinistryOrStateIds,
+                                                                    Set<String> existingMinistryOrStateIds) {
+        Map<String, Object> updatedRequest = new HashMap<>();
+        updatedRequest.put(Constants.NEW_ROOT_ORG_IDS, newRootOrgIds);
+        updatedRequest.put(Constants.EXISTING_ROOT_ORG_IDS, existingRootOrgIds);
+        updatedRequest.put(Constants.NEW_MINISTRY_OR_STATE_IDS, newMinistryOrStateIds);
+        updatedRequest.put(Constants.EXISTING_MINISTRY_OR_STATE_IDS, existingMinistryOrStateIds);
+        return updatedRequest;
+    }
+
+    private static Map<String, Object> existingPlanWithOrgScope(String orgScope) {
+        Map<String, Object> existingCbPlan = new HashMap<>();
+        existingCbPlan.put(Constants.ORG_SCOPE, orgScope);
+        return existingCbPlan;
+    }
+
+    private void invokeInvalidateDictionaryCaches(String newOrgScope, Map<String, Object> updatedRequest,
+                                                   Map<String, Object> existingCbPlan) {
+        ReflectionTestUtils.invokeMethod(cbPlanService, "invalidateDictionaryCaches",
+                PLAN_ID, PLAN_YEAR, newOrgScope, updatedRequest, existingCbPlan);
+    }
+
+    @Test
+    void invalidateDictionaryCaches_singleOrgScopeWithNewOrgId_invalidatesPlanAndThatOrgOnly() {
+        Map<String, Object> updatedRequest = updatedRequestWithDiffSets(
+                Set.of(ORG_ID), Collections.emptySet(), Collections.emptySet(), Collections.emptySet());
+
+        invokeInvalidateDictionaryCaches(Constants.SINGLE, updatedRequest, existingPlanWithOrgScope(Constants.SINGLE));
+
+        verify(cbPlanCacheMgrV4).invalidatePlan(PLAN_ID);
+        verify(cbPlanCacheMgrV4).invalidateOrgLookup(ORG_ID, PLAN_YEAR);
+        verify(cbPlanCacheMgrV4, never()).invalidateAllOrgLookup(anyString());
+        verify(cbPlanCacheMgrV4, never()).invalidateMinistryLookup(anyString(), anyString());
+    }
+
+    @Test
+    void invalidateDictionaryCaches_newOrgScopeAll_invalidatesAllOrgLookup() {
+        Map<String, Object> updatedRequest = updatedRequestWithDiffSets(
+                Collections.emptySet(), Collections.emptySet(), Collections.emptySet(), Collections.emptySet());
+
+        invokeInvalidateDictionaryCaches(Constants.ALL, updatedRequest, existingPlanWithOrgScope(Constants.SINGLE));
+
+        verify(cbPlanCacheMgrV4).invalidateAllOrgLookup(PLAN_YEAR);
+        verify(cbPlanCacheMgrV4, never()).invalidateOrgLookup(anyString(), anyString());
+    }
+
+    @Test
+    void invalidateDictionaryCaches_previousOrgScopeAll_invalidatesAllOrgLookup() {
+        Map<String, Object> updatedRequest = updatedRequestWithDiffSets(
+                Collections.emptySet(), Collections.emptySet(), Collections.emptySet(), Collections.emptySet());
+
+        invokeInvalidateDictionaryCaches(Constants.SINGLE, updatedRequest, existingPlanWithOrgScope(Constants.ALL));
+
+        verify(cbPlanCacheMgrV4).invalidateAllOrgLookup(PLAN_YEAR);
+    }
+
+    @Test
+    void invalidateDictionaryCaches_rootOrgIdsChanged_invalidatesUnionOfOldAndNewOrgs() {
+        String newOrgId = "org-new";
+        Map<String, Object> updatedRequest = updatedRequestWithDiffSets(
+                Set.of(newOrgId), Set.of(ORG_ID), Collections.emptySet(), Collections.emptySet());
+
+        invokeInvalidateDictionaryCaches(Constants.CUSTOM, updatedRequest, existingPlanWithOrgScope(Constants.CUSTOM));
+
+        verify(cbPlanCacheMgrV4).invalidateOrgLookup(ORG_ID, PLAN_YEAR);
+        verify(cbPlanCacheMgrV4).invalidateOrgLookup(newOrgId, PLAN_YEAR);
+    }
+
+    @Test
+    void invalidateDictionaryCaches_ministryIdsChanged_invalidatesUnionOfOldAndNewMinistries() {
+        String oldMinistryId = "ministry-old";
+        String newMinistryId = "ministry-new";
+        Map<String, Object> updatedRequest = updatedRequestWithDiffSets(
+                Collections.emptySet(), Collections.emptySet(), Set.of(newMinistryId), Set.of(oldMinistryId));
+
+        invokeInvalidateDictionaryCaches(Constants.SINGLE, updatedRequest, existingPlanWithOrgScope(Constants.SINGLE));
+
+        verify(cbPlanCacheMgrV4).invalidateMinistryLookup(oldMinistryId, PLAN_YEAR);
+        verify(cbPlanCacheMgrV4).invalidateMinistryLookup(newMinistryId, PLAN_YEAR);
+    }
+
+    @Test
+    void invalidateDictionaryCaches_noOrgOrMinistryChanges_onlyInvalidatesPlan() {
+        Map<String, Object> updatedRequest = updatedRequestWithDiffSets(
+                Collections.emptySet(), Collections.emptySet(), Collections.emptySet(), Collections.emptySet());
+
+        invokeInvalidateDictionaryCaches(Constants.SINGLE, updatedRequest, existingPlanWithOrgScope(Constants.SINGLE));
+
+        verify(cbPlanCacheMgrV4).invalidatePlan(PLAN_ID);
+        verify(cbPlanCacheMgrV4, never()).invalidateOrgLookup(anyString(), anyString());
+        verify(cbPlanCacheMgrV4, never()).invalidateAllOrgLookup(anyString());
+        verify(cbPlanCacheMgrV4, never()).invalidateMinistryLookup(anyString(), anyString());
+    }
+
+    @Test
+    void invalidateDictionaryCaches_nullDiffSets_treatedAsEmptyAndOnlyInvalidatesPlan() {
+        Map<String, Object> updatedRequest = new HashMap<>();
+
+        invokeInvalidateDictionaryCaches(Constants.SINGLE, updatedRequest, existingPlanWithOrgScope(Constants.SINGLE));
+
+        verify(cbPlanCacheMgrV4).invalidatePlan(PLAN_ID);
+        verify(cbPlanCacheMgrV4, never()).invalidateOrgLookup(anyString(), anyString());
+        verify(cbPlanCacheMgrV4, never()).invalidateMinistryLookup(anyString(), anyString());
+    }
+
+    @Test
+    void triggerDictionaryCacheInvalidation_asyncDisabled_invokesInvalidationSynchronously() {
+        when(serverProperties.isCbPlanV4CacheInvalidateAsync()).thenReturn(false);
+        Map<String, Object> updatedRequest = updatedRequestWithDiffSets(
+                Set.of(ORG_ID), Collections.emptySet(), Collections.emptySet(), Collections.emptySet());
+
+        ReflectionTestUtils.invokeMethod(cbPlanService, "triggerDictionaryCacheInvalidation",
+                PLAN_ID, PLAN_YEAR, Constants.SINGLE, updatedRequest, existingPlanWithOrgScope(Constants.SINGLE));
+
+        verify(cbPlanCacheMgrV4).invalidatePlan(PLAN_ID);
+        verify(cbPlanCacheMgrV4).invalidateOrgLookup(ORG_ID, PLAN_YEAR);
+    }
+
+    @Test
+    void triggerDictionaryCacheInvalidation_asyncEnabled_noExceptionThrown() {
+        when(serverProperties.isCbPlanV4CacheInvalidateAsync()).thenReturn(true);
+        Map<String, Object> updatedRequest = updatedRequestWithDiffSets(
+                Set.of(ORG_ID), Collections.emptySet(), Collections.emptySet(), Collections.emptySet());
+
+        assertDoesNotThrow(() -> ReflectionTestUtils.invokeMethod(cbPlanService, "triggerDictionaryCacheInvalidation",
+                PLAN_ID, PLAN_YEAR, Constants.SINGLE, updatedRequest, existingPlanWithOrgScope(Constants.SINGLE)));
+    }
+
+    @Test
+    void triggerDictionaryCacheInvalidation_asyncEnabledAndInvalidationFails_exceptionIsSwallowed() {
+        when(serverProperties.isCbPlanV4CacheInvalidateAsync()).thenReturn(true);
+        lenient().doThrow(new RuntimeException("cache failure")).when(cbPlanCacheMgrV4).invalidatePlan(PLAN_ID);
+        Map<String, Object> updatedRequest = updatedRequestWithDiffSets(
+                Collections.emptySet(), Collections.emptySet(), Collections.emptySet(), Collections.emptySet());
+
+        assertDoesNotThrow(() -> ReflectionTestUtils.invokeMethod(cbPlanService, "triggerDictionaryCacheInvalidation",
+                PLAN_ID, PLAN_YEAR, Constants.SINGLE, updatedRequest, existingPlanWithOrgScope(Constants.SINGLE)));
+    }
 }

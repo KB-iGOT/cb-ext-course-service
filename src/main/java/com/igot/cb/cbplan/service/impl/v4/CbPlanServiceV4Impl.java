@@ -2,6 +2,7 @@ package com.igot.cb.cbplan.service.impl.v4;
 
 import java.time.Instant;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 
 import com.igot.cb.cbplan.service.impl.CbPlanDataTransformServiceV3Impl;
 import org.apache.commons.collections.CollectionUtils;
@@ -882,6 +883,7 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
             orgLookupService.handleMinistryOrStateIdLookupChanges(cbPlanId, planYear, existingMinistryOrStateIds,
                     newMinistryOrStateIds, endDate, response);
         }
+        triggerDictionaryCacheInvalidation(cbPlanId, planYear, orgScope, updatedRequest, existingCbPlan);
     }
 
     /**
@@ -1963,5 +1965,76 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
         }
         Object value = rawRequest.get(Constants.TARGETED_ORGANISATION);
         return Objects.nonNull(value) ? String.valueOf(value) : null;
+    }
+
+    /**
+     * Invalidates the {@link CbPlanCacheMgrV4} entries after a publish. Whether the call is
+     * fire-and-forget or blocking is controlled by {@code cbplan.v4.cache.invalidate.async}
+     * (default: {@code true}), mirroring {@link CbPlanContentSyncServiceV4Impl#syncContentNodeTrainingPlan}.
+     *
+     * @param cbPlanId       CB Plan ID
+     * @param planYear       plan year
+     * @param newOrgScope    org scope being applied by this publish
+     * @param updatedRequest applied publish update, including the org/ministry diff sets
+     * @param existingCbPlan pre-publish plan record, used for the previous org scope
+     */
+    private void triggerDictionaryCacheInvalidation(String cbPlanId, String planYear, String newOrgScope,
+                                                    Map<String, Object> updatedRequest, Map<String, Object> existingCbPlan) {
+        if (serverProperties.isCbPlanV4CacheInvalidateAsync()) {
+            CompletableFuture.runAsync(() ->
+                            invalidateDictionaryCaches(cbPlanId, planYear, newOrgScope, updatedRequest, existingCbPlan))
+                    .exceptionally(e -> {
+                        log.error("triggerDictionaryCacheInvalidation: Async cache invalidation failed - cbPlanId={}", cbPlanId, e);
+                        return null;
+                    });
+        } else {
+            invalidateDictionaryCaches(cbPlanId, planYear, newOrgScope, updatedRequest, existingCbPlan);
+        }
+    }
+
+    /**
+     * Evicts the {@link CbPlanCacheMgrV4} entries made stale by this publish: the plan's own
+     * cached row, the org-scope lookup list for every root org gained or lost (or the all-org
+     * list, if either the new or previous org scope is ALL), and the ministry/state lookup list
+     * for every ministryOrStateId gained or lost. Called unconditionally so a republish that
+     * narrows or widens scope evicts both the old and new membership, not just the new one.
+     * The org/ministry diff sets are read back from {@code updatedRequest} (populated earlier
+     * in {@link #executePublishTransaction}) to keep the parameter count within Sonar's limit.
+     *
+     * @param cbPlanId       CB Plan ID
+     * @param planYear       plan year
+     * @param newOrgScope    org scope being applied by this publish
+     * @param updatedRequest applied publish update, including the org/ministry diff sets
+     * @param existingCbPlan pre-publish plan record, used for the previous org scope
+     */
+    private void invalidateDictionaryCaches(String cbPlanId, String planYear, String newOrgScope,
+                                            Map<String, Object> updatedRequest, Map<String, Object> existingCbPlan) {
+        String previousOrgScope = (String) existingCbPlan.get(Constants.ORG_SCOPE);
+        Set<String> newRootOrgIds = (Set<String>) updatedRequest.get(Constants.NEW_ROOT_ORG_IDS);
+        Set<String> existingRootOrgIds = (Set<String>) updatedRequest.get(Constants.EXISTING_ROOT_ORG_IDS);
+        Set<String> newMinistryOrStateIds = (Set<String>) updatedRequest.get(Constants.NEW_MINISTRY_OR_STATE_IDS);
+        Set<String> existingMinistryOrStateIds = (Set<String>) updatedRequest.get(Constants.EXISTING_MINISTRY_OR_STATE_IDS);
+        cbPlanCacheMgrV4.invalidatePlan(cbPlanId);
+        if (Constants.ALL.equalsIgnoreCase(newOrgScope) || Constants.ALL.equalsIgnoreCase(previousOrgScope)) {
+            cbPlanCacheMgrV4.invalidateAllOrgLookup(planYear);
+        }
+        Set<String> affectedOrgIds = new HashSet<>();
+        if (CollectionUtils.isNotEmpty(newRootOrgIds)) {
+            affectedOrgIds.addAll(newRootOrgIds);
+        }
+        if (CollectionUtils.isNotEmpty(existingRootOrgIds)) {
+            affectedOrgIds.addAll(existingRootOrgIds);
+        }
+        affectedOrgIds.forEach(orgId -> cbPlanCacheMgrV4.invalidateOrgLookup(orgId, planYear));
+        Set<String> affectedMinistryIds = new HashSet<>();
+        if (CollectionUtils.isNotEmpty(newMinistryOrStateIds)) {
+            affectedMinistryIds.addAll(newMinistryOrStateIds);
+        }
+        if (CollectionUtils.isNotEmpty(existingMinistryOrStateIds)) {
+            affectedMinistryIds.addAll(existingMinistryOrStateIds);
+        }
+        affectedMinistryIds.forEach(id -> cbPlanCacheMgrV4.invalidateMinistryLookup(id, planYear));
+        log.info("CbPlanServiceV4Impl.invalidateDictionaryCaches: cbPlanId={}, planYear={}, orgCount={}, ministryCount={}",
+                cbPlanId, planYear, affectedOrgIds.size(), affectedMinistryIds.size());
     }
 }

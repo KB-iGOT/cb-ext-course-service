@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -556,5 +557,125 @@ class CbPlanCacheMgrV4Test {
         List<Map<String, Object>> result = cbPlanCacheMgrV4.getCbPlanForMinistryOrStateId(MINISTRY_ID, PLAN_YEAR);
         assertEquals(1, result.size());
         assertEquals("Ministry Training Plan 2026", result.get(0).get(Constants.NAME));
+    }
+
+    @Test
+    void testInvalidateOrgLookupEvictsOrgLookupAndCombinedCache() {
+        Instant endDate = Instant.parse("2026-12-31T00:00:00Z");
+        stubOrgLookup(List.of(lookupEntry("plan1", true, endDate)));
+        stubAllOrgLookup(List.of());
+        stubFullPlanFetch(List.of(fullPlan("plan1", Constants.LIVE)));
+
+        cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(ORG_ID, PLAN_YEAR, new AtomicBoolean(false));
+        verify(cassandraOperation, times(1)).getRecordsByProperties(anyString(),
+                eq(V4_LOOKUP_BY_ORG_TABLE), anyMap(), any(), any());
+
+        cbPlanCacheMgrV4.invalidateOrgLookup(ORG_ID, PLAN_YEAR);
+        cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(ORG_ID, PLAN_YEAR, new AtomicBoolean(false));
+
+        verify(cassandraOperation, times(2)).getRecordsByProperties(anyString(),
+                eq(V4_LOOKUP_BY_ORG_TABLE), anyMap(), any(), any());
+    }
+
+    @Test
+    void testInvalidateOrgLookupDoesNotAffectOtherOrgsCombinedCache() {
+        Instant endDate = Instant.parse("2026-12-31T00:00:00Z");
+        stubOrgLookup(List.of(lookupEntry("plan1", true, endDate)));
+        stubAllOrgLookup(List.of());
+        stubFullPlanFetch(List.of(fullPlan("plan1", Constants.LIVE)));
+
+        cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(ORG_ID, PLAN_YEAR, new AtomicBoolean(false));
+        cbPlanCacheMgrV4.getCbPlanForAllAndOrgId("org2", PLAN_YEAR, new AtomicBoolean(false));
+        verify(cassandraOperation, times(2)).getRecordsByProperties(anyString(),
+                eq(V4_LOOKUP_BY_ORG_TABLE), anyMap(), any(), any());
+
+        cbPlanCacheMgrV4.invalidateOrgLookup(ORG_ID, PLAN_YEAR);
+        cbPlanCacheMgrV4.getCbPlanForAllAndOrgId("org2", PLAN_YEAR, new AtomicBoolean(false));
+
+        verify(cassandraOperation, times(2)).getRecordsByProperties(anyString(),
+                eq(V4_LOOKUP_BY_ORG_TABLE), anyMap(), any(), any());
+    }
+
+    @Test
+    void testInvalidateOrgLookupWithBlankOrgIdIsNoOp() {
+        assertDoesNotThrow(() -> cbPlanCacheMgrV4.invalidateOrgLookup("", PLAN_YEAR));
+        assertDoesNotThrow(() -> cbPlanCacheMgrV4.invalidateOrgLookup(null, PLAN_YEAR));
+    }
+
+    @Test
+    void testInvalidateOrgLookupWithBlankPlanYearIsNoOp() {
+        assertDoesNotThrow(() -> cbPlanCacheMgrV4.invalidateOrgLookup(ORG_ID, ""));
+        assertDoesNotThrow(() -> cbPlanCacheMgrV4.invalidateOrgLookup(ORG_ID, null));
+    }
+
+    @Test
+    void testInvalidateAllOrgLookupEvictsAllOrgAndCombinedCaches() {
+        Instant endDate = Instant.parse("2026-12-31T00:00:00Z");
+        stubAllOrgLookup(List.of(lookupEntry("plan1", true, endDate)));
+        stubOrgLookup(List.of());
+        stubFullPlanFetch(List.of(fullPlan("plan1", Constants.LIVE)));
+
+        cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(ORG_ID, PLAN_YEAR, new AtomicBoolean(false));
+        verify(cassandraOperation, times(1)).getRecordsByProperties(anyString(),
+                eq(V4_LOOKUP_BY_ALL_ORG_TABLE), anyMap(), any(), any());
+
+        cbPlanCacheMgrV4.invalidateAllOrgLookup(PLAN_YEAR);
+        cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(ORG_ID, PLAN_YEAR, new AtomicBoolean(false));
+
+        verify(cassandraOperation, times(2)).getRecordsByProperties(anyString(),
+                eq(V4_LOOKUP_BY_ALL_ORG_TABLE), anyMap(), any(), any());
+    }
+
+    @Test
+    void testInvalidateAllOrgLookupDoesNotAffectDifferentPlanYear() {
+        Instant endDate = Instant.parse("2026-12-31T00:00:00Z");
+        stubAllOrgLookup(List.of(lookupEntry("plan1", true, endDate)));
+        stubOrgLookup(List.of());
+        stubFullPlanFetch(List.of(fullPlan("plan1", Constants.LIVE)));
+
+        cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(ORG_ID, PLAN_YEAR, new AtomicBoolean(false));
+        cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(ORG_ID, "2025-26", new AtomicBoolean(false));
+        verify(cassandraOperation, times(2)).getRecordsByProperties(anyString(),
+                eq(V4_LOOKUP_BY_ORG_TABLE), anyMap(), any(), any());
+
+        cbPlanCacheMgrV4.invalidateAllOrgLookup(PLAN_YEAR);
+        cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(ORG_ID, "2025-26", new AtomicBoolean(false));
+
+        verify(cassandraOperation, times(2)).getRecordsByProperties(anyString(),
+                eq(V4_LOOKUP_BY_ORG_TABLE), anyMap(), any(), any());
+    }
+
+    @Test
+    void testInvalidateAllOrgLookupWithBlankPlanYearIsNoOp() {
+        assertDoesNotThrow(() -> cbPlanCacheMgrV4.invalidateAllOrgLookup(""));
+        assertDoesNotThrow(() -> cbPlanCacheMgrV4.invalidateAllOrgLookup(null));
+    }
+
+    @Test
+    void testInvalidateMinistryLookupEvictsMinistryLookupCache() {
+        stubMinistryLookup(List.of(lookupEntry("plan1", true, null)));
+        stubFullPlanFetch(List.of(fullPlan("plan1", Constants.LIVE)));
+
+        cbPlanCacheMgrV4.getCbPlanForMinistryOrStateId(MINISTRY_ID, PLAN_YEAR);
+        verify(cassandraOperation, times(1)).getRecordsByProperties(
+                eq(Constants.KEYSPACE_SUNBIRD), eq(V4_LOOKUP_BY_MINISTRY_TABLE), anyMap(), any(), any());
+
+        cbPlanCacheMgrV4.invalidateMinistryLookup(MINISTRY_ID, PLAN_YEAR);
+        cbPlanCacheMgrV4.getCbPlanForMinistryOrStateId(MINISTRY_ID, PLAN_YEAR);
+
+        verify(cassandraOperation, times(2)).getRecordsByProperties(
+                eq(Constants.KEYSPACE_SUNBIRD), eq(V4_LOOKUP_BY_MINISTRY_TABLE), anyMap(), any(), any());
+    }
+
+    @Test
+    void testInvalidateMinistryLookupWithBlankMinistryIdIsNoOp() {
+        assertDoesNotThrow(() -> cbPlanCacheMgrV4.invalidateMinistryLookup("", PLAN_YEAR));
+        assertDoesNotThrow(() -> cbPlanCacheMgrV4.invalidateMinistryLookup(null, PLAN_YEAR));
+    }
+
+    @Test
+    void testInvalidateMinistryLookupWithBlankPlanYearIsNoOp() {
+        assertDoesNotThrow(() -> cbPlanCacheMgrV4.invalidateMinistryLookup(MINISTRY_ID, ""));
+        assertDoesNotThrow(() -> cbPlanCacheMgrV4.invalidateMinistryLookup(MINISTRY_ID, null));
     }
 }

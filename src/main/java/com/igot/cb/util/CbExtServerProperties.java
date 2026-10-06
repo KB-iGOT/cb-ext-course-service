@@ -259,6 +259,9 @@ public class CbExtServerProperties {
     @Value("${extcontent.redis.db.index:0}")
     private int extContentRedisDbIndex;
 
+    @Value("${cbplan.v4.cache.invalidate.async:true}")
+    private boolean cbPlanV4CacheInvalidateAsync;
+
     public List<String> getCbPlanEnrichedContentFieldsList() {
         return Arrays.asList(cbPlanEnrichedContentFields.split(",", -1));
     }

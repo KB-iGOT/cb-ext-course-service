@@ -17,7 +17,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.igot.cb.cache.CbPlanCacheMgrV4;
-import com.igot.cb.cache.RedisCacheMgr;
+import com.igot.cb.cache.CbExtRedisCacheMgr;
+import org.springframework.beans.factory.annotation.Qualifier;
 import com.igot.cb.cache.UserGroupCacheMgrV4;
 import com.igot.cb.cbplan.service.impl.CbPlanContentLookupServiceV3Impl;
 import com.igot.cb.cbplan.service.impl.CbPlanDataTransformServiceV3Impl;
@@ -49,7 +50,8 @@ public class CbPlanDictionaryServiceV4Impl {
     private final CbPlanCacheMgrV4 cbPlanCacheMgrV4;
     private final UserGroupCacheMgrV4 userGroupCacheMgrV4;
     private final AccessTokenValidator accessTokenValidator;
-    private final RedisCacheMgr redisCacheMgr;
+    private final CbExtRedisCacheMgr redisCacheMgr;
+    private final CbExtRedisCacheMgr userProfileRedisCacheMgr;
     private final CbExtServerProperties serverProperties;
     private final CbPlanEnrichmentServiceV3Impl enrichmentService;
     private final CbPlanDataTransformServiceV3Impl dataTransformService;
@@ -61,7 +63,8 @@ public class CbPlanDictionaryServiceV4Impl {
                                          CbPlanCacheMgrV4 cbPlanCacheMgrV4,
                                          UserGroupCacheMgrV4 userGroupCacheMgrV4,
                                          AccessTokenValidator accessTokenValidator,
-                                         RedisCacheMgr redisCacheMgr,
+                                         @Qualifier("cbPlanRedisCacheMgr") CbExtRedisCacheMgr redisCacheMgr,
+                                         @Qualifier("userProfileRedisCacheMgr") CbExtRedisCacheMgr userProfileRedisCacheMgr,
                                          CbExtServerProperties serverProperties,
                                          CbPlanEnrichmentServiceV3Impl enrichmentService,
                                          CbPlanDataTransformServiceV3Impl dataTransformService,
@@ -71,6 +74,7 @@ public class CbPlanDictionaryServiceV4Impl {
         this.userGroupCacheMgrV4 = userGroupCacheMgrV4;
         this.accessTokenValidator = accessTokenValidator;
         this.redisCacheMgr = redisCacheMgr;
+        this.userProfileRedisCacheMgr = userProfileRedisCacheMgr;
         this.serverProperties = serverProperties;
         this.enrichmentService = enrichmentService;
         this.dataTransformService = dataTransformService;
@@ -339,7 +343,7 @@ public class CbPlanDictionaryServiceV4Impl {
     private Map<String, String> buildUserProfile(String userId, ApiResponse response) {
         try {
             String cacheKey = Constants.USER + ":basicProfile:" + userId;
-            String cachedData = redisCacheMgr.getFromCache(cacheKey);
+            String cachedData = userProfileRedisCacheMgr.getFromCache(cacheKey);
             Map<String, Object> userBasicProfile;
             if (StringUtils.isNotBlank(cachedData)) {
                 userBasicProfile = mapper.readValue(cachedData, MAP_TYPE_REF);

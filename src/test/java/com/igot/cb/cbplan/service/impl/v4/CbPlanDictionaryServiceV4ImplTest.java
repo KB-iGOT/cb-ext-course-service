@@ -2,7 +2,7 @@ package com.igot.cb.cbplan.service.impl.v4;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.igot.cb.cache.CbPlanCacheMgrV4;
-import com.igot.cb.cache.RedisCacheMgr;
+import com.igot.cb.cache.CbExtRedisCacheMgr;
 import com.igot.cb.cache.UserGroupCacheMgrV4;
 import com.igot.cb.cbplan.service.impl.CbPlanContentLookupServiceV3Impl;
 import com.igot.cb.cbplan.service.impl.CbPlanDataTransformServiceV3Impl;
@@ -16,7 +16,6 @@ import com.igot.cb.util.Constants;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -57,7 +56,10 @@ class CbPlanDictionaryServiceV4ImplTest {
     private AccessTokenValidator accessTokenValidator;
 
     @Mock
-    private RedisCacheMgr redisCacheMgr;
+    private CbExtRedisCacheMgr redisCacheMgr;
+
+    @Mock
+    private CbExtRedisCacheMgr userProfileRedisCacheMgr;
 
     @Mock
     private CbExtServerProperties serverProperties;
@@ -74,13 +76,16 @@ class CbPlanDictionaryServiceV4ImplTest {
     @Spy
     private ObjectMapper mapper = new ObjectMapper();
 
-    @InjectMocks
     private CbPlanDictionaryServiceV4Impl dictionaryService;
 
     private ApiRequest testRequest;
 
     @BeforeEach
     void setUp() throws Exception {
+        dictionaryService = new CbPlanDictionaryServiceV4Impl(cassandraOperation, cbPlanCacheMgrV4,
+                userGroupCacheMgrV4, accessTokenValidator, redisCacheMgr, userProfileRedisCacheMgr,
+                serverProperties, enrichmentService, dataTransformService, contentLookupService);
+
         testRequest = new ApiRequest();
         Map<String, Object> requestMap = new HashMap<>();
         requestMap.put(Constants.REQUEST_PARAM_PLAN_YEAR, TEST_PLAN_YEAR);
@@ -139,7 +144,7 @@ class CbPlanDictionaryServiceV4ImplTest {
         String cachedUserProfile = "{\"id\":\"" + TEST_USER_ID + "\",\"rootOrgId\":\"" + TEST_ORG_ID + "\"}";
         String dictCacheKey = Constants.CB_PLAN_V4_REDIS_KEY_PREFIX + TEST_ORG_ID + ":" + TEST_USER_ID + ":" + TEST_PLAN_YEAR + ":dict";
         String cachedJson = "{\"" + TEST_PLAN_YEAR + "\":{\"aparPlanList\":{},\"nonAparPlanList\":{}}}";
-        when(redisCacheMgr.getFromCache(eq(userCacheKey))).thenReturn(cachedUserProfile);
+        when(userProfileRedisCacheMgr.getFromCache(eq(userCacheKey))).thenReturn(cachedUserProfile);
         when(redisCacheMgr.getFromCache(eq(dictCacheKey))).thenReturn(cachedJson);
 
         ApiResponse response = dictionaryService.getCBPlanDictionaryForUser(testRequest, TEST_AUTH_TOKEN);
@@ -154,7 +159,6 @@ class CbPlanDictionaryServiceV4ImplTest {
     void getCBPlanDictionaryForUser_userNotFound_returnsBadRequest() {
         when(accessTokenValidator.fetchUserIdFromAccessToken(eq(TEST_AUTH_TOKEN), any(ApiResponse.class)))
                 .thenReturn(TEST_USER_ID);
-        when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
         when(cassandraOperation.getRecordsByProperties(
                 eq(Constants.KEYSPACE_SUNBIRD),
                 eq(Constants.USER),
@@ -387,7 +391,7 @@ class CbPlanDictionaryServiceV4ImplTest {
     void getCBPlanDictionaryForUser_exception_returnsInternalServerError() {
         when(accessTokenValidator.fetchUserIdFromAccessToken(eq(TEST_AUTH_TOKEN), any(ApiResponse.class)))
                 .thenReturn(TEST_USER_ID);
-        when(redisCacheMgr.getFromCache(anyString())).thenThrow(new RuntimeException("Redis error"));
+        when(userProfileRedisCacheMgr.getFromCache(anyString())).thenThrow(new RuntimeException("Redis error"));
 
         ApiResponse response = dictionaryService.getCBPlanDictionaryForUser(testRequest, TEST_AUTH_TOKEN);
 
@@ -444,7 +448,7 @@ class CbPlanDictionaryServiceV4ImplTest {
         String dictCacheKey = Constants.CB_PLAN_V4_REDIS_KEY_PREFIX + TEST_ORG_ID + ":" + TEST_USER_ID + ":" + TEST_PLAN_YEAR + ":dict";
         String cachedUserProfile = "{\"id\":\"" + TEST_USER_ID + "\",\"rootOrgId\":\"" + TEST_ORG_ID + "\"}";
 
-        when(redisCacheMgr.getFromCache(eq(userCacheKey))).thenReturn(cachedUserProfile);
+        when(userProfileRedisCacheMgr.getFromCache(eq(userCacheKey))).thenReturn(cachedUserProfile);
         when(redisCacheMgr.getFromCache(eq(dictCacheKey))).thenReturn(null);
 
         when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
@@ -454,7 +458,7 @@ class CbPlanDictionaryServiceV4ImplTest {
         ApiResponse response = dictionaryService.getCBPlanDictionaryForUser(testRequest, TEST_AUTH_TOKEN);
 
         assertThat(response.getResponseCode()).isEqualTo(HttpStatus.OK);
-        verify(redisCacheMgr, times(1)).getFromCache(eq(userCacheKey));
+        verify(userProfileRedisCacheMgr, times(1)).getFromCache(eq(userCacheKey));
         verify(cassandraOperation, never()).getRecordsByProperties(
                 eq(Constants.KEYSPACE_SUNBIRD),
                 eq(Constants.USER),
@@ -541,7 +545,7 @@ class CbPlanDictionaryServiceV4ImplTest {
     private void setupValidUserProfileMocks() {
         when(accessTokenValidator.fetchUserIdFromAccessToken(eq(TEST_AUTH_TOKEN), any(ApiResponse.class)))
                 .thenReturn(TEST_USER_ID);
-        lenient().when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
+        lenient().when(userProfileRedisCacheMgr.getFromCache(anyString())).thenReturn(null);
 
         Map<String, Object> userRecord = new HashMap<>();
         userRecord.put(Constants.ID, TEST_USER_ID);
@@ -1371,7 +1375,7 @@ class CbPlanDictionaryServiceV4ImplTest {
     private void setupUserWithDesignationMocks(String designation) {
         when(accessTokenValidator.fetchUserIdFromAccessToken(eq(TEST_AUTH_TOKEN), any(ApiResponse.class)))
                 .thenReturn(TEST_USER_ID);
-        lenient().when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
+        lenient().when(userProfileRedisCacheMgr.getFromCache(anyString())).thenReturn(null);
         Map<String, Object> professionalDetail = new HashMap<>();
         professionalDetail.put(Constants.DESIGNATION, designation);
         Map<String, Object> profileDetails = new HashMap<>();
@@ -1395,7 +1399,7 @@ class CbPlanDictionaryServiceV4ImplTest {
     private void setupUserWithCentralDeputationMocks(boolean onCentralDeputation) {
         when(accessTokenValidator.fetchUserIdFromAccessToken(eq(TEST_AUTH_TOKEN), any(ApiResponse.class)))
                 .thenReturn(TEST_USER_ID);
-        lenient().when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
+        lenient().when(userProfileRedisCacheMgr.getFromCache(anyString())).thenReturn(null);
         Map<String, Object> cadreDetails = new HashMap<>();
         cadreDetails.put(Constants.CENTRAL_DEPUTATION, onCentralDeputation);
         Map<String, Object> profileDetails = new HashMap<>();

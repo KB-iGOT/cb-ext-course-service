@@ -16,7 +16,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.igot.cb.cache.CbPlanCacheMgrV4;
-import com.igot.cb.cache.RedisCacheMgr;
+import com.igot.cb.cache.CbExtRedisCacheMgr;
+import org.springframework.beans.factory.annotation.Qualifier;
 import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.cbplan.dto.CbPlanReadResponseDto;
 import com.igot.cb.cbplan.service.CbPlanServiceV4;
@@ -53,7 +54,7 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
     private final AccessTokenValidator accessTokenValidator;
     private final UserProfileUtil userProfileUtil;
     private final CbPlanDictionaryServiceV4Impl dictionaryService;
-    private final RedisCacheMgr redisCacheMgr;
+    private final CbExtRedisCacheMgr redisCacheMgr;
     private final CbPlanCacheMgrV4 cbPlanCacheMgrV4;
     private final CbPlanContentSyncServiceV4Impl contentSyncService;
     private final ObjectMapper mapper;
@@ -71,7 +72,7 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
                                AccessTokenValidator accessTokenValidator,
                                UserProfileUtil userProfileUtil,
                                CbPlanDictionaryServiceV4Impl dictionaryService,
-                               RedisCacheMgr redisCacheMgr,
+                               @Qualifier("cbPlanRedisCacheMgr") CbExtRedisCacheMgr redisCacheMgr,
                                CbPlanCacheMgrV4 cbPlanCacheMgrV4,
                                CbPlanContentSyncServiceV4Impl contentSyncService) {
         this.cassandraOperation = cassandraOperation;

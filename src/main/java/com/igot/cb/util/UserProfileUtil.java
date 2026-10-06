@@ -2,7 +2,8 @@ package com.igot.cb.util;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.igot.cb.cache.RedisCacheMgr;
+import com.igot.cb.cache.CbExtRedisCacheMgr;
+import org.springframework.beans.factory.annotation.Qualifier;
 import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.model.ApiResponse;
 import org.apache.commons.collections.CollectionUtils;
@@ -25,12 +26,12 @@ public final class UserProfileUtil {
     private static final Logger log = LoggerFactory.getLogger(UserProfileUtil.class);
 
     private final CassandraOperation cassandraOperation;
-    private final RedisCacheMgr redisCacheMgr;
+    private final CbExtRedisCacheMgr redisCacheMgr;
     private final CbExtServerProperties serverProperties;
     private final ObjectMapper objectMapper;
 
     public UserProfileUtil(CassandraOperation cassandraOperation,
-                           RedisCacheMgr redisCacheMgr,
+                           @Qualifier("userProfileRedisCacheMgr") CbExtRedisCacheMgr redisCacheMgr,
                            CbExtServerProperties serverProperties,
                            ObjectMapper objectMapper) {
         this.cassandraOperation = cassandraOperation;

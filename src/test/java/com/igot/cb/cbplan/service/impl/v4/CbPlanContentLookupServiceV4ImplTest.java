@@ -1,6 +1,6 @@
 package com.igot.cb.cbplan.service.impl.v4;
 
-import com.igot.cb.cache.CbPlanRedisCacheMgr;
+import com.igot.cb.cache.RedisCacheMgr;
 import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.service.OutboundRequestHandlerServiceImpl;
 import com.igot.cb.util.CbExtServerProperties;
@@ -41,7 +41,7 @@ class CbPlanContentLookupServiceV4ImplTest {
     private CassandraOperation cassandraOperation;
 
     @Mock
-    private CbPlanRedisCacheMgr redisCacheMgr;
+    private RedisCacheMgr redisCacheMgr;
 
     @Mock
     private OutboundRequestHandlerServiceImpl outboundRequestHandlerService;

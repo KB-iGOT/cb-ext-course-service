@@ -17,7 +17,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.igot.cb.cache.CbPlanCacheMgrV4;
-import com.igot.cb.cache.RedisCacheMgr;
+import com.igot.cb.cache.CbPlanRedisCacheMgr;
 import com.igot.cb.cache.UserGroupCacheMgrV4;
 import com.igot.cb.cbplan.service.impl.CbPlanContentLookupServiceV3Impl;
 import com.igot.cb.cbplan.service.impl.CbPlanDataTransformServiceV3Impl;
@@ -49,7 +49,7 @@ public class CbPlanDictionaryServiceV4Impl {
     private final CbPlanCacheMgrV4 cbPlanCacheMgrV4;
     private final UserGroupCacheMgrV4 userGroupCacheMgrV4;
     private final AccessTokenValidator accessTokenValidator;
-    private final RedisCacheMgr redisCacheMgr;
+    private final CbPlanRedisCacheMgr redisCacheMgr;
     private final CbExtServerProperties serverProperties;
     private final CbPlanEnrichmentServiceV3Impl enrichmentService;
     private final CbPlanDataTransformServiceV3Impl dataTransformService;
@@ -61,7 +61,7 @@ public class CbPlanDictionaryServiceV4Impl {
                                          CbPlanCacheMgrV4 cbPlanCacheMgrV4,
                                          UserGroupCacheMgrV4 userGroupCacheMgrV4,
                                          AccessTokenValidator accessTokenValidator,
-                                         RedisCacheMgr redisCacheMgr,
+                                         CbPlanRedisCacheMgr redisCacheMgr,
                                          CbExtServerProperties serverProperties,
                                          CbPlanEnrichmentServiceV3Impl enrichmentService,
                                          CbPlanDataTransformServiceV3Impl dataTransformService,

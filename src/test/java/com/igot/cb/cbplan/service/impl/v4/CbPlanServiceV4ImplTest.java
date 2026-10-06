@@ -4,7 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.igot.cb.cache.CbPlanCacheMgrV4;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
-import com.igot.cb.cache.RedisCacheMgr;
+import com.igot.cb.cache.CbPlanRedisCacheMgr;
 import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.cbplan.dto.CbPlanReadResponseDto;
 import com.igot.cb.cbplan.service.impl.CbPlanDataTransformServiceV3Impl;
@@ -94,7 +94,7 @@ class CbPlanServiceV4ImplTest {
     private UserProfileUtil userProfileUtil;
 
     @Mock
-    private RedisCacheMgr redisCacheMgr;
+    private CbPlanRedisCacheMgr redisCacheMgr;
 
     @Mock
     private CbPlanCacheMgrV4 cbPlanCacheMgrV4;

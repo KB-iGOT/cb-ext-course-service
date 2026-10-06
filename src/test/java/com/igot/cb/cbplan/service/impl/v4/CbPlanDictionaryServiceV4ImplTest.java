@@ -2,7 +2,7 @@ package com.igot.cb.cbplan.service.impl.v4;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.igot.cb.cache.CbPlanCacheMgrV4;
-import com.igot.cb.cache.RedisCacheMgr;
+import com.igot.cb.cache.CbPlanRedisCacheMgr;
 import com.igot.cb.cache.UserGroupCacheMgrV4;
 import com.igot.cb.cbplan.service.impl.CbPlanContentLookupServiceV3Impl;
 import com.igot.cb.cbplan.service.impl.CbPlanDataTransformServiceV3Impl;
@@ -57,7 +57,7 @@ class CbPlanDictionaryServiceV4ImplTest {
     private AccessTokenValidator accessTokenValidator;
 
     @Mock
-    private RedisCacheMgr redisCacheMgr;
+    private CbPlanRedisCacheMgr redisCacheMgr;
 
     @Mock
     private CbExtServerProperties serverProperties;

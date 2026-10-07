@@ -23,7 +23,6 @@ import org.springframework.stereotype.Service;
 
 import java.util.*;
 import java.util.function.Supplier;
-import java.util.function.BooleanSupplier;
 
 /**
  * Main User Group service implementation.
@@ -721,4 +720,88 @@ public class UserGroupServiceImpl implements UserGroupService {
                   filters.get(Constants.COL_USERGROUPNAME), filters.get(Constants.COL_ORGID));
         return filters;
     }
+
+    @Override
+    public ApiResponse createUserGroupAdmin(ApiRequest request, String authToken) {
+        log.info("createUserGroupAdmin: starting");
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_USER_GROUP_ADMIN_CREATE);
+
+        try {
+            String userId = accessTokenValidator.fetchUserIdFromAccessToken(authToken, response);
+            if (StringUtils.isEmpty(userId)) {
+                return response;
+            }
+
+            Map<String, String> userProfile = userProfileUtil.buildUserProfile(userId, response);
+            String userRoles = userProfile.get(Constants.ROLES);
+
+            String targetRootOrgId = extractRootOrgIdFromBody(request, response);
+            if (StringUtils.isBlank(targetRootOrgId)) {
+                return response;
+            }
+
+            UserGroupRequest userGroupRequest = parseRequest(request, response);
+            if (userGroupRequest == null || Constants.FAILED.equals(response.getParams().getStatus())) {
+                return response;
+            }
+
+            String userGroupName = userGroupRequest.userGroupName();
+            List<CriteriaItem> criteria = userGroupRequest.criteria();
+            log.info("createUserGroupAdmin: userId={}, targetRootOrgId={}", userId, targetRootOrgId);
+
+            if (!validationService.validateCreateRequest(userGroupName, criteria, targetRootOrgId, userRoles, response)) {
+                return response;
+            }
+
+            if (esService.isDuplicateGroupName(userGroupName, targetRootOrgId, null)) {
+                log.warn("createUserGroupAdmin: Duplicate group name rejected: name={}, orgId={}", userGroupName, targetRootOrgId);
+                response.getParams().setStatus(Constants.FAILED);
+                response.getParams().setErr(Constants.MSG_USERGROUP_NAME_EXISTS);
+                response.setResponseCode(HttpStatus.BAD_REQUEST);
+                return response;
+            }
+
+            String userGroupId = UUID.randomUUID().toString();
+            UserGroupEntity entity = dataTransformService.buildEntityForCreate(userGroupId, userGroupName, criteria, targetRootOrgId, userId);
+
+            if (transactionalInsertFailed(entity, response)) {
+                return response;
+            }
+            log.info("createUserGroupAdmin: User group created successfully: usergroupid={}, orgid={}", userGroupId, targetRootOrgId);
+            response.getParams().setStatus(Constants.SUCCESSFUL);
+            response.setResponseCode(HttpStatus.CREATED);
+            response.putAll(dataTransformService.entityToResponseMap(entity));
+        } catch (Exception e) {
+            handleException(response, e);
+        }
+        return response;
+    }
+
+    /**
+     * Extracts {@code rootOrgId} from the raw request map. Sets a 400 error on the response
+     * when the field is missing or blank, and returns null in that case.
+     *
+     * @param request  API request
+     * @param response API response, populated with an error when extraction fails
+     * @return rootOrgId value, or null when missing/blank
+     */
+    private String extractRootOrgIdFromBody(ApiRequest request, ApiResponse response) {
+        Map<String, Object> requestMap = (Map<String, Object>) request.getRequest();
+        if (MapUtils.isEmpty(requestMap)) {
+            response.getParams().setStatus(Constants.FAILED);
+            response.getParams().setErr(Constants.MSG_ROOTORGID_REQUIRED_IN_BODY);
+            response.setResponseCode(HttpStatus.BAD_REQUEST);
+            return null;
+        }
+        Object raw = requestMap.get(Constants.ROOT_ORG_ID);
+        String rootOrgId = raw instanceof String str ? str : null;
+        if (StringUtils.isBlank(rootOrgId)) {
+            response.getParams().setStatus(Constants.FAILED);
+            response.getParams().setErr(Constants.MSG_ROOTORGID_REQUIRED_IN_BODY);
+            response.setResponseCode(HttpStatus.BAD_REQUEST);
+            return null;
+        }
+        return rootOrgId;
+    }
+
 }

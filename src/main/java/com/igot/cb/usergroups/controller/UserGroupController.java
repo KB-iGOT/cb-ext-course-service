@@ -114,4 +114,21 @@ public class UserGroupController {
         ApiResponse response = userGroupService.searchUserGroupsV2(request, token);
         return new ResponseEntity<>(response, response.getResponseCode());
     }
+
+    /**
+     * Admin variant of {@link #createUserGroup}. The target organization is read
+     * from {@code rootOrgId} in the request body rather than being derived from
+     * the token user's rootOrgId. Caller must hold the configured authorized role.
+     *
+     * @param request API request with userGroupName, criteria and rootOrgId in the body
+     * @param token   authentication token (identity + role gate only)
+     * @return API response with created user group ID
+     */
+    @PostMapping("/admin/create")
+    public ResponseEntity<ApiResponse> createUserGroupAdmin(
+            @RequestBody ApiRequest request,
+            @RequestHeader(Constants.X_AUTH_TOKEN) String token) {
+        ApiResponse response = userGroupService.createUserGroupAdmin(request, token);
+        return new ResponseEntity<>(response, response.getResponseCode());
+    }
 }

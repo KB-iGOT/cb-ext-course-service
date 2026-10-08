@@ -44,7 +44,7 @@ public class CbPlanWithAccessSettingsV4 {
     public ResponseEntity<ApiResponse> createCbPlan(
             @RequestBody ApiRequest request,
             @RequestHeader(Constants.X_AUTH_TOKEN) String token) {
-        ApiResponse response = cbPlanServiceV4.createCbPlan(request, token);
+        ApiResponse response = cbPlanServiceV4.createCbPlan(request, null, token);
         return new ResponseEntity<>(response, response.getResponseCode());
     }
 

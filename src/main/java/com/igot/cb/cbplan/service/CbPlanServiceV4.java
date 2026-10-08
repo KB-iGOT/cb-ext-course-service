@@ -14,13 +14,15 @@ public interface CbPlanServiceV4 {
 
     /**
      * Creates a new CB Plan with user group references.
-     * User org ID is extracted from the authentication token.
+     * User org ID is extracted from the authentication token, unless targetedOrganisation is given
+     * (AI CBP), in which case the token must carry AICBP_ADMIN and targetedOrganisation is used.
      *
-     * @param request   the API request containing CB Plan details
-     * @param authToken the authentication token
+     * @param request              the API request containing CB Plan details
+     * @param targetedOrganisation org to create the plan for (AI CBP), or null for the caller's own org
+     * @param authToken            the authentication token
      * @return ApiResponse containing the created plan ID and status
      */
-    ApiResponse createCbPlan(ApiRequest request, String authToken);
+    ApiResponse createCbPlan(ApiRequest request, String targetedOrganisation, String authToken);
 
     /**
      * Updates an existing CB Plan with user group references.

@@ -28,6 +28,7 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -161,6 +162,18 @@ class CbPlanValidationServiceV4ImplTest {
 
 
     @Test
+    void validateContextDataForAiCbpPlan_usesTargetedOrgResolver() {
+        when(orgScopeService.resolveOrgScopeForTargetedOrg(anyMap(), eq(true), eq(ORG_ID), any(), any()))
+                .thenReturn(List.of());
+
+        boolean result = validationService.validateContextDataForAiCbpPlan(new HashMap<>(), true, ORG_ID,
+                new HashSet<>(), new HashSet<>(), new ApiResponse());
+
+        assertTrue(result);
+        verify(orgScopeService, never()).resolveOrgScope(anyMap(), anyBoolean(), anyString(), any(), any());
+    }
+
+    @Test
     void validateRequest_allValid_returnsTrue() {
         when(cbPlanRequestValidator.validateMandatoryFields(anyMap())).thenReturn(List.of());
         when(orgScopeService.resolveOrgScope(anyMap(), anyBoolean(), anyString(), any(), any())).thenReturn(List.of());
@@ -168,6 +181,22 @@ class CbPlanValidationServiceV4ImplTest {
         boolean result = validationService.validateRequest(apiRequest(requestMapWithValidContentList()), false, ORG_ID, new ApiResponse());
 
         assertTrue(result);
+    }
+
+    @Test
+    void validateAiCbpRequest_usesTargetedOrgResolver_andReportsItsErrors() {
+        ApiResponse response = new ApiResponse();
+        when(cbPlanRequestValidator.validateMandatoryFields(anyMap())).thenReturn(List.of());
+        when(orgScopeService.resolveOrgScopeForTargetedOrg(anyMap(), eq(false), eq(ORG_ID), any(), any()))
+                .thenReturn(List.of("target mismatch"));
+
+        boolean result = validationService.validateAiCbpRequest(apiRequest(requestMapWithValidContentList()), false,
+                ORG_ID, response);
+
+        assertFalse(result);
+        assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
+        assertTrue(response.getParams().getErr().contains("target mismatch"));
+        verify(orgScopeService, never()).resolveOrgScope(anyMap(), anyBoolean(), anyString(), any(), any());
     }
 
     @Test

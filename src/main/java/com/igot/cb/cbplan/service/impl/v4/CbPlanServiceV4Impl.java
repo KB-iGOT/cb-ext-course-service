@@ -590,10 +590,32 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
         if (Constants.FAILED.equalsIgnoreCase(response.getParams().getStatus())) {
             return;
         }
+        executePublishFlowForOrg(request, userId, userOrgId, isCCA, false, cbPlanId, existingCbPlan, response);
+    }
+
+    /**
+     * Builds the publish update for an already-resolved effective org and commits the transaction.
+     * The regular publish passes the caller's org; the AI CBP admin publish passes targetedOrganisation
+     * with {@code targetedOrgMode=true}, so the org scope is re-validated against the targeted org.
+     *
+     * @param request         the API request containing the plan ID and publish comment
+     * @param userId          caller's user ID
+     * @param orgId           effective organization ID (caller's org, or targetedOrganisation)
+     * @param isCCA           whether the effective org is CCA
+     * @param targetedOrgMode true for the AI CBP admin flow
+     * @param cbPlanId        CB Plan ID
+     * @param existingCbPlan  existing CB Plan record
+     * @param response        API response object, populated with an error on failure
+     * @throws JsonProcessingException if contextData/draftData serialization fails
+     */
+    private void executePublishFlowForOrg(ApiRequest request, String userId, String orgId, boolean isCCA,
+                                          boolean targetedOrgMode, String cbPlanId, Map<String, Object> existingCbPlan,
+                                          ApiResponse response) throws JsonProcessingException {
         Map<String, Object> incomingRequest = (Map<String, Object>) request.getRequest();
         String existingStatus = (String) existingCbPlan.get(Constants.STATUS);
         String planYear = (String) existingCbPlan.get(Constants.PLAN_YEAR);
-        Map<String, Object> updatedRequest = preparePublishUpdate(incomingRequest, existingCbPlan, userId, isCCA, userOrgId, response);
+        Map<String, Object> updatedRequest = preparePublishUpdate(incomingRequest, existingCbPlan, userId, isCCA,
+                orgId, targetedOrgMode, response);
         if (MapUtils.isEmpty(updatedRequest)) {
             return;
         }
@@ -608,14 +630,16 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
      * @param existingCbPlan  existing CB Plan record
      * @param userId          caller's user ID
      * @param isCCA           whether the logged in org is CCA
-     * @param userOrgId       caller's organization ID
+     * @param userOrgId       effective organization ID (caller's org, or targetedOrganisation)
+     * @param targetedOrgMode true for the AI CBP admin flow
      * @param response        API response object, populated with an error on failure
      * @return the full Cassandra update map, or empty map when validation failed
      * @throws JsonProcessingException if draftData parsing/serialization fails
      */
     private Map<String, Object> preparePublishUpdate(Map<String, Object> incomingRequest,
                                                       Map<String, Object> existingCbPlan, String userId,
-                                                      boolean isCCA, String userOrgId, ApiResponse response)
+                                                      boolean isCCA, String userOrgId, boolean targetedOrgMode,
+                                                      ApiResponse response)
             throws JsonProcessingException {
         String existingStatus = (String) existingCbPlan.get(Constants.STATUS);
         log.debug("CbPlanServiceV4Impl.preparePublishUpdate: existingStatus={}", existingStatus);
@@ -627,9 +651,10 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
         updatedRequest.put(Constants.COMMENT, comment);
         updatedRequest.put(Constants.UPDATED_BY, userId);
         if (Constants.LIVE.equalsIgnoreCase(existingStatus)) {
-            return handleLivePlanPublish(existingCbPlan, incomingRequest, isCCA, userOrgId, updatedRequest, response);
+            return handleLivePlanPublish(existingCbPlan, incomingRequest, isCCA, userOrgId, targetedOrgMode,
+                    updatedRequest, response);
         } else if (Constants.DRAFT.equalsIgnoreCase(existingStatus)) {
-            return handleDraftPlanPublish(existingCbPlan, isCCA, userOrgId, updatedRequest, response);
+            return handleDraftPlanPublish(existingCbPlan, isCCA, userOrgId, targetedOrgMode, updatedRequest, response);
         } else {
             log.warn("CbPlanServiceV4Impl.preparePublishUpdate: Invalid state for publish - existingStatus={}", existingStatus);
             response.getParams().setStatus(Constants.FAILED);
@@ -646,21 +671,22 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
      *
      * @param existingCbPlan  existing DRAFT CB Plan record
      * @param isCCA           whether the logged in org is CCA
-     * @param userOrgId       caller's organization ID
+     * @param userOrgId       effective organization ID (caller's org, or targetedOrganisation)
+     * @param targetedOrgMode true for the AI CBP admin flow
      * @param updatedRequest  base publish fields, populated further in place
      * @param response        API response object, populated with an error on failure
      * @return the full update map, or empty map when validation failed
      */
     private Map<String, Object> handleDraftPlanPublish(Map<String, Object> existingCbPlan, boolean isCCA,
-                                                        String userOrgId, Map<String, Object> updatedRequest,
-                                                        ApiResponse response) {
+                                                        String userOrgId, boolean targetedOrgMode,
+                                                        Map<String, Object> updatedRequest, ApiResponse response) {
         Set<String> rootOrgIdsInCriteria = new HashSet<>();
         Set<String> ministryOrStateIdsInCriteria = new HashSet<>();
         updatedRequest.put(Constants.STATUS, Constants.LIVE);
         updatedRequest.put(Constants.END_DATE_REQUEST,
                 dataTransformService.parseEndDate(existingCbPlan.get(Constants.END_DATE_REQUEST)));
-        if (!validationService.validateContextDataForLivePlanV4(existingCbPlan, isCCA, userOrgId,
-                rootOrgIdsInCriteria, ministryOrStateIdsInCriteria, response)) {
+        if (!validatePublishContextData(existingCbPlan, isCCA, userOrgId,
+                rootOrgIdsInCriteria, ministryOrStateIdsInCriteria, targetedOrgMode, response)) {
             return Collections.emptyMap();
         }
         updatedRequest.put(Constants.ORG_SCOPE, existingCbPlan.get(Constants.ORG_SCOPE));
@@ -680,7 +706,8 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
      * @param existingCbPlan  existing LIVE CB Plan record
      * @param incomingRequest publish request map (plan ID, comment)
      * @param isCCA           whether the logged in org is CCA
-     * @param userOrgId       caller's organization ID
+     * @param userOrgId       effective organization ID (caller's org, or targetedOrganisation)
+     * @param targetedOrgMode true for the AI CBP admin flow
      * @param updatedRequest  base publish fields, populated further in place
      * @param response        API response object, populated with an error on failure
      * @return the full update map, or empty map when validation failed
@@ -688,20 +715,21 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
      */
     private Map<String, Object> handleLivePlanPublish(Map<String, Object> existingCbPlan,
                                                        Map<String, Object> incomingRequest, boolean isCCA,
-                                                       String userOrgId, Map<String, Object> updatedRequest,
+                                                       String userOrgId, boolean targetedOrgMode,
+                                                       Map<String, Object> updatedRequest,
                                                        ApiResponse response) throws JsonProcessingException {
         Set<String> existingRootOrgIdsInCriteria = new HashSet<>();
         Set<String> rootOrgIdsInCriteria = new HashSet<>();
         Set<String> existingMinistryOrStateIdsInCriteria = new HashSet<>();
         Set<String> ministryOrStateIdsInCriteria = new HashSet<>();
-        if (!validationService.validateContextDataForLivePlanV4(existingCbPlan, isCCA, userOrgId,
-                existingRootOrgIdsInCriteria, existingMinistryOrStateIdsInCriteria, response)) {
+        if (!validatePublishContextData(existingCbPlan, isCCA, userOrgId,
+                existingRootOrgIdsInCriteria, existingMinistryOrStateIdsInCriteria, targetedOrgMode, response)) {
             return Collections.emptyMap();
         }
         updatedRequest.putAll(prepareCbPlanForRePublish(existingCbPlan, incomingRequest));
         if (updatedRequest.containsKey(Constants.CONTEXT_DATA_REQUEST)
-                && !validationService.validateContextDataForLivePlanV4(updatedRequest, isCCA, userOrgId,
-                        rootOrgIdsInCriteria, ministryOrStateIdsInCriteria, response)) {
+                && !validatePublishContextData(updatedRequest, isCCA, userOrgId,
+                        rootOrgIdsInCriteria, ministryOrStateIdsInCriteria, targetedOrgMode, response)) {
             return Collections.emptyMap();
         }
         updatedRequest.remove(Constants.ROOT_ORG_IDS_IN_CONTEXT_DATA);
@@ -711,6 +739,30 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
         updatedRequest.put(Constants.EXISTING_MINISTRY_OR_STATE_IDS, existingMinistryOrStateIdsInCriteria);
         updatedRequest.put(Constants.NEW_MINISTRY_OR_STATE_IDS, ministryOrStateIdsInCriteria);
         return updatedRequest;
+    }
+
+    /**
+     * Re-validates a plan's contextData on publish. The regular publish uses the unchanged
+     * caller-org validation; the AI CBP admin publish validates against targetedOrganisation.
+     *
+     * @param planOrRequest           plan/request map holding contextData, updated in place with ORG_SCOPE/ORG_ID_LIST
+     * @param isCCA                   whether the effective org is CCA
+     * @param orgId                   effective organization ID (caller's org, or targetedOrganisation)
+     * @param rootOrgIdsInCriteria    set populated with the rootOrgId values resolved from the referenced groups
+     * @param ministryOrStateIdsInCriteria set populated with the ministryOrStateId values resolved from the referenced groups
+     * @param targetedOrgMode         true for the AI CBP admin flow
+     * @param response                API response object, populated with an error on failure
+     * @return true if valid, false otherwise
+     */
+    private boolean validatePublishContextData(Map<String, Object> planOrRequest, boolean isCCA, String orgId,
+                                               Set<String> rootOrgIdsInCriteria, Set<String> ministryOrStateIdsInCriteria,
+                                               boolean targetedOrgMode, ApiResponse response) {
+        if (targetedOrgMode) {
+            return validationService.validateContextDataForAiCbpPlan(planOrRequest, isCCA, orgId,
+                    rootOrgIdsInCriteria, ministryOrStateIdsInCriteria, response);
+        }
+        return validationService.validateContextDataForLivePlanV4(planOrRequest, isCCA, orgId,
+                rootOrgIdsInCriteria, ministryOrStateIdsInCriteria, response);
     }
 
     /**
@@ -1159,6 +1211,46 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
             }
         }
         return jsonList;
+    }
+
+    /**
+     * AI CBP only: replaces {@code "true"}/{@code "false"} string mandatory flags in the request's
+     * V4 contentList with Booleans, before serialization. Readers such as the user dictionary check
+     * {@code Boolean.TRUE.equals(mandatory)}, so a string "true" would otherwise be treated as not
+     * mandatory. Not applied to the regular create/update, whose stored format is left unchanged.
+     *
+     * @param request API request containing the CB Plan data
+     */
+    private void coerceMandatoryFlagsInRequest(ApiRequest request) {
+        Map<String, Object> requestBody = (Map<String, Object>) request.getRequest();
+        if (MapUtils.isEmpty(requestBody) || !(requestBody.get(Constants.CONTENT_LIST) instanceof List<?> rawList)) {
+            return;
+        }
+        List<Object> coercedList = new ArrayList<>(rawList.size());
+        for (Object item : rawList) {
+            coercedList.add(item instanceof Map<?, ?> ? coerceMandatoryToBoolean((Map<String, Object>) item) : item);
+        }
+        requestBody.put(Constants.CONTENT_LIST, coercedList);
+    }
+
+    /**
+     * Converts a {@code "true"}/{@code "false"} string mandatory flag to a Boolean. Any other value
+     * is left untouched.
+     *
+     * @param item single contentList entry
+     * @return the entry itself, or a copy with mandatory converted to Boolean
+     */
+    private Map<String, Object> coerceMandatoryToBoolean(Map<String, Object> item) {
+        if (MapUtils.isEmpty(item) || !(item.get(Constants.MANDATORY) instanceof String mandatory)) {
+            return item;
+        }
+        String normalized = mandatory.trim();
+        if (!Boolean.TRUE.toString().equalsIgnoreCase(normalized) && !Boolean.FALSE.toString().equalsIgnoreCase(normalized)) {
+            return item;
+        }
+        Map<String, Object> coerced = new LinkedHashMap<>(item);
+        coerced.put(Constants.MANDATORY, Boolean.parseBoolean(normalized));
+        return coerced;
     }
 
     /**
@@ -1871,8 +1963,9 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
 
     /**
      * Creates a CB Plan through the AI CBP admin flow using V4 logic.
-     * targetedOrganisation from the request body becomes the effective org;
-     * planType is forced to AICBP before delegating to the V4 create flow.
+     * The token is only validated (no profile/org enrichment); targetedOrganisation from the
+     * request body is the effective org for user group lookup, CCA/L0 rules and orgIdList.
+     * planType is forced to AICBP.
      *
      * @param request   the API request containing CB Plan details and targetedOrganisation
      * @param authToken the authentication token
@@ -1880,20 +1973,57 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
      */
     @Override
     public ApiResponse createCbPlanByAdmin(ApiRequest request, String authToken) {
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_CB_PLAN_V4_AICBP_CREATE);
         String targetedOrganisation = extractTargetedOrganisation(request);
         if (StringUtils.isBlank(targetedOrganisation)) {
             log.warn("CbPlanServiceV4Impl.createCbPlanByAdmin: {}", Constants.ERR_TARGETED_ORGANISATION_REQUIRED);
-            ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_CB_PLAN_V4_AICBP_CREATE);
             response.getParams().setStatus(Constants.FAILED);
             response.getParams().setErr(Constants.ERR_TARGETED_ORGANISATION_REQUIRED);
             response.setResponseCode(HttpStatus.BAD_REQUEST);
             return response;
         }
-        Map<String, Object> rawRequest = (Map<String, Object>) request.getRequest();
-        rawRequest.put(Constants.ORG_ID_LIST, List.of(targetedOrganisation));
-        rawRequest.put(Constants.PLAN_TYPE, Constants.PLAN_TYPE_AI_CBP);
-        log.info("CbPlanServiceV4Impl.createCbPlanByAdmin: Creating AI CBP plan for targetedOrganisation={}", targetedOrganisation);
-        return createCbPlan(request, authToken);
+        try {
+            String userId = accessTokenValidator.fetchUserIdFromAccessToken(authToken, response);
+            if (StringUtils.isEmpty(userId)) {
+                return response;
+            }
+            Boolean isCCA = resolveTargetedOrgCCA(targetedOrganisation, response);
+            if (Objects.isNull(isCCA)) {
+                return response;
+            }
+            log.info("CbPlanServiceV4Impl.createCbPlanByAdmin: Creating AI CBP plan for targetedOrganisation={}, isCCA={}, userId={}",
+                    targetedOrganisation, isCCA, userId);
+            ((Map<String, Object>) request.getRequest()).put(Constants.PLAN_TYPE, Constants.PLAN_TYPE_AI_CBP);
+            coerceMandatoryFlagsInRequest(request);
+            serializeContentListInRequest(request);
+            if (!validationService.validateAiCbpRequest(request, isCCA, targetedOrganisation, response)) {
+                return response;
+            }
+            executePlanCreationTransactional(request, userId, targetedOrganisation, response);
+        } catch (Exception e) {
+            handleException(response, targetedOrganisation, e);
+        }
+        return response;
+    }
+
+    /**
+     * Resolves the CCA flag of an admin-supplied targetedOrganisation. Unlike the caller-org lookup,
+     * an unknown targetedOrganisation is a client error, so it is reported as 400.
+     *
+     * @param targetedOrganisation targetedOrganisation from the request body
+     * @param response             API response object, populated with a 400 when the org is not found
+     * @return CCA flag, or null when the org could not be resolved
+     */
+    private Boolean resolveTargetedOrgCCA(String targetedOrganisation, ApiResponse response) {
+        boolean isCCA = validationService.validateOrgCCA(targetedOrganisation, response);
+        if (Constants.FAILED.equalsIgnoreCase(response.getParams().getStatus())) {
+            log.warn("CbPlanServiceV4Impl.resolveTargetedOrgCCA: targetedOrganisation not found: {}", targetedOrganisation);
+            response.getParams().setErrMsg(null);
+            response.getParams().setErr(Constants.ERR_FAILED_TO_READ_ORG_DETAILS + targetedOrganisation);
+            response.setResponseCode(HttpStatus.BAD_REQUEST);
+            return null;
+        }
+        return isCCA;
     }
 
     /**
@@ -1921,8 +2051,9 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
     }
 
     /**
-     * Publish flow for the admin (AI CBP) path: resolves userId from token,
-     * fetches the plan, skips the creator/role guard, then delegates to executePublishFlow.
+     * Publish flow for the admin (AI CBP) path: validates the token only, fetches the plan, checks
+     * that targetedOrganisation owns it (orgIdList), skips the creator/role guard, then publishes
+     * with targetedOrganisation as the effective org (its CCA flag, its user groups).
      *
      * @param request       the API request containing plan ID, comment and targetedOrganisation
      * @param userOrgId     target organization ID (from request body)
@@ -1945,11 +2076,43 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
             if (MapUtils.isEmpty(existingCbPlan)) {
                 return response;
             }
-            executePublishFlow(request, userId, userOrgId, cbPlanId, existingCbPlan, response);
+            if (!isOwnedByTargetedOrg(existingCbPlan, userOrgId, cbPlanId, response)) {
+                return response;
+            }
+            Boolean isCCA = resolveTargetedOrgCCA(userOrgId, response);
+            if (Objects.isNull(isCCA)) {
+                return response;
+            }
+            executePublishFlowForOrg(request, userId, userOrgId, isCCA, true, cbPlanId, existingCbPlan, response);
         } catch (Exception e) {
             handlePublishException(response, userOrgId, e);
         }
         return response;
+    }
+
+    /**
+     * Checks that the plan's orgIdList contains the admin-supplied targetedOrganisation, so the
+     * admin publish cannot be pointed at a plan owned by another org. Sets a 403 when it does not.
+     *
+     * @param existingCbPlan       existing CB Plan record
+     * @param targetedOrganisation targetedOrganisation from the request body
+     * @param cbPlanId             CB Plan ID, used in the error message
+     * @param response             API response object, populated with a 403 on mismatch
+     * @return true when targetedOrganisation owns the plan
+     */
+    private boolean isOwnedByTargetedOrg(Map<String, Object> existingCbPlan, String targetedOrganisation,
+                                         String cbPlanId, ApiResponse response) {
+        Object orgIdListObj = existingCbPlan.get(Constants.ORG_ID_LIST);
+        if (orgIdListObj instanceof Collection<?> orgIdList
+                && orgIdList.stream().anyMatch(orgId -> StringUtils.equalsIgnoreCase(String.valueOf(orgId), targetedOrganisation))) {
+            return true;
+        }
+        log.warn("CbPlanServiceV4Impl.isOwnedByTargetedOrg: targetedOrganisation={} not in orgIdList={} for cbPlanId={}",
+                targetedOrganisation, orgIdListObj, cbPlanId);
+        response.getParams().setStatus(Constants.FAILED);
+        response.getParams().setErr(String.format(Constants.ERR_AICBP_TARGET_ORG_MISMATCH, targetedOrganisation, cbPlanId));
+        response.setResponseCode(HttpStatus.FORBIDDEN);
+        return false;
     }
 
     /**

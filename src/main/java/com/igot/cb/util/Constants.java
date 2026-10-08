@@ -710,16 +710,6 @@ public class Constants {
     public static final String ERR_BOTH_ROOT_ORG_AND_MINISTRY_USED =
             ERR_PREFIX + "Cannot use both rootOrgId and ministryOrStateId criteria in the same request. Please use only one";
     public static final String ERR_USER_ORG_NOT_FOUND = "User organization not found";
-    public static final String ERR_AICBP_USER_GROUP_ID_REQUIRED =
-            ERR_PREFIX + "AI CBP plans must reference user groups by userGroupId; inline userGroupCriteriaList is not supported";
-    public static final String ERR_AICBP_MINISTRY_OR_STATE_ID_MISMATCH =
-            ERR_PREFIX + "ministryOrStateId criteria must reference only the targetedOrganisation %s";
-    public static final String ERR_AICBP_TARGET_NOT_MINISTRY_OR_STATE =
-            ERR_PREFIX + "targetedOrganisation %s is not a ministry/state (L0) or CCA organization and cannot use ministryOrStateId criteria";
-    public static final String ERR_AICBP_ROOT_ORG_ID_MISMATCH =
-            ERR_PREFIX + "User group must have exactly one ROOT_ORG_ID criteria equal to targetedOrganisation %s";
-    public static final String ERR_AICBP_TARGET_ORG_MISMATCH =
-            "targetedOrganisation %s does not own CB Plan %s";
     public static final String HIERARCHY_LEVEL = "hierarchylevel";
     public static final String LEVEL_ZERO = "levelZero";
     public static final String MINISTRY_OR_STATE_ORG_NAME = "ministryOrStateOrgName";

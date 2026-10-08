@@ -54,8 +54,8 @@ public class CbPlanUserGroupLookupServiceV4Impl {
                     Constants.COL_USERGROUPID, userGroupId
             );
             List<Map<String, Object>> results = cassandraOperation.getRecordsByProperties(
-                    Constants.KEYSPACE_SUNBIRD,
-                    Constants.TABLE_USER_GROUP_INFO,
+                    serverProperties.getCbPlanV4Keyspace(),
+                    serverProperties.getCbPlanV4UserGroupTable(),
                     compositeKey,
                     List.of(),
                     null
@@ -116,8 +116,8 @@ public class CbPlanUserGroupLookupServiceV4Impl {
         Map<String, Map<String, Object>> chunkMap = new HashMap<>();
         try {
             BatchQueryParams params = BatchQueryParams.builder()
-                    .keyspaceName(Constants.KEYSPACE_SUNBIRD)
-                    .tableName(Constants.TABLE_USER_GROUP_INFO)
+                    .keyspaceName(serverProperties.getCbPlanV4Keyspace())
+                    .tableName(serverProperties.getCbPlanV4UserGroupTable())
                     .partitionKeyColumn(Constants.COL_ORGID)
                     .partitionKeyValue(orgId)
                     .clusteringColumn(Constants.COL_USERGROUPID)

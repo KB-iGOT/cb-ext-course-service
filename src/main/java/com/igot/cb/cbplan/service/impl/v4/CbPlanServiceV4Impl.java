@@ -2,11 +2,9 @@ package com.igot.cb.cbplan.service.impl.v4;
 
 import java.time.Instant;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 
-import com.igot.cb.cbplan.service.CbPlanServiceV3;
-import com.igot.cb.cbplan.service.impl.CbPlanContentLookupServiceV3Impl;
 import com.igot.cb.cbplan.service.impl.CbPlanDataTransformServiceV3Impl;
-import com.igot.cb.cbplan.service.impl.CbPlanOrgLookupServiceV3Impl;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -18,8 +16,9 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import com.igot.cb.cache.CbPlanCacheMgrV3;
-import com.igot.cb.cache.RedisCacheMgr;
+import com.igot.cb.cache.CbPlanCacheMgrV4;
+import com.igot.cb.cache.CbExtRedisCacheMgr;
+import org.springframework.beans.factory.annotation.Qualifier;
 import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.cbplan.dto.CbPlanReadResponseDto;
 import com.igot.cb.cbplan.service.CbPlanServiceV4;
@@ -47,36 +46,36 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
     private final CbExtServerProperties serverProperties;
     private final CbPlanValidationServiceV4Impl validationService;
     private final CbPlanDataTransformServiceV3Impl dataTransformService;
-    private final CbPlanContentLookupServiceV3Impl contentLookupService;
+    private final CbPlanContentLookupServiceV4Impl contentLookupService;
     private final CbPlanElasticSearchServiceV4Impl elasticSearchService;
-    private final CbPlanOrgLookupServiceV3Impl orgLookupService;
+    private final CbPlanOrgLookupServiceV4Impl orgLookupService;
     private final CbPlanReadServiceV4Impl readService;
     private final CbPlanSearchServiceV4Impl searchService;
-    private final CbPlanServiceV3 cbPlanServiceV3;
     private final EsUtilService esUtilService;
     private final AccessTokenValidator accessTokenValidator;
     private final UserProfileUtil userProfileUtil;
     private final CbPlanDictionaryServiceV4Impl dictionaryService;
-    private final RedisCacheMgr redisCacheMgr;
-    private final CbPlanCacheMgrV3 cbPlanCacheMgrV3;
+    private final CbExtRedisCacheMgr redisCacheMgr;
+    private final CbPlanCacheMgrV4 cbPlanCacheMgrV4;
+    private final CbPlanContentSyncServiceV4Impl contentSyncService;
     private final ObjectMapper mapper;
 
     public CbPlanServiceV4Impl(CassandraOperation cassandraOperation,
                                CbExtServerProperties serverProperties,
                                CbPlanValidationServiceV4Impl validationService,
                                CbPlanDataTransformServiceV3Impl dataTransformService,
-                               CbPlanContentLookupServiceV3Impl contentLookupService,
+                               CbPlanContentLookupServiceV4Impl contentLookupService,
                                CbPlanElasticSearchServiceV4Impl elasticSearchService,
-                               CbPlanOrgLookupServiceV3Impl orgLookupService,
+                               CbPlanOrgLookupServiceV4Impl orgLookupService,
                                CbPlanReadServiceV4Impl readService,
                                CbPlanSearchServiceV4Impl searchService,
-                               CbPlanServiceV3 cbPlanServiceV3,
                                EsUtilService esUtilService,
                                AccessTokenValidator accessTokenValidator,
                                UserProfileUtil userProfileUtil,
                                CbPlanDictionaryServiceV4Impl dictionaryService,
-                               RedisCacheMgr redisCacheMgr,
-                               CbPlanCacheMgrV3 cbPlanCacheMgrV3) {
+                               @Qualifier("cbPlanRedisCacheMgr") CbExtRedisCacheMgr redisCacheMgr,
+                               CbPlanCacheMgrV4 cbPlanCacheMgrV4,
+                               CbPlanContentSyncServiceV4Impl contentSyncService) {
         this.cassandraOperation = cassandraOperation;
         this.serverProperties = serverProperties;
         this.validationService = validationService;
@@ -86,26 +85,26 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
         this.orgLookupService = orgLookupService;
         this.readService = readService;
         this.searchService = searchService;
-        this.cbPlanServiceV3 = cbPlanServiceV3;
         this.esUtilService = esUtilService;
         this.accessTokenValidator = accessTokenValidator;
         this.userProfileUtil = userProfileUtil;
         this.dictionaryService = dictionaryService;
         this.redisCacheMgr = redisCacheMgr;
-        this.cbPlanCacheMgrV3 = cbPlanCacheMgrV3;
+        this.cbPlanCacheMgrV4 = cbPlanCacheMgrV4;
+        this.contentSyncService = contentSyncService;
         this.mapper = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
     }
 
     @Override
-    public ApiResponse createCbPlan(ApiRequest request, String authToken) {
+    public ApiResponse createCbPlan(ApiRequest request, String targetedOrganisation, String authToken) {
         log.info("CbPlanServiceV4Impl.createCbPlan: Creating CB Plan V4");
         ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_CB_PLAN_V4_CREATE);
         String userRootOrgId = null;
 
         try {
-            if (!validateAuthAndOrganization(authToken, response)) {
+            if (!validateAuthAndOrganization(authToken, targetedOrganisation, response)) {
                 return response;
             }
             String userId = (String) response.getResult().get(Constants.USER_ID);
@@ -131,20 +130,40 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
 
     /**
      * Validates the caller's token and resolves their root org and CCA status.
+     * When targetedOrganisation is given (AI CBP), the caller must hold AICBP_ADMIN in the token
+     * and targetedOrganisation is used as the org instead of the caller's own org.
      * On success, stashes userId/rootOrgId/isCCA into the response result map so
      * the caller can read them back before clearing it for the real response body.
      *
-     * @param authToken authentication token
-     * @param response  API response object, populated with an error on failure
+     * @param authToken            authentication token
+     * @param targetedOrganisation org to create the plan for (AI CBP), or null for the caller's own org
+     * @param response             API response object, populated with an error on failure
      * @return true when the caller is authenticated and their org was resolved
      */
-    private boolean validateAuthAndOrganization(String authToken, ApiResponse response) {
-        String userId = validationService.validateAndExtractUserId(authToken, response);
-        if (StringUtils.isEmpty(userId)) {
+    private boolean validateAuthAndOrganization(String authToken, String targetedOrganisation, ApiResponse response) {
+        Map<String, Object> tokenData = accessTokenValidator.fetchUserIdAndOrg(authToken);
+        String userId = (String) tokenData.get(Constants.USER_ID);
+        if (StringUtils.isBlank(userId)) {
+            response.getParams().setStatus(Constants.FAILED);
+            response.getParams().setErrMsg(Constants.ACCESS_TOKEN_IS_EXPIRED);
+            response.setResponseCode(HttpStatus.UNAUTHORIZED);
             return false;
         }
 
-        String userRootOrgId = validationService.validateUserOrganization(userId, response);
+        boolean isAiCbpAdmin = hasAuthorizedRoles(tokenData);
+        boolean hasTargetedOrganisation = StringUtils.isNotBlank(targetedOrganisation);
+        if (hasTargetedOrganisation && !isAiCbpAdmin) {
+            log.warn("CbPlanServiceV4Impl.validateAuthAndOrganization: AICBP_ADMIN role missing for targetedOrganisation - userId={}",
+                    userId);
+            response.getParams().setStatus(Constants.FAILED);
+            response.getParams().setErr(Constants.ERR_AICBP_ROLE_REQUIRED);
+            response.setResponseCode(HttpStatus.FORBIDDEN);
+            return false;
+        }
+
+        String userRootOrgId = isAiCbpAdmin && hasTargetedOrganisation
+                ? targetedOrganisation
+                : validationService.validateUserOrganization(userId, response);
         if (StringUtils.isEmpty(userRootOrgId)) {
             response.getParams().setStatus(Constants.FAILED);
             response.getParams().setErr(Constants.ERR_USER_ORG_NOT_FOUND);
@@ -163,6 +182,18 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
         response.getResult().put(Constants.ROOT_ORG_ID, userRootOrgId);
         response.getResult().put(Constants.IS_CCA, isCCA);
         return true;
+    }
+
+    /**
+     * Checks whether the token carries the AICBP_ADMIN role, which allows creating or publishing
+     * a plan for a targetedOrganisation instead of the caller's own org.
+     *
+     * @param tokenData user details from {@link AccessTokenValidator#fetchUserIdAndOrg}
+     * @return true when the token roles contain AICBP_ADMIN
+     */
+    private boolean hasAuthorizedRoles(Map<String, Object> tokenData) {
+        Object roles = tokenData.get(Constants.ROLES);
+        return roles instanceof Collection<?> roleList && roleList.contains(Constants.ROLE_AICBP_ADMIN);
     }
 
     /**
@@ -308,7 +339,7 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
      */
     private Map<String, Object> fetchExistingPlan(String cbPlanId, ApiResponse response) {
         List<Map<String, Object>> cbPlanMapInfo = cassandraOperation.getRecordsByProperties(
-                Constants.KEYSPACE_SUNBIRD, Constants.TABLE_CB_PLAN_V3,
+                serverProperties.getCbPlanV4Keyspace(), serverProperties.getCbPlanV4PlanTable(),
                 Map.of(Constants.PLAN_ID, cbPlanId), null, serverProperties.getCassandraQueryLimitPrimaryKey());
         if (CollectionUtils.isEmpty(cbPlanMapInfo)) {
             log.warn("CbPlanServiceV4Impl.fetchExistingPlan: CB Plan not found - cbPlanId={}", cbPlanId);
@@ -479,8 +510,8 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
                                      ApiResponse response) throws JsonProcessingException {
         String draftData = mapper.writeValueAsString(updatedCbPlan);
         String planId = (String) existingCbPlan.get(Constants.PLAN_ID);
-        Map<String, Object> resp = cassandraOperation.updateRecord(Constants.KEYSPACE_SUNBIRD,
-                Constants.TABLE_CB_PLAN_V3, Map.of(Constants.DRAFT_DATA, draftData),
+        Map<String, Object> resp = cassandraOperation.updateRecord(serverProperties.getCbPlanV4Keyspace(),
+                serverProperties.getCbPlanV4PlanTable(), Map.of(Constants.DRAFT_DATA, draftData),
                 Map.of(Constants.PLAN_ID, planId));
         if (Constants.SUCCESS.equals(resp.get(Constants.RESPONSE))) {
             log.info("CbPlanServiceV4Impl.saveLivePlanAsDraft: Staged update as draft - cbPlanId={}", planId);
@@ -526,13 +557,31 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
         ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_CB_PLAN_V4_PUBLISH);
         String userRootOrgId = null;
         try {
-            String userId = accessTokenValidator.fetchUserIdFromAccessToken(authToken, response);
-            if (StringUtils.isEmpty(userId)) {
+            Map<String, Object> tokenData = accessTokenValidator.fetchUserIdAndOrg(authToken);
+            String userId = (String) tokenData.get(Constants.USER_ID);
+            if (StringUtils.isBlank(userId)) {
+                response.getParams().setStatus(Constants.FAILED);
+                response.getParams().setErrMsg(Constants.ACCESS_TOKEN_IS_EXPIRED);
+                response.setResponseCode(HttpStatus.UNAUTHORIZED);
                 return response;
             }
 
-            Map<String, String> userProfile = userProfileUtil.buildUserProfile(userId, response);
-            userRootOrgId = userProfile.get(Constants.USER_ROOT_ORG_ID);
+            // AI CBP: publishing with targetedOrganisation requires AICBP_ADMIN and acts for that org instead of its own.
+            String targetedOrganisation = extractTargetedOrganisation(request);
+            boolean isAiCbpAdmin = hasAuthorizedRoles(tokenData);
+            boolean hasTargetedOrganisation = StringUtils.isNotBlank(targetedOrganisation);
+            if (hasTargetedOrganisation && !isAiCbpAdmin) {
+                log.warn("CbPlanServiceV4Impl.publishCbPlan: AICBP_ADMIN role missing for targetedOrganisation - userId={}", userId);
+                response.getParams().setStatus(Constants.FAILED);
+                response.getParams().setErr(Constants.ERR_AICBP_ROLE_REQUIRED);
+                response.setResponseCode(HttpStatus.FORBIDDEN);
+                return response;
+            }
+            boolean publishForTargetedOrganisation = isAiCbpAdmin && hasTargetedOrganisation;
+            Map<String, String> userProfile = publishForTargetedOrganisation
+                    ? Collections.emptyMap()
+                    : userProfileUtil.buildUserProfile(userId, response);
+            userRootOrgId = publishForTargetedOrganisation ? targetedOrganisation : userProfile.get(Constants.USER_ROOT_ORG_ID);
             String userRolesStr = userProfile.get(Constants.ROLES);
 
             if (StringUtils.isBlank(userRootOrgId)) {
@@ -558,7 +607,8 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
             if (MapUtils.isEmpty(existingCbPlan)) {
                 return response;
             }
-            if (validationService.isUnauthorizedToUpdate(userId, existingCbPlan, userRoles, response)) {
+            if (!publishForTargetedOrganisation
+                    && validationService.isUnauthorizedToUpdate(userId, existingCbPlan, userRoles, response)) {
                 return response;
             }
             executePublishFlow(request, userId, userRootOrgId, cbPlanId, existingCbPlan, response);
@@ -569,7 +619,7 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
     }
 
     /**
-     * Re-validates the caller's org/CCA status, builds the publish update from
+     * Resolves the CCA status of userOrgId (caller's org, or targetedOrganisation for AI CBP), builds the publish update from
      * either the DRAFT plan's own fields or its staged {@code draftData}, and
      * commits the transaction.
      *
@@ -583,11 +633,7 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
      */
     private void executePublishFlow(ApiRequest request, String userId, String userOrgId, String cbPlanId,
                                     Map<String, Object> existingCbPlan, ApiResponse response) throws JsonProcessingException {
-        String rootOrgId = validationService.validateUserOrganization(userId, response);
-        if (StringUtils.isEmpty(rootOrgId)) {
-            return;
-        }
-        boolean isCCA = validationService.validateOrgCCA(rootOrgId, response);
+        boolean isCCA = validationService.validateOrgCCA(userOrgId, response);
         if (Constants.FAILED.equalsIgnoreCase(response.getParams().getStatus())) {
             return;
         }
@@ -809,8 +855,8 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
         Map<String, Object> sanitizedMapForEs = prepareDataForElasticsearch(sanitizedMap);
         Map<String, Object> sanitizedExisting = elasticSearchService.sanitizeForElastic(existingCbPlan);
         Map<String, Object> resp = cassandraOperation.updateRecord(
-                Constants.KEYSPACE_SUNBIRD,
-                Constants.TABLE_CB_PLAN_V3,
+                serverProperties.getCbPlanV4Keyspace(),
+                serverProperties.getCbPlanV4PlanTable(),
                 updatedRequest,
                 Map.of(Constants.PLAN_ID, cbPlanId),
                 () -> Objects.nonNull(esUtilService.updateDocument(serverProperties.getCpPlanIndex(), Constants.INDEX_TYPE,
@@ -823,6 +869,7 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
             updatedRequest.put(Constants.EXISTING_MINISTRY_OR_STATE_IDS, existingMinistryOrStateIds);
             updatedRequest.put(Constants.NEW_MINISTRY_OR_STATE_IDS, newMinistryOrStateIds);
             updateOrgLookupTables(cbPlanId, planYear, updatedRequest, existingCbPlan, existingStatus, response);
+            syncContentNodeAfterPublish(updatedRequest, existingCbPlan);
         } else {
             response.getParams().setStatus(Constants.FAILED);
             response.getParams().setErr((String) resp.get(Constants.ERROR_MESSAGE) + " for cbPlanId: " + cbPlanId);
@@ -883,6 +930,7 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
             orgLookupService.handleMinistryOrStateIdLookupChanges(cbPlanId, planYear, existingMinistryOrStateIds,
                     newMinistryOrStateIds, endDate, response);
         }
+        triggerDictionaryCacheInvalidation(cbPlanId, planYear, orgScope, updatedRequest, existingCbPlan);
     }
 
     /**
@@ -1000,6 +1048,8 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
             return;
         }
         CbPlanReadResponseDto enrichedData = readService.buildEnrichedPlanData(cbPlan, cbPlanId);
+        enrichCreatedByName(enrichedData);
+        enrichCreatedByOrgName(enrichedData);
         response.getResult().put(Constants.CONTENT, enrichedData);
         log.info("CbPlanServiceV4Impl.readCbPlan: Successfully retrieved CB Plan - cbPlanId={}", cbPlanId);
     }
@@ -1076,6 +1126,8 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
             return;
         }
         CbPlanReadResponseDto enrichedData = readService.buildEnrichedPlanData(cbPlan, cbPlanId);
+        enrichCreatedByName(enrichedData);
+        enrichCreatedByOrgName(enrichedData);
         response.getResult().put(Constants.CONTENT, enrichedData);
         log.info("CbPlanServiceV4Impl.readCbPlanAdmin: Successfully retrieved CB Plan - cbPlanId={}", cbPlanId);
     }
@@ -1225,33 +1277,41 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
         log.info("CbPlanServiceV4Impl.retireCbPlan: Archiving CB Plan V4");
         ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_CB_PLAN_RETIRE);
         try {
-            String userId = accessTokenValidator.fetchUserIdFromAccessToken(authToken, response);
+            String userId = validationService.validateAndExtractUserId(authToken, response);
             if (StringUtils.isEmpty(userId)) {
                 return response;
             }
             Map<String, String> userProfile = userProfileUtil.buildUserProfile(userId, response);
-            String userRootOrgId = userProfile.get(Constants.USER_ROOT_ORG_ID);
-            String userRolesStr = userProfile.get(Constants.ROLES);
+            String userRootOrgId = extractAndValidateOrgId(userProfile, userId, response);
             if (StringUtils.isBlank(userRootOrgId)) {
-                log.warn("CbPlanServiceV4Impl.retireCbPlan: Failed to fetch userRootOrgId for userId={}", userId);
-                response.getParams().setStatus(Constants.FAILED);
-                response.getParams().setErr(Constants.ERR_USER_ORG_NOT_FOUND);
-                response.setResponseCode(HttpStatus.BAD_REQUEST);
                 return response;
             }
-            List<String> userRoles = StringUtils.isNotBlank(userRolesStr)
-                    ? List.of(userRolesStr.split(","))
-                    : Collections.emptyList();
-            log.info("CbPlanServiceV4Impl.retireCbPlan: Delegating to V3 service - userId={}, orgId={}, roles={}",
-                    userId, userRootOrgId, userRoles);
-            return cbPlanServiceV3.retireCbPlan(request, userRootOrgId, authToken, userRoles);
+            List<String> userRoles = extractRoles(userProfile);
+            Map<String, Object> requestData = (Map<String, Object>) request.getRequest();
+            String cbPlanId = extractPlanIdFromRequest(requestData, response);
+            if (StringUtils.isEmpty(cbPlanId)) {
+                return response;
+            }
+            String comment = (String) requestData.get(Constants.COMMENT);
+            Map<String, Object> existingCbPlan = fetchExistingPlan(cbPlanId, response);
+            if (MapUtils.isEmpty(existingCbPlan)) {
+                return response;
+            }
+            if (validationService.isUnauthorizedToUpdate(userId, existingCbPlan, userRoles, response)) {
+                return response;
+            }
+            if (isPlanAlreadyRetired(existingCbPlan, cbPlanId, response)) {
+                return response;
+            }
+            executeRetirePlan(cbPlanId, comment, userId, existingCbPlan, response);
+            addCaLinkedWarningIfApplicable(existingCbPlan, response);
         } catch (Exception e) {
             log.error("CbPlanServiceV4Impl.retireCbPlan: Failed to archive CB Plan", e);
             response.getParams().setStatus(Constants.FAILED);
             response.getParams().setErr(e.getMessage());
             response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
-            return response;
         }
+        return response;
     }
 
     /**
@@ -1310,8 +1370,8 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
         updateMap.put(Constants.UPDATED_BY, updatedBy);
         updateMap.put(Constants.UPDATED_AT, Instant.now());
         Map<String, Object> resp = cassandraOperation.updateRecord(
-                Constants.KEYSPACE_SUNBIRD,
-                Constants.TABLE_CB_PLAN_V3,
+                serverProperties.getCbPlanV4Keyspace(),
+                serverProperties.getCbPlanV4PlanTable(),
                 updateMap,
                 Map.of(Constants.PLAN_ID, cbPlanId));
         if (!Constants.SUCCESS.equals(resp.get(Constants.RESPONSE))) {
@@ -1320,7 +1380,7 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
             return false;
         }
         elasticSearchService.updateElasticSearchForPlan(cbPlanId, updateMap);
-        cbPlanCacheMgrV3.invalidatePlan(cbPlanId);
+        cbPlanCacheMgrV4.invalidatePlan(cbPlanId);
         redisCacheMgr.deleteKeysByPatternAsync(Constants.CB_PLAN_V4_REDIS_KEY_PREFIX + "*");
         log.info("CbPlanServiceV4Impl.updateCaLinkedId: Updated - cbPlanId={}, caLinkedId={}, updatedBy={}",
                 cbPlanId, caLinkedId, updatedBy);
@@ -1333,6 +1393,14 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
     @Override
     public ApiResponse getCBPlanDictionaryForUser(ApiRequest request, String authToken) {
         return dictionaryService.getCBPlanDictionaryForUser(request, authToken);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public ApiResponse getComprehensiveAssessmentEligibility(String doId, String authToken) {
+        return dictionaryService.getComprehensiveAssessmentEligibility(doId, authToken);
     }
 
     /**
@@ -1409,8 +1477,8 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
             Map<String, Object> planDataForEs = prepareDataForElasticsearch(planData);
 
             Map<String, Object> insertResult = cassandraOperation.insertRecord(
-                    Constants.KEYSPACE_SUNBIRD,
-                    Constants.TABLE_CB_PLAN_V3,
+                    serverProperties.getCbPlanV4Keyspace(),
+                    serverProperties.getCbPlanV4PlanTable(),
                     planData,
                     () -> elasticSearchService.tryIndexPlan(planId, planDataForEs),
                     () -> elasticSearchService.rollbackCreate(planId)
@@ -1454,13 +1522,24 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
      */
     private void executeDraftPlanUpdateTransactional(String cbPlanId, Map<String, Object> updatedRequest,
                                                       Map<String, Object> existingCbPlan, ApiResponse response) {
+        Map<String, Object> esReadyUpdate = prepareDataForElasticsearch(
+                elasticSearchService.sanitizeForElastic(updatedRequest));
+        Map<String, Object> esReadyExisting = prepareDataForElasticsearch(
+                elasticSearchService.sanitizeForElastic(existingCbPlan));
         Map<String, Object> resp = cassandraOperation.updateRecord(
-                Constants.KEYSPACE_SUNBIRD,
-                Constants.TABLE_CB_PLAN_V3,
+                serverProperties.getCbPlanV4Keyspace(),
+                serverProperties.getCbPlanV4PlanTable(),
                 updatedRequest,
                 Map.of(Constants.PLAN_ID, cbPlanId),
-                () -> elasticSearchService.tryUpdatePlan(cbPlanId, updatedRequest),
-                () -> elasticSearchService.rollbackUpdate(cbPlanId, existingCbPlan)
+                () -> Objects.nonNull(esUtilService.updateDocument(serverProperties.getCpPlanIndex(),
+                        Constants.INDEX_TYPE, cbPlanId, esReadyUpdate, serverProperties.getElasticCbPlanJsonPath())),
+                () -> {
+                    String rollbackResult = esUtilService.updateDocument(serverProperties.getCpPlanIndex(),
+                            Constants.INDEX_TYPE, cbPlanId, esReadyExisting, serverProperties.getElasticCbPlanJsonPath());
+                    if (Objects.isNull(rollbackResult)) {
+                        log.error("ES_CASSANDRA_DIVERGENCE: ES rollback for draft update failed for planId={} — manual reconciliation required", cbPlanId);
+                    }
+                }
         );
         if (Constants.SUCCESS.equals(resp.get(Constants.RESPONSE))) {
             processDraftUpdateSuccessPostEsUpdate(cbPlanId, updatedRequest, existingCbPlan, response);
@@ -1523,5 +1602,454 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
         entry.put(Constants.IDENTIFIER, item);
         entry.put(Constants.MANDATORY, false);
         return entry;
+    }
+
+    /**
+     * Resolves the createdBy user ID to a display name and sets it on the DTO.
+     *
+     * @param dto read response DTO to enrich
+     */
+    private void enrichCreatedByName(CbPlanReadResponseDto dto) {
+        String createdBy = dto.getCreatedBy();
+        if (StringUtils.isBlank(createdBy)) {
+            return;
+        }
+        Map<String, String> userIdToName = userProfileUtil.buildUserProfiles(List.of(createdBy));
+        dto.setCreatedByName(userIdToName.getOrDefault(createdBy, StringUtils.EMPTY));
+    }
+
+    /**
+     * Resolves the createdByOrgId to an org display name and sets it on the DTO.
+     * Failures are swallowed — org name is best-effort, not required.
+     *
+     * @param dto read response DTO to enrich
+     */
+    private void enrichCreatedByOrgName(CbPlanReadResponseDto dto) {
+        String createdByOrgId = dto.getCreatedByOrgId();
+        if (StringUtils.isBlank(createdByOrgId)) {
+            return;
+        }
+        try {
+            List<Map<String, Object>> orgList = cassandraOperation.getRecordsByProperties(
+                    Constants.KEYSPACE_SUNBIRD, Constants.ORG_TABLE,
+                    Map.of(Constants.ID, List.of(createdByOrgId)),
+                    List.of(Constants.ID, Constants.ORG_NAME), null);
+            if (CollectionUtils.isNotEmpty(orgList)) {
+                dto.setCreatedByOrgName((String) orgList.get(0).get(Constants.ORG_NAME));
+            }
+        } catch (Exception e) {
+            log.warn("CbPlanServiceV4Impl.enrichCreatedByOrgName: Failed to fetch org name for orgId={}", createdByOrgId, e);
+        }
+    }
+
+
+    /**
+     * Reads the root org ID from the resolved user profile and sets a 400 error on the response if blank.
+     *
+     * @param userProfile resolved user profile map
+     * @param userId      user ID, used only for the warning log
+     * @param response    API response object, populated with a 400 on failure
+     * @return root org ID, or null/blank when absent
+     */
+    private String extractAndValidateOrgId(Map<String, String> userProfile, String userId, ApiResponse response) {
+        String userRootOrgId = userProfile.get(Constants.USER_ROOT_ORG_ID);
+        if (StringUtils.isBlank(userRootOrgId)) {
+            log.warn("CbPlanServiceV4Impl.extractAndValidateOrgId: userRootOrgId missing for userId={}", userId);
+            response.getParams().setStatus(Constants.FAILED);
+            response.getParams().setErr(Constants.ERR_USER_ORG_NOT_FOUND);
+            response.setResponseCode(HttpStatus.BAD_REQUEST);
+        }
+        return userRootOrgId;
+    }
+
+    /**
+     * Parses the comma-separated roles string from the user profile into a list.
+     * Returns an empty list when no roles are present.
+     *
+     * @param userProfile resolved user profile map
+     * @return list of role strings, never null
+     */
+    private List<String> extractRoles(Map<String, String> userProfile) {
+        String rolesStr = userProfile.get(Constants.ROLES);
+        return StringUtils.isNotBlank(rolesStr) ? List.of(rolesStr.split(",")) : Collections.emptyList();
+    }
+
+    /**
+     * Returns true when the plan's current status is RETIRE, setting a 400 error on the response.
+     *
+     * @param existingCbPlan existing CB Plan record from Cassandra
+     * @param cbPlanId       plan ID, used in the error message
+     * @param response       API response object, populated with a 400 on failure
+     * @return true if already retired, false otherwise
+     */
+    private boolean isPlanAlreadyRetired(Map<String, Object> existingCbPlan, String cbPlanId, ApiResponse response) {
+        String status = (String) existingCbPlan.get(Constants.STATUS);
+        if (Constants.CB_RETIRE.equalsIgnoreCase(status)) {
+            log.warn("CbPlanServiceV4Impl.isPlanAlreadyRetired: CB Plan {} is already retired", cbPlanId);
+            response.getParams().setStatus(Constants.FAILED);
+            response.getParams().setErr(String.format(Constants.ERR_CB_PLAN_ALREADY_RETIRED, cbPlanId));
+            response.setResponseCode(HttpStatus.BAD_REQUEST);
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Executes the retire flow: prepares the update payload, writes to Cassandra with an
+     * ES commit lambda and an ES rollback lambda, then delegates to success or failure handlers.
+     *
+     * @param cbPlanId       plan ID to retire
+     * @param comment        optional retirement comment
+     * @param userId         user performing the retirement
+     * @param existingCbPlan current plan data used for ES document preparation and lookup cleanup
+     * @param response       API response object, populated with the outcome
+     */
+    private void executeRetirePlan(String cbPlanId, String comment, String userId,
+                                   Map<String, Object> existingCbPlan, ApiResponse response) {
+        Map<String, Object> updateData = dataTransformService.prepareArchiveUpdate(comment, userId);
+        Map<String, Object> sanitizedForUpdate = buildRetireEsDocument(cbPlanId, existingCbPlan, updateData);
+        Map<String, Object> sanitizedExisting = elasticSearchService.sanitizeForElastic(new HashMap<>(existingCbPlan));
+        normalizeContentListForEs(sanitizedExisting);
+        Map<String, Object> resp = cassandraOperation.updateRecord(
+                serverProperties.getCbPlanV4Keyspace(),
+                serverProperties.getCbPlanV4PlanTable(),
+                updateData,
+                Map.of(Constants.PLAN_ID, cbPlanId),
+                () -> Objects.nonNull(esUtilService.updateDocument(serverProperties.getCpPlanIndex(),
+                        Constants.INDEX_TYPE, cbPlanId, sanitizedForUpdate, serverProperties.getElasticCbPlanJsonPath())),
+                () -> rollbackRetireEsDocument(cbPlanId, sanitizedExisting));
+        if (Constants.SUCCESS.equals(resp.get(Constants.RESPONSE))) {
+            onRetireSuccess(cbPlanId, existingCbPlan, response);
+        } else {
+            onRetireFailure(cbPlanId, resp, response);
+        }
+    }
+
+    /**
+     * Builds the Elasticsearch document for a retired plan by merging the existing plan,
+     * the archive update fields, and forcing status to RETIRE. Sanitizes and normalizes
+     * the contentList for ES nested-type mapping.
+     *
+     * @param cbPlanId       plan ID
+     * @param existingCbPlan current plan data
+     * @param updateData     archive fields (status, updatedBy, updatedAt, comment)
+     * @return sanitized ES document ready for indexing
+     */
+    private Map<String, Object> buildRetireEsDocument(String cbPlanId, Map<String, Object> existingCbPlan,
+                                                      Map<String, Object> updateData) {
+        Map<String, Object> esDoc = new HashMap<>(existingCbPlan);
+        esDoc.putAll(updateData);
+        esDoc.put(Constants.ID, cbPlanId);
+        esDoc.put(Constants.STATUS, Constants.CB_RETIRE);
+        Map<String, Object> sanitized = elasticSearchService.sanitizeForElastic(esDoc);
+        normalizeContentListForEs(sanitized);
+        return sanitized;
+    }
+
+    /**
+     * Best-effort ES rollback invoked when the Cassandra commit fails during retire.
+     * Logs a divergence alert if the rollback itself also fails, requiring manual reconciliation.
+     *
+     * @param cbPlanId         plan ID
+     * @param sanitizedExisting pre-retire ES document to restore
+     */
+    private void rollbackRetireEsDocument(String cbPlanId, Map<String, Object> sanitizedExisting) {
+        if (Objects.isNull(esUtilService.updateDocument(serverProperties.getCpPlanIndex(),
+                Constants.INDEX_TYPE, cbPlanId, sanitizedExisting, serverProperties.getElasticCbPlanJsonPath()))) {
+            log.error("ES_CASSANDRA_DIVERGENCE: ES rollback failed for cbPlanId={} — manual reconciliation required", cbPlanId);
+        }
+    }
+
+    /**
+     * Handles post-retire cleanup after a successful Cassandra commit: removes plan references
+     * from content lookup and deactivates org lookup entries, then sets the success result.
+     *
+     * @param cbPlanId       retired plan ID
+     * @param existingCbPlan pre-retire plan data used for lookup cleanup
+     * @param response       API response object, populated with the success result
+     */
+    private void onRetireSuccess(String cbPlanId, Map<String, Object> existingCbPlan, ApiResponse response) {
+        String planYear = (String) existingCbPlan.get(Constants.PLAN_YEAR);
+        contentLookupService.removeFromContentLookup(cbPlanId, existingCbPlan);
+        orgLookupService.deactivateOrgLookupEntries(cbPlanId, planYear, existingCbPlan, response);
+        if (Constants.SUCCESS.equalsIgnoreCase(response.getParams().getStatus())
+                || Objects.isNull(response.getParams().getStatus())) {
+            response.getResult().put(Constants.STATUS, Constants.UPDATED);
+            response.getResult().put(Constants.MESSAGE, "Archived cbPlan for cbPlanId: " + cbPlanId);
+        }
+    }
+
+    /**
+     * Sets a 400 failed response when the Cassandra retire update does not return SUCCESS.
+     *
+     * @param cbPlanId plan ID, appended to the error message for traceability
+     * @param resp     Cassandra operation response containing the error message
+     * @param response API response object to populate
+     */
+    private void onRetireFailure(String cbPlanId, Map<String, Object> resp, ApiResponse response) {
+        response.getParams().setStatus(Constants.FAILED);
+        response.getParams().setErr(String.format("%s for cbPlanId: %s", resp.get(Constants.ERROR_MESSAGE), cbPlanId));
+        response.setResponseCode(HttpStatus.BAD_REQUEST);
+    }
+
+    /**
+     * Normalizes the contentList field in an ES document for nested-type mapping.
+     * V4 items are JSON strings that are deserialized to Map objects; V3 plain IDs are
+     * wrapped as {@code {identifier, mandatory:false}}. No-op when contentList is absent,
+     * empty, or already contains non-String items.
+     *
+     * @param esDocument ES document to normalize in place
+     */
+    private void normalizeContentListForEs(Map<String, Object> esDocument) {
+        if (!(esDocument.get(Constants.CONTENT_LIST) instanceof List<?> raw)) {
+            return;
+        }
+        if (CollectionUtils.isEmpty(raw) || !(raw.get(0) instanceof String)) {
+            return;
+        }
+        List<Map<String, Object>> normalized = new ArrayList<>();
+        for (Object item : raw) {
+            try {
+                Object parsed = mapper.readValue((String) item, Object.class);
+                if (parsed instanceof Map) {
+                    normalized.add((Map<String, Object>) parsed);
+                    continue;
+                }
+            } catch (JsonProcessingException e) {
+                log.debug("normalizeContentListForEs: plain ID item, wrapping - item={}", item);
+            }
+            normalized.add(Map.of(Constants.IDENTIFIER, item, Constants.MANDATORY, false));
+        }
+        esDocument.put(Constants.CONTENT_LIST, normalized);
+    }
+
+    /**
+     * Extracts and validates the CB Plan ID from the request data map.
+     * Sets {@code ERR_CB_PLAN_ID_MISSING} on the response and returns null when absent or blank.
+     *
+     * @param requestData flattened request body map
+     * @param response    API response object, populated with a 400 on failure
+     * @return CB Plan ID, or null when missing
+     */
+    private String extractPlanIdFromRequest(Map<String, Object> requestData, ApiResponse response) {
+        Object planIdObj = requestData.get(Constants.ID);
+        if (Objects.isNull(planIdObj)) {
+            response.getParams().setStatus(Constants.FAILED);
+            response.getParams().setErr(Constants.ERR_CB_PLAN_ID_MISSING);
+            response.setResponseCode(HttpStatus.BAD_REQUEST);
+            return null;
+        }
+        String cbPlanId = planIdObj.toString();
+        if (StringUtils.isBlank(cbPlanId)) {
+            response.getParams().setStatus(Constants.FAILED);
+            response.getParams().setErr(Constants.ERR_CB_PLAN_ID_MISSING);
+            response.setResponseCode(HttpStatus.BAD_REQUEST);
+            return null;
+        }
+        return cbPlanId;
+    }
+
+    /**
+     * Fires an async sync of the linked content node's {@code trainingPlan_v2} after a
+     * successful publish. Only fires when {@code contentList} was staged in draftData
+     * (i.e., it actually changed in this publish cycle).
+     * Skips when the plan has no {@code caLinkedId} or contentList did not change.
+     *
+     * @param updatedRequest applied publish update map (contains contentList only when changed)
+     * @param existingCbPlan pre-publish plan record
+     */
+    private void syncContentNodeAfterPublish(Map<String, Object> updatedRequest,
+                                             Map<String, Object> existingCbPlan) {
+        String caLinkedId = (String) existingCbPlan.get(Constants.CA_LINKED_ID_DB);
+        if (StringUtils.isBlank(caLinkedId) || !updatedRequest.containsKey(Constants.CONTENT_LIST)) {
+            return;
+        }
+        List<String> contentList = (List<String>) updatedRequest.get(Constants.CONTENT_LIST);
+        contentSyncService.syncContentNodeTrainingPlan(caLinkedId, contentList);
+    }
+
+    /**
+     * Updates {@code calinkedid} on the CB Plan in Cassandra and syncs the change to ElasticSearch.
+     * Invalidates the per-plan Caffeine cache entry and asynchronously deletes Redis dictionary
+     * cache keys scoped to the plan's owning org ({@code orgIdList[0]}).
+     * If {@code orgIdList} is empty the entire V4 dictionary key prefix is flushed as a fallback.
+     *
+     * @param cbPlanId   CB Plan ID to update
+     * @param caLinkedId CA content identifier to set, or {@code null} to clear the link
+     * @param updatedBy  actor recorded in the {@code updatedBy} column (use {@code Constants.SYSTEM_USER} for consumer-driven updates)
+     * @param orgIdList  orgIdList from the CB Plan record; {@code orgIdList[0]} is the owning org used to scope Redis invalidation
+     * @return {@code true} when Cassandra and ElasticSearch were updated successfully; {@code false} on Cassandra failure
+     */
+    @Override
+    public boolean updateCaLinkedIdV2(String cbPlanId, String caLinkedId, String updatedBy,
+                                      List<String> orgIdList) {
+        Map<String, Object> updateMap = new HashMap<>();
+        updateMap.put(Constants.CA_LINKED_ID_DB, caLinkedId);
+        updateMap.put(Constants.UPDATED_BY, updatedBy);
+        updateMap.put(Constants.UPDATED_AT, Instant.now());
+        Map<String, Object> resp = cassandraOperation.updateRecord(
+                serverProperties.getCbPlanV4Keyspace(),
+                serverProperties.getCbPlanV4PlanTable(),
+                updateMap,
+                Map.of(Constants.PLAN_ID, cbPlanId));
+        if (!Constants.SUCCESS.equals(resp.get(Constants.RESPONSE))) {
+            log.error("CbPlanServiceV4Impl.updateCaLinkedIdV2: Cassandra update failed - cbPlanId={}, caLinkedId={}",
+                    cbPlanId, caLinkedId);
+            return false;
+        }
+        elasticSearchService.updateElasticSearchForPlan(cbPlanId, updateMap);
+        cbPlanCacheMgrV4.invalidatePlan(cbPlanId);
+        String orgId = CollectionUtils.isNotEmpty(orgIdList) ? (String) orgIdList.get(0) : null;
+        String deletePattern = StringUtils.isNotBlank(orgId)
+                ? Constants.CB_PLAN_V4_REDIS_KEY_PREFIX + orgId + ":*"
+                : Constants.CB_PLAN_V4_REDIS_KEY_PREFIX + "*";
+        redisCacheMgr.deleteKeysByPatternAsync(deletePattern);
+        log.info("CbPlanServiceV4Impl.updateCaLinkedIdV2: Updated - cbPlanId={}, caLinkedId={}, updatedBy={}, orgId={}",
+                cbPlanId, caLinkedId, updatedBy, orgId);
+        return true;
+    }
+
+    private void addCaLinkedWarningIfApplicable(Map<String, Object> existingCbPlan, ApiResponse response) {
+        String caLinkedId = (String) existingCbPlan.get(Constants.CA_LINKED_ID_DB);
+        if (Constants.UPDATED.equals(response.getResult().get(Constants.STATUS)) && StringUtils.isNotBlank(caLinkedId)) {
+            response.getResult().put(Constants.WARNING, serverProperties.getCbPlanV4CaLinkedRetireWarning());
+        }
+    }
+
+    /**
+     * Creates a CB Plan through the AI CBP admin flow using V4 logic.
+     * targetedOrganisation from the request body becomes the effective org;
+     * planType is forced to AICBP before delegating to the V4 create flow.
+     *
+     * @param request   the API request containing CB Plan details and targetedOrganisation
+     * @param authToken the authentication token
+     * @return ApiResponse containing the created plan ID and status
+     */
+    @Override
+    public ApiResponse createCbPlanByAdmin(ApiRequest request, String authToken) {
+        String targetedOrganisation = extractTargetedOrganisation(request);
+        if (StringUtils.isBlank(targetedOrganisation)) {
+            log.warn("CbPlanServiceV4Impl.createCbPlanByAdmin: {}", Constants.ERR_TARGETED_ORGANISATION_REQUIRED);
+            ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_CB_PLAN_V4_AICBP_CREATE);
+            response.getParams().setStatus(Constants.FAILED);
+            response.getParams().setErr(Constants.ERR_TARGETED_ORGANISATION_REQUIRED);
+            response.setResponseCode(HttpStatus.BAD_REQUEST);
+            return response;
+        }
+        Map<String, Object> rawRequest = (Map<String, Object>) request.getRequest();
+        rawRequest.put(Constants.ORG_ID_LIST, List.of(targetedOrganisation));
+        rawRequest.put(Constants.PLAN_TYPE, Constants.PLAN_TYPE_AI_CBP);
+        log.info("CbPlanServiceV4Impl.createCbPlanByAdmin: Creating AI CBP plan for targetedOrganisation={}", targetedOrganisation);
+        return createCbPlan(request,targetedOrganisation, authToken);
+    }
+
+    /**
+     * Publishes a CB Plan through the AI CBP admin flow using V4 logic.
+     * Delegates to publishCbPlan, which requires AICBP_ADMIN in the token and uses
+     * targetedOrganisation from the request body as the effective org.
+     *
+     * @param request   the API request containing CB Plan ID, comment and targetedOrganisation
+     * @param authToken the authentication token
+     * @return ApiResponse containing the publish status
+     */
+    @Override
+    public ApiResponse publishCbPlanByAdmin(ApiRequest request, String authToken) {
+        String targetedOrganisation = extractTargetedOrganisation(request);
+        if (StringUtils.isBlank(targetedOrganisation)) {
+            log.warn("CbPlanServiceV4Impl.publishCbPlanByAdmin: {}", Constants.ERR_TARGETED_ORGANISATION_REQUIRED);
+            ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_CB_PLAN_V4_AICBP_PUBLISH);
+            response.getParams().setStatus(Constants.FAILED);
+            response.getParams().setErr(Constants.ERR_TARGETED_ORGANISATION_REQUIRED);
+            response.setResponseCode(HttpStatus.BAD_REQUEST);
+            return response;
+        }
+        log.info("CbPlanServiceV4Impl.publishCbPlanByAdmin: Publishing AI CBP plan for targetedOrganisation={}", targetedOrganisation);
+        return publishCbPlan(request, authToken);
+    }
+
+    /**
+     * Reads the targeted organisation from the request body.
+     *
+     * @param request the API request
+     * @return targeted organisation ID, or null when absent
+     */
+    private String extractTargetedOrganisation(ApiRequest request) {
+        Map<String, Object> rawRequest = (Map<String, Object>) request.getRequest();
+        if (MapUtils.isEmpty(rawRequest)) {
+            return null;
+        }
+        Object value = rawRequest.get(Constants.TARGETED_ORGANISATION);
+        return Objects.nonNull(value) ? String.valueOf(value) : null;
+    }
+
+    /**
+     * Invalidates the {@link CbPlanCacheMgrV4} entries after a publish. Whether the call is
+     * fire-and-forget or blocking is controlled by {@code cbplan.v4.cache.invalidate.async}
+     * (default: {@code true}), mirroring {@link CbPlanContentSyncServiceV4Impl#syncContentNodeTrainingPlan}.
+     *
+     * @param cbPlanId       CB Plan ID
+     * @param planYear       plan year
+     * @param newOrgScope    org scope being applied by this publish
+     * @param updatedRequest applied publish update, including the org/ministry diff sets
+     * @param existingCbPlan pre-publish plan record, used for the previous org scope
+     */
+    private void triggerDictionaryCacheInvalidation(String cbPlanId, String planYear, String newOrgScope,
+                                                    Map<String, Object> updatedRequest, Map<String, Object> existingCbPlan) {
+        if (serverProperties.isCbPlanV4CacheInvalidateAsync()) {
+            CompletableFuture.runAsync(() ->
+                            invalidateDictionaryCaches(cbPlanId, planYear, newOrgScope, updatedRequest, existingCbPlan))
+                    .exceptionally(e -> {
+                        log.error("triggerDictionaryCacheInvalidation: Async cache invalidation failed - cbPlanId={}", cbPlanId, e);
+                        return null;
+                    });
+        } else {
+            invalidateDictionaryCaches(cbPlanId, planYear, newOrgScope, updatedRequest, existingCbPlan);
+        }
+    }
+
+    /**
+     * Evicts the {@link CbPlanCacheMgrV4} entries made stale by this publish: the plan's own
+     * cached row, the org-scope lookup list for every root org gained or lost (or the all-org
+     * list, if either the new or previous org scope is ALL), and the ministry/state lookup list
+     * for every ministryOrStateId gained or lost. Called unconditionally so a republish that
+     * narrows or widens scope evicts both the old and new membership, not just the new one.
+     * The org/ministry diff sets are read back from {@code updatedRequest} (populated earlier
+     * in {@link #executePublishTransaction}) to keep the parameter count within Sonar's limit.
+     *
+     * @param cbPlanId       CB Plan ID
+     * @param planYear       plan year
+     * @param newOrgScope    org scope being applied by this publish
+     * @param updatedRequest applied publish update, including the org/ministry diff sets
+     * @param existingCbPlan pre-publish plan record, used for the previous org scope
+     */
+    private void invalidateDictionaryCaches(String cbPlanId, String planYear, String newOrgScope,
+                                            Map<String, Object> updatedRequest, Map<String, Object> existingCbPlan) {
+        String previousOrgScope = (String) existingCbPlan.get(Constants.ORG_SCOPE);
+        Set<String> newRootOrgIds = (Set<String>) updatedRequest.get(Constants.NEW_ROOT_ORG_IDS);
+        Set<String> existingRootOrgIds = (Set<String>) updatedRequest.get(Constants.EXISTING_ROOT_ORG_IDS);
+        Set<String> newMinistryOrStateIds = (Set<String>) updatedRequest.get(Constants.NEW_MINISTRY_OR_STATE_IDS);
+        Set<String> existingMinistryOrStateIds = (Set<String>) updatedRequest.get(Constants.EXISTING_MINISTRY_OR_STATE_IDS);
+        cbPlanCacheMgrV4.invalidatePlan(cbPlanId);
+        if (Constants.ALL.equalsIgnoreCase(newOrgScope) || Constants.ALL.equalsIgnoreCase(previousOrgScope)) {
+            cbPlanCacheMgrV4.invalidateAllOrgLookup(planYear);
+        }
+        Set<String> affectedOrgIds = new HashSet<>();
+        if (CollectionUtils.isNotEmpty(newRootOrgIds)) {
+            affectedOrgIds.addAll(newRootOrgIds);
+        }
+        if (CollectionUtils.isNotEmpty(existingRootOrgIds)) {
+            affectedOrgIds.addAll(existingRootOrgIds);
+        }
+        affectedOrgIds.forEach(orgId -> cbPlanCacheMgrV4.invalidateOrgLookup(orgId, planYear));
+        Set<String> affectedMinistryIds = new HashSet<>();
+        if (CollectionUtils.isNotEmpty(newMinistryOrStateIds)) {
+            affectedMinistryIds.addAll(newMinistryOrStateIds);
+        }
+        if (CollectionUtils.isNotEmpty(existingMinistryOrStateIds)) {
+            affectedMinistryIds.addAll(existingMinistryOrStateIds);
+        }
+        affectedMinistryIds.forEach(id -> cbPlanCacheMgrV4.invalidateMinistryLookup(id, planYear));
+        log.info("CbPlanServiceV4Impl.invalidateDictionaryCaches: cbPlanId={}, planYear={}, orgCount={}, ministryCount={}",
+                cbPlanId, planYear, affectedOrgIds.size(), affectedMinistryIds.size());
     }
 }

@@ -680,6 +680,9 @@ public class Constants {
     public static final String API_CB_PLAN_V3_AICBP_CREATE = "api.cb.plan.v3.aicbp.create";
     public static final String API_CB_PLAN_V3_AICBP_PUBLISH = "api.cb.plan.v3.aicbp.publish";
     public static final String ERR_TARGETED_ORGANISATION_REQUIRED = "targetedOrganisation is required";
+    public static final String TOKEN_USER_ROLES = "user_roles";
+    public static final String ROLE_AICBP_ADMIN = "AICBP_ADMIN";
+    public static final String ERR_AICBP_ROLE_REQUIRED = "User is not authorized to create or publish a CB Plan for targetedOrganisation";
     public static final String ERR_CB_PLAN_ID_MISSING = "CbPlanId is missing.";
 
     public static final String ERR_PREFIX = "Validation Error: ";
@@ -789,6 +792,9 @@ public class Constants {
     public static final String SYSTEM_USER = "SYSTEM";
     public static final String EXISTS = "exists";
     public static final String API_CBPLAN_V4_GET_USER_DICTIONARY = "api.cbplan.v4.user.dictionary";
+    public static final String API_CBPLAN_V4_ASSESSMENT_ELIGIBILITY = "api.cbplan.v4.user.assessment.eligibility";
+    public static final String ELIGIBLE = "eligible";
+    public static final String MANDATORY_COURSES = "mandatoryCourses";
     public static final String CB_PLAN_V4_REDIS_KEY_PREFIX = "cbplan:v4:userlookup:";
     public static final String RESPONSE_KEY_APAR_PLAN_LIST = "aparPlanList";
     public static final String RESPONSE_KEY_NON_APAR_PLAN_LIST = "nonAparPlanList";
@@ -807,11 +813,22 @@ public class Constants {
     public static final String API_CONTENT_INFO_V2 = "api.content.v2.user.info";
     public static final String API_CBPLAN_V4_SEARCH = "api.cbplan.v4.search";
     public static final String API_CBPLAN_V3_SEARCH = "api.cbplan.v3.search";
-    public static final String MSG_USERGROUP_NAME_EXISTS = "A user group with this name already exists in the organisation";
+    public static final String MSG_USERGROUP_NAME_EXISTS = "A user group with this name already exists in the organisation. Please choose a different name.";
     public static final String PUBLISHED_BY_NAME = "publishedByName";
     public static final String CONTEXT_DATA_ES_FIELD_V4 = "contextDataV4";
-    public static final String MSG_USERGROUP_IN_USE = "User group is referenced by one or more CB Plans and cannot be archived";
+    public static final String MSG_USERGROUP_IN_USE = "This user group is linked to one or more Training Plans and cannot be archived.";
     public static final String ERR_USERGROUP_USAGE_CHECK_FAILED = "Failed to verify user group usage; archive blocked as a precaution";
+    public static final String TRAINING_PLAN_V2 = "trainingPlan_v2";
+    public static final String WARNING = "warning";
+    public static final String API_CB_PLAN_V4_AICBP_CREATE = "api.cb.plan.v4.aicbp.create";
+    public static final String API_CB_PLAN_V4_AICBP_PUBLISH = "api.cb.plan.v4.aicbp.publish";
+    public static final String MSG_SEARCH_FILTERS_REQUIRED = "Filters are required in request";
+    public static final String MSG_SEARCH_FILTERS_EMPTY = "Filters cannot be empty";
+    public static final String MSG_USERGROUPNAME_REQUIRED_IN_FILTERS = "userGroupName is required in filters";
+    public static final String MSG_ORGID_REQUIRED_IN_FILTERS = "rootOrgId (orgId) is required in filters";
+    public static final String MSG_USERGROUP_NOT_FOUND_BY_NAME_ORG = "User group not found with the provided name and organization";
+    public static final String API_USER_GROUP_ADMIN_CREATE = "api.user.group.v1.admin.create";
+    public static final String MSG_ROOTORGID_REQUIRED_IN_BODY = "rootOrgId is required in request body";
 
     private Constants() {
     }

@@ -44,7 +44,7 @@ public class CbPlanWithAccessSettingsV4 {
     public ResponseEntity<ApiResponse> createCbPlan(
             @RequestBody ApiRequest request,
             @RequestHeader(Constants.X_AUTH_TOKEN) String token) {
-        ApiResponse response = cbPlanServiceV4.createCbPlan(request, token);
+        ApiResponse response = cbPlanServiceV4.createCbPlan(request, null, token);
         return new ResponseEntity<>(response, response.getResponseCode());
     }
 
@@ -161,6 +161,57 @@ public class CbPlanWithAccessSettingsV4 {
             @RequestBody ApiRequest request,
             @RequestHeader(Constants.X_AUTH_TOKEN) String token) {
         ApiResponse response = cbPlanServiceV4.getCBPlanDictionaryForUser(request, token);
+        return new ResponseEntity<>(response, response.getResponseCode());
+    }
+
+    /**
+     * Checks whether the given Comprehensive Assessment do_id is linked (via caLinkedId) to any
+     * plan the authenticated user is eligible for, searching the current and previous financial
+     * year server-side. Returns just {eligible, mandatoryCourses} rather than the full dictionary.
+     *
+     * @param doId  CA content identifier to check eligibility for
+     * @param token the authentication token
+     * @return ResponseEntity containing ApiResponse with eligibility + mandatory course identifiers
+     */
+    @GetMapping("/user/assessment/eligibility/{doId}")
+    public ResponseEntity<ApiResponse> getComprehensiveAssessmentEligibility(
+            @PathVariable("doId") String doId,
+            @RequestHeader(Constants.X_AUTH_TOKEN) String token) {
+        ApiResponse response = cbPlanServiceV4.getComprehensiveAssessmentEligibility(doId, token);
+        return new ResponseEntity<>(response, response.getResponseCode());
+    }
+
+    /**
+     * Creates a CB Plan through the AI CBP admin flow using V4 logic.
+     * The target organisation is supplied in the request body as targetedOrganisation;
+     * the plan is tagged with planType = AICBP.
+     *
+     * @param request the API request containing CB Plan details and targetedOrganisation
+     * @param token   the authentication token
+     * @return ResponseEntity containing ApiResponse with created plan details
+     */
+    @PostMapping("/aicbp/create")
+    public ResponseEntity<ApiResponse> createCbPlanByAdmin(
+            @RequestBody ApiRequest request,
+            @RequestHeader(Constants.X_AUTH_TOKEN) String token) {
+        ApiResponse response = cbPlanServiceV4.createCbPlanByAdmin(request, token);
+        return new ResponseEntity<>(response, response.getResponseCode());
+    }
+
+    /**
+     * Publishes a CB Plan through the AI CBP admin flow using V4 logic.
+     * The target organisation is supplied in the request body as targetedOrganisation;
+     * creator/role check is bypassed.
+     *
+     * @param request the API request containing CB Plan ID, comment and targetedOrganisation
+     * @param token   the authentication token
+     * @return ResponseEntity containing ApiResponse with publish status
+     */
+    @PostMapping("/aicbp/publish")
+    public ResponseEntity<ApiResponse> publishCbPlanByAdmin(
+            @RequestBody ApiRequest request,
+            @RequestHeader(Constants.X_AUTH_TOKEN) String token) {
+        ApiResponse response = cbPlanServiceV4.publishCbPlanByAdmin(request, token);
         return new ResponseEntity<>(response, response.getResponseCode());
     }
 }

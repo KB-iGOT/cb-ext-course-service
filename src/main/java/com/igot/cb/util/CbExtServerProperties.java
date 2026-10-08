@@ -196,6 +196,72 @@ public class CbExtServerProperties {
     @Value("${usergroup.edit.missing.role.msg}")
     private String userGroupEditMissingRoleMsg;
 
+    @Value("${cbplan.v4.keyspace}")
+    private String cbPlanV4Keyspace;
+
+    @Value("${cbplan.v4.plan.table}")
+    private String cbPlanV4PlanTable;
+
+    @Value("${cbplan.v4.usergroup.table}")
+    private String cbPlanV4UserGroupTable;
+
+    @Value("${cbplan.v4.lookup.by.org.table}")
+    private String cbPlanV4LookupByOrgTable;
+
+    @Value("${cbplan.v4.lookup.by.all.org.table}")
+    private String cbPlanV4LookupByAllOrgTable;
+
+    @Value("${cbplan.v4.lookup.by.ministryorstateid.table}")
+    private String cbPlanV4LookupByMinistryOrStateIdTable;
+
+    @Value("${cbplan.v4.content.lookup.table}")
+    private String cbPlanV4ContentLookupTable;
+
+    @Value("${usergroup.allow.multiple.root.org.ids:false}")
+    private boolean userGroupAllowMultipleRootOrgIds;
+
+    @Value("${usergroup.allow.empty.root.org.ids:false}")
+    private boolean userGroupAllowEmptyRootOrgIds;
+
+    @Value("${cbplan.content.sync.async:true}")
+    private boolean cbPlanContentSyncAsync;
+
+    @Value("${cb.plan.v4.dictionary.redis.cache.ttl.seconds:3600}")
+    private int cbPlanV4DictionaryRedisCacheTtlSeconds;
+
+    @Value("${cbplan.v4.retire.ca.linked.warning}")
+    private String cbPlanV4CaLinkedRetireWarning;
+
+    @Value("${cbplan.redis.host:localhost}")
+    private String cbPlanRedisHost;
+
+    @Value("${cbplan.redis.port:6379}")
+    private int cbPlanRedisPort;
+
+    @Value("${cbplan.redis.db.index:0}")
+    private int cbPlanRedisDbIndex;
+
+    @Value("${userprofile.redis.host:localhost}")
+    private String userProfileRedisHost;
+
+    @Value("${userprofile.redis.port:6379}")
+    private int userProfileRedisPort;
+
+    @Value("${userprofile.redis.db.index:0}")
+    private int userProfileRedisDbIndex;
+
+    @Value("${extcontent.redis.host:localhost}")
+    private String extContentRedisHost;
+
+    @Value("${extcontent.redis.port:6379}")
+    private int extContentRedisPort;
+
+    @Value("${extcontent.redis.db.index:0}")
+    private int extContentRedisDbIndex;
+
+    @Value("${cbplan.v4.cache.invalidate.async:true}")
+    private boolean cbPlanV4CacheInvalidateAsync;
+
     public List<String> getCbPlanEnrichedContentFieldsList() {
         return Arrays.asList(cbPlanEnrichedContentFields.split(",", -1));
     }

@@ -9,6 +9,7 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.igot.cb.cache.UserGroupCacheMgrV4;
 import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.model.ApiRequest;
 import com.igot.cb.model.ApiResponse;
@@ -51,6 +52,8 @@ class UserGroupServiceImplTest {
     private UserProfileUtil userProfileUtil;
     @Mock
     private ObjectMapper objectMapper;
+    @Mock
+    private UserGroupCacheMgrV4 userGroupCacheMgrV4;
 
     private UserGroupServiceImpl userGroupService;
 
@@ -66,7 +69,8 @@ class UserGroupServiceImplTest {
                 esService,
                 accessTokenValidator,
                 userProfileUtil,
-                objectMapper
+                objectMapper,
+                userGroupCacheMgrV4
         );
     }
 
@@ -188,7 +192,7 @@ class UserGroupServiceImplTest {
         when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), anyMap(), anyList(), any()))
                 .thenReturn(List.of(cassandraRow));
         when(dataTransformService.buildUpdateProperties(anyString(), anyList(), anyString())).thenReturn(updateProps);
-        when(validationService.validateUpdateRequest(anyString(), anyString(), anyList(), any())).thenReturn(true);
+        when(validationService.validateUpdateRequest(anyString(), anyString(), anyList(), anyString(), anyString(), any())).thenReturn(true);
         when(validationService.validateUpdateAuthorization(anyString(), anyString(), anyString(), anyString(), anyString(), any())).thenReturn(true);
         when(cassandraOperation.updateRecord(anyString(), anyString(), anyMap(), anyMap(), any(), any())).thenReturn(Map.of(Constants.RESPONSE, Constants.SUCCESS));
         when(dataTransformService.entityToResponseMap(any())).thenReturn(Map.of(Constants.COL_USERGROUPID, TEST_USER_GROUP_ID));
@@ -258,10 +262,10 @@ class UserGroupServiceImplTest {
         when(accessTokenValidator.fetchUserIdFromAccessToken(eq(TEST_AUTH_TOKEN), any())).thenReturn(TEST_USER_ID);
         when(userProfileUtil.buildUserProfile(eq(TEST_USER_ID), any())).thenReturn(createUserProfile());
         when(objectMapper.convertValue(any(), eq(UserGroupRequest.class))).thenReturn(userGroupRequest);
-        when(validationService.validateUpdateRequest(anyString(), anyString(), any(), any())).thenReturn(true);
+        when(validationService.validateUpdateRequest(anyString(), anyString(), any(), anyString(), anyString(), any())).thenReturn(true);
         when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), anyMap(), anyList(), any())).thenReturn(List.of(cassandraRow));
         when(validationService.validateUpdateAuthorization(anyString(), anyString(), anyString(), anyString(), anyString(), any())).thenReturn(true);
-        when(esService.isDuplicateGroupName(eq(newName), eq(TEST_ORG_ID), eq(TEST_USER_GROUP_ID))).thenReturn(true);
+        when(esService.isDuplicateGroupName(newName, TEST_ORG_ID, TEST_USER_GROUP_ID)).thenReturn(true);
 
         ApiResponse response = userGroupService.updateUserGroup(request, TEST_AUTH_TOKEN);
 
@@ -282,10 +286,10 @@ class UserGroupServiceImplTest {
         when(accessTokenValidator.fetchUserIdFromAccessToken(eq(TEST_AUTH_TOKEN), any())).thenReturn(TEST_USER_ID);
         when(userProfileUtil.buildUserProfile(eq(TEST_USER_ID), any())).thenReturn(createUserProfile());
         when(objectMapper.convertValue(any(), eq(UserGroupRequest.class))).thenReturn(userGroupRequest);
-        when(validationService.validateUpdateRequest(anyString(), anyString(), anyList(), any())).thenReturn(true);
+        when(validationService.validateUpdateRequest(anyString(), anyString(), anyList(), anyString(), anyString(), any())).thenReturn(true);
         when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), anyMap(), anyList(), any())).thenReturn(List.of(cassandraRow));
         when(validationService.validateUpdateAuthorization(anyString(), anyString(), anyString(), anyString(), anyString(), any())).thenReturn(true);
-        when(esService.isDuplicateGroupName(eq(TEST_USER_GROUP_NAME), eq(TEST_ORG_ID), eq(TEST_USER_GROUP_ID))).thenReturn(false);
+        when(esService.isDuplicateGroupName(TEST_USER_GROUP_NAME, TEST_ORG_ID, TEST_USER_GROUP_ID)).thenReturn(false);
         when(dataTransformService.buildUpdateProperties(anyString(), anyList(), anyString())).thenReturn(updateProps);
         when(cassandraOperation.updateRecord(anyString(), anyString(), anyMap(), anyMap(), any(), any())).thenReturn(Map.of(Constants.RESPONSE, Constants.SUCCESS));
         when(dataTransformService.entityToResponseMap(any())).thenReturn(Map.of(Constants.COL_USERGROUPID, TEST_USER_GROUP_ID));
@@ -307,7 +311,7 @@ class UserGroupServiceImplTest {
         when(accessTokenValidator.fetchUserIdFromAccessToken(eq(TEST_AUTH_TOKEN), any())).thenReturn(TEST_USER_ID);
         when(userProfileUtil.buildUserProfile(eq(TEST_USER_ID), any())).thenReturn(createUserProfile());
         when(objectMapper.convertValue(any(), eq(UserGroupRequest.class))).thenReturn(userGroupRequest);
-        when(validationService.validateUpdateRequest(anyString(), isNull(), anyList(), any())).thenReturn(true);
+        when(validationService.validateUpdateRequest(anyString(), isNull(), anyList(), anyString(), anyString(), any())).thenReturn(true);
         when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), anyMap(), anyList(), any())).thenReturn(List.of(cassandraRow));
         when(validationService.validateUpdateAuthorization(anyString(), anyString(), anyString(), anyString(), anyString(), any())).thenReturn(true);
         when(dataTransformService.buildUpdateProperties(isNull(), anyList(), anyString())).thenReturn(updateProps);
@@ -428,7 +432,7 @@ class UserGroupServiceImplTest {
         when(objectMapper.convertValue(any(), eq(UserGroupRequest.class))).thenReturn(userGroupRequest);
         when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), anyMap(), anyList(), any())).thenReturn(List.of(cassandraRow));
         when(dataTransformService.buildUpdateProperties(anyString(), anyList(), anyString())).thenReturn(updateProps);
-        when(validationService.validateUpdateRequest(anyString(), anyString(), anyList(), any())).thenReturn(true);
+        when(validationService.validateUpdateRequest(anyString(), anyString(), anyList(), anyString(), anyString(), any())).thenReturn(true);
         when(validationService.validateUpdateAuthorization(anyString(), anyString(), anyString(), anyString(), anyString(), any())).thenReturn(true);
         when(dataTransformService.entityToResponseMap(any())).thenReturn(new HashMap<>());
         when(cassandraOperation.updateRecord(anyString(), anyString(), anyMap(), anyMap(), any(), any())).thenReturn(Map.of(Constants.RESPONSE, Constants.FAILED));
@@ -538,5 +542,435 @@ class UserGroupServiceImplTest {
         row.put(Constants.COL_CRITERIA, List.of());
         row.put(Constants.COL_STATUS, "ACTIVE");
         return row;
+    }
+
+    @Test
+    void searchUserGroupsV2_withValidRequest_shouldReturnResults() {
+        ApiRequest request = new ApiRequest();
+        Map<String, Object> filters = new HashMap<>();
+        filters.put(Constants.COL_USERGROUPNAME, TEST_USER_GROUP_NAME);
+        filters.put(Constants.COL_ORGID, TEST_ORG_ID);
+        request.setRequest(Map.of(Constants.FILTERS, filters));
+
+        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(TEST_AUTH_TOKEN), any())).thenReturn(TEST_USER_ID);
+
+        Map<String, Object> searchResult = new HashMap<>();
+        searchResult.put(Constants.COUNT, 1L);
+        searchResult.put(Constants.CONTENT, List.of(Map.of(
+            Constants.COL_USERGROUPID, TEST_USER_GROUP_ID,
+            Constants.COL_USERGROUPNAME, TEST_USER_GROUP_NAME
+        )));
+        when(esService.searchUserGroups(anyMap(), anyInt(), anyInt(), anyString(), anyString())).thenReturn(searchResult);
+
+        ApiResponse response = userGroupService.searchUserGroupsV2(request, TEST_AUTH_TOKEN);
+
+        assertEquals(Constants.SUCCESSFUL, response.getParams().getStatus());
+        assertEquals(HttpStatus.OK, response.getResponseCode());
+        assertEquals(1L, response.get(Constants.COUNT));
+        verify(esService, times(1)).searchUserGroups(anyMap(), anyInt(), anyInt(), anyString(), anyString());
+    }
+
+    @Test
+    void searchUserGroupsV2_withInvalidToken_shouldReturnError() {
+        ApiRequest request = createApiRequest();
+
+        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(TEST_AUTH_TOKEN), any())).thenReturn("");
+
+        ApiResponse response = userGroupService.searchUserGroupsV2(request, TEST_AUTH_TOKEN);
+
+        assertNotNull(response);
+        verify(esService, never()).searchUserGroups(anyMap(), anyInt(), anyInt(), anyString(), anyString());
+    }
+
+    @Test
+    void searchUserGroupsV2_withMissingFilters_shouldReturnBadRequest() {
+        ApiRequest request = new ApiRequest();
+        request.setRequest(Map.of());
+
+        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(TEST_AUTH_TOKEN), any())).thenReturn(TEST_USER_ID);
+
+        ApiResponse response = userGroupService.searchUserGroupsV2(request, TEST_AUTH_TOKEN);
+
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
+        assertEquals(Constants.MSG_SEARCH_FILTERS_REQUIRED, response.getParams().getErr());
+        verify(esService, never()).searchUserGroups(anyMap(), anyInt(), anyInt(), anyString(), anyString());
+    }
+
+    @Test
+    void searchUserGroupsV2_withEmptyFilters_shouldReturnBadRequest() {
+        ApiRequest request = new ApiRequest();
+        request.setRequest(Map.of(Constants.FILTERS, Map.of()));
+
+        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(TEST_AUTH_TOKEN), any())).thenReturn(TEST_USER_ID);
+
+        ApiResponse response = userGroupService.searchUserGroupsV2(request, TEST_AUTH_TOKEN);
+
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
+        assertEquals(Constants.MSG_SEARCH_FILTERS_EMPTY, response.getParams().getErr());
+        verify(esService, never()).searchUserGroups(anyMap(), anyInt(), anyInt(), anyString(), anyString());
+    }
+
+    @Test
+    void searchUserGroupsV2_withMissingUserGroupName_shouldReturnBadRequest() {
+        ApiRequest request = new ApiRequest();
+        Map<String, Object> filters = new HashMap<>();
+        filters.put(Constants.COL_ORGID, TEST_ORG_ID);
+        request.setRequest(Map.of(Constants.FILTERS, filters));
+
+        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(TEST_AUTH_TOKEN), any())).thenReturn(TEST_USER_ID);
+
+        ApiResponse response = userGroupService.searchUserGroupsV2(request, TEST_AUTH_TOKEN);
+
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
+        assertEquals(Constants.MSG_USERGROUPNAME_REQUIRED_IN_FILTERS, response.getParams().getErr());
+        verify(esService, never()).searchUserGroups(anyMap(), anyInt(), anyInt(), anyString(), anyString());
+    }
+
+    @Test
+    void searchUserGroupsV2_withMissingOrgId_shouldReturnBadRequest() {
+        ApiRequest request = new ApiRequest();
+        Map<String, Object> filters = new HashMap<>();
+        filters.put(Constants.COL_USERGROUPNAME, TEST_USER_GROUP_NAME);
+        request.setRequest(Map.of(Constants.FILTERS, filters));
+
+        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(TEST_AUTH_TOKEN), any())).thenReturn(TEST_USER_ID);
+
+        ApiResponse response = userGroupService.searchUserGroupsV2(request, TEST_AUTH_TOKEN);
+
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
+        assertEquals(Constants.MSG_ORGID_REQUIRED_IN_FILTERS, response.getParams().getErr());
+        verify(esService, never()).searchUserGroups(anyMap(), anyInt(), anyInt(), anyString(), anyString());
+    }
+
+    @Test
+    void searchUserGroupsV2_withNoResultsFound_shouldReturn404() {
+        ApiRequest request = new ApiRequest();
+        Map<String, Object> filters = new HashMap<>();
+        filters.put(Constants.COL_USERGROUPNAME, TEST_USER_GROUP_NAME);
+        filters.put(Constants.COL_ORGID, TEST_ORG_ID);
+        request.setRequest(Map.of(Constants.FILTERS, filters));
+
+        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(TEST_AUTH_TOKEN), any())).thenReturn(TEST_USER_ID);
+
+        Map<String, Object> searchResult = new HashMap<>();
+        searchResult.put(Constants.COUNT, 0L);
+        searchResult.put(Constants.CONTENT, List.of());
+        when(esService.searchUserGroups(anyMap(), anyInt(), anyInt(), anyString(), anyString())).thenReturn(searchResult);
+
+        ApiResponse response = userGroupService.searchUserGroupsV2(request, TEST_AUTH_TOKEN);
+
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(HttpStatus.NOT_FOUND, response.getResponseCode());
+        assertEquals(Constants.MSG_USERGROUP_NOT_FOUND_BY_NAME_ORG, response.getParams().getErr());
+        verify(esService, times(1)).searchUserGroups(anyMap(), anyInt(), anyInt(), anyString(), anyString());
+    }
+
+    @Test
+    void searchUserGroupsV2_withException_shouldReturnError() {
+        ApiRequest request = new ApiRequest();
+        Map<String, Object> filters = new HashMap<>();
+        filters.put(Constants.COL_USERGROUPNAME, TEST_USER_GROUP_NAME);
+        filters.put(Constants.COL_ORGID, TEST_ORG_ID);
+        request.setRequest(Map.of(Constants.FILTERS, filters));
+
+        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(TEST_AUTH_TOKEN), any())).thenReturn(TEST_USER_ID);
+        when(esService.searchUserGroups(anyMap(), anyInt(), anyInt(), anyString(), anyString()))
+            .thenThrow(new RuntimeException("ES connection failed"));
+
+        ApiResponse response = userGroupService.searchUserGroupsV2(request, TEST_AUTH_TOKEN);
+
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getResponseCode());
+    }
+
+    @Test
+    void searchUserGroupsV2_withStatusInRequest_shouldForceActiveStatus() {
+        ApiRequest request = new ApiRequest();
+        Map<String, Object> filters = new HashMap<>();
+        filters.put(Constants.COL_USERGROUPNAME, TEST_USER_GROUP_NAME);
+        filters.put(Constants.COL_ORGID, TEST_ORG_ID);
+        filters.put(Constants.COL_STATUS, Constants.INACTIVE);
+        request.setRequest(Map.of(Constants.FILTERS, filters));
+
+        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(TEST_AUTH_TOKEN), any())).thenReturn(TEST_USER_ID);
+
+        Map<String, Object> searchResult = new HashMap<>();
+        searchResult.put(Constants.COUNT, 1L);
+        searchResult.put(Constants.CONTENT, List.of(Map.of(
+            Constants.COL_USERGROUPID, TEST_USER_GROUP_ID,
+            Constants.COL_USERGROUPNAME, TEST_USER_GROUP_NAME,
+            Constants.COL_STATUS, Constants.ACTIVE
+        )));
+        when(esService.searchUserGroups(anyMap(), anyInt(), anyInt(), anyString(), anyString())).thenReturn(searchResult);
+
+        ApiResponse response = userGroupService.searchUserGroupsV2(request, TEST_AUTH_TOKEN);
+
+        assertEquals(Constants.SUCCESSFUL, response.getParams().getStatus());
+        assertEquals(HttpStatus.OK, response.getResponseCode());
+
+        ArgumentCaptor<Map<String, Object>> filtersCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(esService).searchUserGroups(filtersCaptor.capture(), anyInt(), anyInt(), anyString(), anyString());
+        assertEquals(Constants.ACTIVE, filtersCaptor.getValue().get(Constants.COL_STATUS));
+    }
+
+    private static final String TEST_TARGET_ORG_ID = "target_org_999";
+
+    @Test
+    void createUserGroupAdmin_withValidRequest_shouldReturnCreated() {
+        ApiRequest request = createAdminApiRequest(TEST_TARGET_ORG_ID);
+        UserGroupRequest userGroupRequest = new UserGroupRequest(null, TEST_USER_GROUP_NAME, createCriteriaList());
+        UserGroupEntity entity = createUserGroupEntity();
+
+        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(TEST_AUTH_TOKEN), any())).thenReturn(TEST_USER_ID);
+        when(userProfileUtil.buildUserProfile(eq(TEST_USER_ID), any())).thenReturn(createUserProfile());
+        when(objectMapper.convertValue(any(), eq(UserGroupRequest.class))).thenReturn(userGroupRequest);
+        when(validationService.validateCreateRequest(anyString(), anyList(), eq(TEST_TARGET_ORG_ID), anyString(), any())).thenReturn(true);
+        when(esService.isDuplicateGroupName(eq(TEST_USER_GROUP_NAME), eq(TEST_TARGET_ORG_ID), isNull())).thenReturn(false);
+        when(dataTransformService.buildEntityForCreate(anyString(), eq(TEST_USER_GROUP_NAME), any(), eq(TEST_TARGET_ORG_ID), eq(TEST_USER_ID)))
+                .thenReturn(entity);
+        when(cassandraOperation.insertRecord(anyString(), anyString(), anyMap(),
+                any(BooleanSupplier.class), any(Runnable.class))).thenReturn(Map.of(Constants.RESPONSE, Constants.SUCCESS));
+        when(dataTransformService.entityToResponseMap(entity)).thenReturn(Map.of(Constants.COL_USERGROUPID, TEST_USER_GROUP_ID));
+
+        ApiResponse response = userGroupService.createUserGroupAdmin(request, TEST_AUTH_TOKEN);
+
+        assertNotNull(response);
+        assertEquals(Constants.SUCCESSFUL, response.getParams().getStatus());
+        assertEquals(HttpStatus.CREATED, response.getResponseCode());
+        assertEquals(TEST_USER_GROUP_ID, response.get(Constants.COL_USERGROUPID));
+        verify(dataTransformService).buildEntityForCreate(anyString(), eq(TEST_USER_GROUP_NAME), any(), eq(TEST_TARGET_ORG_ID), eq(TEST_USER_ID));
+        verify(esService).isDuplicateGroupName(eq(TEST_USER_GROUP_NAME), eq(TEST_TARGET_ORG_ID), isNull());
+        verify(cassandraOperation, times(1)).insertRecord(anyString(), anyString(), anyMap(),
+                any(BooleanSupplier.class), any(Runnable.class));
+    }
+
+    @Test
+    void createUserGroupAdmin_whenBodyRootOrgIdDiffersFromTokenOrg_shouldUseBodyRootOrgId() {
+        ApiRequest request = createAdminApiRequest(TEST_TARGET_ORG_ID);
+        UserGroupRequest userGroupRequest = new UserGroupRequest(null, TEST_USER_GROUP_NAME, createCriteriaList());
+        UserGroupEntity entity = createUserGroupEntity();
+
+        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(TEST_AUTH_TOKEN), any())).thenReturn(TEST_USER_ID);
+        when(userProfileUtil.buildUserProfile(eq(TEST_USER_ID), any())).thenReturn(createUserProfile());
+        when(objectMapper.convertValue(any(), eq(UserGroupRequest.class))).thenReturn(userGroupRequest);
+        when(validationService.validateCreateRequest(anyString(), anyList(), anyString(), anyString(), any())).thenReturn(true);
+        when(esService.isDuplicateGroupName(anyString(), anyString(), isNull())).thenReturn(false);
+        when(dataTransformService.buildEntityForCreate(anyString(), anyString(), any(), anyString(), anyString())).thenReturn(entity);
+        when(cassandraOperation.insertRecord(anyString(), anyString(), anyMap(),
+                any(BooleanSupplier.class), any(Runnable.class))).thenReturn(Map.of(Constants.RESPONSE, Constants.SUCCESS));
+        when(dataTransformService.entityToResponseMap(entity)).thenReturn(Map.of(Constants.COL_USERGROUPID, TEST_USER_GROUP_ID));
+
+        userGroupService.createUserGroupAdmin(request, TEST_AUTH_TOKEN);
+
+        ArgumentCaptor<String> orgIdCaptor = ArgumentCaptor.forClass(String.class);
+        verify(dataTransformService).buildEntityForCreate(anyString(), anyString(), any(), orgIdCaptor.capture(), anyString());
+        assertEquals(TEST_TARGET_ORG_ID, orgIdCaptor.getValue());
+        assertNotEquals(TEST_ORG_ID, orgIdCaptor.getValue());
+    }
+
+    @Test
+    void createUserGroupAdmin_withEmptyUserId_shouldReturnFailedResponse() {
+        ApiRequest request = createAdminApiRequest(TEST_TARGET_ORG_ID);
+        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(TEST_AUTH_TOKEN), any())).thenReturn("");
+
+        ApiResponse response = userGroupService.createUserGroupAdmin(request, TEST_AUTH_TOKEN);
+
+        assertNotNull(response);
+        verify(userProfileUtil, never()).buildUserProfile(anyString(), any());
+        verify(cassandraOperation, never()).insertRecord(anyString(), anyString(), anyMap(),
+                any(BooleanSupplier.class), any(Runnable.class));
+    }
+
+    @Test
+    void createUserGroupAdmin_withMissingRootOrgIdInBody_shouldReturnBadRequest() {
+        ApiRequest request = new ApiRequest();
+        Map<String, Object> requestMap = new HashMap<>();
+        requestMap.put(Constants.COL_USERGROUPNAME, TEST_USER_GROUP_NAME);
+        requestMap.put(Constants.COL_CRITERIA, createCriteriaList());
+        request.setRequest(requestMap);
+
+        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(TEST_AUTH_TOKEN), any())).thenReturn(TEST_USER_ID);
+        when(userProfileUtil.buildUserProfile(eq(TEST_USER_ID), any())).thenReturn(createUserProfile());
+
+        ApiResponse response = userGroupService.createUserGroupAdmin(request, TEST_AUTH_TOKEN);
+
+        assertNotNull(response);
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
+        assertEquals(Constants.MSG_ROOTORGID_REQUIRED_IN_BODY, response.getParams().getErr());
+        verify(cassandraOperation, never()).insertRecord(anyString(), anyString(), anyMap(),
+                any(BooleanSupplier.class), any(Runnable.class));
+    }
+
+    @Test
+    void createUserGroupAdmin_withBlankRootOrgIdInBody_shouldReturnBadRequest() {
+        ApiRequest request = createAdminApiRequest("   ");
+
+        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(TEST_AUTH_TOKEN), any())).thenReturn(TEST_USER_ID);
+        when(userProfileUtil.buildUserProfile(eq(TEST_USER_ID), any())).thenReturn(createUserProfile());
+
+        ApiResponse response = userGroupService.createUserGroupAdmin(request, TEST_AUTH_TOKEN);
+
+        assertNotNull(response);
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
+        assertEquals(Constants.MSG_ROOTORGID_REQUIRED_IN_BODY, response.getParams().getErr());
+        verify(cassandraOperation, never()).insertRecord(anyString(), anyString(), anyMap(),
+                any(BooleanSupplier.class), any(Runnable.class));
+    }
+
+    @Test
+    void createUserGroupAdmin_withNonStringRootOrgId_shouldReturnBadRequest() {
+        ApiRequest request = new ApiRequest();
+        Map<String, Object> requestMap = new HashMap<>();
+        requestMap.put(Constants.ROOT_ORG_ID, 12345);
+        requestMap.put(Constants.COL_USERGROUPNAME, TEST_USER_GROUP_NAME);
+        requestMap.put(Constants.COL_CRITERIA, createCriteriaList());
+        request.setRequest(requestMap);
+
+        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(TEST_AUTH_TOKEN), any())).thenReturn(TEST_USER_ID);
+        when(userProfileUtil.buildUserProfile(eq(TEST_USER_ID), any())).thenReturn(createUserProfile());
+
+        ApiResponse response = userGroupService.createUserGroupAdmin(request, TEST_AUTH_TOKEN);
+
+        assertNotNull(response);
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
+        assertEquals(Constants.MSG_ROOTORGID_REQUIRED_IN_BODY, response.getParams().getErr());
+        verify(cassandraOperation, never()).insertRecord(anyString(), anyString(), anyMap(),
+                any(BooleanSupplier.class), any(Runnable.class));
+    }
+
+    @Test
+    void createUserGroupAdmin_withEmptyRequestMap_shouldReturnBadRequest() {
+        ApiRequest request = new ApiRequest();
+        request.setRequest(Map.of());
+
+        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(TEST_AUTH_TOKEN), any())).thenReturn(TEST_USER_ID);
+        when(userProfileUtil.buildUserProfile(eq(TEST_USER_ID), any())).thenReturn(createUserProfile());
+
+        ApiResponse response = userGroupService.createUserGroupAdmin(request, TEST_AUTH_TOKEN);
+
+        assertNotNull(response);
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
+        assertEquals(Constants.MSG_ROOTORGID_REQUIRED_IN_BODY, response.getParams().getErr());
+        verify(cassandraOperation, never()).insertRecord(anyString(), anyString(), anyMap(),
+                any(BooleanSupplier.class), any(Runnable.class));
+    }
+
+    @Test
+    void createUserGroupAdmin_whenValidationFails_shouldReturnFailedResponse() {
+        ApiRequest request = createAdminApiRequest(TEST_TARGET_ORG_ID);
+        UserGroupRequest userGroupRequest = new UserGroupRequest(null, TEST_USER_GROUP_NAME, createCriteriaList());
+
+        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(TEST_AUTH_TOKEN), any())).thenReturn(TEST_USER_ID);
+        when(userProfileUtil.buildUserProfile(eq(TEST_USER_ID), any())).thenReturn(createUserProfile());
+        when(objectMapper.convertValue(any(), eq(UserGroupRequest.class))).thenReturn(userGroupRequest);
+        when(validationService.validateCreateRequest(anyString(), anyList(), eq(TEST_TARGET_ORG_ID), anyString(), any())).thenReturn(false);
+
+        ApiResponse response = userGroupService.createUserGroupAdmin(request, TEST_AUTH_TOKEN);
+
+        assertNotNull(response);
+        verify(esService, never()).isDuplicateGroupName(anyString(), anyString(), any());
+        verify(cassandraOperation, never()).insertRecord(anyString(), anyString(), anyMap(),
+                any(BooleanSupplier.class), any(Runnable.class));
+    }
+
+    @Test
+    void createUserGroupAdmin_whenDuplicateNameInBodyOrg_shouldReturnBadRequest() {
+        ApiRequest request = createAdminApiRequest(TEST_TARGET_ORG_ID);
+        UserGroupRequest userGroupRequest = new UserGroupRequest(null, TEST_USER_GROUP_NAME, createCriteriaList());
+
+        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(TEST_AUTH_TOKEN), any())).thenReturn(TEST_USER_ID);
+        when(userProfileUtil.buildUserProfile(eq(TEST_USER_ID), any())).thenReturn(createUserProfile());
+        when(objectMapper.convertValue(any(), eq(UserGroupRequest.class))).thenReturn(userGroupRequest);
+        when(validationService.validateCreateRequest(anyString(), anyList(), anyString(), anyString(), any())).thenReturn(true);
+        when(esService.isDuplicateGroupName(eq(TEST_USER_GROUP_NAME), eq(TEST_TARGET_ORG_ID), isNull())).thenReturn(true);
+
+        ApiResponse response = userGroupService.createUserGroupAdmin(request, TEST_AUTH_TOKEN);
+
+        assertNotNull(response);
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
+        assertEquals(Constants.MSG_USERGROUP_NAME_EXISTS, response.getParams().getErr());
+        verify(cassandraOperation, never()).insertRecord(anyString(), anyString(), anyMap(),
+                any(BooleanSupplier.class), any(Runnable.class));
+    }
+
+    @Test
+    void createUserGroupAdmin_whenCassandraInsertFails_shouldReturnInternalServerError() {
+        ApiRequest request = createAdminApiRequest(TEST_TARGET_ORG_ID);
+        UserGroupRequest userGroupRequest = new UserGroupRequest(null, TEST_USER_GROUP_NAME, createCriteriaList());
+        UserGroupEntity entity = createUserGroupEntity();
+
+        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(TEST_AUTH_TOKEN), any())).thenReturn(TEST_USER_ID);
+        when(userProfileUtil.buildUserProfile(eq(TEST_USER_ID), any())).thenReturn(createUserProfile());
+        when(objectMapper.convertValue(any(), eq(UserGroupRequest.class))).thenReturn(userGroupRequest);
+        when(validationService.validateCreateRequest(anyString(), anyList(), anyString(), anyString(), any())).thenReturn(true);
+        when(esService.isDuplicateGroupName(anyString(), anyString(), isNull())).thenReturn(false);
+        when(dataTransformService.buildEntityForCreate(anyString(), anyString(), any(), anyString(), anyString())).thenReturn(entity);
+        when(cassandraOperation.insertRecord(anyString(), anyString(), anyMap(),
+                any(BooleanSupplier.class), any(Runnable.class))).thenReturn(Map.of(Constants.RESPONSE, Constants.FAILED));
+
+        ApiResponse response = userGroupService.createUserGroupAdmin(request, TEST_AUTH_TOKEN);
+
+        assertNotNull(response);
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getResponseCode());
+    }
+
+    @Test
+    void createUserGroupAdmin_whenRequestParseFails_shouldReturnBadRequest() {
+        ApiRequest request = createAdminApiRequest(TEST_TARGET_ORG_ID);
+
+        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(TEST_AUTH_TOKEN), any())).thenReturn(TEST_USER_ID);
+        when(userProfileUtil.buildUserProfile(eq(TEST_USER_ID), any())).thenReturn(createUserProfile());
+        when(objectMapper.convertValue(any(), eq(UserGroupRequest.class)))
+                .thenThrow(new IllegalArgumentException("bad json"));
+
+        ApiResponse response = userGroupService.createUserGroupAdmin(request, TEST_AUTH_TOKEN);
+
+        assertNotNull(response);
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
+        assertEquals(Constants.MSG_INVALID_REQUEST_FORMAT, response.getParams().getErr());
+        verify(cassandraOperation, never()).insertRecord(anyString(), anyString(), anyMap(),
+                any(BooleanSupplier.class), any(Runnable.class));
+    }
+
+    @Test
+    void createUserGroupAdmin_whenUnexpectedException_shouldReturnInternalServerError() {
+        ApiRequest request = createAdminApiRequest(TEST_TARGET_ORG_ID);
+        UserGroupRequest userGroupRequest = new UserGroupRequest(null, TEST_USER_GROUP_NAME, createCriteriaList());
+
+        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(TEST_AUTH_TOKEN), any())).thenReturn(TEST_USER_ID);
+        when(userProfileUtil.buildUserProfile(eq(TEST_USER_ID), any())).thenReturn(createUserProfile());
+        when(objectMapper.convertValue(any(), eq(UserGroupRequest.class))).thenReturn(userGroupRequest);
+        when(validationService.validateCreateRequest(anyString(), anyList(), anyString(), anyString(), any())).thenReturn(true);
+        when(esService.isDuplicateGroupName(anyString(), anyString(), isNull()))
+                .thenThrow(new RuntimeException("ES unreachable"));
+
+        ApiResponse response = userGroupService.createUserGroupAdmin(request, TEST_AUTH_TOKEN);
+
+        assertNotNull(response);
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getResponseCode());
+        verify(cassandraOperation, never()).insertRecord(anyString(), anyString(), anyMap(),
+                any(BooleanSupplier.class), any(Runnable.class));
+    }
+
+    private ApiRequest createAdminApiRequest(String rootOrgId) {
+        ApiRequest request = new ApiRequest();
+        Map<String, Object> requestMap = new HashMap<>();
+        requestMap.put(Constants.ROOT_ORG_ID, rootOrgId);
+        requestMap.put(Constants.COL_USERGROUPNAME, TEST_USER_GROUP_NAME);
+        requestMap.put(Constants.COL_CRITERIA, createCriteriaList());
+        request.setRequest(requestMap);
+        return request;
     }
 }

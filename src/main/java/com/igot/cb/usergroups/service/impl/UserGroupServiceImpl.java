@@ -1,6 +1,7 @@
 package com.igot.cb.usergroups.service.impl;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.igot.cb.cache.UserGroupCacheMgrV4;
 import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.model.ApiRequest;
 import com.igot.cb.model.ApiResponse;
@@ -22,7 +23,6 @@ import org.springframework.stereotype.Service;
 
 import java.util.*;
 import java.util.function.Supplier;
-import java.util.function.BooleanSupplier;
 
 /**
  * Main User Group service implementation.
@@ -40,6 +40,7 @@ public class UserGroupServiceImpl implements UserGroupService {
     private final AccessTokenValidator accessTokenValidator;
     private final UserProfileUtil userProfileUtil;
     private final ObjectMapper objectMapper;
+    private final UserGroupCacheMgrV4 userGroupCacheMgrV4;
 
     public UserGroupServiceImpl(CassandraOperation cassandraOperation,
                                 UserGroupValidationServiceImpl validationService,
@@ -47,7 +48,8 @@ public class UserGroupServiceImpl implements UserGroupService {
                                 UserGroupElasticSearchServiceImpl esService,
                                 AccessTokenValidator accessTokenValidator,
                                 UserProfileUtil userProfileUtil,
-                                ObjectMapper objectMapper) {
+                                ObjectMapper objectMapper,
+                                UserGroupCacheMgrV4 userGroupCacheMgrV4) {
         this.cassandraOperation = cassandraOperation;
         this.validationService = validationService;
         this.dataTransformService = dataTransformService;
@@ -55,6 +57,7 @@ public class UserGroupServiceImpl implements UserGroupService {
         this.accessTokenValidator = accessTokenValidator;
         this.userProfileUtil = userProfileUtil;
         this.objectMapper = objectMapper;
+        this.userGroupCacheMgrV4 = userGroupCacheMgrV4;
     }
 
 
@@ -187,7 +190,7 @@ public class UserGroupServiceImpl implements UserGroupService {
             List<CriteriaItem> criteria = userGroupRequest.criteria();
             log.info("updateUserGroup: userGroupId={}", userGroupId);
 
-            if (!validationService.validateUpdateRequest(userGroupId, userGroupName, criteria, response)) {
+            if (!validationService.validateUpdateRequest(userGroupId, userGroupName, criteria, userRootOrgId, userRoles, response)) {
                 return response;
             }
 
@@ -219,6 +222,7 @@ public class UserGroupServiceImpl implements UserGroupService {
                     response)) {
                 return response;
             }
+            userGroupCacheMgrV4.invalidateUserGroup(userRootOrgId, userGroupId);
             log.info("User group updated successfully: usergroupid={}", userGroupId);
             response.getParams().setStatus(Constants.SUCCESSFUL);
             response.setResponseCode(HttpStatus.OK);
@@ -272,6 +276,7 @@ public class UserGroupServiceImpl implements UserGroupService {
                     response)) {
                 return response;
             }
+            userGroupCacheMgrV4.invalidateUserGroup(userRootOrgId, userGroupId);
             log.info("User group archived successfully: usergroupid={}", userGroupId);
             response.getParams().setStatus(Constants.SUCCESSFUL);
             response.setResponseCode(HttpStatus.OK);
@@ -630,4 +635,173 @@ public class UserGroupServiceImpl implements UserGroupService {
         insertMap.put(Constants.COL_STATUS, entity.getStatus());
         return insertMap;
     }
+
+    @Override
+    public ApiResponse searchUserGroupsV2(ApiRequest request, String authToken) {
+        log.info("searchUserGroupsV2: starting");
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_USER_GROUP_SEARCH);
+        try {
+            String userId = accessTokenValidator.fetchUserIdFromAccessToken(authToken, response);
+            if (StringUtils.isEmpty(userId)) {
+                return response;
+            }
+            Map<String, Object> filters = extractSearchFiltersV2(request, response);
+            if (Constants.FAILED.equals(response.getParams().getStatus())) {
+                return response;
+            }
+            int pageSize = extractPageSize(request);
+            int pageNumber = extractPageNumber(request);
+            String sortBy = extractSortField(request);
+            String sortOrder = extractSortOrder(request);
+            Map<String, Object> searchResult = esService.searchUserGroups(filters, pageSize, pageNumber, sortBy, sortOrder);
+            long count = searchResult.containsKey(Constants.COUNT) ? ((Number) searchResult.get(Constants.COUNT)).longValue() : 0;
+            if (count == 0) {
+                log.warn("searchUserGroupsV2: No user group found with userGroupName={}, orgId={}",
+                        filters.get(Constants.COL_USERGROUPNAME), filters.get(Constants.COL_ORGID));
+                response.getParams().setStatus(Constants.FAILED);
+                response.getParams().setErr(Constants.MSG_USERGROUP_NOT_FOUND_BY_NAME_ORG);
+                response.setResponseCode(HttpStatus.NOT_FOUND);
+                return response;
+            }
+            enrichSearchResultWithUserNames(searchResult);
+            response.getParams().setStatus(Constants.SUCCESSFUL);
+            response.setResponseCode(HttpStatus.OK);
+            response.putAll(searchResult);
+        } catch (Exception e) {
+            handleException(response, e);
+        }
+        return response;
+    }
+
+    /**
+     * Extracts search filters for V2 API (without forcing user's orgId).
+     * Validates that userGroupName and rootOrgId are present in the request.
+     * Status is always forced to ACTIVE from backend.
+     *
+     * @param request  API request
+     * @param response API response (for error reporting)
+     * @return filters map
+     */
+    private Map<String, Object> extractSearchFiltersV2(ApiRequest request, ApiResponse response) {
+        Map<String, Object> filters = new HashMap<>();
+        Map<String, Object> requestMap = (Map<String, Object>) request.getRequest();
+        if (MapUtils.isEmpty(requestMap) || !requestMap.containsKey(Constants.FILTERS)) {
+            log.warn("searchUserGroupsV2: filters are required in request");
+            response.getParams().setStatus(Constants.FAILED);
+            response.getParams().setErr(Constants.MSG_SEARCH_FILTERS_REQUIRED);
+            response.setResponseCode(HttpStatus.BAD_REQUEST);
+            return filters;
+        }
+        Map<String, Object> requestFilters = (Map<String, Object>) requestMap.get(Constants.FILTERS);
+        if (MapUtils.isEmpty(requestFilters)) {
+            log.warn("searchUserGroupsV2: filters cannot be empty");
+            response.getParams().setStatus(Constants.FAILED);
+            response.getParams().setErr(Constants.MSG_SEARCH_FILTERS_EMPTY);
+            response.setResponseCode(HttpStatus.BAD_REQUEST);
+            return filters;
+        }
+        if (!requestFilters.containsKey(Constants.COL_USERGROUPNAME)) {
+            log.warn("searchUserGroupsV2: userGroupName is required in filters");
+            response.getParams().setStatus(Constants.FAILED);
+            response.getParams().setErr(Constants.MSG_USERGROUPNAME_REQUIRED_IN_FILTERS);
+            response.setResponseCode(HttpStatus.BAD_REQUEST);
+            return filters;
+        }
+        if (!requestFilters.containsKey(Constants.COL_ORGID)) {
+            log.warn("searchUserGroupsV2: rootOrgId is required in filters");
+            response.getParams().setStatus(Constants.FAILED);
+            response.getParams().setErr(Constants.MSG_ORGID_REQUIRED_IN_FILTERS);
+            response.setResponseCode(HttpStatus.BAD_REQUEST);
+            return filters;
+        }
+        filters.putAll(requestFilters);
+        filters.put(Constants.COL_STATUS, Constants.ACTIVE);
+        log.debug("searchUserGroupsV2: filters extracted: userGroupName={}, orgId={}, status=ACTIVE (forced)",
+                  filters.get(Constants.COL_USERGROUPNAME), filters.get(Constants.COL_ORGID));
+        return filters;
+    }
+
+    @Override
+    public ApiResponse createUserGroupAdmin(ApiRequest request, String authToken) {
+        log.info("createUserGroupAdmin: starting");
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_USER_GROUP_ADMIN_CREATE);
+
+        try {
+            String userId = accessTokenValidator.fetchUserIdFromAccessToken(authToken, response);
+            if (StringUtils.isEmpty(userId)) {
+                return response;
+            }
+
+            Map<String, String> userProfile = userProfileUtil.buildUserProfile(userId, response);
+            String userRoles = userProfile.get(Constants.ROLES);
+
+            String targetRootOrgId = extractRootOrgIdFromBody(request, response);
+            if (StringUtils.isBlank(targetRootOrgId)) {
+                return response;
+            }
+
+            UserGroupRequest userGroupRequest = parseRequest(request, response);
+            if (userGroupRequest == null || Constants.FAILED.equals(response.getParams().getStatus())) {
+                return response;
+            }
+
+            String userGroupName = userGroupRequest.userGroupName();
+            List<CriteriaItem> criteria = userGroupRequest.criteria();
+            log.info("createUserGroupAdmin: userId={}, targetRootOrgId={}", userId, targetRootOrgId);
+
+            if (!validationService.validateCreateRequest(userGroupName, criteria, targetRootOrgId, userRoles, response)) {
+                return response;
+            }
+
+            if (esService.isDuplicateGroupName(userGroupName, targetRootOrgId, null)) {
+                log.warn("createUserGroupAdmin: Duplicate group name rejected: name={}, orgId={}", userGroupName, targetRootOrgId);
+                response.getParams().setStatus(Constants.FAILED);
+                response.getParams().setErr(Constants.MSG_USERGROUP_NAME_EXISTS);
+                response.setResponseCode(HttpStatus.BAD_REQUEST);
+                return response;
+            }
+
+            String userGroupId = UUID.randomUUID().toString();
+            UserGroupEntity entity = dataTransformService.buildEntityForCreate(userGroupId, userGroupName, criteria, targetRootOrgId, userId);
+
+            if (transactionalInsertFailed(entity, response)) {
+                return response;
+            }
+            log.info("createUserGroupAdmin: User group created successfully: usergroupid={}, orgid={}", userGroupId, targetRootOrgId);
+            response.getParams().setStatus(Constants.SUCCESSFUL);
+            response.setResponseCode(HttpStatus.CREATED);
+            response.putAll(dataTransformService.entityToResponseMap(entity));
+        } catch (Exception e) {
+            handleException(response, e);
+        }
+        return response;
+    }
+
+    /**
+     * Extracts {@code rootOrgId} from the raw request map. Sets a 400 error on the response
+     * when the field is missing or blank, and returns null in that case.
+     *
+     * @param request  API request
+     * @param response API response, populated with an error when extraction fails
+     * @return rootOrgId value, or null when missing/blank
+     */
+    private String extractRootOrgIdFromBody(ApiRequest request, ApiResponse response) {
+        Map<String, Object> requestMap = (Map<String, Object>) request.getRequest();
+        if (MapUtils.isEmpty(requestMap)) {
+            response.getParams().setStatus(Constants.FAILED);
+            response.getParams().setErr(Constants.MSG_ROOTORGID_REQUIRED_IN_BODY);
+            response.setResponseCode(HttpStatus.BAD_REQUEST);
+            return null;
+        }
+        Object raw = requestMap.get(Constants.ROOT_ORG_ID);
+        String rootOrgId = raw instanceof String str ? str : null;
+        if (StringUtils.isBlank(rootOrgId)) {
+            response.getParams().setStatus(Constants.FAILED);
+            response.getParams().setErr(Constants.MSG_ROOTORGID_REQUIRED_IN_BODY);
+            response.setResponseCode(HttpStatus.BAD_REQUEST);
+            return null;
+        }
+        return rootOrgId;
+    }
+
 }

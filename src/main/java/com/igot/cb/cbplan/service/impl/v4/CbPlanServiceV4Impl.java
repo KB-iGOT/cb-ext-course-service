@@ -98,13 +98,13 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
     }
 
     @Override
-    public ApiResponse createCbPlan(ApiRequest request, String authToken) {
+    public ApiResponse createCbPlan(ApiRequest request, String targetedOrganisation, String authToken) {
         log.info("CbPlanServiceV4Impl.createCbPlan: Creating CB Plan V4");
         ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_CB_PLAN_V4_CREATE);
         String userRootOrgId = null;
 
         try {
-            if (!validateAuthAndOrganization(authToken, response)) {
+            if (!validateAuthAndOrganization(authToken, targetedOrganisation, response)) {
                 return response;
             }
             String userId = (String) response.getResult().get(Constants.USER_ID);
@@ -130,20 +130,40 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
 
     /**
      * Validates the caller's token and resolves their root org and CCA status.
+     * When targetedOrganisation is given (AI CBP), the caller must hold AICBP_ADMIN in the token
+     * and targetedOrganisation is used as the org instead of the caller's own org.
      * On success, stashes userId/rootOrgId/isCCA into the response result map so
      * the caller can read them back before clearing it for the real response body.
      *
-     * @param authToken authentication token
-     * @param response  API response object, populated with an error on failure
+     * @param authToken            authentication token
+     * @param targetedOrganisation org to create the plan for (AI CBP), or null for the caller's own org
+     * @param response             API response object, populated with an error on failure
      * @return true when the caller is authenticated and their org was resolved
      */
-    private boolean validateAuthAndOrganization(String authToken, ApiResponse response) {
-        String userId = validationService.validateAndExtractUserId(authToken, response);
-        if (StringUtils.isEmpty(userId)) {
+    private boolean validateAuthAndOrganization(String authToken, String targetedOrganisation, ApiResponse response) {
+        Map<String, Object> tokenData = accessTokenValidator.fetchUserIdAndOrg(authToken);
+        String userId = (String) tokenData.get(Constants.USER_ID);
+        if (StringUtils.isBlank(userId)) {
+            response.getParams().setStatus(Constants.FAILED);
+            response.getParams().setErrMsg(Constants.ACCESS_TOKEN_IS_EXPIRED);
+            response.setResponseCode(HttpStatus.UNAUTHORIZED);
             return false;
         }
 
-        String userRootOrgId = validationService.validateUserOrganization(userId, response);
+        boolean isAiCbpAdmin = hasAuthorizedRoles(tokenData);
+        boolean hasTargetedOrganisation = StringUtils.isNotBlank(targetedOrganisation);
+        if (hasTargetedOrganisation && !isAiCbpAdmin) {
+            log.warn("CbPlanServiceV4Impl.validateAuthAndOrganization: AICBP_ADMIN role missing for targetedOrganisation - userId={}",
+                    userId);
+            response.getParams().setStatus(Constants.FAILED);
+            response.getParams().setErr(Constants.ERR_AICBP_ROLE_REQUIRED);
+            response.setResponseCode(HttpStatus.FORBIDDEN);
+            return false;
+        }
+
+        String userRootOrgId = isAiCbpAdmin && hasTargetedOrganisation
+                ? targetedOrganisation
+                : validationService.validateUserOrganization(userId, response);
         if (StringUtils.isEmpty(userRootOrgId)) {
             response.getParams().setStatus(Constants.FAILED);
             response.getParams().setErr(Constants.ERR_USER_ORG_NOT_FOUND);
@@ -162,6 +182,18 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
         response.getResult().put(Constants.ROOT_ORG_ID, userRootOrgId);
         response.getResult().put(Constants.IS_CCA, isCCA);
         return true;
+    }
+
+    /**
+     * Checks whether the token carries the AICBP_ADMIN role, which allows creating or publishing
+     * a plan for a targetedOrganisation instead of the caller's own org.
+     *
+     * @param tokenData user details from {@link AccessTokenValidator#fetchUserIdAndOrg}
+     * @return true when the token roles contain AICBP_ADMIN
+     */
+    private boolean hasAuthorizedRoles(Map<String, Object> tokenData) {
+        Object roles = tokenData.get(Constants.ROLES);
+        return roles instanceof Collection<?> roleList && roleList.contains(Constants.ROLE_AICBP_ADMIN);
     }
 
     /**
@@ -525,13 +557,31 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
         ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_CB_PLAN_V4_PUBLISH);
         String userRootOrgId = null;
         try {
-            String userId = accessTokenValidator.fetchUserIdFromAccessToken(authToken, response);
-            if (StringUtils.isEmpty(userId)) {
+            Map<String, Object> tokenData = accessTokenValidator.fetchUserIdAndOrg(authToken);
+            String userId = (String) tokenData.get(Constants.USER_ID);
+            if (StringUtils.isBlank(userId)) {
+                response.getParams().setStatus(Constants.FAILED);
+                response.getParams().setErrMsg(Constants.ACCESS_TOKEN_IS_EXPIRED);
+                response.setResponseCode(HttpStatus.UNAUTHORIZED);
                 return response;
             }
 
-            Map<String, String> userProfile = userProfileUtil.buildUserProfile(userId, response);
-            userRootOrgId = userProfile.get(Constants.USER_ROOT_ORG_ID);
+            // AI CBP: publishing with targetedOrganisation requires AICBP_ADMIN and acts for that org instead of its own.
+            String targetedOrganisation = extractTargetedOrganisation(request);
+            boolean isAiCbpAdmin = hasAuthorizedRoles(tokenData);
+            boolean hasTargetedOrganisation = StringUtils.isNotBlank(targetedOrganisation);
+            if (hasTargetedOrganisation && !isAiCbpAdmin) {
+                log.warn("CbPlanServiceV4Impl.publishCbPlan: AICBP_ADMIN role missing for targetedOrganisation - userId={}", userId);
+                response.getParams().setStatus(Constants.FAILED);
+                response.getParams().setErr(Constants.ERR_AICBP_ROLE_REQUIRED);
+                response.setResponseCode(HttpStatus.FORBIDDEN);
+                return response;
+            }
+            boolean publishForTargetedOrganisation = isAiCbpAdmin && hasTargetedOrganisation;
+            Map<String, String> userProfile = publishForTargetedOrganisation
+                    ? Collections.emptyMap()
+                    : userProfileUtil.buildUserProfile(userId, response);
+            userRootOrgId = publishForTargetedOrganisation ? targetedOrganisation : userProfile.get(Constants.USER_ROOT_ORG_ID);
             String userRolesStr = userProfile.get(Constants.ROLES);
 
             if (StringUtils.isBlank(userRootOrgId)) {
@@ -557,7 +607,8 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
             if (MapUtils.isEmpty(existingCbPlan)) {
                 return response;
             }
-            if (validationService.isUnauthorizedToUpdate(userId, existingCbPlan, userRoles, response)) {
+            if (!publishForTargetedOrganisation
+                    && validationService.isUnauthorizedToUpdate(userId, existingCbPlan, userRoles, response)) {
                 return response;
             }
             executePublishFlow(request, userId, userRootOrgId, cbPlanId, existingCbPlan, response);
@@ -568,7 +619,7 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
     }
 
     /**
-     * Re-validates the caller's org/CCA status, builds the publish update from
+     * Resolves the CCA status of userOrgId (caller's org, or targetedOrganisation for AI CBP), builds the publish update from
      * either the DRAFT plan's own fields or its staged {@code draftData}, and
      * commits the transaction.
      *
@@ -582,11 +633,7 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
      */
     private void executePublishFlow(ApiRequest request, String userId, String userOrgId, String cbPlanId,
                                     Map<String, Object> existingCbPlan, ApiResponse response) throws JsonProcessingException {
-        String rootOrgId = validationService.validateUserOrganization(userId, response);
-        if (StringUtils.isEmpty(rootOrgId)) {
-            return;
-        }
-        boolean isCCA = validationService.validateOrgCCA(rootOrgId, response);
+        boolean isCCA = validationService.validateOrgCCA(userOrgId, response);
         if (Constants.FAILED.equalsIgnoreCase(response.getParams().getStatus())) {
             return;
         }
@@ -1893,13 +1940,13 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
         rawRequest.put(Constants.ORG_ID_LIST, List.of(targetedOrganisation));
         rawRequest.put(Constants.PLAN_TYPE, Constants.PLAN_TYPE_AI_CBP);
         log.info("CbPlanServiceV4Impl.createCbPlanByAdmin: Creating AI CBP plan for targetedOrganisation={}", targetedOrganisation);
-        return createCbPlan(request, authToken);
+        return createCbPlan(request,targetedOrganisation, authToken);
     }
 
     /**
      * Publishes a CB Plan through the AI CBP admin flow using V4 logic.
-     * targetedOrganisation from the request body becomes the effective org;
-     * creator/role check is bypassed (isAdmin=true).
+     * Delegates to publishCbPlan, which requires AICBP_ADMIN in the token and uses
+     * targetedOrganisation from the request body as the effective org.
      *
      * @param request   the API request containing CB Plan ID, comment and targetedOrganisation
      * @param authToken the authentication token
@@ -1917,39 +1964,7 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
             return response;
         }
         log.info("CbPlanServiceV4Impl.publishCbPlanByAdmin: Publishing AI CBP plan for targetedOrganisation={}", targetedOrganisation);
-        return publishCbPlanAdminFlow(request, targetedOrganisation, authToken);
-    }
-
-    /**
-     * Publish flow for the admin (AI CBP) path: resolves userId from token,
-     * fetches the plan, skips the creator/role guard, then delegates to executePublishFlow.
-     *
-     * @param request       the API request containing plan ID, comment and targetedOrganisation
-     * @param userOrgId     target organization ID (from request body)
-     * @param authToken     authentication token
-     * @return ApiResponse containing the publish status
-     */
-    private ApiResponse publishCbPlanAdminFlow(ApiRequest request, String userOrgId, String authToken) {
-        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_CB_PLAN_V4_AICBP_PUBLISH);
-        try {
-            String userId = accessTokenValidator.fetchUserIdFromAccessToken(authToken, response);
-            if (StringUtils.isEmpty(userId)) {
-                return response;
-            }
-            Map<String, Object> incomingRequest = (Map<String, Object>) request.getRequest();
-            String cbPlanId = validationService.validateAndExtractPlanId(incomingRequest, response);
-            if (StringUtils.isEmpty(cbPlanId)) {
-                return response;
-            }
-            Map<String, Object> existingCbPlan = fetchExistingPlan(cbPlanId, response);
-            if (MapUtils.isEmpty(existingCbPlan)) {
-                return response;
-            }
-            executePublishFlow(request, userId, userOrgId, cbPlanId, existingCbPlan, response);
-        } catch (Exception e) {
-            handlePublishException(response, userOrgId, e);
-        }
-        return response;
+        return publishCbPlan(request, authToken);
     }
 
     /**

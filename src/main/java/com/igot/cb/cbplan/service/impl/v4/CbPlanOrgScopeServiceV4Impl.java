@@ -112,6 +112,121 @@ public class CbPlanOrgScopeServiceV4Impl {
     }
 
     /**
+     * AI CBP (admin) variant of {@link #resolveOrgScope}. The admin-supplied targetedOrganisation is
+     * the effective org for everything: referenced user groups are read from its partition (they are
+     * created against it via /usergroup/v1/admin/create), CCA/L0 rules are applied to it, and
+     * orgIdList is stamped with it. Only userGroupId references are accepted. Rules, applied
+     * independently of {@code usergroup.allow.multiple.root.org.ids}:
+     * <ul>
+     *   <li>CCA target: all groups without rootOrgId criteria gives ALL; a rootOrgId list gives SINGLE/CUSTOM.</li>
+     *   <li>L0 (ministry/state) target: ministryOrStateId criteria must equal the target and gives ALL;
+     *       a rootOrgId list gives SINGLE/CUSTOM.</li>
+     *   <li>Any other target: exactly one rootOrgId criteria, equal to the target, gives SINGLE.</li>
+     * </ul>
+     * rootOrgId and ministryOrStateId criteria cannot be mixed for any target.
+     *
+     * @param request               map holding the contextData to validate
+     * @param isCCA                 whether targetedOrganisation is CCA
+     * @param targetedOrgId         targetedOrganisation from the request body
+     * @param rootOrgIdsOut         set populated with the rootOrgId values resolved from the referenced groups
+     * @param ministryOrStateIdsOut set populated with the ministryOrStateId values resolved from the referenced groups
+     * @return validation errors, empty when the contextData is valid
+     */
+    public List<String> resolveOrgScopeForTargetedOrg(Map<String, Object> request, boolean isCCA, String targetedOrgId,
+                                                      Set<String> rootOrgIdsOut, Set<String> ministryOrStateIdsOut) {
+        List<String> errors = new ArrayList<>();
+        Map<String, Object> contextData = readContextData(request, errors);
+        if (CollectionUtils.isNotEmpty(errors)) {
+            return errors;
+        }
+        List<Map<String, Object>> userGroups = readUserGroups(contextData, errors);
+        if (CollectionUtils.isNotEmpty(errors)) {
+            return errors;
+        }
+        if (isV3Format(userGroups, errors)) {
+            errors.add(Constants.ERR_AICBP_USER_GROUP_ID_REQUIRED);
+            return errors;
+        }
+        if (CollectionUtils.isNotEmpty(errors)) {
+            return errors;
+        }
+        Set<String> criteriaOrgIds = Objects.nonNull(rootOrgIdsOut) ? rootOrgIdsOut : new HashSet<>();
+        Set<String> ministryOrStateIds = Objects.nonNull(ministryOrStateIdsOut) ? ministryOrStateIdsOut : new HashSet<>();
+        CriteriaFlags criteriaFlags = new CriteriaFlags();
+        boolean rootOrgMissingInSomeGroup = collectCriteria(userGroups, targetedOrgId, isCCA,
+                criteriaOrgIds, ministryOrStateIds, criteriaFlags, errors);
+        if (CollectionUtils.isNotEmpty(errors)) {
+            return errors;
+        }
+        if (criteriaFlags.isMinistryOrStateIdUsed() && criteriaFlags.isRootOrgIdUsed()) {
+            errors.add(Constants.ERR_BOTH_ROOT_ORG_AND_MINISTRY_USED);
+            return errors;
+        }
+        if (isCCA) {
+            OrgScopeContext context = new OrgScopeContext(true, false, targetedOrgId, false,
+                    criteriaOrgIds, rootOrgMissingInSomeGroup, criteriaFlags.isMinistryOrStateIdUsed());
+            applyOrgScope(request, context, errors);
+        } else if (checkUserOrgIsL0(targetedOrgId)) {
+            applyTargetedL0OrgScope(request, targetedOrgId, criteriaOrgIds, ministryOrStateIds, errors);
+        } else {
+            applyTargetedMdoOrgScope(request, targetedOrgId, criteriaOrgIds, ministryOrStateIds, errors);
+        }
+        if (CollectionUtils.isEmpty(errors)) {
+            request.put(Constants.ORG_ID_LIST, Collections.singletonList(targetedOrgId));
+            log.info("CbPlanOrgScopeServiceV4: Resolved orgScope {} for targetedOrganisation {}",
+                    request.get(Constants.ORG_SCOPE), targetedOrgId);
+        }
+        return errors;
+    }
+
+    /**
+     * Applies AI CBP orgScope rules for an L0 (ministry/state) targeted org: ministryOrStateId
+     * criteria must reference the targeted org itself (ALL users under it); otherwise a rootOrgId
+     * list gives SINGLE/CUSTOM.
+     *
+     * @param request            map to populate with ORG_SCOPE
+     * @param targetedOrgId      targetedOrganisation
+     * @param criteriaOrgIds     rootOrgId values collected from the referenced groups
+     * @param ministryOrStateIds validated ministryOrStateId values collected from the referenced groups
+     * @param errors             collector for validation errors
+     */
+    private void applyTargetedL0OrgScope(Map<String, Object> request, String targetedOrgId, Set<String> criteriaOrgIds,
+                                         Set<String> ministryOrStateIds, List<String> errors) {
+        if (CollectionUtils.isNotEmpty(ministryOrStateIds)) {
+            if (ministryOrStateIds.size() != 1 || !ministryOrStateIds.contains(targetedOrgId)) {
+                errors.add(String.format(Constants.ERR_AICBP_MINISTRY_OR_STATE_ID_MISMATCH, targetedOrgId));
+                return;
+            }
+            request.put(Constants.ORG_SCOPE, Constants.ALL);
+            return;
+        }
+        applyL0OrgScope(request, criteriaOrgIds, errors);
+    }
+
+    /**
+     * Applies AI CBP orgScope rules for a targeted org that is neither CCA nor L0: exactly one
+     * rootOrgId criteria is required and it must be the targeted org itself.
+     *
+     * @param request            map to populate with ORG_SCOPE
+     * @param targetedOrgId      targetedOrganisation
+     * @param criteriaOrgIds     rootOrgId values collected from the referenced groups
+     * @param ministryOrStateIds validated ministryOrStateId values collected from the referenced groups
+     * @param errors             collector for validation errors
+     */
+    private void applyTargetedMdoOrgScope(Map<String, Object> request, String targetedOrgId, Set<String> criteriaOrgIds,
+                                          Set<String> ministryOrStateIds, List<String> errors) {
+        if (CollectionUtils.isNotEmpty(ministryOrStateIds)) {
+            errors.add(String.format(Constants.ERR_AICBP_TARGET_NOT_MINISTRY_OR_STATE, targetedOrgId));
+            return;
+        }
+        if (criteriaOrgIds.size() != 1 || !StringUtils.equalsIgnoreCase(criteriaOrgIds.iterator().next(), targetedOrgId)) {
+            errors.add(String.format(Constants.ERR_AICBP_ROOT_ORG_ID_MISMATCH, targetedOrgId));
+            return;
+        }
+        request.put(Constants.ORG_SCOPE, Constants.SINGLE);
+    }
+
+    /**
      * Resolves the final orgScope from the collected criteria and, on success,
      * stamps orgIdList to the caller's own org (ownership, not targeting).
      *

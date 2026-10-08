@@ -161,36 +161,6 @@ public class CbPlanValidationServiceV4Impl {
     }
 
     /**
-     * AI CBP (admin) counterpart of {@link #validateContextDataForLivePlanV4} used on publish: the
-     * org scope is resolved against the admin-supplied targetedOrganisation via
-     * {@link CbPlanOrgScopeServiceV4Impl#resolveOrgScopeForTargetedOrg}.
-     *
-     * @param incomingRequest         plan/request map, updated in place with ORG_SCOPE/ORG_ID_LIST
-     * @param isCCA                   whether targetedOrganisation is CCA
-     * @param targetedOrgId           targetedOrganisation from the request body
-     * @param rootOrgIdsInContextData set populated with the rootOrgId values resolved from the referenced groups
-     * @param ministryOrStateIdsInContextData set populated with the ministryOrStateId values resolved from the referenced groups
-     * @param response                API response object
-     * @return true if valid, false otherwise
-     */
-    public boolean validateContextDataForAiCbpPlan(Map<String, Object> incomingRequest, boolean isCCA,
-                                                   String targetedOrgId, Set<String> rootOrgIdsInContextData,
-                                                   Set<String> ministryOrStateIdsInContextData,
-                                                   ApiResponse response) {
-        List<String> errors = orgScopeService.resolveOrgScopeForTargetedOrg(incomingRequest, isCCA, targetedOrgId,
-                rootOrgIdsInContextData, ministryOrStateIdsInContextData);
-        if (CollectionUtils.isNotEmpty(errors)) {
-            log.warn("CbPlanValidationServiceV4.validateContextDataForAiCbpPlan: Validation failed - targetedOrgId={}, errorCount={}",
-                    targetedOrgId, errors.size());
-            response.getParams().setStatus(Constants.FAILED);
-            response.getParams().setErr(Constants.ERR_VALIDATION_ERRORS + String.join("; ", errors));
-            response.setResponseCode(HttpStatus.BAD_REQUEST);
-            return false;
-        }
-        return true;
-    }
-
-    /**
      * Validates a full create/draft-update request: contentList shape, mandatory
      * fields, and the userGroupId-derived org scope, in that order.
      *
@@ -202,28 +172,6 @@ public class CbPlanValidationServiceV4Impl {
      */
     public boolean validateRequest(ApiRequest request, boolean isCCA, String userOrgId, ApiResponse response) {
         log.debug("CbPlanValidationServiceV4.validateRequest: Entry - userOrgId={}", userOrgId);
-        return validateRequest(request, isCCA, userOrgId, false, response);
-    }
-
-    /**
-     * Validates an AI CBP (admin) create request. Identical to {@link #validateRequest} except the
-     * org scope is resolved against the admin-supplied targetedOrganisation instead of the
-     * caller's org: user groups are read from targetedOrganisation's partition, CCA/L0 rules are
-     * applied to targetedOrganisation, and orgIdList is stamped with it.
-     *
-     * @param request       the API request containing CB Plan details
-     * @param isCCA         whether targetedOrganisation is CCA
-     * @param targetedOrgId targetedOrganisation from the request body
-     * @param response      API response object, populated with an error on failure
-     * @return true when the request is valid
-     */
-    public boolean validateAiCbpRequest(ApiRequest request, boolean isCCA, String targetedOrgId, ApiResponse response) {
-        log.debug("CbPlanValidationServiceV4.validateAiCbpRequest: Entry - targetedOrgId={}", targetedOrgId);
-        return validateRequest(request, isCCA, targetedOrgId, true, response);
-    }
-
-    private boolean validateRequest(ApiRequest request, boolean isCCA, String userOrgId, boolean targetedOrgMode,
-                                    ApiResponse response) {
         try {
             List<String> validations = new ArrayList<>();
             // Must run before validateBasicFieldsAndOrgScope: it normalizes contentList from
@@ -234,7 +182,7 @@ public class CbPlanValidationServiceV4Impl {
             if (CollectionUtils.isNotEmpty(contentListValidations)) {
                 validations.addAll(contentListValidations);
             }
-            List<String> basicValidations = validateBasicFieldsAndOrgScope(request, isCCA, userOrgId, targetedOrgMode);
+            List<String> basicValidations = validateBasicFieldsAndOrgScope(request, isCCA, userOrgId);
             if (CollectionUtils.isNotEmpty(basicValidations)) {
                 validations.addAll(basicValidations);
             }
@@ -262,20 +210,16 @@ public class CbPlanValidationServiceV4Impl {
      *
      * @param request   the API request containing CB Plan details
      * @param isCCA     whether the logged in org is CCA
-     * @param userOrgId logged in user's organization ID, or targetedOrganisation in targetedOrgMode
-     * @param targetedOrgMode true for the AI CBP admin flow
+     * @param userOrgId logged in user's organization ID
      * @return validation errors, empty when the request is valid
      */
-    private List<String> validateBasicFieldsAndOrgScope(ApiRequest request, boolean isCCA, String userOrgId,
-                                                        boolean targetedOrgMode) {
+    private List<String> validateBasicFieldsAndOrgScope(ApiRequest request, boolean isCCA, String userOrgId) {
         Map<String, Object> requestMap = (Map<String, Object>) request.getRequest();
         List<String> errors = cbPlanRequestValidator.validateMandatoryFields(requestMap);
         if (CollectionUtils.isNotEmpty(errors)) {
             return errors;
         }
-        return targetedOrgMode
-                ? orgScopeService.resolveOrgScopeForTargetedOrg(requestMap, isCCA, userOrgId, null, null)
-                : orgScopeService.resolveOrgScope(requestMap, isCCA, userOrgId, null, null);
+        return orgScopeService.resolveOrgScope(requestMap, isCCA, userOrgId, null, null);
     }
 
     /**

@@ -276,6 +276,12 @@ public class CbPlanLearnerServiceImpl {
 
             contentDetails = contentService.readContent(courseId, null);
 
+            if (MapUtils.isNotEmpty(contentDetails)
+                    && Constants.RETIRED.equalsIgnoreCase((String) contentDetails.get(Constants.STATUS))) {
+                logger.info("Skipping retired course from CB plan for courseId: {}", courseId);
+                continue;
+            }
+
             if (MapUtils.isNotEmpty(contentDetails)) {
                 if (courseId.contains("_rc")) {
                     if (Constants.VERIFIED.equalsIgnoreCase(userProfile.get(Constants.PROFILE_STATUS_LOWER_KEY))) {

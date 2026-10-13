@@ -1617,7 +1617,7 @@ class CbPlanDictionaryServiceV4ImplTest {
     }
 
     @Test
-    void getCBPlanDictionaryForUser_planWithDraftCaLinkedId_planRemovedFromResponse() throws Exception {
+    void getCBPlanDictionaryForUser_planWithDraftCaLinkedId_caLinkedIdStrippedButPlanKept() throws Exception {
         setupValidUserProfileMocks();
         when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
         when(contentLookupService.getContentMetadata("ca_do_draft_001")).thenReturn(buildNonLiveMetadata("Draft"));
@@ -1634,11 +1634,12 @@ class CbPlanDictionaryServiceV4ImplTest {
         Map<String, Object> yearResult = (Map<String, Object>) response.getResult().get(TEST_PLAN_YEAR);
         Map<String, Map<String, Object>> nonAparList =
                 (Map<String, Map<String, Object>>) yearResult.get(Constants.RESPONSE_KEY_NON_APAR_PLAN_LIST);
-        assertThat(nonAparList).doesNotContainKey("plan_draft_ca");
+        assertThat(nonAparList).containsKey("plan_draft_ca");
+        assertThat(nonAparList.get("plan_draft_ca")).doesNotContainKey(Constants.CA_LINKED_ID);
     }
 
     @Test
-    void getCBPlanDictionaryForUser_planWithRetiredCaLinkedId_planRemovedFromResponse() throws Exception {
+    void getCBPlanDictionaryForUser_planWithRetiredCaLinkedId_caLinkedIdStrippedButPlanKept() throws Exception {
         setupValidUserProfileMocks();
         when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
         when(contentLookupService.getContentMetadata("ca_do_retired_001")).thenReturn(buildNonLiveMetadata("Retired"));
@@ -1655,7 +1656,8 @@ class CbPlanDictionaryServiceV4ImplTest {
         Map<String, Object> yearResult = (Map<String, Object>) response.getResult().get(TEST_PLAN_YEAR);
         Map<String, Map<String, Object>> nonAparList =
                 (Map<String, Map<String, Object>>) yearResult.get(Constants.RESPONSE_KEY_NON_APAR_PLAN_LIST);
-        assertThat(nonAparList).doesNotContainKey("plan_retired_ca");
+        assertThat(nonAparList).containsKey("plan_retired_ca");
+        assertThat(nonAparList.get("plan_retired_ca")).doesNotContainKey(Constants.CA_LINKED_ID);
     }
 
     @Test
@@ -1740,7 +1742,7 @@ class CbPlanDictionaryServiceV4ImplTest {
     }
 
     @Test
-    void getCBPlanDictionaryForUser_contentMetadataResolutionFails_planExcluded() throws Exception {
+    void getCBPlanDictionaryForUser_contentMetadataResolutionFails_caLinkedIdStrippedButPlanKept() throws Exception {
         setupValidUserProfileMocks();
         when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
         when(contentLookupService.getContentMetadata("ca_do_error")).thenThrow(new RuntimeException("connection timeout"));
@@ -1757,7 +1759,8 @@ class CbPlanDictionaryServiceV4ImplTest {
         Map<String, Object> yearResult = (Map<String, Object>) response.getResult().get(TEST_PLAN_YEAR);
         Map<String, Map<String, Object>> nonAparList =
                 (Map<String, Map<String, Object>>) yearResult.get(Constants.RESPONSE_KEY_NON_APAR_PLAN_LIST);
-        assertThat(nonAparList).doesNotContainKey("plan_ca_error");
+        assertThat(nonAparList).containsKey("plan_ca_error");
+        assertThat(nonAparList.get("plan_ca_error")).doesNotContainKey(Constants.CA_LINKED_ID);
     }
 
     @Test
@@ -1843,7 +1846,9 @@ class CbPlanDictionaryServiceV4ImplTest {
         Map<String, Map<String, Object>> nonAparList =
                 (Map<String, Map<String, Object>>) yearResult.get(Constants.RESPONSE_KEY_NON_APAR_PLAN_LIST);
         assertThat(aparList).containsKey("plan_apar_live_ca");
-        assertThat(nonAparList).doesNotContainKey("plan_nonapar_draft_ca");
+        assertThat(aparList.get("plan_apar_live_ca")).containsEntry(Constants.CA_LINKED_ID, "ca_apar_live");
+        assertThat(nonAparList).containsKey("plan_nonapar_draft_ca");
+        assertThat(nonAparList.get("plan_nonapar_draft_ca")).doesNotContainKey(Constants.CA_LINKED_ID);
     }
 
     @Test
@@ -1986,7 +1991,7 @@ class CbPlanDictionaryServiceV4ImplTest {
     }
 
     @Test
-    void getCBPlanDictionaryForUser_contentMetadataReturnsEmpty_planExcluded() throws Exception {
+    void getCBPlanDictionaryForUser_contentMetadataReturnsEmpty_caLinkedIdStrippedButPlanKept() throws Exception {
         setupValidUserProfileMocks();
         when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
         when(contentLookupService.getContentMetadata("ca_do_empty_meta")).thenReturn(Collections.emptyMap());
@@ -2003,7 +2008,8 @@ class CbPlanDictionaryServiceV4ImplTest {
         Map<String, Object> yearResult = (Map<String, Object>) response.getResult().get(TEST_PLAN_YEAR);
         Map<String, Map<String, Object>> nonAparList =
                 (Map<String, Map<String, Object>>) yearResult.get(Constants.RESPONSE_KEY_NON_APAR_PLAN_LIST);
-        assertThat(nonAparList).doesNotContainKey("plan_empty_meta_ca");
+        assertThat(nonAparList).containsKey("plan_empty_meta_ca");
+        assertThat(nonAparList.get("plan_empty_meta_ca")).doesNotContainKey(Constants.CA_LINKED_ID);
     }
 
     @Test
@@ -2120,4 +2126,27 @@ class CbPlanDictionaryServiceV4ImplTest {
                         .get(TEST_PLAN_YEAR)).get(Constants.RESPONSE_KEY_NON_APAR_PLAN_LIST);
         assertThat(nonAparList).doesNotContainKey("plan_empty_col");
     }
+
+    @Test
+    void getCBPlanDictionaryForUser_planWithBlankCaLinkedId_caLinkedIdKeptAsIs() throws Exception {
+        setupValidUserProfileMocks();
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
+
+        Map<String, Object> plan = createMockPlanWithCaId("plan_blank_ca", false, "");
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+                .thenReturn(List.of(plan));
+        lenient().when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), isNull()))
+                .thenReturn(Collections.emptyList());
+
+        ApiResponse response = dictionaryService.getCBPlanDictionaryForUser(testRequest, TEST_AUTH_TOKEN);
+
+        assertThat(response.getResponseCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> yearResult = (Map<String, Object>) response.getResult().get(TEST_PLAN_YEAR);
+        Map<String, Map<String, Object>> nonAparList =
+                (Map<String, Map<String, Object>>) yearResult.get(Constants.RESPONSE_KEY_NON_APAR_PLAN_LIST);
+        assertThat(nonAparList).containsKey("plan_blank_ca");
+        assertThat(nonAparList.get("plan_blank_ca")).containsEntry(Constants.CA_LINKED_ID, "");
+        verify(contentLookupService, never()).getContentMetadata(anyString());
+    }
+
 }

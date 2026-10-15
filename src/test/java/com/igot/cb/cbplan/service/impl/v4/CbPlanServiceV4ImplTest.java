@@ -103,6 +103,9 @@ class CbPlanServiceV4ImplTest {
     @Mock
     private CbPlanCacheMgrV4 cbPlanCacheMgrV4;
 
+    @Mock
+    private CbPlanLookupServiceV4Impl lookupService;
+
     @InjectMocks
     private CbPlanServiceV4Impl cbPlanService;
 
@@ -1883,5 +1886,34 @@ class CbPlanServiceV4ImplTest {
 
         assertDoesNotThrow(() -> ReflectionTestUtils.invokeMethod(cbPlanService, "triggerDictionaryCacheInvalidation",
                 PLAN_ID, PLAN_YEAR, Constants.SINGLE, updatedRequest, existingPlanWithOrgScope(Constants.SINGLE)));
+    }
+
+    @Test
+    void getCBPlanCourseListForUser_delegatesToLookupService() {
+        String userId = "user1";
+        String userOrgId = "org1";
+        ApiResponse expected = new ApiResponse();
+        expected.getParams().setStatus(Constants.SUCCESS);
+        expected.setResponseCode(HttpStatus.OK);
+        when(lookupService.getCBPlanCourseListForUser(userId, userOrgId)).thenReturn(expected);
+
+        ApiResponse actual = cbPlanService.getCBPlanCourseListForUser(userId, userOrgId);
+
+        assertEquals(expected, actual);
+        verify(lookupService).getCBPlanCourseListForUser(userId, userOrgId);
+    }
+
+    @Test
+    void getCBPlanCourseListForUser_propagatesFailureResponse() {
+        ApiResponse failed = new ApiResponse();
+        failed.getParams().setStatus(Constants.FAILED);
+        failed.getParams().setErr("UserId is blank");
+        failed.setResponseCode(HttpStatus.BAD_REQUEST);
+        when(lookupService.getCBPlanCourseListForUser(anyString(), anyString())).thenReturn(failed);
+
+        ApiResponse actual = cbPlanService.getCBPlanCourseListForUser("", "org1");
+
+        assertEquals(HttpStatus.BAD_REQUEST, actual.getResponseCode());
+        assertEquals(Constants.FAILED, actual.getParams().getStatus());
     }
 }

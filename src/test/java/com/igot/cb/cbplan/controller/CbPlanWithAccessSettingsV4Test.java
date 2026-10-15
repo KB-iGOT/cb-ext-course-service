@@ -179,4 +179,31 @@ class CbPlanWithAccessSettingsV4Test {
         assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
         assertEquals(Constants.FAILED, response.getBody().getParams().getStatus());
     }
+
+    @Test
+    void getPrivateCBPlanListForUser_delegatesToServiceAndReturnsOk() {
+        String userId = "user1";
+        String userOrgId = "org1";
+        when(cbPlanServiceV4.getCBPlanCourseListForUser(eq(userId), eq(userOrgId))).thenReturn(successResponse());
+
+        ResponseEntity<ApiResponse> response = controller.getPrivateCBPlanListForUser(userOrgId, userId);
+
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertNotNull(response.getBody());
+        assertEquals(Constants.SUCCESS, response.getBody().getParams().getStatus());
+        verify(cbPlanServiceV4).getCBPlanCourseListForUser(userId, userOrgId);
+    }
+
+    @Test
+    void getPrivateCBPlanListForUser_propagatesFailureStatusCode() {
+        ApiResponse mockResponse = new ApiResponse();
+        mockResponse.getParams().setStatus(Constants.FAILED);
+        mockResponse.setResponseCode(HttpStatus.BAD_REQUEST);
+        when(cbPlanServiceV4.getCBPlanCourseListForUser(anyString(), anyString())).thenReturn(mockResponse);
+
+        ResponseEntity<ApiResponse> response = controller.getPrivateCBPlanListForUser("org1", "user1");
+
+        assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
+        assertEquals(Constants.FAILED, response.getBody().getParams().getStatus());
+    }
 }

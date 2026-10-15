@@ -58,6 +58,7 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
     private final CbExtRedisCacheMgr redisCacheMgr;
     private final CbPlanCacheMgrV4 cbPlanCacheMgrV4;
     private final CbPlanContentSyncServiceV4Impl contentSyncService;
+    private final CbPlanLookupServiceV4Impl lookupService;
     private final ObjectMapper mapper;
 
     public CbPlanServiceV4Impl(CassandraOperation cassandraOperation,
@@ -75,7 +76,8 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
                                CbPlanDictionaryServiceV4Impl dictionaryService,
                                @Qualifier("cbPlanRedisCacheMgr") CbExtRedisCacheMgr redisCacheMgr,
                                CbPlanCacheMgrV4 cbPlanCacheMgrV4,
-                               CbPlanContentSyncServiceV4Impl contentSyncService) {
+                               CbPlanContentSyncServiceV4Impl contentSyncService,
+                               CbPlanLookupServiceV4Impl lookupService) {
         this.cassandraOperation = cassandraOperation;
         this.serverProperties = serverProperties;
         this.validationService = validationService;
@@ -92,6 +94,7 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
         this.redisCacheMgr = redisCacheMgr;
         this.cbPlanCacheMgrV4 = cbPlanCacheMgrV4;
         this.contentSyncService = contentSyncService;
+        this.lookupService = lookupService;
         this.mapper = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
@@ -2051,5 +2054,13 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
         affectedMinistryIds.forEach(id -> cbPlanCacheMgrV4.invalidateMinistryLookup(id, planYear));
         log.info("CbPlanServiceV4Impl.invalidateDictionaryCaches: cbPlanId={}, planYear={}, orgCount={}, ministryCount={}",
                 cbPlanId, planYear, affectedOrgIds.size(), affectedMinistryIds.size());
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public ApiResponse getCBPlanCourseListForUser(String userId, String userOrgId) {
+        return lookupService.getCBPlanCourseListForUser(userId, userOrgId);
     }
 }

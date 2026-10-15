@@ -2145,8 +2145,8 @@ class CbPlanDictionaryServiceV4ImplTest {
     }
 
     @Test
-    void resolveAccessibleAparPlansByUserId_noActivePlans_returnsEmptyList() {
-        setupValidUserProfileMocks();
+    void resolveAccessibleAparPlansByUserId_noActivePlans_returnsEmptyList() throws Exception {
+        stubUserProfileWithoutTokenValidation();
         when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
                 .thenReturn(Collections.emptyList());
 
@@ -2159,14 +2159,12 @@ class CbPlanDictionaryServiceV4ImplTest {
     }
 
     @Test
-    void resolveAccessibleAparPlansByUserId_returnsOnlyAparPlans_filtersNonApar() {
-        setupValidUserProfileMocks();
+    void resolveAccessibleAparPlansByUserId_returnsOnlyAparPlans_filtersNonApar() throws Exception {
+        stubUserProfileWithoutTokenValidation();
         Map<String, Object> aparPlan = createMockPlan("plan_apar", true, null);
         Map<String, Object> nonAparPlan = createMockPlan("plan_non_apar", false, null);
         when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
                 .thenReturn(List.of(aparPlan, nonAparPlan));
-        lenient().when(userGroupCacheMgrV4.fetchUserGroupsByIds(anyList(), eq(TEST_ORG_ID)))
-                .thenReturn(Collections.emptyMap());
 
         List<Map<String, Object>> plans = dictionaryService.resolveAccessibleAparPlansByUserId(
                 TEST_USER_ID, TEST_ORG_ID, TEST_PLAN_YEAR, new ApiResponse());
@@ -2176,18 +2174,33 @@ class CbPlanDictionaryServiceV4ImplTest {
     }
 
     @Test
-    void resolveAccessibleAparPlansByUserId_noAparPlans_returnsEmptyList() {
-        setupValidUserProfileMocks();
+    void resolveAccessibleAparPlansByUserId_noAparPlans_returnsEmptyList() throws Exception {
+        stubUserProfileWithoutTokenValidation();
         Map<String, Object> nonAparPlan = createMockPlan("plan_non_apar", false, null);
         when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
                 .thenReturn(List.of(nonAparPlan));
-        lenient().when(userGroupCacheMgrV4.fetchUserGroupsByIds(anyList(), eq(TEST_ORG_ID)))
-                .thenReturn(Collections.emptyMap());
 
         List<Map<String, Object>> plans = dictionaryService.resolveAccessibleAparPlansByUserId(
                 TEST_USER_ID, TEST_ORG_ID, TEST_PLAN_YEAR, new ApiResponse());
 
         assertThat(plans).isEmpty();
+    }
+
+    private void stubUserProfileWithoutTokenValidation() throws Exception {
+        lenient().when(userProfileRedisCacheMgr.getFromCache(anyString())).thenReturn(null);
+        Map<String, Object> userRecord = new HashMap<>();
+        userRecord.put(Constants.ID, TEST_USER_ID);
+        userRecord.put(Constants.ROOT_ORG_ID, TEST_ORG_ID);
+        Map<String, Object> profileDetails = new HashMap<>();
+        profileDetails.put("department", "Engineering");
+        profileDetails.put("designation", "Manager");
+        profileDetails.put(Constants.ROOT_ORG_ID, TEST_ORG_ID);
+        userRecord.put(Constants.PROFILE_DETAILS.toLowerCase(), mapper.writeValueAsString(profileDetails));
+        lenient().when(cassandraOperation.getRecordsByProperties(
+                eq(Constants.KEYSPACE_SUNBIRD), eq(Constants.USER), any(Map.class), any(List.class), anyInt()))
+                .thenReturn(List.of(userRecord));
+        lenient().doAnswer(invocation -> null).when(enrichmentService)
+                .extractMinistryOrStateDetails(any(Map.class), any(Map.class));
     }
 
     @Test

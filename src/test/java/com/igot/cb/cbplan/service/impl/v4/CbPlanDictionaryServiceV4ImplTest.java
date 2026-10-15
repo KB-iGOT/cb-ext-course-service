@@ -2170,7 +2170,7 @@ class CbPlanDictionaryServiceV4ImplTest {
                 TEST_USER_ID, TEST_ORG_ID, TEST_PLAN_YEAR, new ApiResponse());
 
         assertThat(plans).hasSize(1);
-        assertThat(plans.get(0).get(Constants.PLAN_ID)).isEqualTo("plan_apar");
+        assertThat(plans.get(0)).containsEntry(Constants.PLAN_ID, "plan_apar");
     }
 
     @Test

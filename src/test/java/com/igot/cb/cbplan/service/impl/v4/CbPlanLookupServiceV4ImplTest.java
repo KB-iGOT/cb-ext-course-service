@@ -35,7 +35,6 @@ class CbPlanLookupServiceV4ImplTest {
     private static final String USER_ORG_ID = "org-1";
     private static final String COURSE_1 = "do_111";
     private static final String COURSE_2 = "do_222";
-    private static final String COURSE_3 = "do_333";
     private static final String END_DATE_1 = "2027-03-31T18:29:59Z";
     private static final String END_DATE_2 = "2026-12-15T18:29:59Z";
 

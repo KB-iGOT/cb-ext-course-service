@@ -184,7 +184,7 @@ class CbPlanWithAccessSettingsV4Test {
     void getPrivateCBPlanListForUser_delegatesToServiceAndReturnsOk() {
         String userId = "user1";
         String userOrgId = "org1";
-        when(cbPlanServiceV4.getCBPlanCourseListForUser(eq(userId), eq(userOrgId))).thenReturn(successResponse());
+        when(cbPlanServiceV4.getCBPlanCourseListForUser(userId, userOrgId)).thenReturn(successResponse());
 
         ResponseEntity<ApiResponse> response = controller.getPrivateCBPlanListForUser(userOrgId, userId);
 

@@ -1143,4 +1143,34 @@ public class CbPlanDictionaryServiceV4Impl {
         }
     }
 
+    /**
+     * Resolves the user's access-controlled APAR plans for a given plan year without token validation.
+     * Builds the user profile from userId directly, fetches active plans scoped to userOrgId
+     * (and ministry/state if present on profile), applies the V4 userGroupId / V3 inline access control,
+     * and returns only the APAR partition. Non-APAR plans are discarded. On profile load failure,
+     * errorResponse is populated and an empty list is returned.
+     *
+     * @param userId        resolved user ID
+     * @param userOrgId     user's root organisation ID
+     * @param planYear      financial year in YYYY-YY form
+     * @param errorResponse response object populated on profile load failure
+     * @return list of access-controlled APAR plan entries; empty on failure or when none accessible
+     */
+    public List<Map<String, Object>> resolveAccessibleAparPlansByUserId(String userId, String userOrgId,
+                                                                         String planYear, ApiResponse errorResponse) {
+        Map<String, String> userProfile = buildUserProfile(userId, errorResponse);
+        if (userProfile.isEmpty()) {
+            return Collections.emptyList();
+        }
+        AtomicBoolean isCacheEnabled = new AtomicBoolean(false);
+        List<Map<String, Object>> activePlans = fetchPlansForUser(userProfile, userOrgId, planYear, isCacheEnabled);
+        if (CollectionUtils.isEmpty(activePlans)) {
+            return Collections.emptyList();
+        }
+        Map<String, Map<String, Object>> aparPlanMap = new LinkedHashMap<>();
+        Map<String, Map<String, Object>> nonAparPlanMap = new LinkedHashMap<>();
+        buildPlanPartitions(activePlans, userProfile, aparPlanMap, nonAparPlanMap);
+        return new ArrayList<>(aparPlanMap.values());
+    }
+
 }

@@ -2128,6 +2128,82 @@ class CbPlanDictionaryServiceV4ImplTest {
     }
 
     @Test
+    void resolveAccessibleAparPlansByUserId_userNotFound_returnsEmptyListAndPopulatesError() {
+        lenient().when(userProfileRedisCacheMgr.getFromCache(anyString())).thenReturn(null);
+        lenient().when(cassandraOperation.getRecordsByProperties(
+                eq(Constants.KEYSPACE_SUNBIRD), eq(Constants.USER), any(Map.class), any(List.class), anyInt()))
+                .thenReturn(Collections.emptyList());
+        ApiResponse errorResponse = new ApiResponse();
+        errorResponse.getParams().setStatus(Constants.SUCCESS);
+
+        List<Map<String, Object>> plans = dictionaryService.resolveAccessibleAparPlansByUserId(
+                TEST_USER_ID, TEST_ORG_ID, TEST_PLAN_YEAR, errorResponse);
+
+        assertThat(plans).isEmpty();
+        assertThat(errorResponse.getParams().getStatus()).isEqualTo(Constants.FAILED);
+        assertThat(errorResponse.getResponseCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
+    void resolveAccessibleAparPlansByUserId_noActivePlans_returnsEmptyList() throws Exception {
+        stubUserProfileWithoutTokenValidation();
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+                .thenReturn(Collections.emptyList());
+
+        ApiResponse response = new ApiResponse();
+        List<Map<String, Object>> plans = dictionaryService.resolveAccessibleAparPlansByUserId(
+                TEST_USER_ID, TEST_ORG_ID, TEST_PLAN_YEAR, response);
+
+        assertThat(plans).isEmpty();
+        assertThat(response.getParams().getStatus()).isNotEqualTo(Constants.FAILED);
+    }
+
+    @Test
+    void resolveAccessibleAparPlansByUserId_returnsOnlyAparPlans_filtersNonApar() throws Exception {
+        stubUserProfileWithoutTokenValidation();
+        Map<String, Object> aparPlan = createMockPlan("plan_apar", true, null);
+        Map<String, Object> nonAparPlan = createMockPlan("plan_non_apar", false, null);
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+                .thenReturn(List.of(aparPlan, nonAparPlan));
+
+        List<Map<String, Object>> plans = dictionaryService.resolveAccessibleAparPlansByUserId(
+                TEST_USER_ID, TEST_ORG_ID, TEST_PLAN_YEAR, new ApiResponse());
+
+        assertThat(plans).hasSize(1);
+        assertThat(plans.get(0)).containsEntry(Constants.PLAN_ID, "plan_apar");
+    }
+
+    @Test
+    void resolveAccessibleAparPlansByUserId_noAparPlans_returnsEmptyList() throws Exception {
+        stubUserProfileWithoutTokenValidation();
+        Map<String, Object> nonAparPlan = createMockPlan("plan_non_apar", false, null);
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+                .thenReturn(List.of(nonAparPlan));
+
+        List<Map<String, Object>> plans = dictionaryService.resolveAccessibleAparPlansByUserId(
+                TEST_USER_ID, TEST_ORG_ID, TEST_PLAN_YEAR, new ApiResponse());
+
+        assertThat(plans).isEmpty();
+    }
+
+    private void stubUserProfileWithoutTokenValidation() throws Exception {
+        lenient().when(userProfileRedisCacheMgr.getFromCache(anyString())).thenReturn(null);
+        Map<String, Object> userRecord = new HashMap<>();
+        userRecord.put(Constants.ID, TEST_USER_ID);
+        userRecord.put(Constants.ROOT_ORG_ID, TEST_ORG_ID);
+        Map<String, Object> profileDetails = new HashMap<>();
+        profileDetails.put("department", "Engineering");
+        profileDetails.put("designation", "Manager");
+        profileDetails.put(Constants.ROOT_ORG_ID, TEST_ORG_ID);
+        userRecord.put(Constants.PROFILE_DETAILS.toLowerCase(), mapper.writeValueAsString(profileDetails));
+        lenient().when(cassandraOperation.getRecordsByProperties(
+                eq(Constants.KEYSPACE_SUNBIRD), eq(Constants.USER), any(Map.class), any(List.class), anyInt()))
+                .thenReturn(List.of(userRecord));
+        lenient().doAnswer(invocation -> null).when(enrichmentService)
+                .extractMinistryOrStateDetails(any(Map.class), any(Map.class));
+    }
+
+    @Test
     void getCBPlanDictionaryForUser_planWithBlankCaLinkedId_caLinkedIdKeptAsIs() throws Exception {
         setupValidUserProfileMocks();
         when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);

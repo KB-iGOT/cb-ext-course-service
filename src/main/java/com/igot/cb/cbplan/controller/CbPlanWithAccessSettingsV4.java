@@ -214,4 +214,21 @@ public class CbPlanWithAccessSettingsV4 {
         ApiResponse response = cbPlanServiceV4.publishCbPlanByAdmin(request, token);
         return new ResponseEntity<>(response, response.getResponseCode());
     }
+
+    /**
+     * Private service-to-service lookup: returns the flat courseId -&gt; planEndDate map
+     * for the given user across their active CB Plans. Caller supplies the already-resolved
+     * userId and userOrgId via headers; no token validation is performed.
+     *
+     * @param userOrgId the user's root organisation ID
+     * @param userId    the resolved user ID
+     * @return ResponseEntity containing ApiResponse with result.contents = Map&lt;courseId, planEndDate&gt;
+     */
+    @GetMapping("/user/lookup")
+    public ResponseEntity<ApiResponse> getPrivateCBPlanListForUser(
+            @RequestHeader(Constants.X_AUTH_USER_ORG_ID) String userOrgId,
+            @RequestHeader(Constants.X_AUTH_USER_ID) String userId) {
+        ApiResponse response = cbPlanServiceV4.getCBPlanCourseListForUser(userId, userOrgId);
+        return new ResponseEntity<>(response, response.getResponseCode());
+    }
 }

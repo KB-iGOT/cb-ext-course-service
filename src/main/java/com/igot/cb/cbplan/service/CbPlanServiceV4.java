@@ -156,4 +156,15 @@ public interface CbPlanServiceV4 {
      */
     ApiResponse publishCbPlanByAdmin(ApiRequest request, String authToken);
 
+    /**
+     * Returns the flat courseId -&gt; planEndDate map for the given user across their active CB Plans.
+     * Intended for private service-to-service lookups where the caller already has the resolved userId
+     * and userOrgId (no token validation performed).
+     *
+     * @param userId    the resolved user ID
+     * @param userOrgId the user's root organisation ID
+     * @return ApiResponse with result.contents = Map&lt;courseId, planEndDate&gt;
+     */
+    ApiResponse getCBPlanCourseListForUser(String userId, String userOrgId);
+
 }

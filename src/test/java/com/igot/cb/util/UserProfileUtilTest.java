@@ -1,7 +1,7 @@
 package com.igot.cb.util;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.igot.cb.cache.RedisCacheMgr;
+import com.igot.cb.cache.CbExtRedisCacheMgr;
 import com.igot.cb.cassandra.CassandraOperation;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -32,7 +32,7 @@ class UserProfileUtilTest {
     @Mock
     private CassandraOperation cassandraOperation;
     @Mock
-    private RedisCacheMgr redisCacheMgr;
+    private CbExtRedisCacheMgr redisCacheMgr;
     @Mock
     private CbExtServerProperties serverProperties;
 

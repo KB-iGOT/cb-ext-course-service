@@ -82,7 +82,7 @@ class CbPlanReadResponseDtoTest {
     void testAllArgsConstructor() {
         CbPlanReadResponseDto dto = new CbPlanReadResponseDto("plan1", "name", "2026-27",
                 Instant.EPOCH, false, "Course", "type", Instant.EPOCH, Instant.EPOCH,
-                "Live", "user1", "John", null, List.of(), "ca_123");
+                "Live", "user1", "John", null, List.of(), "ca_123", "org1", null);
         assertEquals("plan1", dto.getId());
         assertEquals("2026-27", dto.getPlanYear());
         assertNull(dto.getContextData());

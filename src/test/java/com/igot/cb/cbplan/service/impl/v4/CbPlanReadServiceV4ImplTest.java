@@ -243,4 +243,46 @@ class CbPlanReadServiceV4ImplTest {
 
         assertNull(dto.getCaLinkedId());
     }
+
+    @Test
+    void buildEnrichedPlanData_withOrgIdList_setsCreatedByOrgId() throws JsonProcessingException {
+        Map<String, Object> plan = basePlan(Constants.DRAFT);
+        plan.put(Constants.ORG_ID_LIST, List.of("orgAbc123"));
+
+        CbPlanReadResponseDto dto = readService.buildEnrichedPlanData(plan, PLAN_ID);
+
+        assertEquals("orgAbc123", dto.getCreatedByOrgId());
+        assertNull(dto.getCreatedByOrgName());
+    }
+
+    @Test
+    void buildEnrichedPlanData_withoutOrgIdList_createdByOrgIdIsNull() throws JsonProcessingException {
+        Map<String, Object> plan = basePlan(Constants.DRAFT);
+
+        CbPlanReadResponseDto dto = readService.buildEnrichedPlanData(plan, PLAN_ID);
+
+        assertNull(dto.getCreatedByOrgId());
+    }
+
+    @Test
+    void buildEnrichedPlanData_withEmptyOrgIdList_createdByOrgIdIsNull() throws JsonProcessingException {
+        Map<String, Object> plan = basePlan(Constants.DRAFT);
+        plan.put(Constants.ORG_ID_LIST, List.of());
+
+        CbPlanReadResponseDto dto = readService.buildEnrichedPlanData(plan, PLAN_ID);
+
+        assertNull(dto.getCreatedByOrgId());
+    }
+
+    @Test
+    void buildEnrichedPlanData_withNullFirstOrgIdEntry_createdByOrgIdIsNull() throws JsonProcessingException {
+        Map<String, Object> plan = basePlan(Constants.DRAFT);
+        List<Object> orgIdList = new ArrayList<>();
+        orgIdList.add(null);
+        plan.put(Constants.ORG_ID_LIST, orgIdList);
+
+        CbPlanReadResponseDto dto = readService.buildEnrichedPlanData(plan, PLAN_ID);
+
+        assertNull(dto.getCreatedByOrgId());
+    }
 }

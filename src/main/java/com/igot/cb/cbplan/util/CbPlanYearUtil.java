@@ -8,7 +8,7 @@ import java.time.ZoneId;
 import java.util.regex.Pattern;
 
 /**
- * Utility class for CB Plan year operations (financial year resolution and validation).
+ * Utility class for CB Plan year operations and validation.
  *
  * @version 3.0
  */
@@ -16,17 +16,14 @@ import java.util.regex.Pattern;
 public final class CbPlanYearUtil {
     private static final Pattern PLAN_YEAR_PATTERN = Pattern.compile("^\\d{4}-\\d{2}$");
     private static final Month FY_START_MONTH = Month.APRIL;
-
     private CbPlanYearUtil() {
     }
 
     /**
-     * Resolves the current financial year based on Indian FY cycle (April 1 - March 31).
+     * Resolves the current financial year based on the April-March cycle.
      * Examples:
      * - Date: 2026-08-12 → Returns "2026-27"
      * - Date: 2026-02-12 → Returns "2025-26"
-     * - Date: 2026-04-01 → Returns "2026-27"
-     * - Date: 2026-03-31 → Returns "2025-26"
      *
      * @return current financial year in format "YYYY-YY"
      */
@@ -43,14 +40,19 @@ public final class CbPlanYearUtil {
      */
     public static String resolveFinancialYearForDate(LocalDate date) {
         int year = date.getYear();
-        Month month = date.getMonth();
-        if (month.getValue() >= FY_START_MONTH.getValue()) {
-            int nextYear = year + 1;
-            return String.format("%d-%02d", year, nextYear % 100);
-        } else {
-            int prevYear = year - 1;
-            return String.format("%d-%02d", prevYear, year % 100);
+        if (date.getMonthValue() >= FY_START_MONTH.getValue()) {
+            return String.format("%d-%02d", year, (year + 1) % 100);
         }
+        return String.format("%d-%02d", year - 1, year % 100);
+    }
+
+    /**
+     * Resolves the current calendar-based plan year for eligibility checks.
+     */
+    public static String resolveCurrentCalendarPlanYear() {
+        LocalDate today = LocalDate.now(ZoneId.of("Asia/Kolkata"));
+        int year = today.getYear();
+        return String.format("%d-%02d", year, (year + 1) % 100);
     }
 
     /**
@@ -100,11 +102,11 @@ public final class CbPlanYearUtil {
     }
 
     /**
-     * Resolves the previous financial year for the given plan year.
+     * Resolves the previous plan year for the given plan year.
      * Example: "2026-27" → "2025-26"
      *
      * @param planYear the plan year in format "YYYY-YY"
-     * @return previous financial year in format "YYYY-YY"
+     * @return previous plan year in format "YYYY-YY"
      */
     public static String resolvePreviousYear(String planYear) {
         int startYear = Integer.parseInt(planYear.substring(0, 4)) - 1;

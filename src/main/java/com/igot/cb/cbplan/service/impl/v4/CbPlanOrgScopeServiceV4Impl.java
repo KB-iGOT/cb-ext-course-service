@@ -503,12 +503,17 @@ public class CbPlanOrgScopeServiceV4Impl {
      * @param errors  collector for validation errors
      */
     private void applyNonCcaOrgScope(Map<String, Object> request, OrgScopeContext context, List<String> errors) {
-        if (context.getCriteriaOrgIds().size() > 1) {
-            errors.add(Constants.ERR_MULTIPLE_ROOT_ORG_IDS);
-            return;
-        }
         if (context.getCriteriaOrgIds().isEmpty()) {
             errors.add(Constants.ERR_NO_ROOT_ORG_ID);
+            return;
+        }
+        if (serverProperties.isUserGroupAllowMultipleRootOrgIds()) {
+            request.put(Constants.ORG_SCOPE,
+                    context.getCriteriaOrgIds().size() == 1 ? Constants.SINGLE : Constants.CUSTOM);
+            return;
+        }
+        if (context.getCriteriaOrgIds().size() > 1) {
+            errors.add(Constants.ERR_MULTIPLE_ROOT_ORG_IDS);
             return;
         }
         String rootOrgId = context.getCriteriaOrgIds().iterator().next();

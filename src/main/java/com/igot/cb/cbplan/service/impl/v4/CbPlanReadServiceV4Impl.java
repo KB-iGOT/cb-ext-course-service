@@ -145,6 +145,7 @@ public class CbPlanReadServiceV4Impl {
                 .contextData(parseContextDataToJsonNode(cbPlan.get(Constants.CONTEXT_DATA_REQUEST)))
                 .contentList(fields.contentList())
                 .caLinkedId((String) cbPlan.get(Constants.CA_LINKED_ID_DB))
+                .createdByOrgId(extractCreatorOrgId(cbPlan))
                 .build();
     }
 
@@ -216,6 +217,21 @@ public class CbPlanReadServiceV4Impl {
             }
         }
         return result;
+    }
+
+    /**
+     * Extracts the creator's root org ID from orgIdList[0].
+     *
+     * @param cbPlan raw CB Plan record from Cassandra
+     * @return org ID string, or null if absent
+     */
+    private String extractCreatorOrgId(Map<String, Object> cbPlan) {
+        Object orgIdListObj = cbPlan.get(Constants.ORG_ID_LIST);
+        if (orgIdListObj instanceof List<?> rawList && !rawList.isEmpty()) {
+            Object first = rawList.get(0);
+            return Objects.nonNull(first) ? first.toString() : null;
+        }
+        return null;
     }
 
     /**

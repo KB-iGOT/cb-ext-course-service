@@ -146,6 +146,56 @@ class UserGroupControllerTest {
         verify(userGroupService, times(1)).searchUserGroups(any(ApiRequest.class), eq(TEST_AUTH_TOKEN));
     }
 
+    @Test
+    void searchUserGroupsV2_withValidRequest_shouldReturn200() throws Exception {
+        ApiRequest request = createSearchV2Request();
+        ApiResponse response = createSuccessResponse(HttpStatus.OK);
+        response.put(Constants.COUNT, 1L);
+        response.put(Constants.CONTENT, List.of(Map.of(Constants.COL_USERGROUPID, TEST_USER_GROUP_ID)));
+
+        when(userGroupService.searchUserGroupsV2(any(ApiRequest.class), anyString()))
+                .thenReturn(response);
+
+        mockMvc.perform(post(BASE_URL + "/searchV2")
+                        .header(Constants.X_AUTH_TOKEN, TEST_AUTH_TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.result.count").value(1));
+
+        verify(userGroupService, times(1)).searchUserGroupsV2(any(ApiRequest.class), eq(TEST_AUTH_TOKEN));
+    }
+
+    @Test
+    void searchUserGroupsV2_withMissingAuthToken_shouldReturn400() throws Exception {
+        ApiRequest request = createSearchV2Request();
+
+        mockMvc.perform(post(BASE_URL + "/searchV2")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
+
+        verify(userGroupService, never()).searchUserGroupsV2(any(), anyString());
+    }
+
+    @Test
+    void searchUserGroupsV2_whenNotFound_shouldReturn404() throws Exception {
+        ApiRequest request = createSearchV2Request();
+        ApiResponse response = new ApiResponse();
+        response.setResponseCode(HttpStatus.NOT_FOUND);
+
+        when(userGroupService.searchUserGroupsV2(any(ApiRequest.class), anyString()))
+                .thenReturn(response);
+
+        mockMvc.perform(post(BASE_URL + "/searchV2")
+                        .header(Constants.X_AUTH_TOKEN, TEST_AUTH_TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isNotFound());
+
+        verify(userGroupService, times(1)).searchUserGroupsV2(any(ApiRequest.class), eq(TEST_AUTH_TOKEN));
+    }
+
 
     private ApiRequest createApiRequest() {
         ApiRequest request = new ApiRequest();
@@ -168,9 +218,82 @@ class UserGroupControllerTest {
         return request;
     }
 
+    private ApiRequest createSearchV2Request() {
+        ApiRequest request = new ApiRequest();
+        Map<String, Object> searchMap = new HashMap<>();
+        Map<String, Object> filters = new HashMap<>();
+        filters.put(Constants.COL_USERGROUPNAME, "Test Group");
+        filters.put(Constants.COL_ORGID, "org_456");
+        searchMap.put(Constants.FILTERS, filters);
+        request.setRequest(searchMap);
+        return request;
+    }
+
     private ApiResponse createSuccessResponse(HttpStatus status) {
         ApiResponse response = new ApiResponse();
         response.setResponseCode(status);
         return response;
+    }
+
+    @Test
+    void createUserGroupAdmin_withValidRequest_shouldReturn201() throws Exception {
+        ApiRequest request = createAdminApiRequest();
+        ApiResponse response = createSuccessResponse(HttpStatus.CREATED);
+        response.put(Constants.COL_USERGROUPID, TEST_USER_GROUP_ID);
+
+        when(userGroupService.createUserGroupAdmin(any(ApiRequest.class), anyString()))
+                .thenReturn(response);
+
+        mockMvc.perform(post(BASE_URL + "/admin/create")
+                        .header(Constants.X_AUTH_TOKEN, TEST_AUTH_TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.result.usergroupid").value(TEST_USER_GROUP_ID));
+
+        verify(userGroupService, times(1)).createUserGroupAdmin(any(ApiRequest.class), eq(TEST_AUTH_TOKEN));
+    }
+
+    @Test
+    void createUserGroupAdmin_withMissingAuthToken_shouldReturn400() throws Exception {
+        ApiRequest request = createAdminApiRequest();
+
+        mockMvc.perform(post(BASE_URL + "/admin/create")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
+
+        verify(userGroupService, never()).createUserGroupAdmin(any(), anyString());
+    }
+
+    @Test
+    void createUserGroupAdmin_whenServiceReturnsBadRequest_shouldPropagateStatus() throws Exception {
+        ApiRequest request = createAdminApiRequest();
+        ApiResponse response = new ApiResponse();
+        response.setResponseCode(HttpStatus.BAD_REQUEST);
+        response.getParams().setErr(Constants.MSG_ROOTORGID_REQUIRED_IN_BODY);
+
+        when(userGroupService.createUserGroupAdmin(any(ApiRequest.class), anyString()))
+                .thenReturn(response);
+
+        mockMvc.perform(post(BASE_URL + "/admin/create")
+                        .header(Constants.X_AUTH_TOKEN, TEST_AUTH_TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
+
+        verify(userGroupService, times(1)).createUserGroupAdmin(any(ApiRequest.class), eq(TEST_AUTH_TOKEN));
+    }
+
+    private ApiRequest createAdminApiRequest() {
+        ApiRequest request = new ApiRequest();
+        Map<String, Object> requestMap = new HashMap<>();
+        requestMap.put(Constants.ROOT_ORG_ID, "target_org_999");
+        requestMap.put(Constants.COL_USERGROUPNAME, "Test Group");
+        requestMap.put(Constants.COL_CRITERIA, List.of(
+                Map.of(Constants.CRITERIA_KEY, "department", Constants.CRITERIA_VALUE, List.of("HR"))
+        ));
+        request.setRequest(requestMap);
+        return request;
     }
 }

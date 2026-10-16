@@ -162,6 +162,8 @@ class CbPlanServiceV3ImplTest {
     void setUpAuthorizedRoles() {
         lenient().when(serverProperties.getCbPlanUpdatePublishAuthorizedRoles())
                 .thenReturn(List.of("CONTENT_CREATOR", "ADMIN"));
+        lenient().when(serverProperties.getCbPlanV4Keyspace()).thenReturn("sunbird");
+        lenient().when(serverProperties.getCbPlanV4PlanTable()).thenReturn("cb_plan_v4");
     }
 
     private void mockAuthenticatedUser() {

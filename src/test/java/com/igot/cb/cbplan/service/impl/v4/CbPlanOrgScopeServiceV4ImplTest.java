@@ -526,4 +526,31 @@ class CbPlanOrgScopeServiceV4ImplTest {
 
         assertTrue(errors.isEmpty());
     }
+
+    @Test
+    void resolveOrgScope_nonCcaNonL0_flagEnabled_multipleRootOrgIds_resolvesCustom() {
+        when(serverProperties.isUserGroupAllowMultipleRootOrgIds()).thenReturn(true);
+        Map<String, Object> request = requestWithGroups(List.of(userGroupRef(VALID_GROUP_ID), userGroupRef(OTHER_GROUP_ID)));
+        mockGroupWithRootOrgIds(VALID_GROUP_ID, ORG_ID);
+        mockGroupWithRootOrgIds(OTHER_GROUP_ID, OTHER_ORG_ID);
+        mockNonL0Org(ORG_ID);
+
+        List<String> errors = orgScopeService.resolveOrgScope(request, false, ORG_ID, null, null);
+
+        assertTrue(errors.isEmpty());
+        assertEquals(Constants.CUSTOM, request.get(Constants.ORG_SCOPE));
+    }
+
+    @Test
+    void resolveOrgScope_nonCcaNonL0_flagEnabled_singleRootOrgIdMismatch_resolvesSingle() {
+        when(serverProperties.isUserGroupAllowMultipleRootOrgIds()).thenReturn(true);
+        Map<String, Object> request = requestWithGroups(List.of(userGroupRef(VALID_GROUP_ID)));
+        mockGroupWithRootOrgIds(VALID_GROUP_ID, OTHER_ORG_ID);
+        mockNonL0Org(ORG_ID);
+
+        List<String> errors = orgScopeService.resolveOrgScope(request, false, ORG_ID, null, null);
+
+        assertTrue(errors.isEmpty());
+        assertEquals(Constants.SINGLE, request.get(Constants.ORG_SCOPE));
+    }
 }

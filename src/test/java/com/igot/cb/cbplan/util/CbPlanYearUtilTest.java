@@ -35,6 +35,12 @@ class CbPlanYearUtilTest {
     }
 
     @Test
+    void testResolveCurrentCalendarPlanYearMatchesExpectedFormat() {
+        String currentPlanYear = CbPlanYearUtil.resolveCurrentCalendarPlanYear();
+        assertTrue(currentPlanYear.matches("^\\d{4}-\\d{2}$"));
+    }
+
+    @Test
     void testResolveCurrentFinancialYearMatchesExpectedFormat() {
         String currentFy = CbPlanYearUtil.resolveCurrentFinancialYear();
         assertTrue(currentFy.matches("^\\d{4}-\\d{2}$"));

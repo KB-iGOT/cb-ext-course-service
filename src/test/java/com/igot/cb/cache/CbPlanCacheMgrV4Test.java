@@ -678,4 +678,102 @@ class CbPlanCacheMgrV4Test {
         assertDoesNotThrow(() -> cbPlanCacheMgrV4.invalidateMinistryLookup(MINISTRY_ID, ""));
         assertDoesNotThrow(() -> cbPlanCacheMgrV4.invalidateMinistryLookup(MINISTRY_ID, null));
     }
+
+    // ---------------------------------------------------------------------------------------
+    // Version-stamped reads (cross-pod invalidation via CbPlanCacheVersions)
+    // ---------------------------------------------------------------------------------------
+
+    private static CbPlanCacheVersions versions(long org, long ministry, long all) {
+        return new CbPlanCacheVersions(org, ministry, all, ministry > 0 ? MINISTRY_ID : null);
+    }
+
+    @Test
+    void getCbPlanForOrgId_sameStamp_servesFromCache() {
+        stubOrgLookup(List.of(lookupEntry("p1", true, Instant.now())));
+
+        cbPlanCacheMgrV4.getCbPlanForOrgId(ORG_ID, PLAN_YEAR, "1");
+        List<Map<String, Object>> result = cbPlanCacheMgrV4.getCbPlanForOrgId(ORG_ID, PLAN_YEAR, "1");
+
+        assertEquals(1, result.size());
+        verify(cassandraOperation, times(1)).getRecordsByProperties(anyString(),
+                eq(V4_LOOKUP_BY_ORG_TABLE), anyMap(), any(), any());
+    }
+
+    @Test
+    void getCbPlanForOrgId_stampMoved_reloadsFromCassandra() {
+        stubOrgLookup(List.of(lookupEntry("p1", true, Instant.now())));
+
+        cbPlanCacheMgrV4.getCbPlanForOrgId(ORG_ID, PLAN_YEAR, "1");
+        cbPlanCacheMgrV4.getCbPlanForOrgId(ORG_ID, PLAN_YEAR, "2");
+
+        verify(cassandraOperation, times(2)).getRecordsByProperties(anyString(),
+                eq(V4_LOOKUP_BY_ORG_TABLE), anyMap(), any(), any());
+    }
+
+    @Test
+    void getCbPlanForOrgId_nullStamp_acceptsAnyCachedEntry() {
+        stubOrgLookup(List.of(lookupEntry("p1", true, Instant.now())));
+
+        cbPlanCacheMgrV4.getCbPlanForOrgId(ORG_ID, PLAN_YEAR, "1");
+        cbPlanCacheMgrV4.getCbPlanForOrgId(ORG_ID, PLAN_YEAR);
+        cbPlanCacheMgrV4.getCbPlanForOrgId(ORG_ID, PLAN_YEAR, null);
+
+        verify(cassandraOperation, times(1)).getRecordsByProperties(anyString(),
+                eq(V4_LOOKUP_BY_ORG_TABLE), anyMap(), any(), any());
+    }
+
+    @Test
+    void getCbPlanForAllAndOrgId_orgVersionMoved_rebuildsCombinedAndRereadsPlanRows() {
+        stubOrgLookup(List.of(lookupEntry("p1", true, Instant.now())));
+        stubAllOrgLookup(new ArrayList<>());
+        stubFullPlanFetch(List.of(fullPlan("p1", Constants.LIVE)));
+
+        AtomicBoolean flag = new AtomicBoolean(false);
+        cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(ORG_ID, PLAN_YEAR, flag, versions(1, 0, 0));
+        cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(ORG_ID, PLAN_YEAR, flag, versions(1, 0, 0));
+        verify(cassandraOperation, times(1)).getRecordsByProperties(anyString(),
+                eq(V4_PLAN_TABLE), anyMap(), any(), any());
+
+        cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(ORG_ID, PLAN_YEAR, flag, versions(2, 0, 0));
+
+        // org lookup reloaded and the stale plan row dropped from planIdCache -> plan table re-read
+        verify(cassandraOperation, times(2)).getRecordsByProperties(anyString(),
+                eq(V4_LOOKUP_BY_ORG_TABLE), anyMap(), any(), any());
+        verify(cassandraOperation, times(2)).getRecordsByProperties(anyString(),
+                eq(V4_PLAN_TABLE), anyMap(), any(), any());
+        // all-org lookup version unchanged -> not reloaded
+        verify(cassandraOperation, times(1)).getRecordsByProperties(anyString(),
+                eq(V4_LOOKUP_BY_ALL_ORG_TABLE), anyMap(), any(), any());
+    }
+
+    @Test
+    void getCbPlanForAllAndOrgId_allVersionMoved_reloadsAllOrgLookupOnly() {
+        stubOrgLookup(List.of(lookupEntry("p1", true, Instant.now())));
+        stubAllOrgLookup(new ArrayList<>());
+        stubFullPlanFetch(List.of(fullPlan("p1", Constants.LIVE)));
+
+        AtomicBoolean flag = new AtomicBoolean(false);
+        cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(ORG_ID, PLAN_YEAR, flag, versions(1, 0, 5));
+        cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(ORG_ID, PLAN_YEAR, flag, versions(1, 0, 6));
+
+        verify(cassandraOperation, times(1)).getRecordsByProperties(anyString(),
+                eq(V4_LOOKUP_BY_ORG_TABLE), anyMap(), any(), any());
+        verify(cassandraOperation, times(2)).getRecordsByProperties(anyString(),
+                eq(V4_LOOKUP_BY_ALL_ORG_TABLE), anyMap(), any(), any());
+    }
+
+    @Test
+    void getCbPlanForMinistryOrStateId_stampMoved_reloadsAndRereadsPlanRows() {
+        stubMinistryLookup(List.of(lookupEntry("m1", true, Instant.now())));
+        stubFullPlanFetch(List.of(fullPlan("m1", Constants.LIVE)));
+
+        cbPlanCacheMgrV4.getCbPlanForMinistryOrStateId(MINISTRY_ID, PLAN_YEAR, "3");
+        cbPlanCacheMgrV4.getCbPlanForMinistryOrStateId(MINISTRY_ID, PLAN_YEAR, "3");
+        cbPlanCacheMgrV4.getCbPlanForMinistryOrStateId(MINISTRY_ID, PLAN_YEAR, "4");
+
+        verify(cassandraOperation, times(2)).getRecordsByProperties(eq(Constants.KEYSPACE_SUNBIRD),
+                eq(V4_LOOKUP_BY_MINISTRY_TABLE), anyMap(), any(), any());
+        verify(cassandraOperation, times(2)).getRecordsByProperties(anyString(),
+                eq(V4_PLAN_TABLE), anyMap(), any(), any());
+    }
 }

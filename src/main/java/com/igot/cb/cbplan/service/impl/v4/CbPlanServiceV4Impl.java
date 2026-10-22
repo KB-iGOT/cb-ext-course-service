@@ -17,8 +17,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.igot.cb.cache.CbPlanCacheMgrV4;
-import com.igot.cb.cache.CbExtRedisCacheMgr;
-import org.springframework.beans.factory.annotation.Qualifier;
+import com.igot.cb.cache.CbPlanVersionMgr;
 import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.cbplan.dto.CbPlanReadResponseDto;
 import com.igot.cb.cbplan.service.CbPlanServiceV4;
@@ -55,8 +54,8 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
     private final AccessTokenValidator accessTokenValidator;
     private final UserProfileUtil userProfileUtil;
     private final CbPlanDictionaryServiceV4Impl dictionaryService;
-    private final CbExtRedisCacheMgr redisCacheMgr;
     private final CbPlanCacheMgrV4 cbPlanCacheMgrV4;
+    private final CbPlanVersionMgr versionMgr;
     private final CbPlanContentSyncServiceV4Impl contentSyncService;
     private final CbPlanLookupServiceV4Impl lookupService;
     private final ObjectMapper mapper;
@@ -74,8 +73,8 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
                                AccessTokenValidator accessTokenValidator,
                                UserProfileUtil userProfileUtil,
                                CbPlanDictionaryServiceV4Impl dictionaryService,
-                               @Qualifier("cbPlanRedisCacheMgr") CbExtRedisCacheMgr redisCacheMgr,
                                CbPlanCacheMgrV4 cbPlanCacheMgrV4,
+                               CbPlanVersionMgr versionMgr,
                                CbPlanContentSyncServiceV4Impl contentSyncService,
                                CbPlanLookupServiceV4Impl lookupService) {
         this.cassandraOperation = cassandraOperation;
@@ -91,8 +90,8 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
         this.accessTokenValidator = accessTokenValidator;
         this.userProfileUtil = userProfileUtil;
         this.dictionaryService = dictionaryService;
-        this.redisCacheMgr = redisCacheMgr;
         this.cbPlanCacheMgrV4 = cbPlanCacheMgrV4;
+        this.versionMgr = versionMgr;
         this.contentSyncService = contentSyncService;
         this.lookupService = lookupService;
         this.mapper = new ObjectMapper()
@@ -1384,7 +1383,7 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
         }
         elasticSearchService.updateElasticSearchForPlan(cbPlanId, updateMap);
         cbPlanCacheMgrV4.invalidatePlan(cbPlanId);
-        redisCacheMgr.deleteKeysByPatternAsync(Constants.CB_PLAN_V4_REDIS_KEY_PREFIX + "*");
+        bumpVersionsForPlanId(cbPlanId);
         log.info("CbPlanServiceV4Impl.updateCaLinkedId: Updated - cbPlanId={}, caLinkedId={}, updatedBy={}",
                 cbPlanId, caLinkedId, updatedBy);
         return true;
@@ -1775,6 +1774,7 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
         String planYear = (String) existingCbPlan.get(Constants.PLAN_YEAR);
         contentLookupService.removeFromContentLookup(cbPlanId, existingCbPlan);
         orgLookupService.deactivateOrgLookupEntries(cbPlanId, planYear, existingCbPlan, response);
+        bumpVersionsForPlanRecord(existingCbPlan);
         if (Constants.SUCCESS.equalsIgnoreCase(response.getParams().getStatus())
                 || Objects.isNull(response.getParams().getStatus())) {
             response.getResult().put(Constants.STATUS, Constants.UPDATED);
@@ -1873,9 +1873,9 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
 
     /**
      * Updates {@code calinkedid} on the CB Plan in Cassandra and syncs the change to ElasticSearch.
-     * Invalidates the per-plan Caffeine cache entry and asynchronously deletes Redis dictionary
-     * cache keys scoped to the plan's owning org ({@code orgIdList[0]}).
-     * If {@code orgIdList} is empty the entire V4 dictionary key prefix is flushed as a fallback.
+     * Invalidates the per-plan Caffeine cache entry and bumps the publish-version counters of every
+     * scope the plan targets, which makes all dependent per-user dictionary entries stale at once
+     * (see {@link CbPlanVersionMgr}). {@code orgIdList} is now used for logging only.
      *
      * @param cbPlanId   CB Plan ID to update
      * @param caLinkedId CA content identifier to set, or {@code null} to clear the link
@@ -1902,11 +1902,8 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
         }
         elasticSearchService.updateElasticSearchForPlan(cbPlanId, updateMap);
         cbPlanCacheMgrV4.invalidatePlan(cbPlanId);
+        bumpVersionsForPlanId(cbPlanId);
         String orgId = CollectionUtils.isNotEmpty(orgIdList) ? (String) orgIdList.get(0) : null;
-        String deletePattern = StringUtils.isNotBlank(orgId)
-                ? Constants.CB_PLAN_V4_REDIS_KEY_PREFIX + orgId + ":*"
-                : Constants.CB_PLAN_V4_REDIS_KEY_PREFIX + "*";
-        redisCacheMgr.deleteKeysByPatternAsync(deletePattern);
         log.info("CbPlanServiceV4Impl.updateCaLinkedIdV2: Updated - cbPlanId={}, caLinkedId={}, updatedBy={}, orgId={}",
                 cbPlanId, caLinkedId, updatedBy, orgId);
         return true;
@@ -2052,8 +2049,53 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
             affectedMinistryIds.addAll(existingMinistryOrStateIds);
         }
         affectedMinistryIds.forEach(id -> cbPlanCacheMgrV4.invalidateMinistryLookup(id, planYear));
+        boolean allScopeInvolved = Constants.ALL.equalsIgnoreCase(newOrgScope)
+                || Constants.ALL.equalsIgnoreCase(previousOrgScope);
+        versionMgr.bump(affectedOrgIds, affectedMinistryIds, allScopeInvolved, planYear);
         log.info("CbPlanServiceV4Impl.invalidateDictionaryCaches: cbPlanId={}, planYear={}, orgCount={}, ministryCount={}",
                 cbPlanId, planYear, affectedOrgIds.size(), affectedMinistryIds.size());
+    }
+
+    /**
+     * Bumps the publish-version counters for every scope a plan targets (its root orgs and
+     * ministry/state IDs from contextData, plus the ALL scope when {@code orgScope} is ALL), so
+     * per-user dictionary entries and other pods' Caffeine lists that include this plan are
+     * rebuilt on their next read. Used for changes that alter a LIVE plan without going through
+     * the publish transaction (retire, caLinkedId sync).
+     *
+     * @param plan full CB Plan record from Cassandra
+     */
+    private void bumpVersionsForPlanRecord(Map<String, Object> plan) {
+        if (MapUtils.isEmpty(plan)) {
+            return;
+        }
+        String planYear = (String) plan.get(Constants.PLAN_YEAR);
+        String orgScope = (String) plan.get(Constants.ORG_SCOPE);
+        Set<String> rootOrgIds = orgLookupService.resolveRootOrgIdsFromUserGroups(plan);
+        Set<String> ministryOrStateIds = orgLookupService.resolveMinistryOrStateIdsFromUserGroups(plan);
+        versionMgr.bump(rootOrgIds, ministryOrStateIds, Constants.ALL.equalsIgnoreCase(orgScope), planYear);
+    }
+
+    /**
+     * Reads the plan record by ID and delegates to {@link #bumpVersionsForPlanRecord(Map)}.
+     * A plan that cannot be read is logged and skipped; the affected entries then expire by TTL.
+     *
+     * @param cbPlanId CB Plan ID
+     */
+    private void bumpVersionsForPlanId(String cbPlanId) {
+        try {
+            List<Map<String, Object>> plans = cassandraOperation.getRecordsByProperties(
+                    serverProperties.getCbPlanV4Keyspace(), serverProperties.getCbPlanV4PlanTable(),
+                    Map.of(Constants.PLAN_ID, cbPlanId), null, serverProperties.getCassandraQueryLimitPrimaryKey());
+            if (CollectionUtils.isEmpty(plans)) {
+                log.warn("CbPlanServiceV4Impl.bumpVersionsForPlanId: CB Plan not found, skipping version bump - cbPlanId={}",
+                        cbPlanId);
+                return;
+            }
+            bumpVersionsForPlanRecord(plans.get(0));
+        } catch (Exception e) {
+            log.error("CbPlanServiceV4Impl.bumpVersionsForPlanId: Failed - cbPlanId={}", cbPlanId, e);
+        }
     }
 
     /**

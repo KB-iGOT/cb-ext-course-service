@@ -1,10 +1,6 @@
 package com.igot.cb.cbplan.service.impl.v4;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import com.igot.cb.cache.CbExtRedisCacheMgr;
+import com.igot.cb.cache.CbPlanVersionMgr;
 import com.igot.cb.cbplan.util.CbPlanYearUtil;
 import com.igot.cb.model.ApiResponse;
 import com.igot.cb.util.Constants;
@@ -12,11 +8,9 @@ import com.igot.cb.util.ProjectUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
-import java.io.IOException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -37,21 +31,15 @@ import java.util.Optional;
 @Slf4j
 public class CbPlanLookupServiceV4Impl {
 
-    private static final TypeReference<Map<String, Object>> MAP_TYPE_REF = new TypeReference<>() {
-    };
     private static final String GENERIC_ERROR = "Failed to lookup user CB plan courses";
 
     private final CbPlanDictionaryServiceV4Impl dictionaryService;
-    private final CbExtRedisCacheMgr redisCacheMgr;
-    private final ObjectMapper mapper;
+    private final CbPlanVersionMgr versionMgr;
 
     public CbPlanLookupServiceV4Impl(CbPlanDictionaryServiceV4Impl dictionaryService,
-                                     @Qualifier("cbPlanRedisCacheMgr") CbExtRedisCacheMgr redisCacheMgr) {
+                                     CbPlanVersionMgr versionMgr) {
         this.dictionaryService = dictionaryService;
-        this.redisCacheMgr = redisCacheMgr;
-        this.mapper = new ObjectMapper()
-                .registerModule(new JavaTimeModule())
-                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+        this.versionMgr = versionMgr;
     }
 
     /**
@@ -218,9 +206,12 @@ public class CbPlanLookupServiceV4Impl {
 
     /**
      * Reads the dictionary API's per-user Redis cache (populated by
-     * {@code CbPlanDictionaryServiceV4Impl#getCBPlanDictionaryForUser}) and flattens its
+     * {@code CbPlanDictionaryServiceV4Impl#getCBPlanDictionaryForUser}) through
+     * {@link CbPlanVersionMgr}, which serves it only while its publish-version stamp still matches
+     * the live counters for the user's org, ministry and the ALL scope, and flattens its
      * {@code aparPlanList} into a courseId &rarr; endDate map. Returns an empty Optional on miss,
-     * blank cache, malformed JSON, or missing aparPlanList so the caller falls back to the full pipeline.
+     * stale or unstamped entry, malformed JSON, or missing aparPlanList so the caller falls back
+     * to the full pipeline. No user profile is loaded on this path.
      *
      * @param userId    resolved user ID
      * @param userOrgId user's root organisation ID
@@ -229,28 +220,23 @@ public class CbPlanLookupServiceV4Impl {
      */
     private Optional<Map<String, String>> readFromDictionaryCache(String userId, String userOrgId, String planYear) {
         String cacheKey = Constants.CB_PLAN_V4_REDIS_KEY_PREFIX + userOrgId + ":" + userId + ":" + planYear + ":dict";
-        String cachedJson = redisCacheMgr.getFromCache(cacheKey);
-        if (StringUtils.isBlank(cachedJson)) {
+        Optional<Map<String, Object>> cached = versionMgr.readValidatedDict(cacheKey, userOrgId, planYear);
+        if (cached.isEmpty()) {
             return Optional.empty();
         }
-        try {
-            Map<String, Object> cached = mapper.readValue(cachedJson, MAP_TYPE_REF);
-            Optional<List<Map<String, Object>>> aparPlans = extractAparPlans(cached, planYear);
-            if (aparPlans.isEmpty()) {
-                return Optional.empty();
-            }
-            Map<String, String> courseMap = flattenToCourseEndDateMap(aparPlans.get());
-            log.info("readFromDictionaryCache: Cache hit - userId={}, courseCount={}", userId, courseMap.size());
-            return Optional.of(courseMap);
-        } catch (IOException e) {
-            log.warn("readFromDictionaryCache: Failed to deserialize - key={}", cacheKey, e);
+        Optional<List<Map<String, Object>>> aparPlans = extractAparPlans(cached.get(), planYear);
+        if (aparPlans.isEmpty()) {
             return Optional.empty();
         }
+        Map<String, String> courseMap = flattenToCourseEndDateMap(aparPlans.get());
+        log.info("readFromDictionaryCache: Cache hit - userId={}, courseCount={}", userId, courseMap.size());
+        return Optional.of(courseMap);
     }
 
     /**
      * Navigates the cached dictionary structure down to the APAR plan list for the given planYear.
-     * Expected shape: {@code { <planYear>: { aparPlanList: { planId: planEntry, ... }, ... } }}.
+     * Expected shape: {@code { <planYear>: { aparPlanList: { planId: planEntry, ... }, ... } }}
+     * (the {@code _cv} version stamp has already been stripped by {@link CbPlanVersionMgr}).
      * Returns an empty Optional when the shape doesn't match so the caller falls back to the
      * pipeline. A matching shape with an empty aparPlanList is a valid cache hit and returns
      * {@code Optional.of(emptyList)}.
@@ -279,7 +265,7 @@ public class CbPlanLookupServiceV4Impl {
 
     /**
      * Narrows a raw wildcard-typed Map to {@code Map<String, Object>}. Called only on nested
-     * maps that originated from a {@link #MAP_TYPE_REF} deserialization, so String keys are
+     * maps that originated from a JSON-to-Map deserialization, so String keys are
      * guaranteed and the cast cannot throw at runtime.
      *
      * @param raw wildcard-typed map freshly deserialized from the cache payload

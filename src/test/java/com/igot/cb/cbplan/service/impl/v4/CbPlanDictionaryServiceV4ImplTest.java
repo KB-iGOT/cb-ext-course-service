@@ -2,6 +2,8 @@ package com.igot.cb.cbplan.service.impl.v4;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.igot.cb.cache.CbPlanCacheMgrV4;
+import com.igot.cb.cache.CbPlanCacheVersions;
+import com.igot.cb.cache.CbPlanVersionMgr;
 import com.igot.cb.cache.CbExtRedisCacheMgr;
 import com.igot.cb.cache.UserGroupCacheMgrV4;
 import com.igot.cb.cbplan.service.impl.CbPlanContentLookupServiceV3Impl;
@@ -83,8 +85,9 @@ class CbPlanDictionaryServiceV4ImplTest {
     @BeforeEach
     void setUp() throws Exception {
         dictionaryService = new CbPlanDictionaryServiceV4Impl(cassandraOperation, cbPlanCacheMgrV4,
-                userGroupCacheMgrV4, accessTokenValidator, redisCacheMgr, userProfileRedisCacheMgr,
-                serverProperties, enrichmentService, dataTransformService, contentLookupService);
+                new CbPlanVersionMgr(redisCacheMgr), userGroupCacheMgrV4, accessTokenValidator, redisCacheMgr,
+                userProfileRedisCacheMgr, serverProperties, enrichmentService, dataTransformService,
+                contentLookupService);
 
         testRequest = new ApiRequest();
         Map<String, Object> requestMap = new HashMap<>();
@@ -143,7 +146,8 @@ class CbPlanDictionaryServiceV4ImplTest {
         String userCacheKey = Constants.USER + ":basicProfile:" + TEST_USER_ID;
         String cachedUserProfile = "{\"id\":\"" + TEST_USER_ID + "\",\"rootOrgId\":\"" + TEST_ORG_ID + "\"}";
         String dictCacheKey = Constants.CB_PLAN_V4_REDIS_KEY_PREFIX + TEST_ORG_ID + ":" + TEST_USER_ID + ":" + TEST_PLAN_YEAR + ":dict";
-        String cachedJson = "{\"" + TEST_PLAN_YEAR + "\":{\"aparPlanList\":{},\"nonAparPlanList\":{}}}";
+        String cachedJson = "{\"_cv\":{\"orgVer\":0,\"ministryVer\":0,\"allVer\":0},"
+                + "\"" + TEST_PLAN_YEAR + "\":{\"aparPlanList\":{},\"nonAparPlanList\":{}}}";
         when(userProfileRedisCacheMgr.getFromCache(userCacheKey)).thenReturn(cachedUserProfile);
         when(redisCacheMgr.getFromCache(dictCacheKey)).thenReturn(cachedJson);
 
@@ -151,8 +155,52 @@ class CbPlanDictionaryServiceV4ImplTest {
 
         assertThat(response.getResponseCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getResult()).containsKey(TEST_PLAN_YEAR);
+        assertThat(response.getResult()).doesNotContainKey(Constants.CB_PLAN_V4_CACHE_VERSIONS_KEY);
         verify(redisCacheMgr, times(1)).getFromCache(dictCacheKey);
         verifyNoInteractions(cassandraOperation, cbPlanCacheMgrV4);
+    }
+
+    @Test
+    void getCBPlanDictionaryForUser_cacheStaleAfterPublish_rebuildsInsteadOfServingCache() {
+        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(TEST_AUTH_TOKEN), any(ApiResponse.class)))
+                .thenReturn(TEST_USER_ID);
+        String userCacheKey = Constants.USER + ":basicProfile:" + TEST_USER_ID;
+        String cachedUserProfile = "{\"id\":\"" + TEST_USER_ID + "\",\"rootOrgId\":\"" + TEST_ORG_ID + "\"}";
+        String dictCacheKey = Constants.CB_PLAN_V4_REDIS_KEY_PREFIX + TEST_ORG_ID + ":" + TEST_USER_ID + ":" + TEST_PLAN_YEAR + ":dict";
+        String cachedJson = "{\"_cv\":{\"orgVer\":0,\"ministryVer\":0,\"allVer\":0},"
+                + "\"" + TEST_PLAN_YEAR + "\":{\"aparPlanList\":{},\"nonAparPlanList\":{}}}";
+        when(userProfileRedisCacheMgr.getFromCache(userCacheKey)).thenReturn(cachedUserProfile);
+        when(redisCacheMgr.getFromCache(dictCacheKey)).thenReturn(cachedJson);
+        // org counter moved to 1 since the entry was stamped
+        when(redisCacheMgr.mgetFromCache(any(String[].class))).thenReturn(java.util.Arrays.asList("1", null));
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class),
+                any(CbPlanCacheVersions.class))).thenReturn(Collections.emptyList());
+
+        ApiResponse response = dictionaryService.getCBPlanDictionaryForUser(testRequest, TEST_AUTH_TOKEN);
+
+        assertThat(response.getResponseCode()).isEqualTo(HttpStatus.OK);
+        verify(cbPlanCacheMgrV4).getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class),
+                argThat(v -> v.orgVersion() == 1 && v.allVersion() == 0));
+    }
+
+    @Test
+    void getCBPlanDictionaryForUser_cachesResult_stampedWithVersions() {
+        setupValidUserProfileMocks();
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
+        when(redisCacheMgr.mgetFromCache(any(String[].class))).thenReturn(List.of("5", "2"));
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class),
+                any(CbPlanCacheVersions.class))).thenAnswer(inv -> {
+                    ((AtomicBoolean) inv.getArgument(2)).set(true);
+                    return Collections.emptyList();
+                });
+
+        ApiResponse response = dictionaryService.getCBPlanDictionaryForUser(testRequest, TEST_AUTH_TOKEN);
+
+        assertThat(response.getResponseCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getResult()).doesNotContainKey(Constants.CB_PLAN_V4_CACHE_VERSIONS_KEY);
+        verify(redisCacheMgr).putInCache(anyString(),
+                argThat(json -> json.contains("\"_cv\"") && json.contains("\"orgVer\":5") && json.contains("\"allVer\":2")),
+                anyInt());
     }
 
     @Test
@@ -177,7 +225,7 @@ class CbPlanDictionaryServiceV4ImplTest {
     void getCBPlanDictionaryForUser_noPlans_returnsEmptyLists() {
         setupValidUserProfileMocks();
         when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(Collections.emptyList());
 
         ApiResponse response = dictionaryService.getCBPlanDictionaryForUser(testRequest, TEST_AUTH_TOKEN);
@@ -196,7 +244,7 @@ class CbPlanDictionaryServiceV4ImplTest {
         Map<String, Object> aparPlan = createMockPlan("plan_apar", true, null);
         Map<String, Object> nonAparPlan = createMockPlan("plan_non_apar", false, null);
 
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(List.of(aparPlan, nonAparPlan));
         lenient().when(userGroupCacheMgrV4.fetchUserGroupsByIds(anyList(), eq(TEST_ORG_ID)))
                 .thenReturn(Collections.emptyMap());
@@ -229,7 +277,7 @@ class CbPlanDictionaryServiceV4ImplTest {
                 Map.of("designation", List.of("Manager"))
         ));
 
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(List.of(v4Plan));
         when(userGroupCacheMgrV4.fetchUserGroupsByIds(eq(List.of("ug_123")), eq(TEST_ORG_ID)))
                 .thenReturn(Map.of("ug_123", userGroup));
@@ -254,7 +302,7 @@ class CbPlanDictionaryServiceV4ImplTest {
                 )
         ));
 
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(List.of(v3Plan));
         lenient().when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), isNull()))
                 .thenReturn(Collections.emptyList());
@@ -273,7 +321,7 @@ class CbPlanDictionaryServiceV4ImplTest {
         Map<String, Object> openPlan = createMockPlan("plan_open", false, null);
         openPlan.remove(Constants.CONTEXT_DATA_REQUEST);
 
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(List.of(openPlan));
         lenient().when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), isNull()))
                 .thenReturn(Collections.emptyList());
@@ -321,9 +369,9 @@ class CbPlanDictionaryServiceV4ImplTest {
         Map<String, Object> orgPlan = createMockPlan("plan_org", false, null);
         Map<String, Object> ministryPlan = createMockPlan("plan_ministry", false, null);
 
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(List.of(orgPlan));
-        when(cbPlanCacheMgrV4.getCbPlanForMinistryOrStateId(eq("ministry_001"), eq(TEST_PLAN_YEAR)))
+        when(cbPlanCacheMgrV4.getCbPlanForMinistryOrStateId(eq("ministry_001"), eq(TEST_PLAN_YEAR), any()))
                 .thenReturn(List.of(ministryPlan));
         when(dataTransformService.mergePlanLists(anyList(), anyList()))
                 .thenReturn(List.of(orgPlan, ministryPlan));
@@ -333,7 +381,7 @@ class CbPlanDictionaryServiceV4ImplTest {
         ApiResponse response = dictionaryService.getCBPlanDictionaryForUser(testRequest, TEST_AUTH_TOKEN);
 
         assertThat(response.getResponseCode()).isEqualTo(HttpStatus.OK);
-        verify(cbPlanCacheMgrV4, times(1)).getCbPlanForMinistryOrStateId(eq("ministry_001"), eq(TEST_PLAN_YEAR));
+        verify(cbPlanCacheMgrV4, times(1)).getCbPlanForMinistryOrStateId(eq("ministry_001"), eq(TEST_PLAN_YEAR), any());
         verify(dataTransformService, times(1)).mergePlanLists(anyList(), anyList());
     }
 
@@ -345,7 +393,7 @@ class CbPlanDictionaryServiceV4ImplTest {
         Map<String, Object> plan = createMockPlan("plan_001", false, null);
         plan.put(Constants.ORG_ID_LIST, List.of("org_creator"));
 
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(List.of(plan));
 
         Map<String, Object> orgRecord = new HashMap<>();
@@ -379,7 +427,7 @@ class CbPlanDictionaryServiceV4ImplTest {
             AtomicBoolean atomicBoolean = invocation.getArgument(2);
             atomicBoolean.set(true);
             return Collections.emptyList();
-        }).when(cbPlanCacheMgrV4).getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class));
+        }).when(cbPlanCacheMgrV4).getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any());
 
         dictionaryService.getCBPlanDictionaryForUser(testRequest, TEST_AUTH_TOKEN);
 
@@ -430,7 +478,7 @@ class CbPlanDictionaryServiceV4ImplTest {
         )).thenReturn(List.of(userRecord));
 
         doAnswer(invocation -> null).when(enrichmentService).extractMinistryOrStateDetails(any(Map.class), any(Map.class));
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), anyString(), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), anyString(), any(AtomicBoolean.class), any()))
                 .thenReturn(Collections.emptyList());
 
         ApiResponse response = dictionaryService.getCBPlanDictionaryForUser(testRequest, TEST_AUTH_TOKEN);
@@ -451,7 +499,7 @@ class CbPlanDictionaryServiceV4ImplTest {
         when(userProfileRedisCacheMgr.getFromCache(userCacheKey)).thenReturn(cachedUserProfile);
         when(redisCacheMgr.getFromCache(dictCacheKey)).thenReturn(null);
 
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(Collections.emptyList());
         lenient().doAnswer(invocation -> null).when(enrichmentService).extractMinistryOrStateDetails(any(Map.class), any(Map.class));
 
@@ -476,7 +524,7 @@ class CbPlanDictionaryServiceV4ImplTest {
         Map<String, Object> plan1 = createV4PlanWithUserGroups("plan_1", List.of("ug_1", "ug_2"));
         Map<String, Object> plan2 = createV4PlanWithUserGroups("plan_2", List.of("ug_2", "ug_3"));
 
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(List.of(plan1, plan2));
         when(userGroupCacheMgrV4.fetchUserGroupsByIds(anyList(), eq(TEST_ORG_ID)))
                 .thenReturn(Collections.emptyMap());
@@ -527,7 +575,7 @@ class CbPlanDictionaryServiceV4ImplTest {
                 Map.of("department", List.of("HR"))
         ));
 
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(List.of(hrOnlyPlan));
         when(userGroupCacheMgrV4.fetchUserGroupsByIds(anyList(), eq(TEST_ORG_ID)))
                 .thenReturn(Map.of("ug_hr", hrGroup));
@@ -664,7 +712,7 @@ class CbPlanDictionaryServiceV4ImplTest {
                 "do_114378386987417600180"
         ));
 
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(List.of(planWithV3ContentList));
         lenient().when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), isNull()))
                 .thenReturn(Collections.emptyList());
@@ -698,7 +746,7 @@ class CbPlanDictionaryServiceV4ImplTest {
                 "{\"identifier\":\"do_114378386987417600180\",\"mandatory\":false}"
         ));
 
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(List.of(planWithV4ContentList));
         lenient().when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), isNull()))
                 .thenReturn(Collections.emptyList());
@@ -728,7 +776,7 @@ class CbPlanDictionaryServiceV4ImplTest {
         Map<String, Object> planWithEmptyContentList = createMockPlan("plan_empty_content", false, null);
         planWithEmptyContentList.put(Constants.CONTENT_LIST, Collections.emptyList());
 
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(List.of(planWithEmptyContentList));
         lenient().when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), isNull()))
                 .thenReturn(Collections.emptyList());
@@ -754,7 +802,7 @@ class CbPlanDictionaryServiceV4ImplTest {
         Map<String, Object> planWithNullContentList = createMockPlan("plan_null_content", false, null);
         planWithNullContentList.put(Constants.CONTENT_LIST, null);
 
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(List.of(planWithNullContentList));
         lenient().when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), isNull()))
                 .thenReturn(Collections.emptyList());
@@ -784,7 +832,7 @@ class CbPlanDictionaryServiceV4ImplTest {
                 "plain_string_do_456"
         ));
 
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(List.of(planWithInvalidJson));
         lenient().when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), isNull()))
                 .thenReturn(Collections.emptyList());
@@ -815,7 +863,7 @@ class CbPlanDictionaryServiceV4ImplTest {
         planWithSingleItem.put(Constants.CA_LINKED_ID_DB, TEST_CA_ID);
         planWithSingleItem.put(Constants.CONTENT_LIST, List.of("do_1143558909548953601106"));
 
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(List.of(planWithSingleItem));
         lenient().when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), isNull()))
                 .thenReturn(Collections.emptyList());
@@ -846,7 +894,7 @@ class CbPlanDictionaryServiceV4ImplTest {
                 "{\"identifier\":\"do_apar_123\",\"mandatory\":true}"
         ));
 
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(List.of(aparPlanWithContentList));
         lenient().when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), isNull()))
                 .thenReturn(Collections.emptyList());
@@ -883,7 +931,7 @@ class CbPlanDictionaryServiceV4ImplTest {
 
         planWithNestedObjects.put(Constants.CONTENT_LIST, List.of(content1, content2));
 
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(List.of(planWithNestedObjects));
         lenient().when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), isNull()))
                 .thenReturn(Collections.emptyList());
@@ -924,7 +972,7 @@ class CbPlanDictionaryServiceV4ImplTest {
         nestedContent.put(Constants.MANDATORY, false);
         nestedPlan.put(Constants.CONTENT_LIST, List.of(nestedContent));
 
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(List.of(v3Plan, v4Plan, nestedPlan));
         lenient().when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), isNull()))
                 .thenReturn(Collections.emptyList());
@@ -956,9 +1004,9 @@ class CbPlanDictionaryServiceV4ImplTest {
         setupValidUserProfileMocks();
         when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
         Map<String, Object> prevYearPlan = createMockPlan("plan_prev_001", false, null);
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(Collections.emptyList());
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq("2025-26"), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq("2025-26"), any(AtomicBoolean.class), any()))
                 .thenReturn(List.of(prevYearPlan));
         lenient().when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), isNull()))
                 .thenReturn(Collections.emptyList());
@@ -981,9 +1029,9 @@ class CbPlanDictionaryServiceV4ImplTest {
     void getCBPlanDictionaryForUser_planYearProvidedNoPlansBothYears_returnsBothYearsEmpty() {
         setupValidUserProfileMocks();
         when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(Collections.emptyList());
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq("2025-26"), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq("2025-26"), any(AtomicBoolean.class), any()))
                 .thenReturn(Collections.emptyList());
 
         ApiResponse response = dictionaryService.getCBPlanDictionaryForUser(testRequest, TEST_AUTH_TOKEN);
@@ -1018,7 +1066,7 @@ class CbPlanDictionaryServiceV4ImplTest {
                 .thenReturn(List.of(userRecord));
         doAnswer(invocation -> null).when(enrichmentService)
                 .extractMinistryOrStateDetails(any(Map.class), any(Map.class));
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), anyString(), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), anyString(), any(AtomicBoolean.class), any()))
                 .thenReturn(Collections.emptyList());
 
         ApiRequest noYearRequest = new ApiRequest();
@@ -1027,16 +1075,16 @@ class CbPlanDictionaryServiceV4ImplTest {
 
         assertThat(response.getResponseCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getResult()).hasSize(1);
-        verify(cbPlanCacheMgrV4, times(1)).getCbPlanForAllAndOrgId(any(), anyString(), any());
+        verify(cbPlanCacheMgrV4, times(1)).getCbPlanForAllAndOrgId(any(), anyString(), any(), any());
     }
 
     @Test
     void getCBPlanDictionaryForUser_planYearProvidedNoCurrentData_previousYearKeyIsCorrect() {
         setupValidUserProfileMocks();
         when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(Collections.emptyList());
-        lenient().when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq("2025-26"), any(AtomicBoolean.class)))
+        lenient().when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq("2025-26"), any(AtomicBoolean.class), any()))
                 .thenReturn(Collections.emptyList());
 
         ApiResponse response = dictionaryService.getCBPlanDictionaryForUser(testRequest, TEST_AUTH_TOKEN);
@@ -1053,7 +1101,7 @@ class CbPlanDictionaryServiceV4ImplTest {
         Map<String, Object> userGroup = createMockUserGroup("ug_norm_key", List.of(criteriaEntry));
         Map<String, Object> plan = createV4PlanWithUserGroups("plan_norm_key", List.of("ug_norm_key"));
 
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(List.of(plan));
         when(userGroupCacheMgrV4.fetchUserGroupsByIds(anyList(), eq(TEST_ORG_ID)))
                 .thenReturn(Map.of("ug_norm_key", userGroup));
@@ -1076,7 +1124,7 @@ class CbPlanDictionaryServiceV4ImplTest {
                 List.of(Map.of(Constants.DESIGNATION, List.of("MANAGER"))));
         Map<String, Object> plan = createV4PlanWithUserGroups("plan_norm_val", List.of("ug_norm_val"));
 
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(List.of(plan));
         when(userGroupCacheMgrV4.fetchUserGroupsByIds(anyList(), eq(TEST_ORG_ID)))
                 .thenReturn(Map.of("ug_norm_val", userGroup));
@@ -1099,7 +1147,7 @@ class CbPlanDictionaryServiceV4ImplTest {
                 List.of(Map.of(Constants.DESIGNATION, List.of("Manager"))));
         Map<String, Object> plan = createV4PlanWithUserGroups("plan_match", List.of("ug_match"));
 
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(List.of(plan));
         when(userGroupCacheMgrV4.fetchUserGroupsByIds(anyList(), eq(TEST_ORG_ID)))
                 .thenReturn(Map.of("ug_match", userGroup));
@@ -1125,7 +1173,7 @@ class CbPlanDictionaryServiceV4ImplTest {
                 ));
         Map<String, Object> plan = createV4PlanWithUserGroups("plan_and", List.of("ug_and"));
 
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(List.of(plan));
         when(userGroupCacheMgrV4.fetchUserGroupsByIds(anyList(), eq(TEST_ORG_ID)))
                 .thenReturn(Map.of("ug_and", userGroup));
@@ -1153,7 +1201,7 @@ class CbPlanDictionaryServiceV4ImplTest {
         fetchedGroups.put("ug_manager", managerGroup);
         Map<String, Object> plan = createV4PlanWithUserGroups("plan_or", List.of("ug_director", "ug_manager"));
 
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(List.of(plan));
         when(userGroupCacheMgrV4.fetchUserGroupsByIds(anyList(), eq(TEST_ORG_ID)))
                 .thenReturn(fetchedGroups);
@@ -1176,7 +1224,7 @@ class CbPlanDictionaryServiceV4ImplTest {
                 List.of(Map.of(Constants.CENTRAL_DEPUTATION_LOWER_KEY, List.of("true"))));
         Map<String, Object> plan = createV4PlanWithUserGroups("plan_dep_true", List.of("ug_dep_true"));
 
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(List.of(plan));
         when(userGroupCacheMgrV4.fetchUserGroupsByIds(anyList(), eq(TEST_ORG_ID)))
                 .thenReturn(Map.of("ug_dep_true", userGroup));
@@ -1200,7 +1248,7 @@ class CbPlanDictionaryServiceV4ImplTest {
                 List.of(Map.of(Constants.CENTRAL_DEPUTATION_LOWER_KEY, List.of("false"))));
         Map<String, Object> plan = createV4PlanWithUserGroups("plan_dep_false", List.of("ug_dep_false"));
 
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(List.of(plan));
         when(userGroupCacheMgrV4.fetchUserGroupsByIds(anyList(), eq(TEST_ORG_ID)))
                 .thenReturn(Map.of("ug_dep_false", userGroup));
@@ -1223,7 +1271,7 @@ class CbPlanDictionaryServiceV4ImplTest {
                 List.of(Map.of(Constants.DESIGNATION, Collections.emptyList())));
         Map<String, Object> plan = createV4PlanWithUserGroups("plan_empty_val", List.of("ug_empty_val"));
 
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(List.of(plan));
         when(userGroupCacheMgrV4.fetchUserGroupsByIds(anyList(), eq(TEST_ORG_ID)))
                 .thenReturn(Map.of("ug_empty_val", userGroup));
@@ -1244,7 +1292,7 @@ class CbPlanDictionaryServiceV4ImplTest {
         setupUserWithDesignationMocks("Manager");
         Map<String, Object> plan = createV4PlanWithUserGroups("plan_missing_ug", List.of("ug_missing"));
 
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(List.of(plan));
         when(userGroupCacheMgrV4.fetchUserGroupsByIds(anyList(), eq(TEST_ORG_ID)))
                 .thenReturn(Collections.emptyMap());
@@ -1268,7 +1316,7 @@ class CbPlanDictionaryServiceV4ImplTest {
         Map<String, Object> userGroup = createMockUserGroup("ug_null_val", List.of(criteriaEntry));
         Map<String, Object> plan = createV4PlanWithUserGroups("plan_null_val", List.of("ug_null_val"));
 
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(List.of(plan));
         when(userGroupCacheMgrV4.fetchUserGroupsByIds(anyList(), eq(TEST_ORG_ID)))
                 .thenReturn(Map.of("ug_null_val", userGroup));
@@ -1291,7 +1339,7 @@ class CbPlanDictionaryServiceV4ImplTest {
                 List.of(Map.of(Constants.CRITERIA_KEY, Constants.DESIGNATION,
                                Constants.CRITERIA_VALUE, List.of("Manager"))));
 
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(List.of(plan));
         lenient().when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), isNull()))
                 .thenReturn(Collections.emptyList());
@@ -1312,7 +1360,7 @@ class CbPlanDictionaryServiceV4ImplTest {
                 List.of(Map.of(Constants.CRITERIA_KEY, Constants.DESIGNATION.toUpperCase(),
                                Constants.CRITERIA_VALUE, List.of("Manager"))));
 
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(List.of(plan));
         lenient().when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), isNull()))
                 .thenReturn(Collections.emptyList());
@@ -1333,7 +1381,7 @@ class CbPlanDictionaryServiceV4ImplTest {
                 List.of(Map.of(Constants.CRITERIA_KEY, Constants.DESIGNATION,
                                Constants.CRITERIA_VALUE, List.of("MANAGER"))));
 
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(List.of(plan));
         lenient().when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), isNull()))
                 .thenReturn(Collections.emptyList());
@@ -1358,7 +1406,7 @@ class CbPlanDictionaryServiceV4ImplTest {
                                        Constants.CRITERIA_VALUE, List.of("Manager")))
                 ));
 
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(List.of(plan));
         lenient().when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), isNull()))
                 .thenReturn(Collections.emptyList());
@@ -1445,7 +1493,7 @@ class CbPlanDictionaryServiceV4ImplTest {
         Map<String, Object> plan = createMockPlan("plan_001", false, null);
         plan.put(Constants.ORG_ID_LIST, List.of("org_creator"));
 
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(List.of(plan));
 
         Map<String, Object> orgRecord = new HashMap<>();
@@ -1479,7 +1527,7 @@ class CbPlanDictionaryServiceV4ImplTest {
         Map<String, Object> plan = createMockPlan("plan_001", false, null);
         plan.put(Constants.ORG_ID_LIST, List.of("org_creator"));
 
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(List.of(plan));
 
         when(cassandraOperation.getRecordsByProperties(
@@ -1505,7 +1553,7 @@ class CbPlanDictionaryServiceV4ImplTest {
         Map<String, Object> plan = createMockPlan("plan_001", false, null);
         plan.put(Constants.ORG_ID_LIST, Collections.emptyList());
 
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(List.of(plan));
 
         ApiResponse response = dictionaryService.getCBPlanDictionaryForUser(testRequest, TEST_AUTH_TOKEN);
@@ -1531,7 +1579,7 @@ class CbPlanDictionaryServiceV4ImplTest {
         Map<String, Object> plan2 = createMockPlan("plan_002", true, null);
         plan2.put(Constants.ORG_ID_LIST, List.of("org_2"));
 
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(List.of(plan1, plan2));
 
         Map<String, Object> orgRecord1 = new HashMap<>();
@@ -1571,7 +1619,7 @@ class CbPlanDictionaryServiceV4ImplTest {
         Map<String, Object> plan = createMockPlan("plan_001", false, null);
         plan.put(Constants.ORG_ID_LIST, List.of("org_missing"));
 
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(List.of(plan));
 
         when(cassandraOperation.getRecordsByProperties(
@@ -1601,7 +1649,7 @@ class CbPlanDictionaryServiceV4ImplTest {
         plan.remove(Constants.CA_LINKED_ID_DB);
         plan.put(Constants.CONTENT_LIST, List.of("do_content_001"));
 
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(List.of(plan));
         lenient().when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), isNull()))
                 .thenReturn(Collections.emptyList());
@@ -1623,7 +1671,7 @@ class CbPlanDictionaryServiceV4ImplTest {
         when(contentLookupService.getContentMetadata("ca_do_draft_001")).thenReturn(buildNonLiveMetadata("Draft"));
 
         Map<String, Object> plan = createMockPlanWithCaId("plan_draft_ca", false, "ca_do_draft_001");
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(List.of(plan));
         lenient().when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), isNull()))
                 .thenReturn(Collections.emptyList());
@@ -1645,7 +1693,7 @@ class CbPlanDictionaryServiceV4ImplTest {
         when(contentLookupService.getContentMetadata("ca_do_retired_001")).thenReturn(buildNonLiveMetadata("Retired"));
 
         Map<String, Object> plan = createMockPlanWithCaId("plan_retired_ca", false, "ca_do_retired_001");
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(List.of(plan));
         lenient().when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), isNull()))
                 .thenReturn(Collections.emptyList());
@@ -1666,7 +1714,7 @@ class CbPlanDictionaryServiceV4ImplTest {
         when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
 
         Map<String, Object> plan = createMockPlanWithCaId("plan_live_ca", false, "ca_do_live_999");
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(List.of(plan));
         lenient().when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), isNull()))
                 .thenReturn(Collections.emptyList());
@@ -1692,7 +1740,7 @@ class CbPlanDictionaryServiceV4ImplTest {
         Map<String, Object> plan = createMockPlanWithCaId("plan_content_filter", false, "ca_do_live_filter");
         plan.put(Constants.CONTENT_LIST, List.of("do_draft_content", "do_live_content"));
 
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(List.of(plan));
         lenient().when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), isNull()))
                 .thenReturn(Collections.emptyList());
@@ -1721,7 +1769,7 @@ class CbPlanDictionaryServiceV4ImplTest {
         Map<String, Object> plan = createMockPlanWithCaId("plan_all_draft_content", false, "ca_do_live_allnon");
         plan.put(Constants.CONTENT_LIST, List.of("do_draft_1", "do_draft_2"));
 
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(List.of(plan));
         lenient().when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), isNull()))
                 .thenReturn(Collections.emptyList());
@@ -1748,7 +1796,7 @@ class CbPlanDictionaryServiceV4ImplTest {
         when(contentLookupService.getContentMetadata("ca_do_error")).thenThrow(new RuntimeException("connection timeout"));
 
         Map<String, Object> plan = createMockPlanWithCaId("plan_ca_error", false, "ca_do_error");
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(List.of(plan));
         lenient().when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), isNull()))
                 .thenReturn(Collections.emptyList());
@@ -1770,7 +1818,7 @@ class CbPlanDictionaryServiceV4ImplTest {
 
         Map<String, Object> plan = createMockPlan("plan_no_content", false, null);
         plan.remove(Constants.CA_LINKED_ID_DB);
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(List.of(plan));
         lenient().when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), isNull()))
                 .thenReturn(Collections.emptyList());
@@ -1788,7 +1836,7 @@ class CbPlanDictionaryServiceV4ImplTest {
         Map<String, Object> plan1 = createMockPlanWithCaId("plan_share_1", false, "ca_do_shared");
         Map<String, Object> plan2 = createMockPlanWithCaId("plan_share_2", false, "ca_do_shared");
 
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(List.of(plan1, plan2));
         lenient().when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), isNull()))
                 .thenReturn(Collections.emptyList());
@@ -1807,7 +1855,7 @@ class CbPlanDictionaryServiceV4ImplTest {
         aparPlan.remove(Constants.CA_LINKED_ID_DB);
         aparPlan.put(Constants.CONTENT_LIST, List.of("do_some_content"));
 
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(List.of(aparPlan));
         lenient().when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), isNull()))
                 .thenReturn(Collections.emptyList());
@@ -1832,7 +1880,7 @@ class CbPlanDictionaryServiceV4ImplTest {
         Map<String, Object> aparPlan = createMockPlanWithCaId("plan_apar_live_ca", true, "ca_apar_live");
         Map<String, Object> nonAparPlan = createMockPlanWithCaId("plan_nonapar_draft_ca", false, "ca_nonapar_draft");
 
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(List.of(aparPlan, nonAparPlan));
         lenient().when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), isNull()))
                 .thenReturn(Collections.emptyList());
@@ -1861,9 +1909,9 @@ class CbPlanDictionaryServiceV4ImplTest {
         prevYearPlan.remove(Constants.CA_LINKED_ID_DB);
         prevYearPlan.put(Constants.CONTENT_LIST, List.of("do_prev_content"));
 
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(Collections.emptyList());
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq("2025-26"), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq("2025-26"), any(AtomicBoolean.class), any()))
                 .thenReturn(List.of(prevYearPlan));
         lenient().when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), isNull()))
                 .thenReturn(Collections.emptyList());
@@ -1887,7 +1935,7 @@ class CbPlanDictionaryServiceV4ImplTest {
     void getCBPlanDictionaryForUser_v4CrossOrgPlan_userGroupFetchedWithPlanCreatorOrgId() {
         setupUserWithDesignationMocks("Manager");
         Map<String, Object> plan = createV4PlanWithUserGroupsAndOrg("plan_cross_fetch", List.of("ug_cross"), PLAN_CREATOR_ORG_ID);
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(List.of(plan));
         when(userGroupCacheMgrV4.fetchUserGroupsByIds(anyList(), eq(PLAN_CREATOR_ORG_ID)))
                 .thenReturn(Collections.emptyMap());
@@ -1906,7 +1954,7 @@ class CbPlanDictionaryServiceV4ImplTest {
         Map<String, Object> plan = createV4PlanWithUserGroupsAndOrg("plan_cross_match", List.of("ug_cross_match"), PLAN_CREATOR_ORG_ID);
         Map<String, Object> userGroup = createMockUserGroupForOrg("ug_cross_match", PLAN_CREATOR_ORG_ID,
                 List.of(Map.of(Constants.DESIGNATION, List.of("Manager"))));
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(List.of(plan));
         when(userGroupCacheMgrV4.fetchUserGroupsByIds(anyList(), eq(PLAN_CREATOR_ORG_ID)))
                 .thenReturn(Map.of("ug_cross_match", userGroup));
@@ -1928,7 +1976,7 @@ class CbPlanDictionaryServiceV4ImplTest {
         Map<String, Object> plan = createV4PlanWithUserGroupsAndOrg("plan_cross_deny", List.of("ug_cross_deny"), PLAN_CREATOR_ORG_ID);
         Map<String, Object> userGroup = createMockUserGroupForOrg("ug_cross_deny", PLAN_CREATOR_ORG_ID,
                 List.of(Map.of(Constants.DESIGNATION, List.of("Director"))));
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(List.of(plan));
         when(userGroupCacheMgrV4.fetchUserGroupsByIds(anyList(), eq(PLAN_CREATOR_ORG_ID)))
                 .thenReturn(Map.of("ug_cross_deny", userGroup));
@@ -1949,7 +1997,7 @@ class CbPlanDictionaryServiceV4ImplTest {
         setupUserWithDesignationMocks("Manager");
         Map<String, Object> planFromCreatorOrg = createV4PlanWithUserGroupsAndOrg("plan_org_a", List.of("ug_a"), PLAN_CREATOR_ORG_ID);
         Map<String, Object> planFromUserOrg = createV4PlanWithUserGroupsAndOrg("plan_org_b", List.of("ug_b"), TEST_ORG_ID);
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(List.of(planFromCreatorOrg, planFromUserOrg));
         lenient().when(userGroupCacheMgrV4.fetchUserGroupsByIds(anyList(), any()))
                 .thenReturn(Collections.emptyMap());
@@ -1997,7 +2045,7 @@ class CbPlanDictionaryServiceV4ImplTest {
         when(contentLookupService.getContentMetadata("ca_do_empty_meta")).thenReturn(Collections.emptyMap());
 
         Map<String, Object> plan = createMockPlanWithCaId("plan_empty_meta_ca", false, "ca_do_empty_meta");
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(List.of(plan));
         lenient().when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), isNull()))
                 .thenReturn(Collections.emptyList());
@@ -2027,7 +2075,7 @@ class CbPlanDictionaryServiceV4ImplTest {
         cachedUserGroup.put("criteria", originalCriteria);
 
         Map<String, Object> plan = createV4PlanWithUserGroups("plan_cache_mutation", List.of("ug_cache_mutation"));
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(List.of(plan));
         when(userGroupCacheMgrV4.fetchUserGroupsByIds(anyList(), eq(TEST_ORG_ID)))
                 .thenReturn(Map.of("ug_cache_mutation", cachedUserGroup));
@@ -2052,7 +2100,7 @@ class CbPlanDictionaryServiceV4ImplTest {
         userGroup.put("criteria", List.of(criteriaEntry));
 
         Map<String, Object> plan = createV4PlanWithUserGroups("plan_set_val", List.of("ug_set_val"));
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(List.of(plan));
         when(userGroupCacheMgrV4.fetchUserGroupsByIds(anyList(), eq(TEST_ORG_ID)))
                 .thenReturn(Map.of("ug_set_val", userGroup));
@@ -2081,7 +2129,7 @@ class CbPlanDictionaryServiceV4ImplTest {
         userGroup.put(Constants.COL_CRITERIA, List.of(criteriaEntry));
 
         Map<String, Object> plan = createV4PlanWithUserGroups("plan_str_val", List.of("ug_str_val"));
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(List.of(plan));
         when(userGroupCacheMgrV4.fetchUserGroupsByIds(anyList(), eq(TEST_ORG_ID)))
                 .thenReturn(Map.of("ug_str_val", userGroup));
@@ -2110,7 +2158,7 @@ class CbPlanDictionaryServiceV4ImplTest {
         userGroup.put(Constants.COL_CRITERIA, List.of(criteriaEntry));
 
         Map<String, Object> plan = createV4PlanWithUserGroups("plan_empty_col", List.of("ug_empty_col"));
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(List.of(plan));
         when(userGroupCacheMgrV4.fetchUserGroupsByIds(anyList(), eq(TEST_ORG_ID)))
                 .thenReturn(Map.of("ug_empty_col", userGroup));
@@ -2147,7 +2195,7 @@ class CbPlanDictionaryServiceV4ImplTest {
     @Test
     void resolveAccessibleAparPlansByUserId_noActivePlans_returnsEmptyList() throws Exception {
         stubUserProfileWithoutTokenValidation();
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(Collections.emptyList());
 
         ApiResponse response = new ApiResponse();
@@ -2163,7 +2211,7 @@ class CbPlanDictionaryServiceV4ImplTest {
         stubUserProfileWithoutTokenValidation();
         Map<String, Object> aparPlan = createMockPlan("plan_apar", true, null);
         Map<String, Object> nonAparPlan = createMockPlan("plan_non_apar", false, null);
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(List.of(aparPlan, nonAparPlan));
 
         List<Map<String, Object>> plans = dictionaryService.resolveAccessibleAparPlansByUserId(
@@ -2177,7 +2225,7 @@ class CbPlanDictionaryServiceV4ImplTest {
     void resolveAccessibleAparPlansByUserId_noAparPlans_returnsEmptyList() throws Exception {
         stubUserProfileWithoutTokenValidation();
         Map<String, Object> nonAparPlan = createMockPlan("plan_non_apar", false, null);
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(List.of(nonAparPlan));
 
         List<Map<String, Object>> plans = dictionaryService.resolveAccessibleAparPlansByUserId(
@@ -2209,7 +2257,7 @@ class CbPlanDictionaryServiceV4ImplTest {
         when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
 
         Map<String, Object> plan = createMockPlanWithCaId("plan_blank_ca", false, "");
-        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class)))
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class), any()))
                 .thenReturn(List.of(plan));
         lenient().when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), isNull()))
                 .thenReturn(Collections.emptyList());

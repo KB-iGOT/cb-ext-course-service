@@ -17,6 +17,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.igot.cb.cache.CbPlanCacheMgrV4;
+import com.igot.cb.cache.CbPlanCacheVersions;
+import com.igot.cb.cache.CbPlanVersionMgr;
 import com.igot.cb.cache.CbExtRedisCacheMgr;
 import org.springframework.beans.factory.annotation.Qualifier;
 import com.igot.cb.cache.UserGroupCacheMgrV4;
@@ -48,6 +50,7 @@ public class CbPlanDictionaryServiceV4Impl {
 
     private final CassandraOperation cassandraOperation;
     private final CbPlanCacheMgrV4 cbPlanCacheMgrV4;
+    private final CbPlanVersionMgr versionMgr;
     private final UserGroupCacheMgrV4 userGroupCacheMgrV4;
     private final AccessTokenValidator accessTokenValidator;
     private final CbExtRedisCacheMgr redisCacheMgr;
@@ -61,6 +64,7 @@ public class CbPlanDictionaryServiceV4Impl {
 
     public CbPlanDictionaryServiceV4Impl(CassandraOperation cassandraOperation,
                                          CbPlanCacheMgrV4 cbPlanCacheMgrV4,
+                                         CbPlanVersionMgr versionMgr,
                                          UserGroupCacheMgrV4 userGroupCacheMgrV4,
                                          AccessTokenValidator accessTokenValidator,
                                          @Qualifier("cbPlanRedisCacheMgr") CbExtRedisCacheMgr redisCacheMgr,
@@ -71,6 +75,7 @@ public class CbPlanDictionaryServiceV4Impl {
                                          CbPlanContentLookupServiceV3Impl contentLookupService) {
         this.cassandraOperation = cassandraOperation;
         this.cbPlanCacheMgrV4 = cbPlanCacheMgrV4;
+        this.versionMgr = versionMgr;
         this.userGroupCacheMgrV4 = userGroupCacheMgrV4;
         this.accessTokenValidator = accessTokenValidator;
         this.redisCacheMgr = redisCacheMgr;
@@ -114,15 +119,19 @@ public class CbPlanDictionaryServiceV4Impl {
             }
             String userOrgId = userProfile.get(Constants.USER_ROOT_ORG_ID);
             String cacheKey = Constants.CB_PLAN_V4_REDIS_KEY_PREFIX + userOrgId + ":" + userId + ":" + planYear + ":dict";
-            String cachedJson = redisCacheMgr.getFromCache(cacheKey);
-            if (StringUtils.isNotBlank(cachedJson)) {
+            // Snapshot the publish versions before any read so a publish racing this request
+            // can only make the entry we write stale, never wrongly fresh.
+            CbPlanCacheVersions versions = versionMgr.getVersions(userOrgId,
+                    userProfile.get(Constants.MINISTRY_OR_STATE_ID_RQST), planYear);
+            Optional<Map<String, Object>> cached = versionMgr.readValidatedDict(cacheKey, versions);
+            if (cached.isPresent()) {
                 log.info("getCBPlanDictionaryForUser: Cache hit - userId={}, orgId={}, planYear={}", userId, userOrgId, planYear);
-                populateResponseFromCache(response, cachedJson, planYear);
+                populateResponseFromCache(response, cached.get());
                 return response;
             }
             log.info("getCBPlanDictionaryForUser: Cache miss - userId={}, orgId={}, planYear={}", userId, userOrgId, planYear);
             AtomicBoolean isCacheEnabled = new AtomicBoolean(false);
-            List<Map<String, Object>> activePlans = fetchPlansForUser(userProfile, userOrgId, planYear, isCacheEnabled);
+            List<Map<String, Object>> activePlans = fetchPlansForUser(userProfile, userOrgId, planYear, isCacheEnabled, versions);
             if (CollectionUtils.isEmpty(activePlans)) {
                 log.info("getCBPlanDictionaryForUser: No active plans - userId={}, planYear={}", userId, planYear);
                 if (StringUtils.isNotBlank(requestedPlanYear)) {
@@ -135,7 +144,7 @@ public class CbPlanDictionaryServiceV4Impl {
                 } else {
                     populateEmptyResponse(response, planYear);
                 }
-                cacheResult(cacheKey, response.getResult(), isCacheEnabled.get());
+                cacheResult(cacheKey, response.getResult(), isCacheEnabled.get(), versions);
                 return response;
             }
             Map<String, Map<String, Object>> aparPlanMap = new LinkedHashMap<>();
@@ -156,7 +165,7 @@ public class CbPlanDictionaryServiceV4Impl {
             response.setParams(new ApiRespParam());
             response.getParams().setStatus(Constants.SUCCESS);
             response.setResponseCode(HttpStatus.OK);
-            cacheResult(cacheKey, response.getResult(), isCacheEnabled.get());
+            cacheResult(cacheKey, response.getResult(), isCacheEnabled.get(), versions);
             log.info("getCBPlanDictionaryForUser: Success - userId={}, planYear={}, aparCount={}, nonAparCount={}",
                     userId, planYear, aparPlanMap.size(), nonAparPlanMap.size());
         } catch (IllegalArgumentException e) {
@@ -246,22 +255,20 @@ public class CbPlanDictionaryServiceV4Impl {
     private Map<String, Object> resolveYearResult(String userId, Map<String, String> userProfile,
             String userOrgId, String planYear, AtomicBoolean isCacheEnabled) {
         String cacheKey = Constants.CB_PLAN_V4_REDIS_KEY_PREFIX + userOrgId + ":" + userId + ":" + planYear + ":dict";
-        String cachedJson = redisCacheMgr.getFromCache(cacheKey);
-        if (StringUtils.isNotBlank(cachedJson)) {
-            try {
-                Map<String, Object> cachedResult = mapper.readValue(cachedJson, MAP_TYPE_REF);
-                // The dictionary endpoint caches its full result keyed by plan year, while this
-                // method normally works with the unwrapped year result.
-                Object yearResult = cachedResult.get(planYear);
-                if (yearResult instanceof Map<?, ?>) {
-                    return (Map<String, Object>) yearResult;
-                }
-                return cachedResult;
-            } catch (JsonProcessingException e) {
-                log.warn("resolveYearResult: Failed to deserialize cache - key={}", cacheKey, e);
+        CbPlanCacheVersions versions = versionMgr.getVersions(userOrgId,
+                userProfile.get(Constants.MINISTRY_OR_STATE_ID_RQST), planYear);
+        Optional<Map<String, Object>> cached = versionMgr.readValidatedDict(cacheKey, versions);
+        if (cached.isPresent()) {
+            Map<String, Object> cachedResult = cached.get();
+            // The dictionary endpoint caches its full result keyed by plan year, while this
+            // method normally works with the unwrapped year result.
+            Object yearResult = cachedResult.get(planYear);
+            if (yearResult instanceof Map<?, ?>) {
+                return (Map<String, Object>) yearResult;
             }
+            return cachedResult;
         }
-        List<Map<String, Object>> activePlans = fetchPlansForUser(userProfile, userOrgId, planYear, isCacheEnabled);
+        List<Map<String, Object>> activePlans = fetchPlansForUser(userProfile, userOrgId, planYear, isCacheEnabled, versions);
         if (CollectionUtils.isEmpty(activePlans)) {
             return buildYearResult(new LinkedHashMap<>(), new LinkedHashMap<>());
         }
@@ -441,14 +448,18 @@ public class CbPlanDictionaryServiceV4Impl {
      * Uses the same V3 lookup tables since V4 plans are stored there too.
      */
     private List<Map<String, Object>> fetchPlansForUser(Map<String, String> userProfile, String userOrgId,
-                                                        String planYear, AtomicBoolean isCacheEnabled) {
-        List<Map<String, Object>> orgPlans = cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(userOrgId, planYear, isCacheEnabled);
+                                                        String planYear, AtomicBoolean isCacheEnabled,
+                                                        CbPlanCacheVersions versions) {
+        List<Map<String, Object>> orgPlans = cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(userOrgId, planYear,
+                isCacheEnabled, versions);
         String ministryOrStateId = userProfile.get(Constants.MINISTRY_OR_STATE_ID_RQST);
         if (StringUtils.isBlank(ministryOrStateId)) {
             return orgPlans;
         }
         log.info("fetchPlansForUser: Fetching ministry plans - ministryOrStateId={}", ministryOrStateId);
-        List<Map<String, Object>> ministryPlans = cbPlanCacheMgrV4.getCbPlanForMinistryOrStateId(ministryOrStateId, planYear);
+        String ministryStamp = Objects.isNull(versions) ? null : String.valueOf(versions.ministryVersion());
+        List<Map<String, Object>> ministryPlans = cbPlanCacheMgrV4.getCbPlanForMinistryOrStateId(ministryOrStateId,
+                planYear, ministryStamp);
         return dataTransformService.mergePlanLists(orgPlans, ministryPlans);
     }
 
@@ -836,28 +847,29 @@ public class CbPlanDictionaryServiceV4Impl {
         response.setResponseCode(HttpStatus.OK);
     }
 
-    private void populateResponseFromCache(ApiResponse response, String cachedJson, String planYear) {
-        try {
-            Map<String, Object> cachedResult = mapper.readValue(cachedJson, MAP_TYPE_REF);
-            response.getResult().putAll(cachedResult);
-            response.setParams(new ApiRespParam());
-            response.getParams().setStatus(Constants.SUCCESS);
-            response.setResponseCode(HttpStatus.OK);
-        } catch (JsonProcessingException e) {
-            log.warn("populateResponseFromCache: Failed to deserialize cache for planYear={}", planYear, e);
-            response.getResult().put(planYear, buildYearResult(new LinkedHashMap<>(), new LinkedHashMap<>()));
-            response.setParams(new ApiRespParam());
-            response.getParams().setStatus(Constants.SUCCESS);
-            response.setResponseCode(HttpStatus.OK);
-        }
+    /**
+     * Copies an already-validated cached dictionary (the {@code _cv} stamp has been stripped by
+     * {@link CbPlanVersionMgr}) into the response, so the API payload is identical to a fresh build.
+     */
+    private void populateResponseFromCache(ApiResponse response, Map<String, Object> cachedResult) {
+        response.getResult().putAll(cachedResult);
+        response.setParams(new ApiRespParam());
+        response.getParams().setStatus(Constants.SUCCESS);
+        response.setResponseCode(HttpStatus.OK);
     }
 
-    private void cacheResult(String cacheKey, Map<String, Object> result, boolean isCacheEnabled) {
+    /**
+     * Caches the dictionary result stamped with the publish versions it was built from. The
+     * stamp is added to a copy, so {@code result} (still referenced by the API response) is
+     * never mutated.
+     */
+    private void cacheResult(String cacheKey, Map<String, Object> result, boolean isCacheEnabled,
+                             CbPlanCacheVersions versions) {
         if (!isCacheEnabled) {
             return;
         }
         try {
-            String json = mapper.writeValueAsString(result);
+            String json = mapper.writeValueAsString(versionMgr.stamp(result, versions));
             redisCacheMgr.putInCache(cacheKey, json, serverProperties.getCbPlanV4DictionaryRedisCacheTtlSeconds());
             log.debug("cacheResult: Cached dictionary result - key={}", cacheKey);
         } catch (JsonProcessingException e) {
@@ -919,7 +931,10 @@ public class CbPlanDictionaryServiceV4Impl {
     private void fetchAndAppendPreviousYear(ApiResponse response, Map<String, String> userProfile,
                                             String userOrgId, String previousYear) {
         AtomicBoolean prevCacheEnabled = new AtomicBoolean(false);
-        List<Map<String, Object>> prevPlans = fetchPlansForUser(userProfile, userOrgId, previousYear, prevCacheEnabled);
+        CbPlanCacheVersions prevVersions = versionMgr.getVersions(userOrgId,
+                userProfile.get(Constants.MINISTRY_OR_STATE_ID_RQST), previousYear);
+        List<Map<String, Object>> prevPlans = fetchPlansForUser(userProfile, userOrgId, previousYear, prevCacheEnabled,
+                prevVersions);
         if (CollectionUtils.isEmpty(prevPlans)) {
             log.info("fetchAndAppendPreviousYear: No plans found - previousYear={}", previousYear);
             response.getResult().put(previousYear, buildYearResult(new LinkedHashMap<>(), new LinkedHashMap<>()));
@@ -1163,7 +1178,9 @@ public class CbPlanDictionaryServiceV4Impl {
             return Collections.emptyList();
         }
         AtomicBoolean isCacheEnabled = new AtomicBoolean(false);
-        List<Map<String, Object>> activePlans = fetchPlansForUser(userProfile, userOrgId, planYear, isCacheEnabled);
+        CbPlanCacheVersions versions = versionMgr.getVersions(userOrgId,
+                userProfile.get(Constants.MINISTRY_OR_STATE_ID_RQST), planYear);
+        List<Map<String, Object>> activePlans = fetchPlansForUser(userProfile, userOrgId, planYear, isCacheEnabled, versions);
         if (CollectionUtils.isEmpty(activePlans)) {
             return Collections.emptyList();
         }

@@ -796,6 +796,8 @@ public class Constants {
     public static final String ELIGIBLE = "eligible";
     public static final String MANDATORY_COURSES = "mandatoryCourses";
     public static final String CB_PLAN_V4_REDIS_KEY_PREFIX = "cbplan:v4:userlookup:";
+    public static final String CB_PLAN_V4_VERSION_KEY_PREFIX = "cbplan:v4ver:";
+    public static final String CB_PLAN_V4_CACHE_VERSIONS_KEY = "_cv";
     public static final String RESPONSE_KEY_APAR_PLAN_LIST = "aparPlanList";
     public static final String RESPONSE_KEY_NON_APAR_PLAN_LIST = "nonAparPlanList";
     public static final String RESPONSE_KEY_APAR_PLAN_COUNT = "aparPlanCount";

@@ -1096,8 +1096,9 @@ public class CbPlanDictionaryServiceV4Impl {
     }
 
     /**
-     * Removes plans whose caLinkedId is present but resolves to a non-Live status.
-     * Plans with a null/blank caLinkedId are kept — they are valid training plans with no CA link.
+     * Strips the caLinkedId from plans whose caLinkedId resolves to a non-Live status.
+     * The plan itself is kept and shown to the user — only the stale CA link is removed.
+     * Plans with a null/blank caLinkedId are untouched — they are valid training plans with no CA link.
      * Each unique caLinkedId is resolved exactly once via extended content read.
      */
     private void filterLiveContentInPlans(Map<String, Map<String, Object>> aparPlanMap,
@@ -1110,8 +1111,8 @@ public class CbPlanDictionaryServiceV4Impl {
                 .collect(Collectors.toSet());
         Set<String> liveIds = caIds.isEmpty() ? Collections.emptySet() : resolveLiveCaLinkedIds(caIds);
         log.debug("filterLiveContentInPlans: liveCount={}, totalCount={}", liveIds.size(), caIds.size());
-        aparPlanMap.entrySet().removeIf(e -> isLiveCaLinkedId(e.getValue(), liveIds));
-        nonAparPlanMap.entrySet().removeIf(e -> isLiveCaLinkedId(e.getValue(), liveIds));
+        aparPlanMap.values().forEach(planEntry -> stripNonLiveCaLinkedId(planEntry, liveIds));
+        nonAparPlanMap.values().forEach(planEntry -> stripNonLiveCaLinkedId(planEntry, liveIds));
     }
 
     private Set<String> resolveLiveCaLinkedIds(Set<String> caIds) {
@@ -1132,12 +1133,44 @@ public class CbPlanDictionaryServiceV4Impl {
         return liveIds;
     }
 
-    private boolean isLiveCaLinkedId(Map<String, Object> planEntry, Set<String> liveIds) {
+    private void stripNonLiveCaLinkedId(Map<String, Object> planEntry, Set<String> liveIds) {
         Object caId = planEntry.get(Constants.CA_LINKED_ID);
         if (!(caId instanceof String id) || StringUtils.isBlank(id)) {
-            return false;
+            return;
         }
-        return !liveIds.contains(id);
+        if (!liveIds.contains(id)) {
+            planEntry.remove(Constants.CA_LINKED_ID);
+        }
+    }
+
+    /**
+     * Resolves the user's access-controlled APAR plans for a given plan year without token validation.
+     * Builds the user profile from userId directly, fetches active plans scoped to userOrgId
+     * (and ministry/state if present on profile), applies the V4 userGroupId / V3 inline access control,
+     * and returns only the APAR partition. Non-APAR plans are discarded. On profile load failure,
+     * errorResponse is populated and an empty list is returned.
+     *
+     * @param userId        resolved user ID
+     * @param userOrgId     user's root organisation ID
+     * @param planYear      financial year in YYYY-YY form
+     * @param errorResponse response object populated on profile load failure
+     * @return list of access-controlled APAR plan entries; empty on failure or when none accessible
+     */
+    public List<Map<String, Object>> resolveAccessibleAparPlansByUserId(String userId, String userOrgId,
+                                                                         String planYear, ApiResponse errorResponse) {
+        Map<String, String> userProfile = buildUserProfile(userId, errorResponse);
+        if (userProfile.isEmpty()) {
+            return Collections.emptyList();
+        }
+        AtomicBoolean isCacheEnabled = new AtomicBoolean(false);
+        List<Map<String, Object>> activePlans = fetchPlansForUser(userProfile, userOrgId, planYear, isCacheEnabled);
+        if (CollectionUtils.isEmpty(activePlans)) {
+            return Collections.emptyList();
+        }
+        Map<String, Map<String, Object>> aparPlanMap = new LinkedHashMap<>();
+        Map<String, Map<String, Object>> nonAparPlanMap = new LinkedHashMap<>();
+        buildPlanPartitions(activePlans, userProfile, aparPlanMap, nonAparPlanMap);
+        return new ArrayList<>(aparPlanMap.values());
     }
 
 }

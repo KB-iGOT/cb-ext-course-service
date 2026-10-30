@@ -4,7 +4,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.igot.cb.cache.CbPlanCacheMgr;
-import com.igot.cb.cache.RedisCacheMgr;
+import com.igot.cb.cache.CbExtRedisCacheMgr;
+import org.springframework.beans.factory.annotation.Qualifier;
 import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.elasticsearch.service.EsUtilService;
 import com.igot.cb.model.ApiResponse;
@@ -68,7 +69,8 @@ public class CbPlanLearnerServiceImpl {
     private String elasticCbPlanJsonPath;
 
     @Autowired
-    private RedisCacheMgr redisCacheMgr;
+    @Qualifier("cbPlanRedisCacheMgr")
+    private CbExtRedisCacheMgr redisCacheMgr;
 
     public CbPlanLearnerServiceImpl(AccessTokenValidator accessTokenValidator, CassandraOperation cassandraOperation, CbPlanCacheMgr cbPlanCacheMgr) {
         this.accessTokenValidator = accessTokenValidator;
@@ -248,11 +250,13 @@ public class CbPlanLearnerServiceImpl {
             }
             redisCacheMgr.putInCache(
                     Constants.CB_PLAN_REDIS_KEY_PREFIX + userId + Constants.BY_COURSE_SUFFIX,
-                    coursePlanMappingsJson
+                    coursePlanMappingsJson,
+                    serverProperties.getCbPlanV2RedisCacheTtlSeconds()
             );
             redisCacheMgr.putInCache(
                     Constants.CB_PLAN_REDIS_KEY_PREFIX + userId + Constants.BY_PLANS_SUFFIX,
-                    plansToCacheJson
+                    plansToCacheJson,
+                    serverProperties.getCbPlanV2RedisCacheTtlSeconds()
             );
             log.info("Cached CB Plan details for userId: {}, courses: {}, plans: {}",
                     userId, coursePlanMappings.size(), plansToCache.size());

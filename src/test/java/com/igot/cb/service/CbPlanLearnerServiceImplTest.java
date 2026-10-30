@@ -2,10 +2,11 @@ package com.igot.cb.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.igot.cb.cache.CbPlanCacheMgr;
-import com.igot.cb.cache.RedisCacheMgr;
+import com.igot.cb.cache.CbExtRedisCacheMgr;
 import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.model.ApiResponse;
 import com.igot.cb.util.AccessTokenValidator;
+import com.igot.cb.util.CbExtServerProperties;
 import com.igot.cb.util.Constants;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
@@ -41,7 +42,10 @@ class CbPlanLearnerServiceImplTest {
     private CbPlanCacheMgr cbPlanCacheMgr;
 
     @Mock(lenient = true)
-    private RedisCacheMgr redisCacheMgr;
+    private CbExtRedisCacheMgr redisCacheMgr;
+
+    @Mock(lenient = true)
+    private CbExtServerProperties serverProperties;
 
 
     private CbPlanLearnerServiceImpl service;
@@ -51,6 +55,7 @@ class CbPlanLearnerServiceImplTest {
         service = new CbPlanLearnerServiceImpl(accessTokenValidator, cassandraOperation, cbPlanCacheMgr);
         ReflectionTestUtils.setField(service, "contentService", contentService);
         ReflectionTestUtils.setField(service, "redisCacheMgr", redisCacheMgr);
+        ReflectionTestUtils.setField(service, "serverProperties", serverProperties);
     }
 
 
@@ -472,7 +477,7 @@ class CbPlanLearnerServiceImplTest {
 
         AtomicBoolean isCacheEnabled = new AtomicBoolean(true);
         m.invoke(service, activePlans, "org123", "user123", new HashMap<>(), isCacheEnabled, new ArrayList<>());
-        verify(redisCacheMgr, atLeastOnce()).putInCache(anyString(), anyString());
+        verify(redisCacheMgr, atLeastOnce()).putInCache(anyString(), anyString(), anyInt());
     }
 
     @Test

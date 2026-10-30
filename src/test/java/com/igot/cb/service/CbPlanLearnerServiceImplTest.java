@@ -44,7 +44,7 @@ class CbPlanLearnerServiceImplTest {
     @Mock(lenient = true)
     private CbExtRedisCacheMgr redisCacheMgr;
 
-    @Mock(lenient = true)
+    @Mock(strictness = Mock.Strictness.LENIENT)
     private CbExtServerProperties serverProperties;
 
 

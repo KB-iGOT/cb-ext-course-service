@@ -1096,9 +1096,8 @@ public class CbPlanDictionaryServiceV4Impl {
     }
 
     /**
-     * Strips the caLinkedId from plans whose caLinkedId resolves to a non-Live status.
-     * The plan itself is kept and shown to the user — only the stale CA link is removed.
-     * Plans with a null/blank caLinkedId are untouched — they are valid training plans with no CA link.
+     * Removes plans whose caLinkedId is present but resolves to a non-Live status.
+     * Plans with a null/blank caLinkedId are kept — they are valid training plans with no CA link.
      * Each unique caLinkedId is resolved exactly once via extended content read.
      */
     private void filterLiveContentInPlans(Map<String, Map<String, Object>> aparPlanMap,
@@ -1111,8 +1110,8 @@ public class CbPlanDictionaryServiceV4Impl {
                 .collect(Collectors.toSet());
         Set<String> liveIds = caIds.isEmpty() ? Collections.emptySet() : resolveLiveCaLinkedIds(caIds);
         log.debug("filterLiveContentInPlans: liveCount={}, totalCount={}", liveIds.size(), caIds.size());
-        aparPlanMap.values().forEach(planEntry -> stripNonLiveCaLinkedId(planEntry, liveIds));
-        nonAparPlanMap.values().forEach(planEntry -> stripNonLiveCaLinkedId(planEntry, liveIds));
+        aparPlanMap.entrySet().removeIf(e -> isLiveCaLinkedId(e.getValue(), liveIds));
+        nonAparPlanMap.entrySet().removeIf(e -> isLiveCaLinkedId(e.getValue(), liveIds));
     }
 
     private Set<String> resolveLiveCaLinkedIds(Set<String> caIds) {
@@ -1133,14 +1132,12 @@ public class CbPlanDictionaryServiceV4Impl {
         return liveIds;
     }
 
-    private void stripNonLiveCaLinkedId(Map<String, Object> planEntry, Set<String> liveIds) {
+    private boolean isLiveCaLinkedId(Map<String, Object> planEntry, Set<String> liveIds) {
         Object caId = planEntry.get(Constants.CA_LINKED_ID);
         if (!(caId instanceof String id) || StringUtils.isBlank(id)) {
-            return;
+            return false;
         }
-        if (!liveIds.contains(id)) {
-            planEntry.remove(Constants.CA_LINKED_ID);
-        }
+        return !liveIds.contains(id);
     }
 
 }

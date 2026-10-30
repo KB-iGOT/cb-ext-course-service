@@ -262,6 +262,9 @@ public class CbExtServerProperties {
     @Value("${cbplan.v4.cache.invalidate.async:true}")
     private boolean cbPlanV4CacheInvalidateAsync;
 
+    @Value("${cb.plan.v2.redis.cache.ttl.seconds:600}")
+    private int cbPlanV2RedisCacheTtlSeconds;
+
     public List<String> getCbPlanEnrichedContentFieldsList() {
         return Arrays.asList(cbPlanEnrichedContentFields.split(",", -1));
     }

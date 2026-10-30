@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.igot.cb.cache.CbPlanCacheMgrV3;
-import com.igot.cb.cache.RedisCacheMgr;
+import com.igot.cb.cache.CbExtRedisCacheMgr;
 import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.cbplan.dto.CbPlanContentOccurrence;
 import com.igot.cb.cbplan.dto.CbPlanDictionaryCacheEntry;
@@ -92,7 +92,7 @@ class CbPlanServiceV3ImplTest {
     private CbPlanCacheMgrV3 cbPlanCacheMgrV3;
 
     @Mock
-    private RedisCacheMgr redisCacheMgr;
+    private CbExtRedisCacheMgr redisCacheMgr;
 
     @InjectMocks
     private CbPlanServiceV3Impl cbPlanService;

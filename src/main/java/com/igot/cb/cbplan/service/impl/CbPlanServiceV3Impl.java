@@ -19,7 +19,8 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.igot.cb.cache.CbPlanCacheMgrV3;
 import com.igot.cb.cbplan.util.AccessRuleEvaluator;
-import com.igot.cb.cache.RedisCacheMgr;
+import com.igot.cb.cache.CbExtRedisCacheMgr;
+import org.springframework.beans.factory.annotation.Qualifier;
 import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.cbplan.dto.CbPlanContentOccurrence;
 import com.igot.cb.cbplan.dto.CbPlanDictionaryCacheEntry;
@@ -65,7 +66,7 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
     private final CbPlanEnrichmentServiceV3Impl enrichmentService;
     private final CbPlanCacheMgrV3 cbPlanCacheMgrV3;
     private final AccessRuleEvaluator accessRuleEvaluator;
-    private final RedisCacheMgr redisCacheMgr;
+    private final CbExtRedisCacheMgr redisCacheMgr;
 
     public CbPlanServiceV3Impl(AccessTokenValidator accessTokenValidator,
                                CassandraOperation cassandraOperation,
@@ -75,7 +76,7 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
                                ContentInfoServiceImpl contentService,
                                OutboundRequestHandlerServiceImpl outboundRequestHandlerService,
                                CbPlanCacheMgrV3 cbPlanCacheMgrV3,
-                               RedisCacheMgr redisCacheMgr) {
+                               @Qualifier("cbPlanRedisCacheMgr") CbExtRedisCacheMgr redisCacheMgr) {
         this.cbPlanRequestValidator = new CbPlanRequestValidatorImpl(userAndOrgService, serverProperties);
         this.orgLookupService = new CbPlanOrgLookupServiceV3Impl(cassandraOperation);
         this.contentLookupService = new CbPlanContentLookupServiceV3Impl(cassandraOperation, redisCacheMgr, outboundRequestHandlerService);

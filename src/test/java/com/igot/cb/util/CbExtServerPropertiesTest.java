@@ -119,4 +119,13 @@ class CbExtServerPropertiesTest {
         assertEquals(6382, properties.getExtContentRedisPort());
         assertEquals(3, properties.getExtContentRedisDbIndex());
     }
+
+    @Test
+    void testCbPlanV2RedisCacheTtlSecondsGetterAndSetter() {
+        CbExtServerProperties properties = new CbExtServerProperties();
+
+        properties.setCbPlanV2RedisCacheTtlSeconds(600);
+
+        assertEquals(600, properties.getCbPlanV2RedisCacheTtlSeconds());
+    }
 }

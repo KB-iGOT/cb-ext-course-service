@@ -12,7 +12,8 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import com.igot.cb.cache.RedisCacheMgr;
+import com.igot.cb.cache.CbExtRedisCacheMgr;
+import org.springframework.beans.factory.annotation.Qualifier;
 import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.service.OutboundRequestHandlerServiceImpl;
 import com.igot.cb.util.Constants;
@@ -29,13 +30,13 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class CbPlanContentLookupServiceV3Impl {
     private final CassandraOperation cassandraOperation;
-    private final RedisCacheMgr redisCacheMgr;
+    private final CbExtRedisCacheMgr redisCacheMgr;
     private final OutboundRequestHandlerServiceImpl outboundRequestHandlerService;
     private final PropertiesCache propertiesCache;
     private final ObjectMapper mapper;
 
     public CbPlanContentLookupServiceV3Impl(CassandraOperation cassandraOperation,
-                                            RedisCacheMgr redisCacheMgr,
+                                            @Qualifier("cbPlanRedisCacheMgr") CbExtRedisCacheMgr redisCacheMgr,
                                             OutboundRequestHandlerServiceImpl outboundRequestHandlerService) {
         this.cassandraOperation = cassandraOperation;
         this.redisCacheMgr = redisCacheMgr;

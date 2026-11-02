@@ -34,6 +34,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -1319,5 +1320,28 @@ class CbPlanServiceV3ImplTest {
         request.put(Constants.ID, PLAN_ID);
         ApiResponse retireResponse = cbPlanService.retireCbPlan(apiRequest(request), ORG_ID, TOKEN, List.of());
         assertEquals(HttpStatus.OK, retireResponse.getResponseCode());
+    }
+
+    @Test
+    void testGetCBPlanDictionaryCachesGroupingWhenCacheEnabledAndPlansPresent() {
+        mockAuthenticatedUser();
+        when(cbPlanRedisCacheMgr.getFromCache(DICT_CACHE_KEY)).thenReturn(null);
+        when(cbPlanRedisCacheMgr.getFromCache(BASIC_PROFILE_CACHE_KEY))
+                .thenReturn("{\"id\":\"" + USER_ID + "\",\"rootOrgId\":\"" + ORG_ID + "\"}");
+        Map<String, Object> plan = new HashMap<>();
+        plan.put(Constants.PLAN_ID, PLAN_ID);
+        plan.put(Constants.END_DATE_KEY, Instant.now());
+        plan.put(Constants.IS_APAR, true);
+        plan.put(Constants.CONTENT_LIST, List.of("course1"));
+        when(cbPlanCacheMgrV3.getCbPlanForAllAndOrgId(anyString(), anyString(), any()))
+                .thenAnswer(invocation -> {
+                    invocation.getArgument(2, AtomicBoolean.class).set(true);
+                    return List.of(plan);
+                });
+        Map<String, Object> requestMap = new HashMap<>();
+        requestMap.put("planYear", PLAN_YEAR);
+        ApiResponse response = cbPlanService.getCBPlanDictionaryForUser(apiRequest(requestMap), TOKEN);
+        assertEquals(Constants.SUCCESS, response.getParams().getStatus());
+        verify(cbPlanRedisCacheMgr).putInCache(eq(DICT_CACHE_KEY), anyString(), anyInt());
     }
 }

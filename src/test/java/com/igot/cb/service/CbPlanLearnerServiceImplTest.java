@@ -2,10 +2,11 @@ package com.igot.cb.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.igot.cb.cache.CbPlanCacheMgr;
-import com.igot.cb.cache.RedisCacheMgr;
+import com.igot.cb.cache.CbExtRedisCacheMgr;
 import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.model.ApiResponse;
 import com.igot.cb.util.AccessTokenValidator;
+import com.igot.cb.util.CbExtServerProperties;
 import com.igot.cb.util.Constants;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
@@ -41,16 +42,19 @@ class CbPlanLearnerServiceImplTest {
     private CbPlanCacheMgr cbPlanCacheMgr;
 
     @Mock(lenient = true)
-    private RedisCacheMgr redisCacheMgr;
+    private CbExtRedisCacheMgr redisCacheMgr;
 
+    @Mock
+    private CbExtServerProperties serverProperties;
 
     private CbPlanLearnerServiceImpl service;
 
     @BeforeEach
     void setUp() {
-        service = new CbPlanLearnerServiceImpl(accessTokenValidator, cassandraOperation, cbPlanCacheMgr);
+        service = new CbPlanLearnerServiceImpl(accessTokenValidator, cassandraOperation, cbPlanCacheMgr, redisCacheMgr);
         ReflectionTestUtils.setField(service, "contentService", contentService);
-        ReflectionTestUtils.setField(service, "redisCacheMgr", redisCacheMgr);
+        ReflectionTestUtils.setField(service, "serverProperties", serverProperties);
+        lenient().when(serverProperties.getCbPlanV2RedisCacheTtlSeconds()).thenReturn(600);
     }
 
 
@@ -458,7 +462,6 @@ class CbPlanLearnerServiceImplTest {
     @Test
     void testProcessActiveCbPlans_WithCacheEnabled() throws Exception {
         ReflectionTestUtils.setField(service, "mapper", new ObjectMapper());
-        ReflectionTestUtils.setField(service, "redisCacheMgr", redisCacheMgr);
 
         List<Map<String, Object>> activePlans = List.of(Map.of(
                 Constants.PLAN_ID, "plan123",
@@ -472,7 +475,7 @@ class CbPlanLearnerServiceImplTest {
 
         AtomicBoolean isCacheEnabled = new AtomicBoolean(true);
         m.invoke(service, activePlans, "org123", "user123", new HashMap<>(), isCacheEnabled, new ArrayList<>());
-        verify(redisCacheMgr, atLeastOnce()).putInCache(anyString(), anyString());
+        verify(redisCacheMgr, atLeastOnce()).putInCache(anyString(), anyString(), anyInt());
     }
 
     @Test

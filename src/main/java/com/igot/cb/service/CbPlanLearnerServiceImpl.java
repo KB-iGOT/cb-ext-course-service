@@ -4,7 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.igot.cb.cache.CbPlanCacheMgr;
-import com.igot.cb.cache.RedisCacheMgr;
+import com.igot.cb.cache.CbExtRedisCacheMgr;
 import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.elasticsearch.service.EsUtilService;
 import com.igot.cb.model.ApiResponse;
@@ -20,6 +20,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -67,13 +68,15 @@ public class CbPlanLearnerServiceImpl {
     @Value("${elastic.required.field.cb.plan.json.path}")
     private String elasticCbPlanJsonPath;
 
-    @Autowired
-    private RedisCacheMgr redisCacheMgr;
+    private final CbExtRedisCacheMgr redisCacheMgr;
 
-    public CbPlanLearnerServiceImpl(AccessTokenValidator accessTokenValidator, CassandraOperation cassandraOperation, CbPlanCacheMgr cbPlanCacheMgr) {
+    public CbPlanLearnerServiceImpl(AccessTokenValidator accessTokenValidator, CassandraOperation cassandraOperation,
+                                    CbPlanCacheMgr cbPlanCacheMgr,
+                                    @Qualifier("cbPlanRedisCacheMgr") CbExtRedisCacheMgr redisCacheMgr) {
         this.accessTokenValidator = accessTokenValidator;
         this.cassandraOperation = cassandraOperation;
         this.cbPlanCacheMgr = cbPlanCacheMgr;
+        this.redisCacheMgr = redisCacheMgr;
     }
 
     public ApiResponse getCBPlanListForUser(String userOrgId, String authTokenOrUserId, boolean isPrivate) {
@@ -248,11 +251,13 @@ public class CbPlanLearnerServiceImpl {
             }
             redisCacheMgr.putInCache(
                     Constants.CB_PLAN_REDIS_KEY_PREFIX + userId + Constants.BY_COURSE_SUFFIX,
-                    coursePlanMappingsJson
+                    coursePlanMappingsJson,
+                    serverProperties.getCbPlanV2RedisCacheTtlSeconds()
             );
             redisCacheMgr.putInCache(
                     Constants.CB_PLAN_REDIS_KEY_PREFIX + userId + Constants.BY_PLANS_SUFFIX,
-                    plansToCacheJson
+                    plansToCacheJson,
+                    serverProperties.getCbPlanV2RedisCacheTtlSeconds()
             );
             log.info("Cached CB Plan details for userId: {}, courses: {}, plans: {}",
                     userId, coursePlanMappings.size(), plansToCache.size());

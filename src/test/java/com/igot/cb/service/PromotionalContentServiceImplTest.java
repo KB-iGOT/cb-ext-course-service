@@ -444,7 +444,7 @@ class PromotionalContentServiceImplTest {
         assertNotNull(result);
         List<Map<String, Object>> content = (List<Map<String, Object>>) result.getResult().get(Constants.CONTENT);
         assertTrue(content.isEmpty());
-        verify(redisCacheMgr).putInCache(Constants.ACCESS_KEY + USER_ID, Constants.NO_RECORDS_FOUND, 600);
+        verify(redisCacheMgr).putInCache(Constants.PROMOTIONAL_CONTENT_KEY + USER_ID, Constants.NO_RECORDS_FOUND, 600);
     }
 
     @Test

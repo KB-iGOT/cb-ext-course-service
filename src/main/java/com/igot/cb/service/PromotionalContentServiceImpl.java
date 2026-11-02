@@ -187,7 +187,7 @@ public class PromotionalContentServiceImpl implements IPromotionalContentService
                     response.updateErrorDetails("Fetching Promotional content failed due to an error", HttpStatus.INTERNAL_SERVER_ERROR);
                 }
             } else {
-                redisCacheMgr.putInCache(Constants.ACCESS_KEY + userId, Constants.NO_RECORDS_FOUND, promotionalContentUserCacheTtlSeconds);
+                redisCacheMgr.putInCache(Constants.PROMOTIONAL_CONTENT_KEY + userId, Constants.NO_RECORDS_FOUND, promotionalContentUserCacheTtlSeconds);
             }
             response.getResult().put(Constants.CONTENT, userCourses);
         } else {

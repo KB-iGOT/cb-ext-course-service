@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.igot.cb.cache.CbPlanCacheMgrV3;
-import com.igot.cb.cache.RedisCacheMgr;
+import com.igot.cb.cache.CbExtRedisCacheMgr;
 import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.cbplan.dto.CbPlanContentOccurrence;
 import com.igot.cb.cbplan.dto.CbPlanDictionaryCacheEntry;
@@ -23,7 +23,6 @@ import com.igot.cb.util.Constants;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
@@ -92,9 +91,8 @@ class CbPlanServiceV3ImplTest {
     private CbPlanCacheMgrV3 cbPlanCacheMgrV3;
 
     @Mock
-    private RedisCacheMgr redisCacheMgr;
+    private CbExtRedisCacheMgr cbPlanRedisCacheMgr;
 
-    @InjectMocks
     private CbPlanServiceV3Impl cbPlanService;
 
     private static ApiRequest apiRequest(Map<String, Object> requestMap) {
@@ -160,6 +158,9 @@ class CbPlanServiceV3ImplTest {
 
     @BeforeEach
     void setUpAuthorizedRoles() {
+        cbPlanService = new CbPlanServiceV3Impl(accessTokenValidator, cassandraOperation, serverProperties,
+                userAndOrgService, esUtilService, contentService, outboundRequestHandlerService,
+                cbPlanCacheMgrV3, cbPlanRedisCacheMgr);
         lenient().when(serverProperties.getCbPlanUpdatePublishAuthorizedRoles())
                 .thenReturn(List.of("CONTENT_CREATOR", "ADMIN"));
         lenient().when(serverProperties.getCbPlanV4Keyspace()).thenReturn("sunbird");
@@ -182,7 +183,7 @@ class CbPlanServiceV3ImplTest {
     }
 
     private void mockUserProfileLookup() {
-        lenient().when(redisCacheMgr.getFromCache(BASIC_PROFILE_CACHE_KEY)).thenReturn(null);
+        lenient().when(cbPlanRedisCacheMgr.getFromCache(BASIC_PROFILE_CACHE_KEY)).thenReturn(null);
         Map<String, Object> userRow = new HashMap<>();
         userRow.put(Constants.ID, USER_ID);
         userRow.put(Constants.ROOT_ORG_ID, ORG_ID);
@@ -738,7 +739,7 @@ class CbPlanServiceV3ImplTest {
         aparMap.put("course1", List.of(new CbPlanContentOccurrence(PLAN_ID, Instant.EPOCH, "Mandatory")));
         CbPlanDictionaryCacheEntry cacheEntry =
                 new CbPlanDictionaryCacheEntry(aparMap, new LinkedHashMap<>(), 1, 0);
-        when(redisCacheMgr.getFromCache(DICT_CACHE_KEY)).thenReturn(MAPPER.writeValueAsString(cacheEntry));
+        when(cbPlanRedisCacheMgr.getFromCache(DICT_CACHE_KEY)).thenReturn(MAPPER.writeValueAsString(cacheEntry));
         Map<String, Object> requestMap = new HashMap<>();
         requestMap.put("planYear", PLAN_YEAR);
         ApiResponse response = cbPlanService.getCBPlanDictionaryForUser(apiRequest(requestMap), TOKEN);
@@ -751,8 +752,8 @@ class CbPlanServiceV3ImplTest {
     @Test
     void testGetCBPlanDictionaryFailsWhenUserNotFound() {
         mockAuthenticatedUser();
-        when(redisCacheMgr.getFromCache(DICT_CACHE_KEY)).thenReturn(null);
-        when(redisCacheMgr.getFromCache(BASIC_PROFILE_CACHE_KEY)).thenReturn(null);
+        when(cbPlanRedisCacheMgr.getFromCache(DICT_CACHE_KEY)).thenReturn(null);
+        when(cbPlanRedisCacheMgr.getFromCache(BASIC_PROFILE_CACHE_KEY)).thenReturn(null);
         when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), anyMap(), any(), any()))
                 .thenReturn(List.of());
         Map<String, Object> requestMap = new HashMap<>();
@@ -765,8 +766,8 @@ class CbPlanServiceV3ImplTest {
     @Test
     void testGetCBPlanDictionaryUsesBasicProfileRedisCacheOnCacheMiss() {
         mockAuthenticatedUser();
-        when(redisCacheMgr.getFromCache(DICT_CACHE_KEY)).thenReturn(null);
-        when(redisCacheMgr.getFromCache(BASIC_PROFILE_CACHE_KEY))
+        when(cbPlanRedisCacheMgr.getFromCache(DICT_CACHE_KEY)).thenReturn(null);
+        when(cbPlanRedisCacheMgr.getFromCache(BASIC_PROFILE_CACHE_KEY))
                 .thenReturn("{\"id\":\"" + USER_ID + "\",\"rootOrgId\":\"" + ORG_ID + "\"}");
         when(cbPlanCacheMgrV3.getCbPlanForAllAndOrgId(anyString(), anyString(), any())).thenReturn(List.of());
         Map<String, Object> requestMap = new HashMap<>();
@@ -781,8 +782,8 @@ class CbPlanServiceV3ImplTest {
     @Test
     void testGetCBPlanDictionaryReturnsEmptyWhenNoActivePlans() {
         mockAuthenticatedUser();
-        when(redisCacheMgr.getFromCache(DICT_CACHE_KEY)).thenReturn(null);
-        when(redisCacheMgr.getFromCache(BASIC_PROFILE_CACHE_KEY))
+        when(cbPlanRedisCacheMgr.getFromCache(DICT_CACHE_KEY)).thenReturn(null);
+        when(cbPlanRedisCacheMgr.getFromCache(BASIC_PROFILE_CACHE_KEY))
                 .thenReturn("{\"id\":\"" + USER_ID + "\",\"rootOrgId\":\"" + ORG_ID + "\"}");
         when(cbPlanCacheMgrV3.getCbPlanForAllAndOrgId(anyString(), anyString(), any())).thenReturn(List.of());
         Map<String, Object> requestMap = new HashMap<>();
@@ -791,14 +792,14 @@ class CbPlanServiceV3ImplTest {
         assertEquals(Constants.SUCCESS, response.getParams().getStatus());
         assertEquals(0, response.getResult().get("aparCount"));
         assertEquals(0, response.getResult().get("nonAparCount"));
-        verify(redisCacheMgr).putInCache(eq(DICT_CACHE_KEY), anyString(), anyInt());
+        verify(cbPlanRedisCacheMgr).putInCache(eq(DICT_CACHE_KEY), anyString(), anyInt());
     }
 
     @Test
     void testGetCBPlanDictionaryGroupsAparContent() {
         mockAuthenticatedUser();
-        when(redisCacheMgr.getFromCache(DICT_CACHE_KEY)).thenReturn(null);
-        when(redisCacheMgr.getFromCache(BASIC_PROFILE_CACHE_KEY))
+        when(cbPlanRedisCacheMgr.getFromCache(DICT_CACHE_KEY)).thenReturn(null);
+        when(cbPlanRedisCacheMgr.getFromCache(BASIC_PROFILE_CACHE_KEY))
                 .thenReturn("{\"id\":\"" + USER_ID + "\",\"rootOrgId\":\"" + ORG_ID + "\"}");
         Map<String, Object> plan = new HashMap<>();
         plan.put(Constants.PLAN_ID, PLAN_ID);
@@ -819,8 +820,8 @@ class CbPlanServiceV3ImplTest {
     @Test
     void testGetCBPlanDictionaryGroupsNonAparContent() {
         mockAuthenticatedUser();
-        when(redisCacheMgr.getFromCache(DICT_CACHE_KEY)).thenReturn(null);
-        when(redisCacheMgr.getFromCache(BASIC_PROFILE_CACHE_KEY))
+        when(cbPlanRedisCacheMgr.getFromCache(DICT_CACHE_KEY)).thenReturn(null);
+        when(cbPlanRedisCacheMgr.getFromCache(BASIC_PROFILE_CACHE_KEY))
                 .thenReturn("{\"id\":\"" + USER_ID + "\",\"rootOrgId\":\"" + ORG_ID + "\"}");
         Map<String, Object> plan = new HashMap<>();
         plan.put(Constants.PLAN_ID, PLAN_ID);
@@ -838,8 +839,8 @@ class CbPlanServiceV3ImplTest {
     @Test
     void testGetCBPlanDictionarySkipsPlansWithEmptyContentList() {
         mockAuthenticatedUser();
-        when(redisCacheMgr.getFromCache(DICT_CACHE_KEY)).thenReturn(null);
-        when(redisCacheMgr.getFromCache(BASIC_PROFILE_CACHE_KEY))
+        when(cbPlanRedisCacheMgr.getFromCache(DICT_CACHE_KEY)).thenReturn(null);
+        when(cbPlanRedisCacheMgr.getFromCache(BASIC_PROFILE_CACHE_KEY))
                 .thenReturn("{\"id\":\"" + USER_ID + "\",\"rootOrgId\":\"" + ORG_ID + "\"}");
         Map<String, Object> plan = new HashMap<>();
         plan.put(Constants.PLAN_ID, PLAN_ID);
@@ -856,8 +857,8 @@ class CbPlanServiceV3ImplTest {
     @Test
     void testGetCBPlanDictionaryDeniesAccessWhenContextCriteriaDoNotMatch() {
         mockAuthenticatedUser();
-        when(redisCacheMgr.getFromCache(DICT_CACHE_KEY)).thenReturn(null);
-        when(redisCacheMgr.getFromCache(BASIC_PROFILE_CACHE_KEY))
+        when(cbPlanRedisCacheMgr.getFromCache(DICT_CACHE_KEY)).thenReturn(null);
+        when(cbPlanRedisCacheMgr.getFromCache(BASIC_PROFILE_CACHE_KEY))
                 .thenReturn("{\"id\":\"" + USER_ID + "\",\"rootOrgId\":\"" + ORG_ID + "\"}");
         Map<String, Object> plan = new HashMap<>();
         plan.put(Constants.PLAN_ID, PLAN_ID);
@@ -880,8 +881,8 @@ class CbPlanServiceV3ImplTest {
         nonAparMap.put("course1", List.of(new CbPlanContentOccurrence(PLAN_ID, Instant.EPOCH, "Mandatory")));
         CbPlanDictionaryCacheEntry cacheEntry =
                 new CbPlanDictionaryCacheEntry(new LinkedHashMap<>(), nonAparMap, 0, 1);
-        when(redisCacheMgr.getFromCache(DICT_CACHE_KEY)).thenReturn(MAPPER.writeValueAsString(cacheEntry));
-        when(redisCacheMgr.getFromCache(Constants.EXTENDED_READ_CONTENT_CACHE_KEY_PREFIX + "course1"))
+        when(cbPlanRedisCacheMgr.getFromCache(DICT_CACHE_KEY)).thenReturn(MAPPER.writeValueAsString(cacheEntry));
+        when(cbPlanRedisCacheMgr.getFromCache(Constants.EXTENDED_READ_CONTENT_CACHE_KEY_PREFIX + "course1"))
                 .thenReturn("{\"identifier\":\"course1\",\"name\":\"Course 1\"}");
         when(serverProperties.getCbPlanEnrichedContentFieldsList()).thenReturn(List.of("identifier", "name"));
         Map<String, Object> requestMap = new HashMap<>();
@@ -900,7 +901,7 @@ class CbPlanServiceV3ImplTest {
         mockAuthenticatedUser();
         CbPlanDictionaryCacheEntry cacheEntry =
                 new CbPlanDictionaryCacheEntry(new LinkedHashMap<>(), new LinkedHashMap<>(), 0, 0);
-        when(redisCacheMgr.getFromCache(DICT_CACHE_KEY)).thenReturn(MAPPER.writeValueAsString(cacheEntry));
+        when(cbPlanRedisCacheMgr.getFromCache(DICT_CACHE_KEY)).thenReturn(MAPPER.writeValueAsString(cacheEntry));
         Map<String, Object> requestMap = new HashMap<>();
         requestMap.put("planYear", PLAN_YEAR);
         ApiResponse response = cbPlanService.getCBPlanDictionaryForUser(apiRequest(requestMap), TOKEN);
@@ -910,7 +911,7 @@ class CbPlanServiceV3ImplTest {
     @Test
     void testGetCBPlanDictionaryHandlesNullRequestBody() {
         mockAuthenticatedUser();
-        when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
+        when(cbPlanRedisCacheMgr.getFromCache(anyString())).thenReturn(null);
         when(cassandraOperation.getRecordsByProperties(anyString(), anyString(), anyMap(), any(), any()))
                 .thenReturn(List.of());
         ApiResponse response = cbPlanService.getCBPlanDictionaryForUser(apiRequest(null), TOKEN);
@@ -931,7 +932,7 @@ class CbPlanServiceV3ImplTest {
     void testConstructor() {
         assertNotNull(new CbPlanServiceV3Impl(accessTokenValidator, cassandraOperation, serverProperties,
                 userAndOrgService, esUtilService, contentService,
-                outboundRequestHandlerService, cbPlanCacheMgrV3, redisCacheMgr));
+                outboundRequestHandlerService, cbPlanCacheMgrV3, cbPlanRedisCacheMgr));
     }
 
     @Test
@@ -1086,7 +1087,7 @@ class CbPlanServiceV3ImplTest {
         mockAuthenticatedUser();
         CbPlanDictionaryCacheEntry cacheEntry = new CbPlanDictionaryCacheEntry(
                 new LinkedHashMap<>(), new LinkedHashMap<>(), 0, 0);
-        when(redisCacheMgr.getFromCache(anyString())).thenReturn(MAPPER.writeValueAsString(cacheEntry));
+        when(cbPlanRedisCacheMgr.getFromCache(anyString())).thenReturn(MAPPER.writeValueAsString(cacheEntry));
 
         Map<String, Object> request = new HashMap<>();
         request.put("planYear", PLAN_YEAR);

@@ -19,8 +19,9 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.igot.cb.cache.CbPlanCacheMgrV3;
 import com.igot.cb.cbplan.util.AccessRuleEvaluator;
-import com.igot.cb.cache.RedisCacheMgr;
+import com.igot.cb.cache.CbExtRedisCacheMgr;
 import com.igot.cb.cassandra.CassandraOperation;
+import org.springframework.beans.factory.annotation.Qualifier;
 import com.igot.cb.cbplan.dto.CbPlanContentOccurrence;
 import com.igot.cb.cbplan.dto.CbPlanDictionaryCacheEntry;
 import com.igot.cb.cbplan.dto.CbPlanReadResponseDto;
@@ -65,7 +66,7 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
     private final CbPlanEnrichmentServiceV3Impl enrichmentService;
     private final CbPlanCacheMgrV3 cbPlanCacheMgrV3;
     private final AccessRuleEvaluator accessRuleEvaluator;
-    private final RedisCacheMgr redisCacheMgr;
+    private final CbExtRedisCacheMgr cbPlanRedisCacheMgr;
 
     public CbPlanServiceV3Impl(AccessTokenValidator accessTokenValidator,
                                CassandraOperation cassandraOperation,
@@ -75,10 +76,10 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
                                ContentInfoServiceImpl contentService,
                                OutboundRequestHandlerServiceImpl outboundRequestHandlerService,
                                CbPlanCacheMgrV3 cbPlanCacheMgrV3,
-                               RedisCacheMgr redisCacheMgr) {
+                               @Qualifier("cbPlanRedisCacheMgr") CbExtRedisCacheMgr cbPlanRedisCacheMgr) {
         this.cbPlanRequestValidator = new CbPlanRequestValidatorImpl(userAndOrgService, serverProperties);
         this.orgLookupService = new CbPlanOrgLookupServiceV3Impl(cassandraOperation);
-        this.contentLookupService = new CbPlanContentLookupServiceV3Impl(cassandraOperation, redisCacheMgr, outboundRequestHandlerService);
+        this.contentLookupService = new CbPlanContentLookupServiceV3Impl(cassandraOperation, cbPlanRedisCacheMgr, outboundRequestHandlerService);
         this.elasticSearchService = new CbPlanElasticSearchServiceV3Impl(esUtilService, serverProperties);
         this.enrichmentService = new CbPlanEnrichmentServiceV3Impl(userAndOrgService, contentService);
         this.validationService = new CbPlanValidationServiceV3Impl(accessTokenValidator, userAndOrgService, cbPlanRequestValidator, serverProperties);
@@ -90,7 +91,7 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
         this.contentService = contentService;
         this.cbPlanCacheMgrV3 = cbPlanCacheMgrV3;
         this.accessRuleEvaluator = new AccessRuleEvaluator();
-        this.redisCacheMgr = redisCacheMgr;
+        this.cbPlanRedisCacheMgr = cbPlanRedisCacheMgr;
         this.mapper = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
@@ -847,7 +848,7 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
         log.debug("buildUserProfile: Fetching profile for userId={}", userId);
         try {
             String cacheKey = Constants.USER + ":basicProfile:" + userId;
-            String cachedData = redisCacheMgr.getFromCache(cacheKey);
+            String cachedData = cbPlanRedisCacheMgr.getFromCache(cacheKey);
             Map<String, Object> userBasicProfile;
             if (StringUtils.isNotBlank(cachedData)) {
                 log.debug("buildUserProfile: Redis cache HIT for userId={}", userId);
@@ -1199,7 +1200,7 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
      */
     private Map<String, Object> getContentMetadata(String contentId) throws JsonProcessingException {
         String cacheKey = Constants.EXTENDED_READ_CONTENT_CACHE_KEY_PREFIX + contentId;
-        String cachedContent = redisCacheMgr.getFromCache(cacheKey);
+        String cachedContent = cbPlanRedisCacheMgr.getFromCache(cacheKey);
         if (StringUtils.isNotBlank(cachedContent)) {
             log.debug("getContentMetadata: Redis cache hit - contentId={}, cacheKey={}", contentId, cacheKey);
             Map<String, Object> cachedData = mapper.readValue(cachedContent, new TypeReference<Map<String, Object>>() {
@@ -1258,7 +1259,7 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
      * @throws JsonProcessingException if deserialization fails
      */
     private CbPlanDictionaryCacheEntry getCachedDictionaryEntry(String redisCacheKey) throws JsonProcessingException {
-        String cachedResult = redisCacheMgr.getFromCache(redisCacheKey);
+        String cachedResult = cbPlanRedisCacheMgr.getFromCache(redisCacheKey);
         if (StringUtils.isBlank(cachedResult)) {
             return null;
         }
@@ -1306,7 +1307,7 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
         log.info("cacheEmptyDictionary: No active plans found - userId={}, planYear={}", userId, planYear);
         CbPlanDictionaryCacheEntry emptyEntry = new CbPlanDictionaryCacheEntry(
                 new LinkedHashMap<>(), new LinkedHashMap<>(), 0, 0);
-        redisCacheMgr.putInCache(redisCacheKey, mapper.writeValueAsString(emptyEntry),
+        cbPlanRedisCacheMgr.putInCache(redisCacheKey, mapper.writeValueAsString(emptyEntry),
                 serverProperties.getCbPlanV3RedisCacheTtlSeconds());
         return emptyEntry;
     }
@@ -1337,7 +1338,7 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
         CbPlanDictionaryCacheEntry cacheEntry = new CbPlanDictionaryCacheEntry(
                 aparContentMap, nonAparContentMap, aparContentMap.size(), nonAparContentMap.size());
         if (isCacheEnabled && CollectionUtils.isNotEmpty(plansToCache)) {
-            redisCacheMgr.putInCache(redisCacheKey, mapper.writeValueAsString(cacheEntry),
+            cbPlanRedisCacheMgr.putInCache(redisCacheKey, mapper.writeValueAsString(cacheEntry),
                     serverProperties.getCbPlanV3RedisCacheTtlSeconds());
             log.info("processPlanGroupingAndCache: Cached grouping - userId={}, planYear={}, aparCount={}, nonAparCount={}",
                     userId, planYear, aparContentMap.size(), nonAparContentMap.size());

@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 import java.lang.reflect.Field;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -248,6 +249,31 @@ class ContentInfoServiceImplTest {
         List<Map<String, Object>> result = spyService.enrichContentInfoForCBPlan(List.of("id1", "id2"));
         assertEquals(1, result.size());
         assertEquals("Live Course", result.get(0).get(Constants.NAME));
+    }
+
+    @Test
+    void testEnrichContentInfoForCBPlan_v4ObjectEntries_usesIdentifierField() {
+        ContentInfoServiceImpl spyService = spy(contentService);
+        Map<String, Object> liveContent = new HashMap<>();
+        liveContent.put(Constants.STATUS, Constants.LIVE);
+        liveContent.put(Constants.NAME, "Live Course");
+        doReturn(liveContent).when(spyService).readContent(eq("do_111"), any());
+        doReturn(liveContent).when(spyService).readContent(eq("do_222"), any());
+
+        Map<String, Object> v4Entry = new HashMap<>();
+        v4Entry.put(Constants.IDENTIFIER, "do_111");
+        v4Entry.put("mandatory", false);
+        List<Object> mixed = new ArrayList<>();
+        mixed.add(v4Entry);
+        mixed.add("do_222");
+        mixed.add(42);
+
+        List<Map<String, Object>> result = spyService.enrichContentInfoForCBPlan(mixed);
+
+        assertEquals(2, result.size());
+        verify(spyService).readContent(eq("do_111"), any());
+        verify(spyService).readContent(eq("do_222"), any());
+        verify(spyService, never()).readContent(eq("42"), any());
     }
 
     @Test

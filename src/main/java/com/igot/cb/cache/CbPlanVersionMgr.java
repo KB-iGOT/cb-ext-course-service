@@ -24,6 +24,7 @@ import java.util.Optional;
  *   cbplan:v4ver:org:&lt;orgId&gt;:&lt;planYear&gt;
  *   cbplan:v4ver:ministry:&lt;ministryOrStateId&gt;:&lt;planYear&gt;
  *   cbplan:v4ver:all:&lt;planYear&gt;
+ *   cbplan:v4ver:ug:&lt;owningOrgId&gt;        (user groups of that org, not year-scoped)
  * </pre>
  * Publishing, republishing or retiring a plan {@code INCR}s the counters of every scope it
  * touches. Per-user dictionary entries are stamped with the counters they were built from
@@ -46,6 +47,8 @@ public class CbPlanVersionMgr {
     private static final String SCOPE_ORG = "org:";
     private static final String SCOPE_MINISTRY = "ministry:";
     private static final String SCOPE_ALL = "all:";
+    private static final String SCOPE_USER_GROUP = "ug:";
+    private static final String META_UG_VERSIONS = "ugVer";
 
     private final CbExtRedisCacheMgr redisCacheMgr;
     private final ObjectMapper mapper;
@@ -124,9 +127,70 @@ public class CbPlanVersionMgr {
      * The input is not mutated, so the API response the caller is still holding stays clean.
      */
     public Map<String, Object> stamp(Map<String, Object> result, CbPlanCacheVersions versions) {
+        return stamp(result, versions, null);
+    }
+
+    /**
+     * Variant of {@link #stamp(Map, CbPlanCacheVersions)} that also records, under
+     * {@code _cv.ugVer}, the user-group counter of every group-owning org the dictionary was
+     * built against, so a group edit in any of those orgs makes the entry stale.
+     *
+     * @param ugVersions owning orgId → user-group counter snapshot; null or empty adds nothing
+     */
+    public Map<String, Object> stamp(Map<String, Object> result, CbPlanCacheVersions versions,
+                                     Map<String, Long> ugVersions) {
         Map<String, Object> stamped = new LinkedHashMap<>(result);
-        stamped.put(Constants.CB_PLAN_V4_CACHE_VERSIONS_KEY, versions.toCacheMeta());
+        Map<String, Object> meta = versions.toCacheMeta();
+        if (Objects.nonNull(ugVersions) && !ugVersions.isEmpty()) {
+            meta.put(META_UG_VERSIONS, new LinkedHashMap<>(ugVersions));
+        }
+        stamped.put(Constants.CB_PLAN_V4_CACHE_VERSIONS_KEY, meta);
         return stamped;
+    }
+
+    /**
+     * Reads the user-group counter of one owning org ({@code cbplan:v4ver:ug:<orgId>}).
+     * Absent or unreadable counters read as 0.
+     */
+    public long getUserGroupVersion(String orgId) {
+        return parseVersion(redisCacheMgr.mgetFromCache(userGroupKey(orgId)), 0);
+    }
+
+    /**
+     * Reads the user-group counters of several owning orgs in one {@code MGET}.
+     *
+     * @param orgIds owning org IDs (blank entries ignored)
+     * @return orgId → counter; absent or unreadable counters read as 0
+     */
+    public Map<String, Long> getUserGroupVersions(Collection<String> orgIds) {
+        Map<String, Long> result = new LinkedHashMap<>();
+        if (Objects.isNull(orgIds)) {
+            return result;
+        }
+        List<String> ids = orgIds.stream().filter(StringUtils::isNotBlank).distinct().toList();
+        if (ids.isEmpty()) {
+            return result;
+        }
+        List<String> values = redisCacheMgr.mgetFromCache(ids.stream().map(CbPlanVersionMgr::userGroupKey)
+                .toArray(String[]::new));
+        for (int i = 0; i < ids.size(); i++) {
+            result.put(ids.get(i), parseVersion(values, i));
+        }
+        return result;
+    }
+
+    /**
+     * Bumps the user-group counter of an owning org after one of its groups changed, so every
+     * pod's cached groups of that org, and every dictionary entry built against them, go stale.
+     *
+     * @param orgId owning org ID of the changed group
+     */
+    public void bumpUserGroup(String orgId) {
+        if (StringUtils.isBlank(orgId)) {
+            return;
+        }
+        redisCacheMgr.incrementCounter(userGroupKey(orgId));
+        log.info("CbPlanVersionMgr.bumpUserGroup: orgId={}", orgId);
     }
 
     /**
@@ -172,8 +236,34 @@ public class CbPlanVersionMgr {
                     cacheKey, stamped, live);
             return Optional.empty();
         }
+        if (!userGroupVersionsMatch(cacheKey, cached)) {
+            return Optional.empty();
+        }
         cached.remove(Constants.CB_PLAN_V4_CACHE_VERSIONS_KEY);
         return Optional.of(cached);
+    }
+
+    /**
+     * Compares the {@code _cv.ugVer} stamp (owning orgId → user-group counter) against the live
+     * counters. Entries without the stamp (built before user-group versioning, or against no
+     * groups) pass; one {@code MGET} otherwise.
+     */
+    private boolean userGroupVersionsMatch(String cacheKey, Map<String, Object> cached) {
+        Object metaObj = cached.get(Constants.CB_PLAN_V4_CACHE_VERSIONS_KEY);
+        if (!(metaObj instanceof Map<?, ?> meta) || !(meta.get(META_UG_VERSIONS) instanceof Map<?, ?> stampedUg)
+                || stampedUg.isEmpty()) {
+            return true;
+        }
+        Map<String, Long> live = getUserGroupVersions(stampedUg.keySet().stream().map(String::valueOf).toList());
+        for (Map.Entry<?, ?> entry : stampedUg.entrySet()) {
+            long stampedVersion = entry.getValue() instanceof Number n ? n.longValue() : -1L;
+            if (stampedVersion != live.getOrDefault(String.valueOf(entry.getKey()), 0L)) {
+                log.info("CbPlanVersionMgr.readValidatedDict: Stale user-group stamp - key={}, orgId={}, stamped={}, live={}",
+                        cacheKey, entry.getKey(), stampedVersion, live.get(String.valueOf(entry.getKey())));
+                return false;
+            }
+        }
+        return true;
     }
 
     private Map<String, Object> readAndParse(String cacheKey) {
@@ -215,5 +305,9 @@ public class CbPlanVersionMgr {
 
     private static String allKey(String planYear) {
         return Constants.CB_PLAN_V4_VERSION_KEY_PREFIX + SCOPE_ALL + planYear;
+    }
+
+    private static String userGroupKey(String orgId) {
+        return Constants.CB_PLAN_V4_VERSION_KEY_PREFIX + SCOPE_USER_GROUP + orgId;
     }
 }

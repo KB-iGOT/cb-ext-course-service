@@ -5,6 +5,7 @@ import org.apache.http.HttpHost;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -155,11 +156,19 @@ class EsConfigTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {":9200", "10.0.0.1:", " :9200"})
-    void testParseHostsMissingHostOrPortAroundColonThrows(String input) {
+    @CsvSource({
+            "':9200',     ':9200'",
+            "'10.0.0.1:', '10.0.0.1:'",
+            "' :9200',    ':9200'"
+    })
+    void testParseHostsMissingHostOrPortAroundColonThrows(String input, String expectedTrimmedEntry) {
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
                 () -> EsConfig.parseHosts(input, DEFAULT_PORT));
-        assertTrue(ex.getMessage().startsWith("Invalid Elasticsearch host entry"));
+
+        // Rejected by the colon-position check, not by port parsing, so the message
+        // carries the trimmed entry and there is no underlying NumberFormatException.
+        assertEquals("Invalid Elasticsearch host entry: " + expectedTrimmedEntry, ex.getMessage());
+        assertNull(ex.getCause());
     }
 
     @ParameterizedTest
@@ -239,7 +248,7 @@ class EsConfigTest {
             "12345",
             "10..0.1",
             "10.0.0.",
-            "\u0661\u0660.0.0.1"
+            "١\u0660.0.0.1"
     })
     void testParseHostsInvalidIpv4Throws(String host) {
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
@@ -258,7 +267,7 @@ class EsConfigTest {
             "bad host",
             "host!name",
             "host~name",
-            "h\u00e9.com",
+            "hé.com",
             "::1",
             "[::1]:9200"
     })

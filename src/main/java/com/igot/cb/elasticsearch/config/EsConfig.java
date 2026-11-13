@@ -86,21 +86,85 @@ public class EsConfig {
         if (StringUtils.isBlank(hosts)) {
             throw new IllegalArgumentException("Elasticsearch host is not configured");
         }
-        HttpHost[] httpHosts = Arrays.stream(hosts.split(","))
+
+        validatePort(defaultPort);
+
+        HttpHost[] httpHosts = Arrays.stream(hosts.split(",", -1))
                 .map(String::trim)
-                .filter(StringUtils::isNotBlank)
                 .map(entry -> {
-                    int idx = entry.lastIndexOf(':');
-                    if (idx > 0 && idx < entry.length() - 1) {
-                        return new HttpHost(entry.substring(0, idx).trim(),
-                                Integer.parseInt(entry.substring(idx + 1).trim()), "http");
+                    if (StringUtils.isBlank(entry)) {
+                        throw new IllegalArgumentException("Invalid Elasticsearch host entry: " + entry);
                     }
-                    return new HttpHost(entry, defaultPort, "http");
+
+                    int idx = entry.lastIndexOf(':');
+                    String hostname = entry;
+                    int port = defaultPort;
+
+                    if (idx >= 0) {
+                        if (idx == 0 || idx == entry.length() - 1) {
+                            throw new IllegalArgumentException("Invalid Elasticsearch host entry: " + entry);
+                        }
+
+                        hostname = entry.substring(0, idx).trim();
+
+                        try {
+                            port = Integer.parseInt(entry.substring(idx + 1).trim());
+                        } catch (NumberFormatException e) {
+                            throw new IllegalArgumentException("Invalid port in Elasticsearch host entry: " + entry, e);
+                        }
+                    }
+
+                    if (StringUtils.isBlank(hostname) || !isValidHost(hostname)) {
+                        throw new IllegalArgumentException("Invalid Elasticsearch host entry: " + entry);
+                    }
+
+                    validatePort(port);
+
+                    return new HttpHost(hostname, port, "http");
                 })
                 .toArray(HttpHost[]::new);
+
         if (httpHosts.length == 0) {
             throw new IllegalArgumentException("Elasticsearch host is not configured");
         }
         return httpHosts;
+    }
+
+    private static boolean isValidHost(String host) {
+        if (host.matches("\\d+(\\.\\d+)*")) {
+            return isValidIPv4(host);
+        }
+
+        return host.length() <= 253
+                && Arrays.stream(host.split("\\.", -1))
+                .allMatch(label -> label.matches("[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?"));
+    }
+
+    private static boolean isValidIPv4(String host) {
+        String[] parts = host.split("\\.", -1);
+
+        if (parts.length != 4) {
+            return false;
+        }
+
+        for (String part : parts) {
+            if (!part.matches("\\d{1,3}")) {
+                return false;
+            }
+
+            int octet = Integer.parseInt(part);
+
+            if (octet < 0 || octet > 255) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static void validatePort(int port) {
+        if (port < 1 || port > 65535) {
+            throw new IllegalArgumentException("Invalid Elasticsearch port: " + port);
+        }
     }
 }

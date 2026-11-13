@@ -74,8 +74,7 @@ public class EsConfig {
                         new org.apache.http.message.BasicHeader("X-Elastic-Product", "Elasticsearch")});
         RestClient restClient = builder.build();
         ElasticsearchTransport elasticsearchTransport = new RestClientTransport(restClient, new JacksonJsonpMapper());
-        ElasticsearchClient client = new ElasticsearchClient(elasticsearchTransport);
-        return client;
+        return new ElasticsearchClient(elasticsearchTransport);
     }
 
     /**
@@ -90,38 +89,7 @@ public class EsConfig {
         validatePort(defaultPort);
 
         HttpHost[] httpHosts = Arrays.stream(hosts.split(",", -1))
-                .map(String::trim)
-                .map(entry -> {
-                    if (StringUtils.isBlank(entry)) {
-                        throw new IllegalArgumentException("Invalid Elasticsearch host entry: " + entry);
-                    }
-
-                    int idx = entry.lastIndexOf(':');
-                    String hostname = entry;
-                    int port = defaultPort;
-
-                    if (idx >= 0) {
-                        if (idx == 0 || idx == entry.length() - 1) {
-                            throw new IllegalArgumentException("Invalid Elasticsearch host entry: " + entry);
-                        }
-
-                        hostname = entry.substring(0, idx).trim();
-
-                        try {
-                            port = Integer.parseInt(entry.substring(idx + 1).trim());
-                        } catch (NumberFormatException e) {
-                            throw new IllegalArgumentException("Invalid port in Elasticsearch host entry: " + entry, e);
-                        }
-                    }
-
-                    if (StringUtils.isBlank(hostname) || !isValidHost(hostname)) {
-                        throw new IllegalArgumentException("Invalid Elasticsearch host entry: " + entry);
-                    }
-
-                    validatePort(port);
-
-                    return new HttpHost(hostname, port, "http");
-                })
+                .map(entry -> parseHostEntry(entry, defaultPort))
                 .toArray(HttpHost[]::new);
 
         if (httpHosts.length == 0) {
@@ -130,14 +98,100 @@ public class EsConfig {
         return httpHosts;
     }
 
+    private static HttpHost parseHostEntry(String entry, int defaultPort) {
+        entry = entry.trim();
+
+        if (StringUtils.isBlank(entry)) {
+            throw new IllegalArgumentException("Invalid Elasticsearch host entry: " + entry);
+        }
+
+        int idx = entry.lastIndexOf(':');
+        String hostname = entry;
+        int port = defaultPort;
+
+        if (idx >= 0) {
+            if (idx == 0 || idx == entry.length() - 1) {
+                throw new IllegalArgumentException("Invalid Elasticsearch host entry: " + entry);
+            }
+
+            hostname = entry.substring(0, idx).trim();
+            port = parsePort(entry.substring(idx + 1).trim(), entry);
+        }
+
+        if (StringUtils.isBlank(hostname) || !isValidHost(hostname)) {
+            throw new IllegalArgumentException("Invalid Elasticsearch host entry: " + entry);
+        }
+
+        validatePort(port);
+
+        return new HttpHost(hostname, port, "http");
+    }
+
+    private static int parsePort(String portValue, String entry) {
+        try {
+            return Integer.parseInt(portValue);
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("Invalid port in Elasticsearch host entry: " + entry, e);
+        }
+    }
+
     private static boolean isValidHost(String host) {
-        if (host.matches("\\d+(\\.\\d+)*")) {
+        if (isNumericAddress(host)) {
             return isValidIPv4(host);
         }
 
-        return host.length() <= 253
-                && Arrays.stream(host.split("\\.", -1))
-                .allMatch(label -> label.matches("[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?"));
+        if (host.length() > 253) {
+            return false;
+        }
+
+        String[] labels = host.split("\\.", -1);
+
+        for (String label : labels) {
+            if (!isValidHostnameLabel(label)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static boolean isNumericAddress(String host) {
+        for (int i = 0; i < host.length(); i++) {
+            char ch = host.charAt(i);
+
+            if (!Character.isDigit(ch) && ch != '.') {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static boolean isValidHostnameLabel(String label) {
+        if (label.isEmpty() || label.length() > 63) {
+            return false;
+        }
+
+        if (!isAlphaNumeric(label.charAt(0))
+                || !isAlphaNumeric(label.charAt(label.length() - 1))) {
+            return false;
+        }
+
+        for (int i = 0; i < label.length(); i++) {
+            char ch = label.charAt(i);
+
+            if (!isAlphaNumeric(ch) && ch != '-') {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static boolean isAlphaNumeric(char ch) {
+        return (ch >= 'a' && ch <= 'z')
+                || (ch >= 'A' && ch <= 'Z')
+                || (ch >= '0' && ch <= '9');
     }
 
     private static boolean isValidIPv4(String host) {
@@ -148,13 +202,23 @@ public class EsConfig {
         }
 
         for (String part : parts) {
-            if (!part.matches("\\d{1,3}")) {
+            if (part.isEmpty() || part.length() > 3) {
                 return false;
             }
 
-            int octet = Integer.parseInt(part);
+            int octet = 0;
 
-            if (octet < 0 || octet > 255) {
+            for (int i = 0; i < part.length(); i++) {
+                char ch = part.charAt(i);
+
+                if (ch < '0' || ch > '9') {
+                    return false;
+                }
+
+                octet = octet * 10 + (ch - '0');
+            }
+
+            if (octet > 255) {
                 return false;
             }
         }

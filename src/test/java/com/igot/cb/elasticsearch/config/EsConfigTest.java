@@ -236,7 +236,10 @@ class EsConfigTest {
             "10.0.0",
             "10.0.0.1.5",
             "1234.0.0.1",
-            "12345"
+            "12345",
+            "10..0.1",
+            "10.0.0.",
+            "\u0661\u0660.0.0.1"
     })
     void testParseHostsInvalidIpv4Throws(String host) {
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
@@ -254,10 +257,22 @@ class EsConfigTest {
             "under_score.host",
             "bad host",
             "host!name",
+            "host~name",
+            "h\u00e9.com",
             "::1",
             "[::1]:9200"
     })
     void testParseHostsInvalidHostnameThrows(String entry) {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> EsConfig.parseHosts(entry, DEFAULT_PORT));
+        assertEquals("Invalid Elasticsearch host entry: " + entry, ex.getMessage());
+    }
+
+    @Test
+    void testParseHostsUnicodeWhitespaceHostBeforePortThrows() {
+        // String.trim() keeps U+2003 (em space) but StringUtils.isBlank treats it as blank
+        String entry = "\u2003:9200";
+
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
                 () -> EsConfig.parseHosts(entry, DEFAULT_PORT));
         assertEquals("Invalid Elasticsearch host entry: " + entry, ex.getMessage());

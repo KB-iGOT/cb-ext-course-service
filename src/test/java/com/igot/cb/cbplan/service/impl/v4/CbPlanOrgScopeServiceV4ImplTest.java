@@ -8,6 +8,9 @@ import com.igot.cb.util.Constants;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -18,6 +21,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -37,6 +41,9 @@ class CbPlanOrgScopeServiceV4ImplTest {
     private static final String OTHER_GROUP_ID = "3fa85f64-5717-4562-b3fc-2c963f66afa7";
     private static final String RESTRICTED_MSG = "restricted";
     private static final String V3_GROUP_NAME = "V3 Group";
+    private static final String GROUPS_NO_CRITERIA = "noCriteria";
+    private static final String GROUPS_ONE_ROOT_ORG = "oneRootOrg";
+    private static final String GROUPS_TWO_ROOT_ORGS = "twoRootOrgs";
 
     @Mock
     private CbPlanUserGroupLookupServiceV4Impl userGroupLookupService;
@@ -377,41 +384,52 @@ class CbPlanOrgScopeServiceV4ImplTest {
 
     // ---------------- CCA caller ----------------
 
-    @Test
-    void resolveOrgScope_cca_noCriteriaOnAnyGroup_resolvesAll() {
-        Map<String, Object> request = requestWithGroups(List.of(userGroupRef(VALID_GROUP_ID)));
-        mockGroupWithNoCriteria(VALID_GROUP_ID);
-        mockNonL0Org(ORG_ID);
-
-        List<String> errors = orgScopeService.resolveOrgScope(request, true, ORG_ID, null, null, false);
-
-        assertTrue(errors.isEmpty());
-        assertEquals(Constants.ALL, request.get(Constants.ORG_SCOPE));
+    /**
+     * CCA and allowServiceBasedTargeting resolve org scope by identical rules, so both
+     * capabilities are driven through one parameterized case table.
+     */
+    private static Stream<Arguments> orgScopeResolutionCases() {
+        return Stream.of(
+                Arguments.of(true, false, GROUPS_NO_CRITERIA, Constants.ALL),
+                Arguments.of(true, false, GROUPS_ONE_ROOT_ORG, Constants.SINGLE),
+                Arguments.of(true, false, GROUPS_TWO_ROOT_ORGS, Constants.CUSTOM),
+                Arguments.of(false, true, GROUPS_NO_CRITERIA, Constants.ALL),
+                Arguments.of(false, true, GROUPS_ONE_ROOT_ORG, Constants.SINGLE),
+                Arguments.of(false, true, GROUPS_TWO_ROOT_ORGS, Constants.CUSTOM),
+                Arguments.of(true, true, GROUPS_NO_CRITERIA, Constants.ALL));
     }
 
-    @Test
-    void resolveOrgScope_cca_oneRootOrgId_resolvesSingle() {
+    private Map<String, Object> buildAndMockGroups(String groupSetup) {
+        if (GROUPS_TWO_ROOT_ORGS.equals(groupSetup)) {
+            Map<String, Object> request = requestWithGroups(
+                    List.of(userGroupRef(VALID_GROUP_ID), userGroupRef(OTHER_GROUP_ID)));
+            mockGroupWithRootOrgIds(VALID_GROUP_ID, ORG_ID);
+            mockGroupWithRootOrgIds(OTHER_GROUP_ID, OTHER_ORG_ID);
+            return request;
+        }
         Map<String, Object> request = requestWithGroups(List.of(userGroupRef(VALID_GROUP_ID)));
-        mockGroupWithRootOrgIds(VALID_GROUP_ID, OTHER_ORG_ID);
-        mockNonL0Org(ORG_ID);
-
-        List<String> errors = orgScopeService.resolveOrgScope(request, true, ORG_ID, null, null, false);
-
-        assertTrue(errors.isEmpty());
-        assertEquals(Constants.SINGLE, request.get(Constants.ORG_SCOPE));
+        if (GROUPS_ONE_ROOT_ORG.equals(groupSetup)) {
+            mockGroupWithRootOrgIds(VALID_GROUP_ID, OTHER_ORG_ID);
+        } else {
+            mockGroupWithNoCriteria(VALID_GROUP_ID);
+        }
+        return request;
     }
 
-    @Test
-    void resolveOrgScope_cca_multipleRootOrgIds_resolvesCustom() {
-        Map<String, Object> request = requestWithGroups(List.of(userGroupRef(VALID_GROUP_ID), userGroupRef(OTHER_GROUP_ID)));
-        mockGroupWithRootOrgIds(VALID_GROUP_ID, ORG_ID);
-        mockGroupWithRootOrgIds(OTHER_GROUP_ID, OTHER_ORG_ID);
+    @ParameterizedTest
+    @MethodSource("orgScopeResolutionCases")
+    void resolveOrgScope_ccaOrServiceBasedTargeting_resolvesExpectedScope(boolean isCCA,
+                                                                          boolean allowsServiceBasedTargeting,
+                                                                          String groupSetup,
+                                                                          String expectedScope) {
+        Map<String, Object> request = buildAndMockGroups(groupSetup);
         mockNonL0Org(ORG_ID);
 
-        List<String> errors = orgScopeService.resolveOrgScope(request, true, ORG_ID, null, null, false);
+        List<String> errors = orgScopeService.resolveOrgScope(request, isCCA, ORG_ID, null, null,
+                allowsServiceBasedTargeting);
 
         assertTrue(errors.isEmpty());
-        assertEquals(Constants.CUSTOM, request.get(Constants.ORG_SCOPE));
+        assertEquals(expectedScope, request.get(Constants.ORG_SCOPE));
     }
 
     @Test
@@ -558,43 +576,6 @@ class CbPlanOrgScopeServiceV4ImplTest {
     }
 
     @Test
-    void resolveOrgScope_serviceBasedTargeting_noCriteriaOnAnyGroup_resolvesAll() {
-        Map<String, Object> request = requestWithGroups(List.of(userGroupRef(VALID_GROUP_ID)));
-        mockGroupWithNoCriteria(VALID_GROUP_ID);
-        mockNonL0Org(ORG_ID);
-
-        List<String> errors = orgScopeService.resolveOrgScope(request, false, ORG_ID, null, null, true);
-
-        assertTrue(errors.isEmpty());
-        assertEquals(Constants.ALL, request.get(Constants.ORG_SCOPE));
-    }
-
-    @Test
-    void resolveOrgScope_serviceBasedTargeting_oneRootOrgId_resolvesSingle() {
-        Map<String, Object> request = requestWithGroups(List.of(userGroupRef(VALID_GROUP_ID)));
-        mockGroupWithRootOrgIds(VALID_GROUP_ID, OTHER_ORG_ID);
-        mockNonL0Org(ORG_ID);
-
-        List<String> errors = orgScopeService.resolveOrgScope(request, false, ORG_ID, null, null, true);
-
-        assertTrue(errors.isEmpty());
-        assertEquals(Constants.SINGLE, request.get(Constants.ORG_SCOPE));
-    }
-
-    @Test
-    void resolveOrgScope_serviceBasedTargeting_multipleRootOrgIds_resolvesCustom() {
-        Map<String, Object> request = requestWithGroups(List.of(userGroupRef(VALID_GROUP_ID), userGroupRef(OTHER_GROUP_ID)));
-        mockGroupWithRootOrgIds(VALID_GROUP_ID, ORG_ID);
-        mockGroupWithRootOrgIds(OTHER_GROUP_ID, OTHER_ORG_ID);
-        mockNonL0Org(ORG_ID);
-
-        List<String> errors = orgScopeService.resolveOrgScope(request, false, ORG_ID, null, null, true);
-
-        assertTrue(errors.isEmpty());
-        assertEquals(Constants.CUSTOM, request.get(Constants.ORG_SCOPE));
-    }
-
-    @Test
     void resolveOrgScope_serviceBasedTargeting_mixedGroupsSomeMissingCriteria_returnsRestrictionError() {
         when(serverProperties.getMsgOnUserGroupRestrictionForAllOrg()).thenReturn(RESTRICTED_MSG);
         Map<String, Object> request = requestWithGroups(List.of(userGroupRef(VALID_GROUP_ID), userGroupRef(OTHER_GROUP_ID)));
@@ -605,18 +586,6 @@ class CbPlanOrgScopeServiceV4ImplTest {
         List<String> errors = orgScopeService.resolveOrgScope(request, false, ORG_ID, null, null, true);
 
         assertEquals(List.of(RESTRICTED_MSG), errors);
-    }
-
-    @Test
-    void resolveOrgScope_ccaTakesPrecedenceOverServiceBasedTargeting_resolvesAll() {
-        Map<String, Object> request = requestWithGroups(List.of(userGroupRef(VALID_GROUP_ID)));
-        mockGroupWithNoCriteria(VALID_GROUP_ID);
-        mockNonL0Org(ORG_ID);
-
-        List<String> errors = orgScopeService.resolveOrgScope(request, true, ORG_ID, null, null, true);
-
-        assertTrue(errors.isEmpty());
-        assertEquals(Constants.ALL, request.get(Constants.ORG_SCOPE));
     }
 
     @Test

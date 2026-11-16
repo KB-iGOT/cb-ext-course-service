@@ -1958,7 +1958,7 @@ class CbPlanServiceV4ImplTest {
     }
 
     @Test
-    void updateCbPlan_capabilityLookupFails_returnsWithoutValidatingRequest() throws JsonProcessingException {
+    void updateCbPlan_capabilityLookupFails_returnsWithoutValidatingRequest() {
         mockAuthSuccess();
         when(validationService.validatePlanIdExists(any(), any())).thenReturn(true);
         Map<String, Object> requestMap = new HashMap<>();

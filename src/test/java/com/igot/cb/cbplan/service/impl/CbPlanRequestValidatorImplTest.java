@@ -6,6 +6,9 @@ import com.igot.cb.util.CbExtServerProperties;
 import com.igot.cb.util.Constants;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -13,6 +16,7 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
 import java.util.*;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -24,6 +28,9 @@ class CbPlanRequestValidatorImplTest {
 
     private static final String ORG_ID = "org1";
     private static final String ORG_ID_2 = "org2";
+    private static final String CRITERIA_NONE = "noRootOrgCriteria";
+    private static final String CRITERIA_OWN_ROOT_ORG = "ownRootOrgId";
+    private static final String CRITERIA_MULTIPLE_ROOT_ORGS = "multipleRootOrgIds";
     private static final String MINISTRY_ORG = "MIN_001";
     private static final String ALL_ORG_MSG = "All org restriction message";
 
@@ -194,16 +201,6 @@ class CbPlanRequestValidatorImplTest {
     }
 
     @Test
-    void testValidateContextDataNonCCAWithRootOrgId() {
-        Map<String, Object> request = buildRequestWithRootOrgId(ORG_ID);
-        mockOrgAsNonL0(ORG_ID);
-
-        List<String> errors = validator.validateContextData(request, false, ORG_ID, null, false, false);
-        assertTrue(errors.isEmpty());
-        assertEquals(Constants.SINGLE, request.get(Constants.ORG_SCOPE));
-    }
-
-    @Test
     void testValidateContextDataNonCCAWithMultipleRootOrgIds() {
         Map<String, Object> request = buildRequestWithMultipleRootOrgIds();
         mockOrgAsNonL0(ORG_ID);
@@ -242,34 +239,44 @@ class CbPlanRequestValidatorImplTest {
         assertTrue(errors.isEmpty());
     }
 
-    @Test
-    void testValidateContextDataCCAWithNoRootOrgId() {
-        Map<String, Object> request = buildRequestWithOtherCriteria();
-        mockOrgAsNonL0(ORG_ID);
-
-        List<String> errors = validator.validateContextData(request, true, ORG_ID, null, false, false);
-        assertTrue(errors.isEmpty());
-        assertEquals(Constants.ALL, request.get(Constants.ORG_SCOPE));
+    /**
+     * A plain non-CCA caller, a CCA caller and an allowServiceBasedTargeting caller all resolve
+     * org scope by the same rules, so every combination is driven from one case table.
+     */
+    private static Stream<Arguments> orgScopeResolutionCases() {
+        return Stream.of(
+                Arguments.of(false, false, CRITERIA_OWN_ROOT_ORG, Constants.SINGLE),
+                Arguments.of(true, false, CRITERIA_NONE, Constants.ALL),
+                Arguments.of(true, false, CRITERIA_OWN_ROOT_ORG, Constants.SINGLE),
+                Arguments.of(true, false, CRITERIA_MULTIPLE_ROOT_ORGS, Constants.CUSTOM),
+                Arguments.of(false, true, CRITERIA_NONE, Constants.ALL),
+                Arguments.of(false, true, CRITERIA_OWN_ROOT_ORG, Constants.SINGLE),
+                Arguments.of(false, true, CRITERIA_MULTIPLE_ROOT_ORGS, Constants.CUSTOM),
+                Arguments.of(true, true, CRITERIA_NONE, Constants.ALL));
     }
 
-    @Test
-    void testValidateContextDataCCAWithSingleRootOrgId() {
-        Map<String, Object> request = buildRequestWithRootOrgId(ORG_ID);
-        mockOrgAsNonL0(ORG_ID);
-
-        List<String> errors = validator.validateContextData(request, true, ORG_ID, null, false, false);
-        assertTrue(errors.isEmpty());
-        assertEquals(Constants.SINGLE, request.get(Constants.ORG_SCOPE));
+    private Map<String, Object> buildRequestForCriteria(String criteriaKind) {
+        if (CRITERIA_OWN_ROOT_ORG.equals(criteriaKind)) {
+            return buildRequestWithRootOrgId(ORG_ID);
+        }
+        if (CRITERIA_MULTIPLE_ROOT_ORGS.equals(criteriaKind)) {
+            return buildRequestWithMultipleRootOrgIds();
+        }
+        return buildRequestWithOtherCriteria();
     }
 
-    @Test
-    void testValidateContextDataCCAWithMultipleRootOrgIds() {
-        Map<String, Object> request = buildRequestWithMultipleRootOrgIds();
+    @ParameterizedTest
+    @MethodSource("orgScopeResolutionCases")
+    void validateContextData_resolvesExpectedOrgScope(boolean isCCA, boolean allowsServiceBasedTargeting,
+                                                      String criteriaKind, String expectedScope) {
+        Map<String, Object> request = buildRequestForCriteria(criteriaKind);
         mockOrgAsNonL0(ORG_ID);
 
-        List<String> errors = validator.validateContextData(request, true, ORG_ID, null, false, false);
+        List<String> errors = validator.validateContextData(request, isCCA, ORG_ID, null, false,
+                allowsServiceBasedTargeting);
+
         assertTrue(errors.isEmpty());
-        assertEquals(Constants.CUSTOM, request.get(Constants.ORG_SCOPE));
+        assertEquals(expectedScope, request.get(Constants.ORG_SCOPE));
     }
 
     @Test
@@ -655,38 +662,6 @@ class CbPlanRequestValidatorImplTest {
         lenient().when(userAndOrgService.readOrgFromDB(eq(orgId), anyList())).thenReturn(orgMap);
     }
 
-    @Test
-    void validateContextData_serviceBasedTargetingWithNoRootOrgId_resolvesToAllScope() {
-        Map<String, Object> request = buildRequestWithOtherCriteria();
-        mockOrgAsNonL0(ORG_ID);
-
-        List<String> errors = validator.validateContextData(request, false, ORG_ID, null, false, true);
-
-        assertTrue(errors.isEmpty());
-        assertEquals(Constants.ALL, request.get(Constants.ORG_SCOPE));
-    }
-
-    @Test
-    void validateContextData_serviceBasedTargetingWithSingleRootOrgId_resolvesToSingleScope() {
-        Map<String, Object> request = buildRequestWithRootOrgId(ORG_ID);
-        mockOrgAsNonL0(ORG_ID);
-
-        List<String> errors = validator.validateContextData(request, false, ORG_ID, null, false, true);
-
-        assertTrue(errors.isEmpty());
-        assertEquals(Constants.SINGLE, request.get(Constants.ORG_SCOPE));
-    }
-
-    @Test
-    void validateContextData_serviceBasedTargetingWithMultipleRootOrgIds_resolvesToCustomScope() {
-        Map<String, Object> request = buildRequestWithMultipleRootOrgIds();
-        mockOrgAsNonL0(ORG_ID);
-
-        List<String> errors = validator.validateContextData(request, false, ORG_ID, null, false, true);
-
-        assertTrue(errors.isEmpty());
-        assertEquals(Constants.CUSTOM, request.get(Constants.ORG_SCOPE));
-    }
 
     @Test
     void validateContextData_serviceBasedTargetingWithMixedUserGroups_returnsError() {
@@ -697,17 +672,6 @@ class CbPlanRequestValidatorImplTest {
 
         assertEquals(1, errors.size());
         assertEquals(ALL_ORG_MSG, errors.get(0));
-    }
-
-    @Test
-    void validateContextData_ccaTakesPrecedenceOverServiceBasedTargeting_resolvesToAllScope() {
-        Map<String, Object> request = buildRequestWithOtherCriteria();
-        mockOrgAsNonL0(ORG_ID);
-
-        List<String> errors = validator.validateContextData(request, true, ORG_ID, null, false, true);
-
-        assertTrue(errors.isEmpty());
-        assertEquals(Constants.ALL, request.get(Constants.ORG_SCOPE));
     }
 
     @Test

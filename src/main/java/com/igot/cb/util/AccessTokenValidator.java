@@ -177,6 +177,7 @@ public class AccessTokenValidator {
                 }
                 tokenData.put("userId", userId);
                 tokenData.put("org", payload.get("org"));
+                tokenData.put(Constants.ROLES, payload.get(Constants.TOKEN_USER_ROLES));
             }
         } catch (Exception ex) {
             log.error("Exception in verifyUserAccessToken: verify ", ex);

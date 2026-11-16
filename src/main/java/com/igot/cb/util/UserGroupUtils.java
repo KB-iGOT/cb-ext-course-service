@@ -17,7 +17,6 @@ public class UserGroupUtils {
      * Returns null if valid, or an error message if invalid.
      * Handles String and Boolean types for value. Boolean must be true or false (not null).
      */
-    @SuppressWarnings("unchecked")
     public static String validateUserGroupsNoEmptyCriteria(List<Map<String, Object>> userGroups) {
         for (Map<String, Object> userGroup : userGroups) {
             Object criteriaListObj = userGroup.get(Constants.USER_GROUP_CRITERIA_LIST);

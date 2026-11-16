@@ -33,4 +33,6 @@ public class SearchCriteria {
     private Map<String, Object> query;
 
     private boolean overrideCache;
+
+    private boolean applyOrgIdFilter;
 }

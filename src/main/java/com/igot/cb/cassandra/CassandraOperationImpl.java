@@ -22,6 +22,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -325,4 +326,79 @@ public class CassandraOperationImpl implements CassandraOperation {
         }
     }
 
+    @Override
+    public List<Map<String, Object>> getRecordsByIdsWithGivenPartitionKey(BatchQueryParams params) {
+        List<Map<String, Object>> response = new ArrayList<>();
+        try {
+            if (CollectionUtils.isEmpty(params.getClusteringValues())) {
+                log.debug("getRecordsByIdsWithGivenPartitionKey: Empty clusteringValues for {}.{}",
+                        params.getKeyspaceName(), params.getTableName());
+                return response;
+            }
+            Select select;
+            if (CollectionUtils.isNotEmpty(params.getFields())) {
+                select = QueryBuilder.selectFrom(params.getKeyspaceName(), params.getTableName())
+                        .columns(params.getFields());
+            } else {
+                select = QueryBuilder.selectFrom(params.getKeyspaceName(), params.getTableName()).all();
+            }
+            select = select.whereColumn(params.getPartitionKeyColumn())
+                    .isEqualTo(QueryBuilder.literal(params.getPartitionKeyValue()));
+            List<Term> terms = params.getClusteringValues().stream()
+                    .map(QueryBuilder::literal)
+                    .collect(Collectors.toList());
+            select = select.whereColumn(params.getClusteringColumn()).in(terms);
+            if (Objects.nonNull(params.getLimit())) {
+                select = select.limit(params.getLimit());
+            }
+            String queryString = select.toString();
+            log.debug("getRecordsByIdsWithGivenPartitionKey: Executing query: {}", queryString);
+            SimpleStatement statement = SimpleStatement.newInstance(queryString);
+            ResultSet results = connectionManager.getSession(params.getKeyspaceName()).execute(statement);
+            response = CassandraUtil.createResponse(results);
+            log.debug("getRecordsByIdsWithGivenPartitionKey: Fetched {} records from {}.{}",
+                    response.size(), params.getKeyspaceName(), params.getTableName());
+        } catch (Exception e) {
+            log.error("getRecordsByIdsWithGivenPartitionKey: Error fetching records from {}.{}: {}",
+                    params.getKeyspaceName(), params.getTableName(), e.getMessage(), e);
+        }
+        return response;
+    }
+
+    @Override
+    public Map<String, Object> insertRecord(String keyspaceName, String tableName,
+                                            Map<String, Object> request, BooleanSupplier preCommitValidator,
+                                            Runnable onCommitFailureRollback) {
+        Map<String, Object> response = new HashMap<>();
+        boolean validationPassed = false;
+        try {
+            String query = CassandraUtil.getPreparedStatement(keyspaceName, tableName, request);
+            CqlSession session = connectionManager.getSession(keyspaceName);
+            PreparedStatement statement = session.prepare(query);
+            BoundStatement boundStatement = statement.bind(request.values().toArray());
+
+            if (!preCommitValidator.getAsBoolean()) {
+                String abortMsg = String.format("Insert aborted for %s: pre-commit validation failed", tableName);
+                log.error(abortMsg);
+                response.put(Constants.RESPONSE, Constants.FAILED);
+                response.put(Constants.ERROR_MESSAGE, abortMsg);
+                return response;
+            }
+            validationPassed = true;
+
+            session.execute(boundStatement);
+            response.put(Constants.RESPONSE, Constants.SUCCESS);
+        } catch (Exception e) {
+            if (validationPassed) {
+                log.error("ES_CASSANDRA_DIVERGENCE: Cassandra insert failed for {} after pre-commit validation already succeeded — attempting rollback. Cause: {}",
+                        tableName, e.getMessage());
+                runRollbackSafely(tableName, onCommitFailureRollback);
+            }
+            String errMsg = String.format("Exception occurred while inserting record to %s: %s", tableName, e.getMessage());
+            log.error(errMsg, e);
+            response.put(Constants.RESPONSE, Constants.FAILED);
+            response.put(Constants.ERROR_MESSAGE, errMsg);
+        }
+        return response;
+    }
 }

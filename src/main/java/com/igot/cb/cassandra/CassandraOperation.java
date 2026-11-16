@@ -4,6 +4,7 @@ import com.igot.cb.model.ApiResponse;
 
 import java.util.List;
 import java.util.Map;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -75,5 +76,28 @@ public interface CassandraOperation {
                                    Map<String, Object> propertyMap, List<String> fields,
                                    Integer pageSize, Integer maxRows, Consumer<Map<String, Object>> rowConsumer);
 
+    /**
+     * Fetches records using an IN clause for a clustering column, with a fixed partition key.
+     * Executes: SELECT * FROM keyspace.table WHERE partitionKey=? AND clusteringColumn IN (?, ?, ...)
+     *
+     * @param params batch query parameters encapsulating all query details
+     * @return list of matching rows
+     */
+    List<Map<String, Object>> getRecordsByIdsWithGivenPartitionKey(BatchQueryParams params);
+
+
+    /**
+     * Inserts a record only after a pre-commit validation (e.g. an ElasticSearch sync) succeeds.
+     * If the Cassandra commit itself throws after validation already succeeded, onCommitFailureRollback
+     * is invoked as a best-effort compensating action (e.g. deleting the ES document).
+     *
+     * @param preCommitValidator      run before the insert is executed; insert is skipped if this returns false
+     * @param onCommitFailureRollback best-effort compensation invoked if the insert throws after preCommitValidator returned true
+     */
+    public Map<String, Object> insertRecord(String keyspaceName, String tableName,
+                                            Map<String, Object> request,
+                                            BooleanSupplier preCommitValidator,
+                                            Runnable onCommitFailureRollback
+    );
 
 }

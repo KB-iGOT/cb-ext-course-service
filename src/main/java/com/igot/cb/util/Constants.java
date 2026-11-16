@@ -199,6 +199,10 @@ public class Constants {
     public static final String ORG_REDIX_KEY = "org:";
     public static final String ORG_ID = "orgId";
     public static final String API_POPULAR_COMMUNITY = "api.popular communities";
+    public static final String COURSE_IDS = "courseIds";
+    public static final String COURSE_COUNT = "courseCount";
+    public static final String API_ORG_ELIGIBILITY_UPSERT = "api.org.eligibility.upsert";
+    public static final String API_ORG_ELIGIBILITY_READ = "api.org.eligibility.read";
     public static final String COUNT_OF_COMMUNITIES = "countOfCommunities";
     public static final String TOPIC_IS_INACTIVE = "Topic is inactive";
     public static final String DRAFT = "draft";
@@ -402,6 +406,7 @@ public class Constants {
     public static final String TABLE_USER_EXTENDED_PROFILE = "user_extended_profile";
     public static final String CONTEXT_TYPE = "contextType";
     public static final String PLAN_TYPE = "planType";
+    public static final String PLAN_TYPE_AI_CBP = "AICBP";
     public static final String ORG_ADDITIONAL_PROPERTIES = "orgAdditionalProperties";
     public static final String CONTEXT_DATA_KEY = "contextData";
     public static final String ORGANISATION_ID = "organisationId";
@@ -533,6 +538,8 @@ public class Constants {
     public static final String LEARNING_PATHWAY = "Learning Pathway";
     public static final String TABLE_USER_ROLES = "user_roles";
     public static final String ROLE = "role";
+    public static final String ROLES = "roles";
+    public static final String SCOPE = "scope";
     public static final String BATCHES = "batches";
     public static final String SPV_PUBLISHER = "SPV_PUBLISHER";
 
@@ -559,6 +566,7 @@ public class Constants {
     public static final String TOTAL_RECORDS = "totalRecords";
     public static final String SUCCESSFUL_RECORDS_COUNT = "successfulRecordsCount";
     public static final String FAILED_RECORDS_COUNT = "failedRecordsCount";
+    public static final String SUCCESSFUL = "SUCCESSFUL";
     public static final String SUCCESSFUL_UPPERCASE = "SUCCESSFUL";
     public static final String FAILED_UPPERCASE = "FAILED";
     public static final String STATUS_IN_PROGRESS_UPPERCASE = "IN-PROGRESS";
@@ -609,6 +617,7 @@ public class Constants {
     public static final String MODERATED_COURSE_COUNT_REDIS_KEY_PREFIX = "moderatedCourseCount_";
     public static final String API_PERSONAL_CONTENT_INFO = "api.content.user.info";
     public static final String APAR = "apar";
+    public static final String AI_CBP = "aiCbp";
     public static final String TRAINING_PLAN  = "trainingPlan";
     public static final String CA_PROGRAM = "caProgram";
     public static final String LEARNING_PATHWAY_FIELD = "learningPathway";
@@ -618,6 +627,211 @@ public class Constants {
     public static final String COURSE_ID_KEY = "courseid";
     public static final String PRIMARY_CATEGORY_STANDALONE_ASSESSMENT = "Standalone Assessment";
     public static final String COURSE_CATEGORY_INVITE_ONLY_ASSESSMENT = "Invite-Only Assessment";
+    public static final String BATCH_END_DATE   = "batchEndDate";
+
+    public static final String ERR_CANNOT_CHANGE_ISAPAR = "Cannot change isApar from true to false.";
+    public static final String ERR_FIELD_CANNOT_BE_NULL = "Field '%s' cannot be null.";
+    public static final String ERR_VALIDATION_ERRORS = "Validation errors: ";
+    public static final String ERR_FAILED_TO_UPDATE_CB_PLAN = "Failed to Update CB Plan for OrgId: ";
+    public static final String ERR_PROCESSING_CB_PLAN_DATA = "Error processing existing CB Plan data";
+    public static final String ERR_SERIALIZING_CB_PLAN = "Error serializing existing CB Plan for draft storage";
+    public static final String MSG_UPDATED_AS_DRAFT = "Updated cbPlan as draft for cbPlanId: %s. Publish to make it live.";
+    public static final String TABLE_CB_PLAN_V3 = "cb_plan_v3";
+    public static final String TABLE_CB_PLAN_V3_LOOKUP_BY_ORG = "cb_plan_v3_lookup_by_org";
+    public static final String TABLE_CB_PLAN_V3_LOOKUP_BY_ALL_ORG = "cb_plan_v3_lookup_by_all_org";
+    public static final String TABLE_CB_PLAN_V3_CONTENT_LOOKUP = "cb_plan_v3_content_lookup";
+    public static final String ERR_UNAUTHORIZED_UPDATE = "User is not authorized to update this CB Plan";
+    public static final String ERR_CB_PLAN_ALREADY_RETIRED = "CB Plan %s is already retired";
+    public static final String ROLE_ADMIN = "ADMIN";
+    public static final String RESULT_DELETED = "deleted";
+    public static final String RESULT_UPDATED = "updated";
+    public static final String RESULT_SKIPPED = "skipped";
+    public static final String EXTENDED_CONTENT_READ_END_POINT = "extended-content-read-endpoint";
+    public static final String EXISTING_ROOT_ORG_IDS = "existingRootOrgIds";
+    public static final String NEW_ROOT_ORG_IDS = "newRootOrgIds";
+    public static final String EXTENDED_READ_CONTENT_CACHE_KEY_PREFIX = "extended_read_content_";
+    public static final String EXTERNAL_CONTENT_PREFIX = "ext_";
+    public static final String CONTENT_ID_COLUMN = "contentid";
+    public static final String PLAN_ID_COLUMN = "planid";
+    public static final String DATE_FORMAT_YYYY_MM_DD = "yyyy-MM-dd";
+    public static final String TIMEZONE_ASIA_KOLKATA = "Asia/Kolkata";
+    public static final String ERR_FAILED_TO_EXTRACT_USER_ID = "Failed to extract userId from token";
+    public static final String ERR_FAILED_TO_READ_USER_DETAILS = "Failed to read user details from DB. UserId: ";
+    public static final String ERR_FAILED_TO_READ_ORG_DETAILS = "Failed to read org details from DB. OrgId: ";
+    public static final String ERR_FAILED_TO_CREATE_CB_PLAN = "Failed to Create CB Plan for OrgId: ";
+    public static final String ERR_MESSAGE_SEPARATOR = " message: ";
+    public static final String ERR_VALIDATION_ERROR = "Validation error";
+    public static final String ERR_INVALID_END_DATE_FORMAT = "Invalid endDate format: ";
+    public static final String ERR_FAILED_TO_SERIALIZE_VALIDATION = "Failed to serialize validation errors";
+    public static final String ERR_REQUIRED_PARAM_ID_MISSING = "Required Param id is missing";
+    public static final String ERR_CB_PLAN_NOT_FOUND = "cbPlan is not found for id: ";
+    public static final String API_CB_PLAN_V3_READ_BY_ID = "api.cb.plan.v3.read.byId";
+    public static final String API_CBPLAN_V3_GET_USER_DICTIONARY = "api.cbplan.v3.user.list";
+    public static final String REQUEST_PARAM_PLAN_YEAR = "planYear";
+    public static final String REQUEST_PARAM_ENRICHMENT = "enrichment";
+    public static final String RESPONSE_KEY_APAR_COUNT = "aparCount";
+    public static final String RESPONSE_KEY_NON_APAR_COUNT = "nonAparCount";
+    public static final String RESPONSE_KEY_APAR_CONTENT_LIST = "aparContentList";
+    public static final String RESPONSE_KEY_NON_APAR_CONTENT_LIST = "nonAparContentList";
+    public static final String RESPONSE_KEY_ENRICHED_CONTENT_LIST = "enrichedContentList";
+    public static final String SECURE_CONTENT_SUFFIX = "_rc";
+    public static final String CACHE_FLAG_FROM_CACHE = "_fromCache";
+    public static final String EMPTY_JSON = "{}";
+    public static final String API_CB_PLAN_V3_AICBP_CREATE = "api.cb.plan.v3.aicbp.create";
+    public static final String API_CB_PLAN_V3_AICBP_PUBLISH = "api.cb.plan.v3.aicbp.publish";
+    public static final String ERR_TARGETED_ORGANISATION_REQUIRED = "targetedOrganisation is required";
+    public static final String TOKEN_USER_ROLES = "user_roles";
+    public static final String ROLE_AICBP_ADMIN = "AICBP_ADMIN";
+    public static final String ERR_AICBP_ROLE_REQUIRED = "User is not authorized to create or publish a CB Plan for targetedOrganisation";
+    public static final String ERR_CB_PLAN_ID_MISSING = "CbPlanId is missing.";
+
+    public static final String ERR_PREFIX = "Validation Error: ";
+    public static final String ERR_CONTEXT_DATA_MISSING = ERR_PREFIX + "contextData is missing in request";
+    public static final String ERR_CONTEXT_DATA_UNPARSEABLE = ERR_PREFIX + "Failed to parse contextData";
+    public static final String ERR_CONTEXT_DATA_INVALID_TYPE = ERR_PREFIX + "contextData is of invalid type";
+    public static final String ERR_ACCESS_CONTROL_MISSING = ERR_PREFIX + "accessControl is missing in contextData";
+    public static final String ERR_USER_GROUPS_MISSING = ERR_PREFIX + "User groups are missing in accessControl";
+    public static final String ERR_CRITERIA_LIST_MISSING = ERR_PREFIX + "criteriaList is missing in userGroup";
+    public static final String ERR_CRITERIA_LIST_EMPTY = ERR_PREFIX + "criteriaList is empty in userGroup";
+    public static final String ERR_CRITERIA_KEY_MISSING = ERR_PREFIX + "criteriaKey is missing in userGroup";
+    public static final String ERR_CRITERIA_VALUE_MISSING =
+            ERR_PREFIX + "criteriaValue is missing for criteriaKey: ";
+    public static final String ERR_CRITERIA_VALUE_UNSUPPORTED =
+            ERR_PREFIX + "Unsupported criteriaValue type for criteriaKey: ";
+    public static final String ERR_ROOT_ORG_CRITERIA_MISSING =
+            ERR_PREFIX + "ROOT_ORG_ID criteria is missing in userGroup and organization is not CCA";
+    public static final String ERR_MULTIPLE_ROOT_ORG_IDS =
+            ERR_PREFIX + "Multiple ROOT_ORG_IDs found in criteria but organization is not CCA";
+    public static final String ERR_NO_ROOT_ORG_ID =
+            ERR_PREFIX + "No ROOT_ORG_ID found in criteria but organization is not CCA";
+    public static final String ERR_ROOT_ORG_ID_MISMATCH =
+            ERR_PREFIX + "ROOT_ORG_ID in criteria does not match logged-in user's orgId";
+    public static final String ERR_ORG_NOT_L0 =
+            ERR_PREFIX + "Organization with ID %s is not a Level 0 (L0) organization. Only L0 organizations can use ministryOrStateId criteria";
+    public static final String ERR_ORG_NOT_FOUND_FOR_L0_VALIDATION =
+            ERR_PREFIX + "Organization with ID %s not found for L0 validation";
+    public static final String ERR_BOTH_ROOT_ORG_AND_MINISTRY_USED =
+            ERR_PREFIX + "Cannot use both rootOrgId and ministryOrStateId criteria in the same request. Please use only one";
+    public static final String ERR_USER_ORG_NOT_FOUND = "User organization not found";
+    public static final String HIERARCHY_LEVEL = "hierarchylevel";
+    public static final String LEVEL_ZERO = "levelZero";
+    public static final String MINISTRY_OR_STATE_ORG_NAME = "ministryOrStateOrgName";
+    public static final String TABLE_CB_PLAN_V3_LOOKUP_BY_MINISTRY_OR_STATE_ID = "cb_plan_v3_lookup_by_ministryorstateid";
+    public static final String MINISTRY_OR_STATE_ID_RQST = "ministryorstateid";
+    public static final String SPV = "SPV";
+    public static final String MINISTRY_OR_STATETYPE_DB = "ministryorstatetype";
+
+    // User Groups Constants
+    public static final String TABLE_USER_GROUP_INFO = "user_group_info";
+    public static final String ES_INDEX_USER_GROUP_INFO = "user_group_info";
+    public static final String COL_ORGID = "orgid";
+    public static final String COL_USERGROUPID = "usergroupid";
+    public static final String COL_USERGROUPNAME = "usergroupname";
+    public static final String COL_CREATEDBY = "createdby";
+    public static final String COL_CREATEDDATE = "createddate";
+    public static final String COL_UPDATEDBY = "updatedby";
+    public static final String COL_UPDATEDDATE = "updateddate";
+    public static final String COL_CRITERIA = "criteria";
+    public static final String COL_STATUS = "status";
+    public static final String ARCHIVED = "archived";
+    public static final String DESC = "desc";
+
+    // User Groups API IDs
+    public static final String API_USER_GROUP_CREATE = "api.user.group.v1.create";
+    public static final String API_USER_GROUP_READ = "api.user.group.v1.read";
+    public static final String API_USER_GROUP_UPDATE = "api.user.group.v1.update";
+    public static final String API_USER_GROUP_DELETE = "api.user.group.v1.delete";
+    public static final String API_USER_GROUP_SEARCH = "api.user.group.v1.search";
+
+    // User Groups Error Messages
+    public static final String MSG_USERGROUPNAME_REQUIRED = "usergroupname is required and cannot be blank";
+    public static final String MSG_CRITERIA_REQUIRED = "criteria is required and must have at least one entry";
+    public static final String MSG_CRITERIA_EMPTY = "criteria cannot be empty when provided";
+    public static final String MSG_USERGROUPID_REQUIRED = "usergroupid is required";
+    public static final String MSG_USER_GROUP_NOT_FOUND = "User group not found";
+    public static final String MSG_CRITERIA_VALUE_EMPTY = "criteriaValue must not be empty";
+    public static final String MSG_USER_GROUP_ARCHIVED = "User group archived successfully";
+    public static final String MSG_CRITERIA_KEY_BLANK = "criteriaKey cannot be blank";
+    public static final String MSG_CRITERIA_KEY_NULL = "criteriaKey cannot be null or blank";
+    public static final String MSG_CRITERIA_VALUE_NULL = "criteriaValue cannot be null or empty";
+    public static final String MSG_INVALID_REQUEST_FORMAT = "Invalid request format";
+    public static final String MSG_FAILED_CREATE_USER_GROUP = "Failed to create user group";
+    public static final String MSG_FAILED_FETCH_USER_GROUP = "Failed to fetch user group";
+    public static final String MSG_FAILED_UPDATE_USER_GROUP = "Failed to update user group";
+    public static final String ES_USERGROUP_FIELDS_JSON_PATH = "/EsRequiredFields/EsRequiredFieldsUserGroup.json";
+
+    // CB Plan V4 API Constants (V4 uses V3 tables)
+    public static final String API_CB_PLAN_V4_CREATE = "api.cb.plan.v4.create";
+    public static final String API_CB_PLAN_V4_UPDATE = "api.cb.plan.v4.update";
+    public static final String API_CB_PLAN_V4_PUBLISH = "api.cb.plan.v4.publish";
+    public static final String ERR_CB_PLAN_INVALID_STATE_FOR_PUBLISH = "CbPlan is in invalid state for publish. Status: ";
+    public static final String ERR_USER_GROUP_NOT_FOUND = "User group not found: ";
+    public static final String ERR_USER_GROUP_NOT_ACTIVE = "User group is not active: ";
+    public static final String ERR_USER_GROUP_MIXED_FORMAT = "Cannot mix V3 format (userGroupCriteriaList/userGroupName) and V4 format (userGroupId) in the same request";
+    public static final String ERR_USER_GROUP_NO_FORMAT = "Each userGroup must have either userGroupId (V4) or userGroupCriteriaList (V3)";
+    public static final String ERR_USER_GROUP_ID_REQUIRED = "userGroupId is required when using V4 format";
+    public static final String ERR_USER_GROUP_ID_INVALID_FORMAT = "userGroupId must be a valid UUID";
+    public static final String MANDATORY = "mandatory";
+    public static final String ERR_CONTENTS_REQUIRED = "contents field is required";
+    public static final String ERR_CONTENTS_EMPTY = "contents cannot be empty";
+    public static final String ERR_CONTENT_ID_REQUIRED = "Each content must have an 'identifier' field";
+    public static final String ERR_CONTENT_MANDATORY_REQUIRED = "Each content must have a 'mandatory' field";
+    public static final String ERR_CONTENT_MANDATORY_INVALID = "Content 'mandatory' must be a boolean (true or false)";
+    public static final String ERR_FORMAT_AT_INDEX = "%s at index %d";
+    public static final String API_CB_PLAN_V4_READ = "api.cb.plan.v4.read.byId";
+    public static final String EXISTING_MINISTRY_OR_STATE_IDS = "existingMinistryOrStateIds";
+    public static final String NEW_MINISTRY_OR_STATE_IDS = "newMinistryOrStateIds";
+    public static final String API_CB_PLAN_V4_ADMIN_READ = "api.cb.plan.v4.admin.read.byId";
+    public static final String ERR_DRAFT_PLAN_NOT_ACCESSIBLE = "Draft plans are not accessible via public read API. Use admin read API instead.";
+    public static final String CA_LINKED_ID = "caLinkedId";
+    public static final String CA_LINKED_ID_DB = "calinkedid";
+    public static final String TRAINING_PLAN_ID = "trainingPlanId";
+    public static final String CA_IDENTIFIER = "caIdentifier";
+    public static final String CA_LINK_EVENT_ADD = "ADD";
+    public static final String CA_LINK_EVENT_REMOVE = "REMOVE";
+    public static final String SYSTEM_USER = "SYSTEM";
+    public static final String EXISTS = "exists";
+    public static final String API_CBPLAN_V4_GET_USER_DICTIONARY = "api.cbplan.v4.user.dictionary";
+    public static final String API_CBPLAN_V4_ASSESSMENT_ELIGIBILITY = "api.cbplan.v4.user.assessment.eligibility";
+    public static final String ELIGIBLE = "eligible";
+    public static final String MANDATORY_COURSES = "mandatoryCourses";
+    public static final String CB_PLAN_V4_REDIS_KEY_PREFIX = "cbplan:v4:userlookup:";
+    public static final String CB_PLAN_V4_VERSION_KEY_PREFIX = "cbplan:v4ver:";
+    public static final String CB_PLAN_V4_CACHE_VERSIONS_KEY = "_cv";
+    public static final String RESPONSE_KEY_APAR_PLAN_LIST = "aparPlanList";
+    public static final String RESPONSE_KEY_NON_APAR_PLAN_LIST = "nonAparPlanList";
+    public static final String RESPONSE_KEY_APAR_PLAN_COUNT = "aparPlanCount";
+    public static final String RESPONSE_KEY_NON_APAR_PLAN_COUNT = "nonAparPlanCount";
+    public static final String CREATED_BY_ORG_ID = "createdByOrgId";
+    public static final String CREATED_BY_ORG_NAME = "createdByOrgName";
+    public static final String MSG_ROOTORGID_REQUIRED_NON_CCA = "rootOrgId is required in criteria for non-CCA organizations";
+    public static final String MSG_MULTIPLE_ROOTORGID_NON_CCA = "Multiple rootOrgIds are not allowed for non-CCA organizations";
+    public static final String MSG_ROOTORGID_MISMATCH = "rootOrgId in criteria does not match your organization";
+    public static final String CREATED_BY_ORG_LOGO = "createdByOrgLogo";
+    public static final String UPDATED_BY_NAME = "updatedByName";
+    public static final String COURSES = "courses";
+    public static final String IDENTIFIERS = "identifiers";
+    public static final String SECURE_SETTINGS_IS_VERIFIED_KARMAYOGI = "secureSettings.isVerifiedKarmayogi";
+    public static final String API_CONTENT_INFO_V2 = "api.content.v2.user.info";
+    public static final String API_CBPLAN_V4_SEARCH = "api.cbplan.v4.search";
+    public static final String API_CBPLAN_V3_SEARCH = "api.cbplan.v3.search";
+    public static final String MSG_USERGROUP_NAME_EXISTS = "A user group with this name already exists in the organisation. Please choose a different name.";
+    public static final String PUBLISHED_BY_NAME = "publishedByName";
+    public static final String CONTEXT_DATA_ES_FIELD_V4 = "contextDataV4";
+    public static final String MSG_USERGROUP_IN_USE = "This user group is linked to one or more Training Plans and cannot be archived.";
+    public static final String ERR_USERGROUP_USAGE_CHECK_FAILED = "Failed to verify user group usage; archive blocked as a precaution";
+    public static final String TRAINING_PLAN_V2 = "trainingPlan_v2";
+    public static final String WARNING = "warning";
+    public static final String API_CB_PLAN_V4_AICBP_CREATE = "api.cb.plan.v4.aicbp.create";
+    public static final String API_CB_PLAN_V4_AICBP_PUBLISH = "api.cb.plan.v4.aicbp.publish";
+    public static final String MSG_SEARCH_FILTERS_REQUIRED = "Filters are required in request";
+    public static final String MSG_SEARCH_FILTERS_EMPTY = "Filters cannot be empty";
+    public static final String MSG_USERGROUPNAME_REQUIRED_IN_FILTERS = "userGroupName is required in filters";
+    public static final String MSG_ORGID_REQUIRED_IN_FILTERS = "rootOrgId (orgId) is required in filters";
+    public static final String MSG_USERGROUP_NOT_FOUND_BY_NAME_ORG = "User group not found with the provided name and organization";
+    public static final String API_USER_GROUP_ADMIN_CREATE = "api.user.group.v1.admin.create";
+    public static final String MSG_ROOTORGID_REQUIRED_IN_BODY = "rootOrgId is required in request body";
+    public static final String CB_PLAN_USER_LOOKUP_V4_API = "api.cbplan.user.V4.lookup";
 
     private Constants() {
     }

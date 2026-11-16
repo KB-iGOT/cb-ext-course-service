@@ -4,6 +4,8 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import java.util.*;
+
+import org.roaringbitmap.RoaringBitmap;
 import java.lang.reflect.Field;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -11,10 +13,10 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.igot.cb.cache.IdMapCacheMgr;
 import com.igot.cb.cassandra.CassandraOperation;
+import com.igot.cb.cbplan.service.CbPlanServiceV3;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentMatchers;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -22,14 +24,36 @@ import org.springframework.http.HttpStatus;
 
 import com.igot.cb.cache.AccessSettingRuleCacheMgr;
 import com.igot.cb.cache.RedisCacheMgr;
+import com.igot.cb.cbplan.dto.CbPlanContentOccurrence;
+import com.igot.cb.model.ApiRequest;
 import com.igot.cb.model.ApiResponse;
 import com.igot.cb.model.CachedAccessSettingRule;
 import com.igot.cb.util.AccessTokenValidator;
 import com.igot.cb.util.Constants;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.lang.reflect.Method;
+import java.time.Instant;
+
 @ExtendWith(MockitoExtension.class)
 class CourseAccessServiceImplTest {
+
+    private static final String TEST_TOKEN = "testToken123";
+    private static final String PLAN_TYPE_AICBP = "AICBP";
+    private static final String PLAN_TYPE_MANDATORY = "Mandatory";
+    private static final String PLAN_TYPE_VOLUNTARY = "Voluntary";
+    private static final String CONTENT_ID_1 = "content1";
+    private static final String CONTENT_ID_2 = "content2";
+    private static final String CONTENT_ID_3 = "content3";
+    private static final String CONTENT_ID_4 = "content4";
+    private static final String PLAN_ID_1 = "plan1";
+    private static final String PLAN_ID_2 = "plan2";
+    private static final String PLAN_ID_3 = "plan3";
+    private static final String PLAN_ID_4 = "plan4";
+    private static final String METHOD_FETCH_CB_PLAN_DICTIONARY = "fetchCbPlanDictionary";
+    private static final String METHOD_EXTRACT_AI_CBP_CONTENT_IDS = "extractAiCbpContentIds";
+    private static final String METHOD_COLLECT_AI_CBP_CONTENT_IDS = "collectAiCbpContentIds";
+    private static final String METHOD_FILTER_NON_AI_CBP_CONTENT = "filterNonAiCbpContent";
 
     private CourseAccessServiceImpl courseAccessService;
     
@@ -61,13 +85,16 @@ class CourseAccessServiceImplTest {
     @Mock
     private CassandraOperation cassandraOperation;
 
+    @Mock
+    private CbPlanServiceV3 cbPlanServiceV3;
+
 
     @BeforeEach
     void setUp() throws Exception {
         courseAccessService = new CourseAccessServiceImpl(
-            mockAccessTokenValidator, 
+            mockAccessTokenValidator,
             mockUserProfileService,
-            mockAccessSettingRuleCacheMgr, contentInfoService, outboundRequestHandlerService, cbPlanLearnerServiceImpl, cassandraOperation
+            mockAccessSettingRuleCacheMgr, contentInfoService, outboundRequestHandlerService, cbPlanLearnerServiceImpl, cassandraOperation, cbPlanServiceV3
         );
         
         // Inject the mocked RedisCacheMgr using reflection
@@ -168,11 +195,11 @@ class CourseAccessServiceImplTest {
         when(redisCacheMgr.getFromCache(Constants.ACCESS_KEY + "user123")).thenReturn(null);
         when(mockUserProfileService.getUserProfile("user123")).thenReturn(Map.of());
         
-        // Create a BitSet for criteria value
-        BitSet criteriaValue = new BitSet();
-        criteriaValue.set(1); // Set bit 1 to true
+        // Create a RoaringBitmap for criteria value
+        RoaringBitmap criteriaValue = new RoaringBitmap();
+        criteriaValue.add(1); // Add id 1
         
-        // Create the rule with proper BitSet in contextData
+        // Create the rule with proper RoaringBitmap in contextData
         Map<String, Object> contextData = new HashMap<>();
         Map<String, Object> accessControlId = new HashMap<>();
         List<Map<String, Object>> userGroups = new ArrayList<>();
@@ -206,11 +233,11 @@ class CourseAccessServiceImplTest {
         when(redisCacheMgr.getFromCache(Constants.ACCESS_KEY + "user123")).thenReturn(null);
         when(mockUserProfileService.getUserProfile("user123")).thenReturn(Map.of("cadre", 1));
         
-        // Create a BitSet for criteria value
-        BitSet criteriaValue = new BitSet();
-        criteriaValue.set(1); // Set bit 1 to true to match user's cadre value
+        // Create a RoaringBitmap for criteria value
+        RoaringBitmap criteriaValue = new RoaringBitmap();
+        criteriaValue.add(1); // Add id 1 to match user's cadre value
         
-        // Create the rule with proper BitSet in contextData
+        // Create the rule with proper RoaringBitmap in contextData
         Map<String, Object> contextData = new HashMap<>();
         Map<String, Object> accessControlId = new HashMap<>();
         List<Map<String, Object>> userGroups = new ArrayList<>();
@@ -367,8 +394,8 @@ class CourseAccessServiceImplTest {
                 .thenReturn("u1");
         when(redisCacheMgr.getFromCache(Constants.ACCESS_KEY + "u1")).thenReturn(null);
         when(mockUserProfileService.getUserProfile("u1")).thenReturn(Map.of("cadre", 1));
-        BitSet bit = new BitSet();
-        bit.set(1);
+        RoaringBitmap bit = new RoaringBitmap();
+        bit.add(1);
         Map<String, Object> contextData = new HashMap<>();
         Map<String, Object> ac = new HashMap<>();
         Map<String, Object> ug = new HashMap<>();
@@ -497,8 +524,8 @@ class CourseAccessServiceImplTest {
                                 List.of(Map.of(Constants.IDENTIFIER, "C1")))));
         ReflectionTestUtils.setField(courseAccessService, "cacheTtlMs", 99999999L);
         ReflectionTestUtils.setField(courseAccessService, "accessCacheTtlSecods", 600); // Set TTL to avoid NPE
-        BitSet bit = new BitSet();
-        bit.set(1);
+        RoaringBitmap bit = new RoaringBitmap();
+        bit.add(1);
         Map<String,Object> accessControl = Map.of(
                 Constants.USER_GROUPS,
                 List.of(
@@ -591,8 +618,8 @@ class CourseAccessServiceImplTest {
 
     @Test
     void testEvaluateAccessSettingRule_FullMatchTrue() {
-        BitSet bs = new BitSet();
-        bs.set(1);
+        RoaringBitmap bs = new RoaringBitmap();
+        bs.add(1);
         Map<String,Object> group = Map.of(
                 Constants.USER_GROUP_ID, "g1",
                 Constants.USER_GROUP_CRITERIA_LIST,
@@ -609,8 +636,8 @@ class CourseAccessServiceImplTest {
     }
     @Test
     void testEvaluateAccessSettingRule_False() {
-        BitSet bs = new BitSet();
-        bs.set(1);
+        RoaringBitmap bs = new RoaringBitmap();
+        bs.add(1);
         Map<String,Object> group = Map.of(
                 Constants.USER_GROUP_ID, "g1",
                 Constants.USER_GROUP_CRITERIA_LIST,
@@ -629,8 +656,8 @@ class CourseAccessServiceImplTest {
 
     @Test
     void testRetrieveUserCourses_RuleMatches() {
-        BitSet bs = new BitSet();
-        bs.set(1);
+        RoaringBitmap bs = new RoaringBitmap();
+        bs.add(1);
         Map<String,Object> ruleData = Map.of(Constants.ACCESS_CONTROL_ID,
                 Map.of(Constants.USER_GROUPS,
                         List.of(Map.of(Constants.USER_GROUP_ID,"G1",
@@ -665,8 +692,8 @@ class CourseAccessServiceImplTest {
         ReflectionTestUtils.setField(courseAccessService, "cacheTimestamps",
                 new HashMap<>(Map.of("access_settings_enabled_partner1", System.currentTimeMillis())));
         ReflectionTestUtils.setField(courseAccessService, "cacheTtlMs", 99999999L);
-        BitSet bit = new BitSet();
-        bit.set(1);
+        RoaringBitmap bit = new RoaringBitmap();
+        bit.add(1);
         Map<String, Object> ug = new HashMap<>();
         ug.put(Constants.USER_GROUP_CRITERIA_LIST, List.of(Map.of(Constants.CRITERIA_KEY, "cadre", Constants.CRITERIA_VALUE, bit)));
         Map<String, Object> accessControl = Map.of(Constants.USER_GROUPS, List.of(ug));
@@ -730,9 +757,12 @@ class CourseAccessServiceImplTest {
         when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
         
         ApiResponse cbPlanResponse = new ApiResponse();
-        cbPlanResponse.setResult(new HashMap<>());
-        when(cbPlanLearnerServiceImpl.getCBPlanListForUser(orgId, userId, true)).thenReturn(cbPlanResponse);
-        
+        Map<String, Object> cbPlanResult = new HashMap<>();
+        cbPlanResult.put("aparContentList", new HashMap<>());
+        cbPlanResult.put("nonAparContentList", new HashMap<>());
+        cbPlanResponse.setResult(cbPlanResult);
+        when(cbPlanServiceV3.getCBPlanDictionaryForUser(any(), anyString())).thenReturn(cbPlanResponse);
+
         doNothing().when(redisCacheMgr).putInCache(anyString(), anyString());
         
         ApiResponse result = courseAccessService.getPersonalContentInfo(authToken);
@@ -835,9 +865,11 @@ class CourseAccessServiceImplTest {
         
         ApiResponse cbPlanResponse = new ApiResponse();
         Map<String, Object> cbPlanResult = new HashMap<>();
+        cbPlanResult.put("aparContentList", new HashMap<>());
+        cbPlanResult.put("nonAparContentList", new HashMap<>());
         cbPlanResponse.setResult(cbPlanResult);
-        when(cbPlanLearnerServiceImpl.getCBPlanListForUser(orgId, userId, true)).thenReturn(cbPlanResponse);
-        
+        when(cbPlanServiceV3.getCBPlanDictionaryForUser(any(), anyString())).thenReturn(cbPlanResponse);
+
         doNothing().when(redisCacheMgr).putInCache(anyString(), anyString());
         
         ObjectMapper objectMapper = new ObjectMapper();
@@ -868,9 +900,12 @@ class CourseAccessServiceImplTest {
         when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
         
         ApiResponse cbPlanResponse = new ApiResponse();
-        cbPlanResponse.setResult(new HashMap<>());
-        when(cbPlanLearnerServiceImpl.getCBPlanListForUser(orgId, userId, true)).thenReturn(cbPlanResponse);
-        
+        Map<String, Object> cbPlanResult = new HashMap<>();
+        cbPlanResult.put("aparContentList", new HashMap<>());
+        cbPlanResult.put("nonAparContentList", new HashMap<>());
+        cbPlanResponse.setResult(cbPlanResult);
+        when(cbPlanServiceV3.getCBPlanDictionaryForUser(any(), anyString())).thenReturn(cbPlanResponse);
+
         doNothing().when(redisCacheMgr).putInCache(anyString(), anyString());
         
         ReflectionTestUtils.setField(courseAccessService, "objectMapper", objectMapper);
@@ -895,23 +930,12 @@ class CourseAccessServiceImplTest {
         
         ApiResponse cbPlanResponse = new ApiResponse();
         Map<String, Object> cbPlanResult = new HashMap<>();
-        
-        List<Map<String, Object>> plans = new ArrayList<>();
-        Map<String, Object> plan1 = new HashMap<>();
-        plan1.put(Constants.IS_APAR, true);
-        plans.add(plan1);
-        
-        Map<String, Object> plan2 = new HashMap<>();
-        plan2.put(Constants.IS_APAR, false);
-        plans.add(plan2);
-        
-        cbPlanResult.put(Constants.CONTENT, plans);
+        cbPlanResult.put("aparContentList", new HashMap<>());
+        cbPlanResult.put("nonAparContentList", new HashMap<>());
         cbPlanResponse.setResult(cbPlanResult);
-        
-        when(cbPlanLearnerServiceImpl.getCBPlanListForUser(orgId, userId, true)).thenReturn(cbPlanResponse);
-        
-        doNothing().when(redisCacheMgr).putInCache(anyString(), anyString());
-        
+
+        when(cbPlanServiceV3.getCBPlanDictionaryForUser(any(), anyString())).thenReturn(cbPlanResponse);
+
         ObjectMapper objectMapper = new ObjectMapper();
         ReflectionTestUtils.setField(courseAccessService, "objectMapper", objectMapper);
         
@@ -935,9 +959,12 @@ class CourseAccessServiceImplTest {
         when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
         
         ApiResponse cbPlanResponse = new ApiResponse();
-        cbPlanResponse.setResult(new HashMap<>());
-        when(cbPlanLearnerServiceImpl.getCBPlanListForUser(orgId, userId, true)).thenReturn(cbPlanResponse);
-        
+        Map<String, Object> cbPlanResult = new HashMap<>();
+        cbPlanResult.put("aparContentList", new HashMap<>());
+        cbPlanResult.put("nonAparContentList", new HashMap<>());
+        cbPlanResponse.setResult(cbPlanResult);
+        when(cbPlanServiceV3.getCBPlanDictionaryForUser(any(), anyString())).thenReturn(cbPlanResponse);
+
         doNothing().when(redisCacheMgr).putInCache(anyString(), anyString());
         
         ObjectMapper objectMapper = new ObjectMapper();
@@ -949,6 +976,230 @@ class CourseAccessServiceImplTest {
         assertNotNull(result.getParams());
         assertNotNull(result.getResponseCode());
         assertNotNull(result.getResult());
+    }
+
+    @Test
+    void testFetchCbPlanDictionary_CreatesCorrectApiRequest() throws ReflectiveOperationException {
+        ApiResponse expectedResponse = new ApiResponse();
+        Map<String, Object> result = new HashMap<>();
+        result.put(Constants.RESPONSE_KEY_APAR_CONTENT_LIST, new HashMap<>());
+        expectedResponse.setResult(result);
+        when(cbPlanServiceV3.getCBPlanDictionaryForUser(any(ApiRequest.class), eq(TEST_TOKEN)))
+                .thenReturn(expectedResponse);
+        Method method = CourseAccessServiceImpl.class.getDeclaredMethod(METHOD_FETCH_CB_PLAN_DICTIONARY, String.class);
+        method.setAccessible(true);
+        ApiResponse response = (ApiResponse) method.invoke(courseAccessService, TEST_TOKEN);
+        assertNotNull(response);
+        assertEquals(expectedResponse, response);
+        verify(cbPlanServiceV3).getCBPlanDictionaryForUser(any(ApiRequest.class), eq(TEST_TOKEN));
+    }
+
+    @Test
+    void testExtractAiCbpContentIds_BothListsHaveAiCbpContent() throws ReflectiveOperationException {
+        Map<String, List<CbPlanContentOccurrence>> aparList = new HashMap<>();
+        aparList.put(CONTENT_ID_1, List.of(new CbPlanContentOccurrence(PLAN_ID_1, Instant.EPOCH, PLAN_TYPE_AICBP)));
+        aparList.put(CONTENT_ID_2, List.of(new CbPlanContentOccurrence(PLAN_ID_2, Instant.EPOCH, PLAN_TYPE_MANDATORY)));
+        Map<String, List<CbPlanContentOccurrence>> nonAparList = new HashMap<>();
+        nonAparList.put(CONTENT_ID_3, List.of(new CbPlanContentOccurrence(PLAN_ID_3, Instant.EPOCH, PLAN_TYPE_AICBP)));
+        nonAparList.put(CONTENT_ID_4, List.of(new CbPlanContentOccurrence(PLAN_ID_4, Instant.EPOCH, PLAN_TYPE_VOLUNTARY)));
+        Method method = CourseAccessServiceImpl.class.getDeclaredMethod(METHOD_EXTRACT_AI_CBP_CONTENT_IDS,
+                Map.class, Map.class);
+        method.setAccessible(true);
+        Set<String> aiCbpIds = (Set<String>) method.invoke(courseAccessService, aparList, nonAparList);
+        assertEquals(2, aiCbpIds.size());
+        assertTrue(aiCbpIds.contains(CONTENT_ID_1));
+        assertTrue(aiCbpIds.contains(CONTENT_ID_3));
+        assertFalse(aiCbpIds.contains(CONTENT_ID_2));
+        assertFalse(aiCbpIds.contains(CONTENT_ID_4));
+    }
+
+    @Test
+    void testExtractAiCbpContentIds_OnlyAparHasAiCbpContent() throws ReflectiveOperationException {
+        Map<String, List<CbPlanContentOccurrence>> aparList = new HashMap<>();
+        aparList.put(CONTENT_ID_1, List.of(new CbPlanContentOccurrence(PLAN_ID_1, Instant.EPOCH, PLAN_TYPE_AICBP)));
+        Map<String, List<CbPlanContentOccurrence>> nonAparList = new HashMap<>();
+        nonAparList.put(CONTENT_ID_2, List.of(new CbPlanContentOccurrence(PLAN_ID_2, Instant.EPOCH, PLAN_TYPE_MANDATORY)));
+        Method method = CourseAccessServiceImpl.class.getDeclaredMethod(METHOD_EXTRACT_AI_CBP_CONTENT_IDS,
+                Map.class, Map.class);
+        method.setAccessible(true);
+        Set<String> aiCbpIds = (Set<String>) method.invoke(courseAccessService, aparList, nonAparList);
+        assertEquals(1, aiCbpIds.size());
+        assertTrue(aiCbpIds.contains(CONTENT_ID_1));
+    }
+
+    @Test
+    void testExtractAiCbpContentIds_NullLists() throws ReflectiveOperationException {
+        Method method = CourseAccessServiceImpl.class.getDeclaredMethod(METHOD_EXTRACT_AI_CBP_CONTENT_IDS,
+                Map.class, Map.class);
+        method.setAccessible(true);
+        Set<String> aiCbpIds = (Set<String>) method.invoke(courseAccessService, null, null);
+        assertNotNull(aiCbpIds);
+        assertTrue(aiCbpIds.isEmpty());
+    }
+
+    @Test
+    void testExtractAiCbpContentIds_EmptyLists() throws ReflectiveOperationException {
+        Map<String, List<CbPlanContentOccurrence>> aparList = new HashMap<>();
+        Map<String, List<CbPlanContentOccurrence>> nonAparList = new HashMap<>();
+        Method method = CourseAccessServiceImpl.class.getDeclaredMethod(METHOD_EXTRACT_AI_CBP_CONTENT_IDS,
+                Map.class, Map.class);
+        method.setAccessible(true);
+        Set<String> aiCbpIds = (Set<String>) method.invoke(courseAccessService, aparList, nonAparList);
+        assertNotNull(aiCbpIds);
+        assertTrue(aiCbpIds.isEmpty());
+    }
+
+    @Test
+    void testExtractAiCbpContentIds_MixedPlanTypesInSameContent() throws ReflectiveOperationException {
+        Map<String, List<CbPlanContentOccurrence>> aparList = new HashMap<>();
+        aparList.put(CONTENT_ID_1, List.of(
+                new CbPlanContentOccurrence(PLAN_ID_1, Instant.EPOCH, PLAN_TYPE_MANDATORY),
+                new CbPlanContentOccurrence(PLAN_ID_2, Instant.EPOCH, PLAN_TYPE_AICBP)
+        ));
+        Method method = CourseAccessServiceImpl.class.getDeclaredMethod(METHOD_EXTRACT_AI_CBP_CONTENT_IDS,
+                Map.class, Map.class);
+        method.setAccessible(true);
+        Set<String> aiCbpIds = (Set<String>) method.invoke(courseAccessService, aparList, null);
+        assertEquals(1, aiCbpIds.size());
+        assertTrue(aiCbpIds.contains(CONTENT_ID_1));
+    }
+
+    @Test
+    void testCollectAiCbpContentIds_NullContentList() throws ReflectiveOperationException {
+        Set<String> aiCbpIds = new HashSet<>();
+        Method method = CourseAccessServiceImpl.class.getDeclaredMethod(METHOD_COLLECT_AI_CBP_CONTENT_IDS,
+                Map.class, Set.class);
+        method.setAccessible(true);
+        method.invoke(courseAccessService, null, aiCbpIds);
+        assertTrue(aiCbpIds.isEmpty());
+    }
+
+    @Test
+    void testCollectAiCbpContentIds_EmptyContentList() throws ReflectiveOperationException {
+        Map<String, List<CbPlanContentOccurrence>> contentList = new HashMap<>();
+        Set<String> aiCbpIds = new HashSet<>();
+        Method method = CourseAccessServiceImpl.class.getDeclaredMethod(METHOD_COLLECT_AI_CBP_CONTENT_IDS,
+                Map.class, Set.class);
+        method.setAccessible(true);
+        method.invoke(courseAccessService, contentList, aiCbpIds);
+        assertTrue(aiCbpIds.isEmpty());
+    }
+
+    @Test
+    void testCollectAiCbpContentIds_WithAiCbpContent() throws ReflectiveOperationException {
+        Map<String, List<CbPlanContentOccurrence>> contentList = new HashMap<>();
+        contentList.put(CONTENT_ID_1, List.of(new CbPlanContentOccurrence(PLAN_ID_1, Instant.EPOCH, PLAN_TYPE_AICBP)));
+        contentList.put(CONTENT_ID_2, List.of(new CbPlanContentOccurrence(PLAN_ID_2, Instant.EPOCH, "aicbp")));
+        Set<String> aiCbpIds = new HashSet<>();
+        Method method = CourseAccessServiceImpl.class.getDeclaredMethod(METHOD_COLLECT_AI_CBP_CONTENT_IDS,
+                Map.class, Set.class);
+        method.setAccessible(true);
+        method.invoke(courseAccessService, contentList, aiCbpIds);
+        assertEquals(2, aiCbpIds.size());
+        assertTrue(aiCbpIds.contains(CONTENT_ID_1));
+        assertTrue(aiCbpIds.contains(CONTENT_ID_2));
+    }
+
+    @Test
+    void testCollectAiCbpContentIds_WithNonAiCbpContent() throws ReflectiveOperationException {
+        Map<String, List<CbPlanContentOccurrence>> contentList = new HashMap<>();
+        contentList.put(CONTENT_ID_1, List.of(new CbPlanContentOccurrence(PLAN_ID_1, Instant.EPOCH, PLAN_TYPE_MANDATORY)));
+        contentList.put(CONTENT_ID_2, List.of(new CbPlanContentOccurrence(PLAN_ID_2, Instant.EPOCH, PLAN_TYPE_VOLUNTARY)));
+        Set<String> aiCbpIds = new HashSet<>();
+        Method method = CourseAccessServiceImpl.class.getDeclaredMethod(METHOD_COLLECT_AI_CBP_CONTENT_IDS,
+                Map.class, Set.class);
+        method.setAccessible(true);
+        method.invoke(courseAccessService, contentList, aiCbpIds);
+        assertTrue(aiCbpIds.isEmpty());
+    }
+
+    @Test
+    void testCollectAiCbpContentIds_WithMixedContent() throws ReflectiveOperationException {
+        Map<String, List<CbPlanContentOccurrence>> contentList = new HashMap<>();
+        contentList.put(CONTENT_ID_1, List.of(new CbPlanContentOccurrence(PLAN_ID_1, Instant.EPOCH, PLAN_TYPE_AICBP)));
+        contentList.put(CONTENT_ID_2, List.of(new CbPlanContentOccurrence(PLAN_ID_2, Instant.EPOCH, PLAN_TYPE_MANDATORY)));
+        contentList.put(CONTENT_ID_3, List.of(
+                new CbPlanContentOccurrence(PLAN_ID_3, Instant.EPOCH, PLAN_TYPE_VOLUNTARY),
+                new CbPlanContentOccurrence(PLAN_ID_4, Instant.EPOCH, PLAN_TYPE_AICBP)
+        ));
+        Set<String> aiCbpIds = new HashSet<>();
+        Method method = CourseAccessServiceImpl.class.getDeclaredMethod(METHOD_COLLECT_AI_CBP_CONTENT_IDS,
+                Map.class, Set.class);
+        method.setAccessible(true);
+        method.invoke(courseAccessService, contentList, aiCbpIds);
+        assertEquals(2, aiCbpIds.size());
+        assertTrue(aiCbpIds.contains(CONTENT_ID_1));
+        assertTrue(aiCbpIds.contains(CONTENT_ID_3));
+        assertFalse(aiCbpIds.contains(CONTENT_ID_2));
+    }
+
+    @Test
+    void testFilterNonAiCbpContent_NullContentList() throws ReflectiveOperationException {
+        Set<String> aiCbpIds = Set.of(CONTENT_ID_1);
+        Method method = CourseAccessServiceImpl.class.getDeclaredMethod(METHOD_FILTER_NON_AI_CBP_CONTENT,
+                Map.class, Set.class);
+        method.setAccessible(true);
+        List<String> filtered = (List<String>) method.invoke(courseAccessService, null, aiCbpIds);
+        assertNotNull(filtered);
+        assertTrue(filtered.isEmpty());
+    }
+
+    @Test
+    void testFilterNonAiCbpContent_EmptyContentList() throws ReflectiveOperationException {
+        Map<String, List<CbPlanContentOccurrence>> contentList = new HashMap<>();
+        Set<String> aiCbpIds = Set.of(CONTENT_ID_1);
+        Method method = CourseAccessServiceImpl.class.getDeclaredMethod(METHOD_FILTER_NON_AI_CBP_CONTENT,
+                Map.class, Set.class);
+        method.setAccessible(true);
+        List<String> filtered = (List<String>) method.invoke(courseAccessService, contentList, aiCbpIds);
+        assertNotNull(filtered);
+        assertTrue(filtered.isEmpty());
+    }
+
+    @Test
+    void testFilterNonAiCbpContent_AllAiCbpContent() throws ReflectiveOperationException {
+        Map<String, List<CbPlanContentOccurrence>> contentList = new HashMap<>();
+        contentList.put(CONTENT_ID_1, List.of(new CbPlanContentOccurrence(PLAN_ID_1, Instant.EPOCH, PLAN_TYPE_AICBP)));
+        contentList.put(CONTENT_ID_2, List.of(new CbPlanContentOccurrence(PLAN_ID_2, Instant.EPOCH, PLAN_TYPE_AICBP)));
+        Set<String> aiCbpIds = Set.of(CONTENT_ID_1, CONTENT_ID_2);
+        Method method = CourseAccessServiceImpl.class.getDeclaredMethod(METHOD_FILTER_NON_AI_CBP_CONTENT,
+                Map.class, Set.class);
+        method.setAccessible(true);
+        List<String> filtered = (List<String>) method.invoke(courseAccessService, contentList, aiCbpIds);
+        assertNotNull(filtered);
+        assertTrue(filtered.isEmpty());
+    }
+
+    @Test
+    void testFilterNonAiCbpContent_NoAiCbpContent() throws ReflectiveOperationException {
+        Map<String, List<CbPlanContentOccurrence>> contentList = new HashMap<>();
+        contentList.put(CONTENT_ID_1, List.of(new CbPlanContentOccurrence(PLAN_ID_1, Instant.EPOCH, PLAN_TYPE_MANDATORY)));
+        contentList.put(CONTENT_ID_2, List.of(new CbPlanContentOccurrence(PLAN_ID_2, Instant.EPOCH, PLAN_TYPE_VOLUNTARY)));
+        Set<String> aiCbpIds = Set.of();
+        Method method = CourseAccessServiceImpl.class.getDeclaredMethod(METHOD_FILTER_NON_AI_CBP_CONTENT,
+                Map.class, Set.class);
+        method.setAccessible(true);
+        List<String> filtered = (List<String>) method.invoke(courseAccessService, contentList, aiCbpIds);
+        assertEquals(2, filtered.size());
+        assertTrue(filtered.contains(CONTENT_ID_1));
+        assertTrue(filtered.contains(CONTENT_ID_2));
+    }
+
+    @Test
+    void testFilterNonAiCbpContent_MixedContent() throws ReflectiveOperationException {
+        Map<String, List<CbPlanContentOccurrence>> contentList = new HashMap<>();
+        contentList.put(CONTENT_ID_1, List.of(new CbPlanContentOccurrence(PLAN_ID_1, Instant.EPOCH, PLAN_TYPE_AICBP)));
+        contentList.put(CONTENT_ID_2, List.of(new CbPlanContentOccurrence(PLAN_ID_2, Instant.EPOCH, PLAN_TYPE_MANDATORY)));
+        contentList.put(CONTENT_ID_3, List.of(new CbPlanContentOccurrence(PLAN_ID_3, Instant.EPOCH, PLAN_TYPE_VOLUNTARY)));
+        Set<String> aiCbpIds = Set.of(CONTENT_ID_1);
+        Method method = CourseAccessServiceImpl.class.getDeclaredMethod(METHOD_FILTER_NON_AI_CBP_CONTENT,
+                Map.class, Set.class);
+        method.setAccessible(true);
+        List<String> filtered = (List<String>) method.invoke(courseAccessService, contentList, aiCbpIds);
+        assertEquals(2, filtered.size());
+        assertTrue(filtered.contains(CONTENT_ID_2));
+        assertTrue(filtered.contains(CONTENT_ID_3));
+        assertFalse(filtered.contains(CONTENT_ID_1));
     }
 
 }

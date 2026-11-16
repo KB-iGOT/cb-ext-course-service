@@ -45,4 +45,6 @@ public class CbPlanDto {
     private Boolean isApar ;
 
     private List<String> orgIdList ;
+
+    private String caLinkedId;
 }

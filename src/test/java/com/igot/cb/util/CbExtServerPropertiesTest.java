@@ -94,4 +94,29 @@ class CbExtServerPropertiesTest {
     assertEquals("http://wrapper-host", properties.getCbWrapperNotificationHost());
     assertEquals("/wrapper-path", properties.getCbWrapperNotificationPath());
 }
+
+    @Test
+    void testRedisEndpointGettersAndSetters() {
+        CbExtServerProperties properties = new CbExtServerProperties();
+
+        properties.setCbPlanRedisHost("cbplan-redis");
+        properties.setCbPlanRedisPort(6380);
+        properties.setCbPlanRedisDbIndex(1);
+        properties.setUserProfileRedisHost("userprofile-redis");
+        properties.setUserProfileRedisPort(6381);
+        properties.setUserProfileRedisDbIndex(2);
+        properties.setExtContentRedisHost("extcontent-redis");
+        properties.setExtContentRedisPort(6382);
+        properties.setExtContentRedisDbIndex(3);
+
+        assertEquals("cbplan-redis", properties.getCbPlanRedisHost());
+        assertEquals(6380, properties.getCbPlanRedisPort());
+        assertEquals(1, properties.getCbPlanRedisDbIndex());
+        assertEquals("userprofile-redis", properties.getUserProfileRedisHost());
+        assertEquals(6381, properties.getUserProfileRedisPort());
+        assertEquals(2, properties.getUserProfileRedisDbIndex());
+        assertEquals("extcontent-redis", properties.getExtContentRedisHost());
+        assertEquals(6382, properties.getExtContentRedisPort());
+        assertEquals(3, properties.getExtContentRedisDbIndex());
+    }
 }

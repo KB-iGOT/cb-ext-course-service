@@ -32,9 +32,31 @@ public class EsConfig {
     @Value("${elasticsearch.password}")
     private String elasticsearchPassword;
 
+    @Value("${org.eligibility.elasticsearch.host}")
+    private String orgEligibilityElasticsearchHost;
+
+    @Value("${org.eligibility.elasticsearch.port}")
+    private int orgEligibilityElasticsearchPort;
+
+    @Value("${org.eligibility.elasticsearch.username}")
+    private String orgEligibilityElasticsearchUsername;
+
+    @Value("${org.eligibility.elasticsearch.password}")
+    private String orgEligibilityElasticsearchPassword;
+
     @Bean(name = "elasticsearchClient")
     public ElasticsearchClient elasticsearchClient() {
         return createClient(elasticsearchHost, elasticsearchPort, elasticsearchUsername, elasticsearchPassword);
+    }
+
+    /**
+     * The org_eligibility_alias index lives on a separate ES cluster from cb_plan_v2 in some
+     * environments, so it gets its own client rather than sharing "elasticsearchClient".
+     */
+    @Bean(name = "orgEligibilityElasticsearchClient")
+    public ElasticsearchClient orgEligibilityElasticsearchClient() {
+        return createClient(orgEligibilityElasticsearchHost, orgEligibilityElasticsearchPort,
+                orgEligibilityElasticsearchUsername, orgEligibilityElasticsearchPassword);
     }
 
     private ElasticsearchClient createClient(String host, int port, String username, String password) {

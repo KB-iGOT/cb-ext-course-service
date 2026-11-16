@@ -1,0 +1,17 @@
+{
+  "orgId": {
+    "type": "keyword"
+  },
+  "courseIds": {
+    "type": "keyword"
+  },
+  "courseCount": {
+    "type": "long"
+  },
+  "version": {
+    "type": "long"
+  },
+  "updatedAt": {
+    "type": "date"
+  }
+}

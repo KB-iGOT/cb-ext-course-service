@@ -38,10 +38,13 @@
     }
   },
   "contentList": {
-    "type": "text",
-    "fields": {
-      "keyword": {
+    "type": "nested",
+    "properties": {
+      "identifier": {
         "type": "keyword"
+      },
+      "mandatory": {
+        "type": "boolean"
       }
     }
   },
@@ -104,6 +107,26 @@
     "fields": {
       "raw": {
         "type": "date"
+      }
+    }
+  },
+  "planYear": {
+    "type": "text",
+    "fields": {
+      "keyword": {
+        "type": "keyword"
+      }
+    }
+  },
+  "caLinkedId": {
+    "type": "keyword"
+  },
+  "contextDataV4": {
+    "type": "text",
+    "fields": {
+      "keyword": {
+        "type": "keyword",
+        "ignore_above": 256
       }
     }
   }

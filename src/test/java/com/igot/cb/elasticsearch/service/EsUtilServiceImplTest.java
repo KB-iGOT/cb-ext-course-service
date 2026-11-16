@@ -715,5 +715,17 @@ class EsUtilServiceImplTest {
         assertNotNull(result);
     }
 
+    @Test
+    void deleteDocument_whenClientSucceeds_returnsTrue() throws Exception {
+        boolean result = esUtilService.deleteDocument("test-index", "doc-1");
+        assertTrue(result);
+    }
+
+    @Test
+    void deleteDocument_whenClientThrows_returnsFalse() throws Exception {
+        doThrow(new RuntimeException("ES connection lost")).when(elasticsearchClient).delete(any(java.util.function.Function.class));
+        boolean result = esUtilService.deleteDocument("test-index", "doc-1");
+        assertFalse(result);
+    }
 
 }

@@ -1,0 +1,234 @@
+package com.igot.cb.cbplan.controller;
+
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.igot.cb.cbplan.service.CbPlanServiceV4;
+import com.igot.cb.model.ApiRequest;
+import com.igot.cb.model.ApiResponse;
+import com.igot.cb.util.Constants;
+
+/**
+ * REST Controller for CB Plan V4 operations with User Group References.
+ * V4 accepts userGroupId instead of inline userGroupCriteriaList.
+ * User org ID and roles are extracted from the authentication token.
+ *
+ * @version 4.0
+ */
+@RestController
+@RequestMapping("/cbplan/v4")
+public class CbPlanWithAccessSettingsV4 {
+    private final CbPlanServiceV4 cbPlanServiceV4;
+
+    public CbPlanWithAccessSettingsV4(CbPlanServiceV4 cbPlanServiceV4) {
+        this.cbPlanServiceV4 = cbPlanServiceV4;
+    }
+
+    /**
+     * Creates a new CB Plan V4 with user group references.
+     * Accepts userGroupId in contextData.accessControl.userGroups.
+     * Does NOT accept userGroupCriteriaList or userGroupName.
+     *
+     * @param request the API request containing CB Plan details
+     * @param token   the authentication token
+     * @return ResponseEntity containing ApiResponse with created plan details
+     */
+    @PostMapping("/create")
+    public ResponseEntity<ApiResponse> createCbPlan(
+            @RequestBody ApiRequest request,
+            @RequestHeader(Constants.X_AUTH_TOKEN) String token) {
+        ApiResponse response = cbPlanServiceV4.createCbPlan(request, null, token);
+        return new ResponseEntity<>(response, response.getResponseCode());
+    }
+
+    /**
+     * Updates an existing CB Plan V4 with user group references.
+     *
+     * @param request the API request containing updated CB Plan details
+     * @param token   the authentication token
+     * @return ResponseEntity containing ApiResponse with update status
+     */
+    @PostMapping("/update")
+    public ResponseEntity<ApiResponse> updateCbPlan(
+            @RequestBody ApiRequest request,
+            @RequestHeader(Constants.X_AUTH_TOKEN) String token) {
+        ApiResponse response = cbPlanServiceV4.updateCbPlan(request, token);
+        return new ResponseEntity<>(response, response.getResponseCode());
+    }
+
+    /**
+     * Publishes an existing CB Plan V4 with user group references.
+     *
+     * @param request the API request containing the plan ID and publish comment
+     * @param token   the authentication token
+     * @return ResponseEntity containing ApiResponse with publish status
+     */
+    @PostMapping("/publish")
+    public ResponseEntity<ApiResponse> publishCbPlan(
+            @RequestBody ApiRequest request,
+            @RequestHeader(Constants.X_AUTH_TOKEN) String token) {
+        ApiResponse response = cbPlanServiceV4.publishCbPlan(request, token);
+        return new ResponseEntity<>(response, response.getResponseCode());
+    }
+
+    /**
+     * Reads a CB Plan by ID. Only allows reading LIVE plans.
+     * Draft plans return 200 OK with error status and message in response body.
+     * Returns contextData exactly as stored, so it works for plans created by
+     * either V3 (inline userGroupName) or V4 (userGroupId reference).
+     *
+     * @param cbPlanId the CB Plan ID to retrieve
+     * @param token    the authentication token
+     * @return ResponseEntity containing ApiResponse with CB Plan details or error message
+     */
+    @GetMapping("/read/{cbPlanId}")
+    public ResponseEntity<ApiResponse> readCbPlan(
+            @PathVariable("cbPlanId") String cbPlanId,
+            @RequestHeader(Constants.X_AUTH_TOKEN) String token) {
+        ApiResponse response = cbPlanServiceV4.readCbPlan(cbPlanId, token);
+        return new ResponseEntity<>(response, response.getResponseCode());
+    }
+
+    /**
+     * Admin read: Reads a CB Plan by ID regardless of status (DRAFT or LIVE).
+     * Returns contextData exactly as stored, so it works for plans created by
+     * either V3 (inline userGroupName) or V4 (userGroupId reference).
+     *
+     * @param cbPlanId the CB Plan ID to retrieve
+     * @param token    the authentication token
+     * @return ResponseEntity containing ApiResponse with CB Plan details
+     */
+    @GetMapping("/admin/read/{cbPlanId}")
+    public ResponseEntity<ApiResponse> readCbPlanAdmin(
+            @PathVariable("cbPlanId") String cbPlanId,
+            @RequestHeader(Constants.X_AUTH_TOKEN) String token) {
+        ApiResponse response = cbPlanServiceV4.readCbPlanAdmin(cbPlanId, token);
+        return new ResponseEntity<>(response, response.getResponseCode());
+    }
+
+    /**
+     * Searches CB Plans. Client controls all filtering via the request body.
+     * Backend constructs SearchCriteria from the generic request.
+     * User org ID is extracted from the authentication token.
+     *
+     * @param request the API request containing search parameters
+     * @param token   the authentication token
+     * @return ResponseEntity containing ApiResponse with search results
+     */
+    @PostMapping("/search")
+    public ResponseEntity<ApiResponse> searchCbPlan(
+            @RequestBody ApiRequest request,
+            @RequestHeader(Constants.X_AUTH_TOKEN) String token) {
+        ApiResponse response = cbPlanServiceV4.searchCbPlan(request, token);
+        return new ResponseEntity<>(response, response.getResponseCode());
+    }
+
+    /**
+     * Archives (retires) a CB Plan V4.
+     * Delegates to V3 implementation as the archive logic is version-agnostic.
+     * User org ID and roles are extracted from the authentication token.
+     *
+     * @param request the API request containing CB Plan ID and optional comment
+     * @param token   the authentication token
+     * @return ResponseEntity containing ApiResponse with archive status
+     */
+    @DeleteMapping("/archive")
+    public ResponseEntity<ApiResponse> retireCbPlan(
+            @RequestBody ApiRequest request,
+            @RequestHeader(Constants.X_AUTH_TOKEN) String token) {
+        ApiResponse response = cbPlanServiceV4.retireCbPlan(request, token);
+        return new ResponseEntity<>(response, response.getResponseCode());
+    }
+
+    /**
+     * Returns active CB Plans grouped by APAR/non-APAR for the authenticated user.
+     * Each plan entry includes name, contentList, comprehensiveAssessment, and org details.
+     * Access control is enforced via V4 userGroupId references resolved against the user's profile.
+     *
+     * @param request the API request containing planYear
+     * @param token   the authentication token
+     * @return ResponseEntity containing ApiResponse with plan dictionary grouped by planYear
+     */
+    @PostMapping("/user/dictionary")
+    public ResponseEntity<ApiResponse> getCBPlanDictionary(
+            @RequestBody ApiRequest request,
+            @RequestHeader(Constants.X_AUTH_TOKEN) String token) {
+        ApiResponse response = cbPlanServiceV4.getCBPlanDictionaryForUser(request, token);
+        return new ResponseEntity<>(response, response.getResponseCode());
+    }
+
+    /**
+     * Checks whether the given Comprehensive Assessment do_id is linked (via caLinkedId) to any
+     * plan the authenticated user is eligible for, searching the current and previous financial
+     * year server-side. Returns just {eligible, mandatoryCourses} rather than the full dictionary.
+     *
+     * @param doId  CA content identifier to check eligibility for
+     * @param token the authentication token
+     * @return ResponseEntity containing ApiResponse with eligibility + mandatory course identifiers
+     */
+    @GetMapping("/user/assessment/eligibility/{doId}")
+    public ResponseEntity<ApiResponse> getComprehensiveAssessmentEligibility(
+            @PathVariable("doId") String doId,
+            @RequestHeader(Constants.X_AUTH_TOKEN) String token) {
+        ApiResponse response = cbPlanServiceV4.getComprehensiveAssessmentEligibility(doId, token);
+        return new ResponseEntity<>(response, response.getResponseCode());
+    }
+
+    /**
+     * Creates a CB Plan through the AI CBP admin flow using V4 logic.
+     * The target organisation is supplied in the request body as targetedOrganisation;
+     * the plan is tagged with planType = AICBP.
+     *
+     * @param request the API request containing CB Plan details and targetedOrganisation
+     * @param token   the authentication token
+     * @return ResponseEntity containing ApiResponse with created plan details
+     */
+    @PostMapping("/aicbp/create")
+    public ResponseEntity<ApiResponse> createCbPlanByAdmin(
+            @RequestBody ApiRequest request,
+            @RequestHeader(Constants.X_AUTH_TOKEN) String token) {
+        ApiResponse response = cbPlanServiceV4.createCbPlanByAdmin(request, token);
+        return new ResponseEntity<>(response, response.getResponseCode());
+    }
+
+    /**
+     * Publishes a CB Plan through the AI CBP admin flow using V4 logic.
+     * The target organisation is supplied in the request body as targetedOrganisation;
+     * creator/role check is bypassed.
+     *
+     * @param request the API request containing CB Plan ID, comment and targetedOrganisation
+     * @param token   the authentication token
+     * @return ResponseEntity containing ApiResponse with publish status
+     */
+    @PostMapping("/aicbp/publish")
+    public ResponseEntity<ApiResponse> publishCbPlanByAdmin(
+            @RequestBody ApiRequest request,
+            @RequestHeader(Constants.X_AUTH_TOKEN) String token) {
+        ApiResponse response = cbPlanServiceV4.publishCbPlanByAdmin(request, token);
+        return new ResponseEntity<>(response, response.getResponseCode());
+    }
+
+    /**
+     * Private service-to-service lookup: returns the flat courseId -&gt; planEndDate map
+     * for the given user across their active CB Plans. Caller supplies the already-resolved
+     * userId and userOrgId via headers; no token validation is performed.
+     *
+     * @param userOrgId the user's root organisation ID
+     * @param userId    the resolved user ID
+     * @return ResponseEntity containing ApiResponse with result.contents = Map&lt;courseId, planEndDate&gt;
+     */
+    @GetMapping("/user/lookup")
+    public ResponseEntity<ApiResponse> getPrivateCBPlanListForUser(
+            @RequestHeader(Constants.X_AUTH_USER_ORG_ID) String userOrgId,
+            @RequestHeader(Constants.X_AUTH_USER_ID) String userId) {
+        ApiResponse response = cbPlanServiceV4.getCBPlanCourseListForUser(userId, userOrgId);
+        return new ResponseEntity<>(response, response.getResponseCode());
+    }
+}

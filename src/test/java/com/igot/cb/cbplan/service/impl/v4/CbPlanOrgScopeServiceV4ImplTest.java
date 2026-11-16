@@ -183,7 +183,7 @@ class CbPlanOrgScopeServiceV4ImplTest {
 
     @Test
     void resolveOrgScope_contextDataKeyMissing_returnsError() {
-        List<String> errors = orgScopeService.resolveOrgScope(new HashMap<>(), false, ORG_ID, null, null);
+        List<String> errors = orgScopeService.resolveOrgScope(new HashMap<>(), false, ORG_ID, null, null, false);
 
         assertEquals(List.of(Constants.ERR_CONTEXT_DATA_MISSING), errors);
     }
@@ -193,7 +193,7 @@ class CbPlanOrgScopeServiceV4ImplTest {
         Map<String, Object> request = new HashMap<>();
         request.put(Constants.CONTEXT_DATA_REQUEST, "not-valid-json");
 
-        List<String> errors = orgScopeService.resolveOrgScope(request, false, ORG_ID, null, null);
+        List<String> errors = orgScopeService.resolveOrgScope(request, false, ORG_ID, null, null, false);
 
         assertEquals(List.of(Constants.ERR_CONTEXT_DATA_UNPARSEABLE), errors);
     }
@@ -203,7 +203,7 @@ class CbPlanOrgScopeServiceV4ImplTest {
         Map<String, Object> request = new HashMap<>();
         request.put(Constants.CONTEXT_DATA_REQUEST, 12345);
 
-        List<String> errors = orgScopeService.resolveOrgScope(request, false, ORG_ID, null, null);
+        List<String> errors = orgScopeService.resolveOrgScope(request, false, ORG_ID, null, null, false);
 
         assertEquals(List.of(Constants.ERR_CONTEXT_DATA_INVALID_TYPE), errors);
     }
@@ -213,7 +213,7 @@ class CbPlanOrgScopeServiceV4ImplTest {
         Map<String, Object> request = new HashMap<>();
         request.put(Constants.CONTEXT_DATA_REQUEST, new HashMap<>());
 
-        List<String> errors = orgScopeService.resolveOrgScope(request, false, ORG_ID, null, null);
+        List<String> errors = orgScopeService.resolveOrgScope(request, false, ORG_ID, null, null, false);
 
         assertEquals(List.of(Constants.ERR_ACCESS_CONTROL_MISSING), errors);
     }
@@ -222,7 +222,7 @@ class CbPlanOrgScopeServiceV4ImplTest {
     void resolveOrgScope_userGroupsMissing_returnsError() {
         Map<String, Object> request = requestWithGroups(new ArrayList<>());
 
-        List<String> errors = orgScopeService.resolveOrgScope(request, false, ORG_ID, null, null);
+        List<String> errors = orgScopeService.resolveOrgScope(request, false, ORG_ID, null, null, false);
 
         assertEquals(List.of(Constants.ERR_USER_GROUPS_MISSING), errors);
     }
@@ -231,7 +231,7 @@ class CbPlanOrgScopeServiceV4ImplTest {
     void resolveOrgScope_userGroupIdMissing_returnsError() {
         Map<String, Object> request = requestWithGroups(List.of(new HashMap<>()));
 
-        List<String> errors = orgScopeService.resolveOrgScope(request, false, ORG_ID, null, null);
+        List<String> errors = orgScopeService.resolveOrgScope(request, false, ORG_ID, null, null, false);
 
         assertEquals(List.of(Constants.ERR_USER_GROUP_NO_FORMAT), errors);
     }
@@ -240,7 +240,7 @@ class CbPlanOrgScopeServiceV4ImplTest {
     void resolveOrgScope_userGroupIdBlank_returnsError() {
         Map<String, Object> request = requestWithGroups(List.of(userGroupRef("  ")));
 
-        List<String> errors = orgScopeService.resolveOrgScope(request, false, ORG_ID, null, null);
+        List<String> errors = orgScopeService.resolveOrgScope(request, false, ORG_ID, null, null, false);
 
         assertEquals(List.of(Constants.ERR_USER_GROUP_ID_REQUIRED), errors);
     }
@@ -254,7 +254,7 @@ class CbPlanOrgScopeServiceV4ImplTest {
         v3Group.put(Constants.USER_GROUP_NAME, "V3 Group");
         Map<String, Object> request = requestWithGroups(List.of(v4Group, v3Group));
 
-        List<String> errors = orgScopeService.resolveOrgScope(request, false, ORG_ID, null, null);
+        List<String> errors = orgScopeService.resolveOrgScope(request, false, ORG_ID, null, null, false);
 
         assertTrue(errors.contains(Constants.ERR_USER_GROUP_MIXED_FORMAT));
     }
@@ -269,7 +269,7 @@ class CbPlanOrgScopeServiceV4ImplTest {
         v3Group.put(Constants.USER_GROUP_NAME, "V3 Group");
         Map<String, Object> request = requestWithGroups(List.of(v3Group));
 
-        List<String> errors = orgScopeService.resolveOrgScope(request, false, ORG_ID, null, null);
+        List<String> errors = orgScopeService.resolveOrgScope(request, false, ORG_ID, null, null, false);
 
         // V3 validator will process it - exact validation depends on V3 implementation
         // This test just verifies no format mixing error occurs
@@ -280,7 +280,7 @@ class CbPlanOrgScopeServiceV4ImplTest {
     void resolveOrgScope_userGroupIdNotValidUuid_returnsError() {
         Map<String, Object> request = requestWithGroups(List.of(userGroupRef("not-a-uuid")));
 
-        List<String> errors = orgScopeService.resolveOrgScope(request, false, ORG_ID, null, null);
+        List<String> errors = orgScopeService.resolveOrgScope(request, false, ORG_ID, null, null, false);
 
         assertEquals(List.of(Constants.ERR_USER_GROUP_ID_INVALID_FORMAT), errors);
     }
@@ -291,7 +291,7 @@ class CbPlanOrgScopeServiceV4ImplTest {
         when(userGroupLookupService.fetchUserGroupsByIds(any(), eq(ORG_ID)))
             .thenReturn(new HashMap<>());
 
-        List<String> errors = orgScopeService.resolveOrgScope(request, false, ORG_ID, null, null);
+        List<String> errors = orgScopeService.resolveOrgScope(request, false, ORG_ID, null, null, false);
 
         assertEquals(List.of(Constants.ERR_USER_GROUP_NOT_FOUND + VALID_GROUP_ID), errors);
     }
@@ -304,7 +304,7 @@ class CbPlanOrgScopeServiceV4ImplTest {
         when(userGroupLookupService.fetchUserGroupsByIds(any(), eq(ORG_ID)))
             .thenReturn(Map.of(VALID_GROUP_ID, inactiveEntity));
 
-        List<String> errors = orgScopeService.resolveOrgScope(request, false, ORG_ID, null, null);
+        List<String> errors = orgScopeService.resolveOrgScope(request, false, ORG_ID, null, null, false);
 
         assertEquals(List.of(Constants.ERR_USER_GROUP_NOT_ACTIVE + VALID_GROUP_ID), errors);
     }
@@ -317,7 +317,7 @@ class CbPlanOrgScopeServiceV4ImplTest {
         mockGroupWithRootOrgIds(VALID_GROUP_ID, ORG_ID);
         mockNonL0Org(ORG_ID);
 
-        List<String> errors = orgScopeService.resolveOrgScope(request, false, ORG_ID, null, null);
+        List<String> errors = orgScopeService.resolveOrgScope(request, false, ORG_ID, null, null, false);
 
         assertTrue(errors.isEmpty());
         assertEquals(Constants.SINGLE, request.get(Constants.ORG_SCOPE));
@@ -331,7 +331,7 @@ class CbPlanOrgScopeServiceV4ImplTest {
         mockGroupWithRootOrgIds(VALID_GROUP_ID, ORG_ID);
         mockNonL0Org(ORG_ID);
 
-        List<String> errors = orgScopeService.resolveOrgScope(request, false, ORG_ID, null, null);
+        List<String> errors = orgScopeService.resolveOrgScope(request, false, ORG_ID, null, null, false);
 
         assertTrue(errors.isEmpty());
         assertEquals(Constants.SINGLE, request.get(Constants.ORG_SCOPE));
@@ -344,7 +344,7 @@ class CbPlanOrgScopeServiceV4ImplTest {
         mockGroupWithRootOrgIds(VALID_GROUP_ID, OTHER_ORG_ID);
         mockNonL0Org(ORG_ID);
 
-        List<String> errors = orgScopeService.resolveOrgScope(request, false, ORG_ID, null, null);
+        List<String> errors = orgScopeService.resolveOrgScope(request, false, ORG_ID, null, null, false);
 
         assertEquals(List.of(Constants.ERR_ROOT_ORG_ID_MISMATCH), errors);
     }
@@ -356,7 +356,7 @@ class CbPlanOrgScopeServiceV4ImplTest {
         mockGroupWithRootOrgIds(OTHER_GROUP_ID, OTHER_ORG_ID);
         mockNonL0Org(ORG_ID);
 
-        List<String> errors = orgScopeService.resolveOrgScope(request, false, ORG_ID, null, null);
+        List<String> errors = orgScopeService.resolveOrgScope(request, false, ORG_ID, null, null, false);
 
         assertEquals(List.of(Constants.ERR_MULTIPLE_ROOT_ORG_IDS), errors);
     }
@@ -367,7 +367,7 @@ class CbPlanOrgScopeServiceV4ImplTest {
         mockGroupWithNoCriteria(VALID_GROUP_ID);
         mockNonL0Org(ORG_ID);
 
-        List<String> errors = orgScopeService.resolveOrgScope(request, false, ORG_ID, null, null);
+        List<String> errors = orgScopeService.resolveOrgScope(request, false, ORG_ID, null, null, false);
 
         assertEquals(List.of(Constants.ERR_ROOT_ORG_CRITERIA_MISSING), errors);
     }
@@ -380,7 +380,7 @@ class CbPlanOrgScopeServiceV4ImplTest {
         mockGroupWithNoCriteria(VALID_GROUP_ID);
         mockNonL0Org(ORG_ID);
 
-        List<String> errors = orgScopeService.resolveOrgScope(request, true, ORG_ID, null, null);
+        List<String> errors = orgScopeService.resolveOrgScope(request, true, ORG_ID, null, null, false);
 
         assertTrue(errors.isEmpty());
         assertEquals(Constants.ALL, request.get(Constants.ORG_SCOPE));
@@ -392,7 +392,7 @@ class CbPlanOrgScopeServiceV4ImplTest {
         mockGroupWithRootOrgIds(VALID_GROUP_ID, OTHER_ORG_ID);
         mockNonL0Org(ORG_ID);
 
-        List<String> errors = orgScopeService.resolveOrgScope(request, true, ORG_ID, null, null);
+        List<String> errors = orgScopeService.resolveOrgScope(request, true, ORG_ID, null, null, false);
 
         assertTrue(errors.isEmpty());
         assertEquals(Constants.SINGLE, request.get(Constants.ORG_SCOPE));
@@ -405,7 +405,7 @@ class CbPlanOrgScopeServiceV4ImplTest {
         mockGroupWithRootOrgIds(OTHER_GROUP_ID, OTHER_ORG_ID);
         mockNonL0Org(ORG_ID);
 
-        List<String> errors = orgScopeService.resolveOrgScope(request, true, ORG_ID, null, null);
+        List<String> errors = orgScopeService.resolveOrgScope(request, true, ORG_ID, null, null, false);
 
         assertTrue(errors.isEmpty());
         assertEquals(Constants.CUSTOM, request.get(Constants.ORG_SCOPE));
@@ -419,7 +419,7 @@ class CbPlanOrgScopeServiceV4ImplTest {
         mockGroupWithNoCriteria(OTHER_GROUP_ID);
         mockNonL0Org(ORG_ID);
 
-        List<String> errors = orgScopeService.resolveOrgScope(request, true, ORG_ID, null, null);
+        List<String> errors = orgScopeService.resolveOrgScope(request, true, ORG_ID, null, null, false);
 
         assertEquals(List.of("restricted"), errors);
     }
@@ -432,7 +432,7 @@ class CbPlanOrgScopeServiceV4ImplTest {
         mockGroupWithRootOrgIds(VALID_GROUP_ID, OTHER_ORG_ID);
         mockL0Org(ORG_ID);
 
-        List<String> errors = orgScopeService.resolveOrgScope(request, false, ORG_ID, null, null);
+        List<String> errors = orgScopeService.resolveOrgScope(request, false, ORG_ID, null, null, false);
 
         assertTrue(errors.isEmpty());
         assertEquals(Constants.SINGLE, request.get(Constants.ORG_SCOPE));
@@ -445,7 +445,7 @@ class CbPlanOrgScopeServiceV4ImplTest {
         mockGroupWithRootOrgIds(OTHER_GROUP_ID, OTHER_ORG_ID);
         mockL0Org(ORG_ID);
 
-        List<String> errors = orgScopeService.resolveOrgScope(request, false, ORG_ID, null, null);
+        List<String> errors = orgScopeService.resolveOrgScope(request, false, ORG_ID, null, null, false);
 
         assertTrue(errors.isEmpty());
         assertEquals(Constants.CUSTOM, request.get(Constants.ORG_SCOPE));
@@ -459,7 +459,7 @@ class CbPlanOrgScopeServiceV4ImplTest {
         Map<String, Object> request = requestWithGroups(List.of(userGroupRef(VALID_GROUP_ID)));
         mockGroupWithNoCriteria(VALID_GROUP_ID);
 
-        List<String> errors = orgScopeService.resolveOrgScope(request, false, ORG_ID, null, null);
+        List<String> errors = orgScopeService.resolveOrgScope(request, false, ORG_ID, null, null, false);
 
         assertEquals(List.of(Constants.ERR_ROOT_ORG_CRITERIA_MISSING), errors);
     }
@@ -474,7 +474,7 @@ class CbPlanOrgScopeServiceV4ImplTest {
         mockNonL0Org(ORG_ID);
         Set<String> ministryOrStateIdsOut = new HashSet<>();
 
-        List<String> errors = orgScopeService.resolveOrgScope(request, false, ORG_ID, new HashSet<>(), ministryOrStateIdsOut);
+        List<String> errors = orgScopeService.resolveOrgScope(request, false, ORG_ID, new HashSet<>(), ministryOrStateIdsOut, false);
 
         assertTrue(errors.isEmpty());
         assertEquals(Constants.ALL, request.get(Constants.ORG_SCOPE));
@@ -487,7 +487,7 @@ class CbPlanOrgScopeServiceV4ImplTest {
         mockGroupWithMinistryOrStateIds(VALID_GROUP_ID, OTHER_ORG_ID);
         mockNonL0Org(OTHER_ORG_ID);
 
-        List<String> errors = orgScopeService.resolveOrgScope(request, false, ORG_ID, null, null);
+        List<String> errors = orgScopeService.resolveOrgScope(request, false, ORG_ID, null, null, false);
 
         assertEquals(List.of(String.format(Constants.ERR_ORG_NOT_L0, OTHER_ORG_ID)), errors);
     }
@@ -498,7 +498,7 @@ class CbPlanOrgScopeServiceV4ImplTest {
         mockGroupWithMinistryOrStateIds(VALID_GROUP_ID, OTHER_ORG_ID);
         // No org mock - OTHER_ORG_ID will not be found
 
-        List<String> errors = orgScopeService.resolveOrgScope(request, false, ORG_ID, null, null);
+        List<String> errors = orgScopeService.resolveOrgScope(request, false, ORG_ID, null, null, false);
 
         assertEquals(List.of(String.format(Constants.ERR_ORG_NOT_FOUND_FOR_L0_VALIDATION, OTHER_ORG_ID)), errors);
     }
@@ -511,7 +511,7 @@ class CbPlanOrgScopeServiceV4ImplTest {
         mockL0Org(OTHER_ORG_ID);
         mockL0Org(ORG_ID);
 
-        List<String> errors = orgScopeService.resolveOrgScope(request, false, ORG_ID, null, null);
+        List<String> errors = orgScopeService.resolveOrgScope(request, false, ORG_ID, null, null, false);
 
         assertEquals(List.of(Constants.ERR_BOTH_ROOT_ORG_AND_MINISTRY_USED), errors);
     }
@@ -522,7 +522,7 @@ class CbPlanOrgScopeServiceV4ImplTest {
         mockGroupWithRootOrgIds(VALID_GROUP_ID, ORG_ID);
         mockNonL0Org(ORG_ID);
 
-        List<String> errors = orgScopeService.resolveOrgScope(request, false, ORG_ID, null, null);
+        List<String> errors = orgScopeService.resolveOrgScope(request, false, ORG_ID, null, null, false);
 
         assertTrue(errors.isEmpty());
     }
@@ -535,7 +535,7 @@ class CbPlanOrgScopeServiceV4ImplTest {
         mockGroupWithRootOrgIds(OTHER_GROUP_ID, OTHER_ORG_ID);
         mockNonL0Org(ORG_ID);
 
-        List<String> errors = orgScopeService.resolveOrgScope(request, false, ORG_ID, null, null);
+        List<String> errors = orgScopeService.resolveOrgScope(request, false, ORG_ID, null, null, false);
 
         assertTrue(errors.isEmpty());
         assertEquals(Constants.CUSTOM, request.get(Constants.ORG_SCOPE));
@@ -548,7 +548,7 @@ class CbPlanOrgScopeServiceV4ImplTest {
         mockGroupWithRootOrgIds(VALID_GROUP_ID, OTHER_ORG_ID);
         mockNonL0Org(ORG_ID);
 
-        List<String> errors = orgScopeService.resolveOrgScope(request, false, ORG_ID, null, null);
+        List<String> errors = orgScopeService.resolveOrgScope(request, false, ORG_ID, null, null, false);
 
         assertTrue(errors.isEmpty());
         assertEquals(Constants.SINGLE, request.get(Constants.ORG_SCOPE));

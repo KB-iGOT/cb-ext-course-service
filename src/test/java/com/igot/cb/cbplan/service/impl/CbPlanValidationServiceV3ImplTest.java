@@ -140,17 +140,17 @@ class CbPlanValidationServiceV3ImplTest {
 
     @Test
     void testValidateRequestPassesWhenNoValidationErrors() {
-        when(requestValidator.validateCbPlanCreateRequest(any(), anyBoolean(), anyString(), anyBoolean()))
+        when(requestValidator.validateCbPlanCreateRequest(any(), anyBoolean(), anyString(), anyBoolean(), anyBoolean()))
                 .thenReturn(List.of());
-        assertTrue(validationService.validateRequest(new ApiRequest(), true, ORG_ID, new ApiResponse()));
+        assertTrue(validationService.validateRequest(new ApiRequest(), true, ORG_ID, new ApiResponse(), false));
     }
 
     @Test
     void testValidateRequestFailsWithValidationErrors() {
         ApiResponse response = new ApiResponse();
-        when(requestValidator.validateCbPlanCreateRequest(any(), anyBoolean(), anyString(), anyBoolean()))
+        when(requestValidator.validateCbPlanCreateRequest(any(), anyBoolean(), anyString(), anyBoolean(), anyBoolean()))
                 .thenReturn(List.of("name is required"));
-        assertFalse(validationService.validateRequest(new ApiRequest(), true, ORG_ID, response));
+        assertFalse(validationService.validateRequest(new ApiRequest(), true, ORG_ID, response, false));
         assertEquals(Constants.FAILED, response.getParams().getStatus());
         assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
         assertTrue(response.getParams().getErr().contains("name is required"));
@@ -212,18 +212,18 @@ class CbPlanValidationServiceV3ImplTest {
 
     @Test
     void testValidateContextDataForLivePlanPasses() {
-        when(requestValidator.validateContextData(any(), anyBoolean(), anyString(), any(), anyBoolean())).thenReturn(List.of());
+        when(requestValidator.validateContextData(any(), anyBoolean(), anyString(), any(), anyBoolean(), anyBoolean())).thenReturn(List.of());
         assertTrue(validationService.validateContextDataForLivePlan(new HashMap<>(), true, ORG_ID,
-                new HashSet<>(), new ApiResponse()));
+                new HashSet<>(), new ApiResponse(), false));
     }
 
     @Test
     void testValidateContextDataForLivePlanFails() {
         ApiResponse response = new ApiResponse();
-        when(requestValidator.validateContextData(any(), anyBoolean(), anyString(), any(), anyBoolean()))
+        when(requestValidator.validateContextData(any(), anyBoolean(), anyString(), any(), anyBoolean(), anyBoolean()))
                 .thenReturn(List.of("bad context"));
         assertFalse(validationService.validateContextDataForLivePlan(new HashMap<>(), true, ORG_ID,
-                new HashSet<>(), response));
+                new HashSet<>(), response, false));
         assertEquals(Constants.FAILED, response.getParams().getStatus());
         assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
         assertTrue(response.getParams().getErr().contains("bad context"));
@@ -232,14 +232,14 @@ class CbPlanValidationServiceV3ImplTest {
     @Test
     void testValidateContextDataForLivePlanPopulatesOrgIdsFromValidator() {
         Set<String> rootOrgIds = new HashSet<>();
-        when(requestValidator.validateContextData(any(), anyBoolean(), anyString(), any(), anyBoolean()))
+        when(requestValidator.validateContextData(any(), anyBoolean(), anyString(), any(), anyBoolean(), anyBoolean()))
                 .thenAnswer(invocation -> {
                     Set<String> target = invocation.getArgument(3);
                     target.add(ORG_ID);
                     return List.of();
                 });
         assertTrue(validationService.validateContextDataForLivePlan(new HashMap<>(), false, ORG_ID,
-                rootOrgIds, new ApiResponse()));
+                rootOrgIds, new ApiResponse(), false));
         assertEquals(Set.of(ORG_ID), rootOrgIds);
     }
 

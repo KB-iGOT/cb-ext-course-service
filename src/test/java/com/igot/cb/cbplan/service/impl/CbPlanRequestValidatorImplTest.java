@@ -73,7 +73,7 @@ class CbPlanRequestValidatorImplTest {
         ApiRequest apiRequest = new ApiRequest();
         apiRequest.setRequest(new HashMap<>());
 
-        List<String> errors = validator.validateCbPlanCreateRequest(apiRequest, false, ORG_ID, false);
+        List<String> errors = validator.validateCbPlanCreateRequest(apiRequest, false, ORG_ID, false, false);
         assertFalse(errors.isEmpty());
     }
 
@@ -81,7 +81,7 @@ class CbPlanRequestValidatorImplTest {
     void testValidateContextDataMissingContextData() {
         Map<String, Object> request = buildValidRequest();
         request.remove(Constants.CONTEXT_DATA_REQUEST);
-        List<String> errors = validator.validateContextData(request, false, ORG_ID, null, false);
+        List<String> errors = validator.validateContextData(request, false, ORG_ID, null, false, false);
         assertEquals(1, errors.size());
         assertEquals(Constants.ERR_CONTEXT_DATA_MISSING, errors.get(0));
     }
@@ -91,7 +91,7 @@ class CbPlanRequestValidatorImplTest {
         Map<String, Object> request = buildValidRequest();
         request.put(Constants.CONTEXT_DATA_REQUEST, "{invalid-json");
 
-        List<String> errors = validator.validateContextData(request, false, ORG_ID, null, false);
+        List<String> errors = validator.validateContextData(request, false, ORG_ID, null, false, false);
         assertEquals(1, errors.size());
         assertEquals(Constants.ERR_CONTEXT_DATA_UNPARSEABLE, errors.get(0));
     }
@@ -101,7 +101,7 @@ class CbPlanRequestValidatorImplTest {
         Map<String, Object> request = buildValidRequest();
         request.put(Constants.CONTEXT_DATA_REQUEST, 12345);
 
-        List<String> errors = validator.validateContextData(request, false, ORG_ID, null, false);
+        List<String> errors = validator.validateContextData(request, false, ORG_ID, null, false, false);
         assertEquals(1, errors.size());
         assertEquals(Constants.ERR_CONTEXT_DATA_INVALID_TYPE, errors.get(0));
     }
@@ -112,7 +112,7 @@ class CbPlanRequestValidatorImplTest {
         Map<String, Object> contextData = new HashMap<>();
         request.put(Constants.CONTEXT_DATA_REQUEST, contextData);
 
-        List<String> errors = validator.validateContextData(request, false, ORG_ID, null, false);
+        List<String> errors = validator.validateContextData(request, false, ORG_ID, null, false, false);
         assertFalse(errors.isEmpty());
         assertEquals(Constants.ERR_ACCESS_CONTROL_MISSING, errors.get(0));
     }
@@ -124,7 +124,7 @@ class CbPlanRequestValidatorImplTest {
         contextData.put(Constants.ACCESS_CONTROL, new HashMap<>());
         request.put(Constants.CONTEXT_DATA_REQUEST, contextData);
 
-        List<String> errors = validator.validateContextData(request, false, ORG_ID, null, false);
+        List<String> errors = validator.validateContextData(request, false, ORG_ID, null, false, false);
         assertEquals(1, errors.size());
         assertEquals(Constants.ERR_ACCESS_CONTROL_MISSING, errors.get(0));
     }
@@ -138,7 +138,7 @@ class CbPlanRequestValidatorImplTest {
         contextData.put(Constants.ACCESS_CONTROL, accessControl);
         request.put(Constants.CONTEXT_DATA_REQUEST, contextData);
 
-        List<String> errors = validator.validateContextData(request, false, ORG_ID, null, false);
+        List<String> errors = validator.validateContextData(request, false, ORG_ID, null, false, false);
         assertEquals(1, errors.size());
         assertEquals(Constants.ERR_USER_GROUPS_MISSING, errors.get(0));
     }
@@ -148,7 +148,7 @@ class CbPlanRequestValidatorImplTest {
         Map<String, Object> request = buildRequestWithUserGroupNoCriteria();
         mockOrgAsNonL0(ORG_ID);
 
-        List<String> errors = validator.validateContextData(request, false, ORG_ID, null, false);
+        List<String> errors = validator.validateContextData(request, false, ORG_ID, null, false, false);
         assertFalse(errors.isEmpty());
         assertEquals(Constants.ERR_CRITERIA_LIST_MISSING, errors.get(0));
     }
@@ -158,7 +158,7 @@ class CbPlanRequestValidatorImplTest {
         Map<String, Object> request = buildRequestWithEmptyCriteria();
         mockOrgAsNonL0(ORG_ID);
 
-        List<String> errors = validator.validateContextData(request, false, ORG_ID, null, false);
+        List<String> errors = validator.validateContextData(request, false, ORG_ID, null, false, false);
         assertFalse(errors.isEmpty());
         assertEquals(Constants.ERR_CRITERIA_LIST_EMPTY, errors.get(0));
     }
@@ -168,7 +168,7 @@ class CbPlanRequestValidatorImplTest {
         Map<String, Object> request = buildRequestWithCriteriaMissingKey();
         mockOrgAsNonL0(ORG_ID);
 
-        List<String> errors = validator.validateContextData(request, false, ORG_ID, null, false);
+        List<String> errors = validator.validateContextData(request, false, ORG_ID, null, false, false);
         assertFalse(errors.isEmpty());
         assertEquals(Constants.ERR_CRITERIA_KEY_MISSING, errors.get(0));
     }
@@ -178,7 +178,7 @@ class CbPlanRequestValidatorImplTest {
         Map<String, Object> request = buildRequestWithCriteriaMissingValue();
         mockOrgAsNonL0(ORG_ID);
 
-        List<String> errors = validator.validateContextData(request, false, ORG_ID, null, false);
+        List<String> errors = validator.validateContextData(request, false, ORG_ID, null, false, false);
         assertFalse(errors.isEmpty());
         assertTrue(errors.get(0).contains("criteriaValue is missing"));
     }
@@ -188,7 +188,7 @@ class CbPlanRequestValidatorImplTest {
         Map<String, Object> request = buildRequestWithUnsupportedCriteriaValue();
         mockOrgAsNonL0(ORG_ID);
 
-        List<String> errors = validator.validateContextData(request, false, ORG_ID, null, false);
+        List<String> errors = validator.validateContextData(request, false, ORG_ID, null, false, false);
         assertFalse(errors.isEmpty());
         assertTrue(errors.get(0).contains("Unsupported criteriaValue type"));
     }
@@ -198,7 +198,7 @@ class CbPlanRequestValidatorImplTest {
         Map<String, Object> request = buildRequestWithRootOrgId(ORG_ID);
         mockOrgAsNonL0(ORG_ID);
 
-        List<String> errors = validator.validateContextData(request, false, ORG_ID, null, false);
+        List<String> errors = validator.validateContextData(request, false, ORG_ID, null, false, false);
         assertTrue(errors.isEmpty());
         assertEquals(Constants.SINGLE, request.get(Constants.ORG_SCOPE));
     }
@@ -208,7 +208,7 @@ class CbPlanRequestValidatorImplTest {
         Map<String, Object> request = buildRequestWithMultipleRootOrgIds();
         mockOrgAsNonL0(ORG_ID);
 
-        List<String> errors = validator.validateContextData(request, false, ORG_ID, null, false);
+        List<String> errors = validator.validateContextData(request, false, ORG_ID, null, false, false);
         assertEquals(1, errors.size());
         assertEquals(Constants.ERR_MULTIPLE_ROOT_ORG_IDS, errors.get(0));
     }
@@ -218,7 +218,7 @@ class CbPlanRequestValidatorImplTest {
         Map<String, Object> request = buildRequestWithOtherCriteria();
         mockOrgAsNonL0(ORG_ID);
 
-        List<String> errors = validator.validateContextData(request, false, ORG_ID, null, false);
+        List<String> errors = validator.validateContextData(request, false, ORG_ID, null, false, false);
         assertEquals(1, errors.size());
         assertEquals(Constants.ERR_ROOT_ORG_CRITERIA_MISSING, errors.get(0));
     }
@@ -228,7 +228,7 @@ class CbPlanRequestValidatorImplTest {
         Map<String, Object> request = buildRequestWithRootOrgId(ORG_ID_2);
         mockOrgAsNonL0(ORG_ID);
 
-        List<String> errors = validator.validateContextData(request, false, ORG_ID, null, false);
+        List<String> errors = validator.validateContextData(request, false, ORG_ID, null, false, false);
         assertEquals(1, errors.size());
         assertEquals(Constants.ERR_ROOT_ORG_ID_MISMATCH, errors.get(0));
     }
@@ -238,7 +238,7 @@ class CbPlanRequestValidatorImplTest {
         Map<String, Object> request = buildRequestWithRootOrgId(ORG_ID_2);
         mockOrgAsNonL0(ORG_ID);
 
-        List<String> errors = validator.validateContextData(request, false, ORG_ID, null, true);
+        List<String> errors = validator.validateContextData(request, false, ORG_ID, null, true, false);
         assertTrue(errors.isEmpty());
     }
 
@@ -247,7 +247,7 @@ class CbPlanRequestValidatorImplTest {
         Map<String, Object> request = buildRequestWithOtherCriteria();
         mockOrgAsNonL0(ORG_ID);
 
-        List<String> errors = validator.validateContextData(request, true, ORG_ID, null, false);
+        List<String> errors = validator.validateContextData(request, true, ORG_ID, null, false, false);
         assertTrue(errors.isEmpty());
         assertEquals(Constants.ALL, request.get(Constants.ORG_SCOPE));
     }
@@ -257,7 +257,7 @@ class CbPlanRequestValidatorImplTest {
         Map<String, Object> request = buildRequestWithRootOrgId(ORG_ID);
         mockOrgAsNonL0(ORG_ID);
 
-        List<String> errors = validator.validateContextData(request, true, ORG_ID, null, false);
+        List<String> errors = validator.validateContextData(request, true, ORG_ID, null, false, false);
         assertTrue(errors.isEmpty());
         assertEquals(Constants.SINGLE, request.get(Constants.ORG_SCOPE));
     }
@@ -267,7 +267,7 @@ class CbPlanRequestValidatorImplTest {
         Map<String, Object> request = buildRequestWithMultipleRootOrgIds();
         mockOrgAsNonL0(ORG_ID);
 
-        List<String> errors = validator.validateContextData(request, true, ORG_ID, null, false);
+        List<String> errors = validator.validateContextData(request, true, ORG_ID, null, false, false);
         assertTrue(errors.isEmpty());
         assertEquals(Constants.CUSTOM, request.get(Constants.ORG_SCOPE));
     }
@@ -277,7 +277,7 @@ class CbPlanRequestValidatorImplTest {
         Map<String, Object> request = buildRequestWithMixedUserGroups();
         mockOrgAsNonL0(ORG_ID);
 
-        List<String> errors = validator.validateContextData(request, true, ORG_ID, null, false);
+        List<String> errors = validator.validateContextData(request, true, ORG_ID, null, false, false);
         assertEquals(1, errors.size());
         assertEquals(ALL_ORG_MSG, errors.get(0));
     }
@@ -287,7 +287,7 @@ class CbPlanRequestValidatorImplTest {
         Map<String, Object> request = buildRequestWithRootOrgId(ORG_ID);
         mockOrgAsL0(ORG_ID);
 
-        List<String> errors = validator.validateContextData(request, false, ORG_ID, null, false);
+        List<String> errors = validator.validateContextData(request, false, ORG_ID, null, false, false);
         assertTrue(errors.isEmpty());
         assertEquals(Constants.SINGLE, request.get(Constants.ORG_SCOPE));
     }
@@ -297,7 +297,7 @@ class CbPlanRequestValidatorImplTest {
         Map<String, Object> request = buildRequestWithMultipleRootOrgIds();
         mockOrgAsL0(ORG_ID);
 
-        List<String> errors = validator.validateContextData(request, false, ORG_ID, null, false);
+        List<String> errors = validator.validateContextData(request, false, ORG_ID, null, false, false);
         assertTrue(errors.isEmpty());
         assertEquals(Constants.CUSTOM, request.get(Constants.ORG_SCOPE));
     }
@@ -307,7 +307,7 @@ class CbPlanRequestValidatorImplTest {
         Map<String, Object> request = buildRequestWithOtherCriteria();
         mockOrgAsL0(ORG_ID);
 
-        List<String> errors = validator.validateContextData(request, false, ORG_ID, null, false);
+        List<String> errors = validator.validateContextData(request, false, ORG_ID, null, false, false);
         assertEquals(1, errors.size());
         assertEquals(Constants.ERR_ROOT_ORG_CRITERIA_MISSING, errors.get(0));
     }
@@ -318,7 +318,7 @@ class CbPlanRequestValidatorImplTest {
         mockOrgAsL0(ORG_ID);
         mockOrgAsL0(MINISTRY_ORG);
 
-        List<String> errors = validator.validateContextData(request, false, ORG_ID, null, false);
+        List<String> errors = validator.validateContextData(request, false, ORG_ID, null, false, false);
         assertEquals(1, errors.size());
         assertEquals(Constants.ERR_BOTH_ROOT_ORG_AND_MINISTRY_USED, errors.get(0));
     }
@@ -329,7 +329,7 @@ class CbPlanRequestValidatorImplTest {
         mockOrgAsL0(ORG_ID);
         mockOrgAsL0(MINISTRY_ORG);
 
-        List<String> errors = validator.validateContextData(request, false, ORG_ID, null, false);
+        List<String> errors = validator.validateContextData(request, false, ORG_ID, null, false, false);
         assertTrue(errors.isEmpty());
         assertEquals(Constants.ALL, request.get(Constants.ORG_SCOPE));
     }
@@ -340,7 +340,7 @@ class CbPlanRequestValidatorImplTest {
         mockOrgAsL0(ORG_ID);
         mockOrgAsNonL0(MINISTRY_ORG);
 
-        List<String> errors = validator.validateContextData(request, false, ORG_ID, null, false);
+        List<String> errors = validator.validateContextData(request, false, ORG_ID, null, false, false);
         assertFalse(errors.isEmpty());
         assertTrue(errors.get(0).contains("not a Level 0"));
     }
@@ -351,7 +351,7 @@ class CbPlanRequestValidatorImplTest {
         mockOrgAsL0(ORG_ID);
         lenient().when(userAndOrgService.readOrgFromDB(eq(MINISTRY_ORG), anyList())).thenReturn(Collections.emptyMap());
 
-        List<String> errors = validator.validateContextData(request, false, ORG_ID, null, false);
+        List<String> errors = validator.validateContextData(request, false, ORG_ID, null, false, false);
         assertFalse(errors.isEmpty());
         assertTrue(errors.get(0).contains("not found for L0 validation"));
     }
@@ -365,7 +365,7 @@ class CbPlanRequestValidatorImplTest {
         List<Map<String, Object>> criteria = (List<Map<String, Object>>) userGroup.get(Constants.USER_GROUP_CRITERIA_LIST);
         criteria.get(0).put(Constants.CRITERIA_VALUE, Collections.emptyList());
 
-        List<String> errors = validator.validateContextData(request, false, ORG_ID, null, false);
+        List<String> errors = validator.validateContextData(request, false, ORG_ID, null, false, false);
         assertTrue(errors.isEmpty());
     }
 
@@ -375,7 +375,7 @@ class CbPlanRequestValidatorImplTest {
         Set<String> rootOrgIds = new HashSet<>();
         mockOrgAsNonL0(ORG_ID);
 
-        validator.validateContextData(request, false, ORG_ID, rootOrgIds, false);
+        validator.validateContextData(request, false, ORG_ID, rootOrgIds, false, false);
         assertTrue(rootOrgIds.contains(ORG_ID));
     }
 
@@ -384,7 +384,7 @@ class CbPlanRequestValidatorImplTest {
         Map<String, Object> request = buildRequestWithCriteria(Constants.TARGETED_ORGANISATION, ORG_ID);
         mockOrgAsNonL0(ORG_ID);
 
-        List<String> errors = validator.validateContextData(request, false, ORG_ID, null, false);
+        List<String> errors = validator.validateContextData(request, false, ORG_ID, null, false, false);
         assertTrue(errors.isEmpty());
         assertEquals(Constants.SINGLE, request.get(Constants.ORG_SCOPE));
     }
@@ -394,7 +394,7 @@ class CbPlanRequestValidatorImplTest {
         Map<String, Object> request = buildRequestWithCriteria(Constants.ROOT_ORG_ID, true);
         mockOrgAsNonL0(ORG_ID);
 
-        List<String> errors = validator.validateContextData(request, false, ORG_ID, null, false);
+        List<String> errors = validator.validateContextData(request, false, ORG_ID, null, false, false);
         assertFalse(errors.isEmpty());
     }
 
@@ -403,7 +403,7 @@ class CbPlanRequestValidatorImplTest {
         Map<String, Object> request = buildRequestWithRootOrgId(ORG_ID);
         lenient().when(userAndOrgService.readOrgFromDB(eq(ORG_ID), anyList())).thenReturn(Collections.emptyMap());
 
-        List<String> errors = validator.validateContextData(request, false, ORG_ID, null, false);
+        List<String> errors = validator.validateContextData(request, false, ORG_ID, null, false, false);
         assertTrue(errors.isEmpty());
     }
 

@@ -22,6 +22,7 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.cbplan.model.CriteriaFlags;
+import com.igot.cb.cbplan.model.OrgCapabilities;
 import com.igot.cb.cbplan.model.OrgScopeContext;
 import com.igot.cb.cbplan.service.impl.CbPlanRequestValidatorImpl;
 import com.igot.cb.service.UserAndOrgServiceImpl;
@@ -76,10 +77,13 @@ public class CbPlanOrgScopeServiceV4Impl {
      * @param userRootOrgId        logged in user's organization ID
      * @param rootOrgIdsOut        set populated with the rootOrgId values resolved from the referenced groups
      * @param ministryOrStateIdsOut set populated with the ministryOrStateId values resolved from the referenced groups
+     * @param allowsServiceBasedTargeting whether the logged in org may target by service criteria
+     *                                    across every organisation without CCA status
      * @return validation errors, empty when the contextData is valid
      */
     public List<String> resolveOrgScope(Map<String, Object> request, boolean isCCA, String userRootOrgId,
-                                        Set<String> rootOrgIdsOut, Set<String> ministryOrStateIdsOut) {
+                                        Set<String> rootOrgIdsOut, Set<String> ministryOrStateIdsOut,
+                                        boolean allowsServiceBasedTargeting) {
         List<String> errors = new ArrayList<>();
         Map<String, Object> contextData = readContextData(request, errors);
         if (CollectionUtils.isNotEmpty(errors)) {
@@ -92,8 +96,8 @@ public class CbPlanOrgScopeServiceV4Impl {
         if (isV3Format(userGroups, errors)) {
             log.debug("CbPlanOrgScopeServiceV4: Detected V3 format (inline criteria), delegating to V3 validator");
             Set<String> rootOrgIds = Objects.nonNull(rootOrgIdsOut) ? rootOrgIdsOut : new HashSet<>();
-            return cbPlanRequestValidator.validateContextData(request, isCCA, userRootOrgId,
-                    rootOrgIds, false);
+            return cbPlanRequestValidator.validateContextData(request, isCCA, userRootOrgId, rootOrgIds, false,
+                    allowsServiceBasedTargeting);
         }
         if (CollectionUtils.isNotEmpty(errors)) {
             return errors;
@@ -101,13 +105,14 @@ public class CbPlanOrgScopeServiceV4Impl {
         Set<String> criteriaOrgIds = Objects.nonNull(rootOrgIdsOut) ? rootOrgIdsOut : new HashSet<>();
         Set<String> ministryOrStateIds = Objects.nonNull(ministryOrStateIdsOut) ? ministryOrStateIdsOut : new HashSet<>();
         CriteriaFlags criteriaFlags = new CriteriaFlags();
-        boolean rootOrgMissingInSomeGroup = collectCriteria(userGroups, userRootOrgId, isCCA,
-                criteriaOrgIds, ministryOrStateIds, criteriaFlags, errors);
+        OrgCapabilities orgCapabilities = new OrgCapabilities(isCCA, allowsServiceBasedTargeting);
+        boolean rootOrgMissingInSomeGroup = collectCriteria(userGroups, userRootOrgId, criteriaOrgIds,
+                ministryOrStateIds, criteriaFlags, errors, orgCapabilities);
         if (CollectionUtils.isNotEmpty(errors)) {
             return errors;
         }
-        applyResolvedScope(request, isCCA, userRootOrgId, criteriaOrgIds, rootOrgMissingInSomeGroup,
-                criteriaFlags, errors);
+        applyResolvedScope(request, userRootOrgId, criteriaOrgIds, rootOrgMissingInSomeGroup, criteriaFlags,
+                errors, orgCapabilities);
         return errors;
     }
 
@@ -116,23 +121,25 @@ public class CbPlanOrgScopeServiceV4Impl {
      * stamps orgIdList to the caller's own org (ownership, not targeting).
      *
      * @param request                 map to populate with ORG_SCOPE/ORG_ID_LIST
-     * @param isCCA                   whether the logged in org is CCA
      * @param userRootOrgId           logged in user's organization ID
      * @param criteriaOrgIds          rootOrgId values collected from the referenced groups
      * @param rootOrgMissingInSomeGroup true when at least one group declared no rootOrgId criteria
      * @param criteriaFlags           criteria type flags (ministryOrStateId used, rootOrgId used)
      * @param errors                  collector for validation errors
+     * @param orgCapabilities         the logged in org's isCCA/allowsServiceBasedTargeting capabilities
      */
-    private void applyResolvedScope(Map<String, Object> request, boolean isCCA, String userRootOrgId,
+    private void applyResolvedScope(Map<String, Object> request, String userRootOrgId,
                                     Set<String> criteriaOrgIds, boolean rootOrgMissingInSomeGroup,
-                                    CriteriaFlags criteriaFlags, List<String> errors) {
+                                    CriteriaFlags criteriaFlags, List<String> errors,
+                                    OrgCapabilities orgCapabilities) {
         boolean userIsL0 = checkUserOrgIsL0(userRootOrgId);
         if (criteriaFlags.isMinistryOrStateIdUsed() && criteriaFlags.isRootOrgIdUsed() && userIsL0) {
             errors.add(Constants.ERR_BOTH_ROOT_ORG_AND_MINISTRY_USED);
             return;
         }
-        OrgScopeContext context = new OrgScopeContext(isCCA, userIsL0, userRootOrgId, false,
-                criteriaOrgIds, rootOrgMissingInSomeGroup, criteriaFlags.isMinistryOrStateIdUsed());
+        OrgScopeContext context = new OrgScopeContext(orgCapabilities.isCCA(), userIsL0, userRootOrgId, false,
+                criteriaOrgIds, rootOrgMissingInSomeGroup, criteriaFlags.isMinistryOrStateIdUsed(),
+                orgCapabilities.allowsServiceBasedTargeting());
         applyOrgScope(request, context, errors);
         if (CollectionUtils.isEmpty(errors)) {
             request.put(Constants.ORG_ID_LIST, Collections.singletonList(userRootOrgId));
@@ -243,16 +250,18 @@ public class CbPlanOrgScopeServiceV4Impl {
      *
      * @param userGroups     userGroups entries to resolve
      * @param userOrgId      caller's organization ID
-     * @param isCCA          whether the logged in org is CCA
      * @param criteriaOrgIds set populated with the rootOrgId values found across all groups
      * @param ministryOrStateIds set populated with the validated ministryOrStateId values
      * @param criteriaFlags  holder for criteria type flags, set on return
      * @param errors         collector for validation errors
-     * @return true when at least one group declared no rootOrgId criteria, which only CCA orgs allow
+     * @param orgCapabilities the logged in org's isCCA/allowsServiceBasedTargeting capabilities
+     * @return true when at least one group declared no rootOrgId criteria, which only CCA and
+     *         service-based-targeting orgs allow
      */
-    private boolean collectCriteria(List<Map<String, Object>> userGroups, String userOrgId, boolean isCCA,
+    private boolean collectCriteria(List<Map<String, Object>> userGroups, String userOrgId,
                                     Set<String> criteriaOrgIds, Set<String> ministryOrStateIds,
-                                    CriteriaFlags criteriaFlags, List<String> errors) {
+                                    CriteriaFlags criteriaFlags, List<String> errors,
+                                    OrgCapabilities orgCapabilities) {
         log.debug("CbPlanOrgScopeServiceV4.collectCriteria: Resolving {} userGroup(s) for orgId={}",
                 userGroups.size(), userOrgId);
         boolean rootOrgMissingInSomeGroup = false;
@@ -274,7 +283,7 @@ public class CbPlanOrgScopeServiceV4Impl {
                 continue;
             }
             if (CollectionUtils.isEmpty(groupRootOrgIds) && CollectionUtils.isEmpty(groupMinistryOrStateIds)) {
-                if (isCCA) {
+                if (orgCapabilities.isCCA() || orgCapabilities.allowsServiceBasedTargeting()) {
                     rootOrgMissingInSomeGroup = true;
                 } else {
                     errors.add(Constants.ERR_ROOT_ORG_CRITERIA_MISSING);
@@ -465,6 +474,10 @@ public class CbPlanOrgScopeServiceV4Impl {
             applyCcaOrgScope(request, context, errors);
             return;
         }
+        if (context.isAllowsServiceBasedTargeting()) {
+            applyServiceBasedOrgScope(request, context, errors);
+            return;
+        }
         if (context.isUserIsL0()) {
             applyL0OrgScope(request, context.getCriteriaOrgIds(), errors);
             return;
@@ -555,5 +568,20 @@ public class CbPlanOrgScopeServiceV4Impl {
         }
         String ministryOrStateType = (String) orgMap.get(Constants.MINISTRY_OR_STATETYPE_DB);
         return Constants.SPV.equalsIgnoreCase(ministryOrStateType);
+    }
+
+    /**
+     * Applies orgScope rules for an org flagged allowServiceBasedTargeting. The resolution rules
+     * are identical to a CCA caller's, so this delegates to {@link #applyCcaOrgScope} rather than
+     * duplicating its body - kept as its own named method (and its own branch in
+     * {@link #applyOrgScope}) so the two capabilities stay independently callable and are free to
+     * diverge later without touching the CCA code path.
+     *
+     * @param request map to populate with ORG_SCOPE
+     * @param context resolved criteria context for this request
+     * @param errors  collector for validation errors
+     */
+    private void applyServiceBasedOrgScope(Map<String, Object> request, OrgScopeContext context, List<String> errors) {
+        applyCcaOrgScope(request, context, errors);
     }
 }

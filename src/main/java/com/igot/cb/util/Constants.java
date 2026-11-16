@@ -832,6 +832,7 @@ public class Constants {
     public static final String API_USER_GROUP_ADMIN_CREATE = "api.user.group.v1.admin.create";
     public static final String MSG_ROOTORGID_REQUIRED_IN_BODY = "rootOrgId is required in request body";
     public static final String CB_PLAN_USER_LOOKUP_V4_API = "api.cbplan.user.V4.lookup";
+    public static final String ALLOW_SERVICE_BASED_TARGETING = "allowservicebasedtargeting";
 
     private Constants() {
     }

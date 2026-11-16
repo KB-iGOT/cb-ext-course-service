@@ -284,4 +284,53 @@ class CbPlanValidationServiceV3ImplTest {
     void testConstructor() {
         assertNotNull(new CbPlanValidationServiceV3Impl(accessTokenValidator, userAndOrgService, requestValidator, serverProperties));
     }
+
+    @Test
+    void validateOrgAllowsServiceBasedTargeting_flagSetAsString_returnsTrue() {
+        Map<String, Object> orgMap = new HashMap<>();
+        orgMap.put(Constants.ALLOW_SERVICE_BASED_TARGETING, "true");
+        when(userAndOrgService.readOrgFromDB(anyString(), any())).thenReturn(orgMap);
+        assertTrue(validationService.validateOrgAllowsServiceBasedTargeting(ORG_ID, new ApiResponse()));
+    }
+
+    @Test
+    void validateOrgAllowsServiceBasedTargeting_flagSetAsBoolean_returnsTrue() {
+        Map<String, Object> orgMap = new HashMap<>();
+        orgMap.put(Constants.ALLOW_SERVICE_BASED_TARGETING, Boolean.TRUE);
+        when(userAndOrgService.readOrgFromDB(anyString(), any())).thenReturn(orgMap);
+        assertTrue(validationService.validateOrgAllowsServiceBasedTargeting(ORG_ID, new ApiResponse()));
+    }
+
+    @Test
+    void validateOrgAllowsServiceBasedTargeting_flagFalse_returnsFalse() {
+        Map<String, Object> orgMap = new HashMap<>();
+        orgMap.put(Constants.ALLOW_SERVICE_BASED_TARGETING, false);
+        when(userAndOrgService.readOrgFromDB(anyString(), any())).thenReturn(orgMap);
+        assertFalse(validationService.validateOrgAllowsServiceBasedTargeting(ORG_ID, new ApiResponse()));
+    }
+
+    @Test
+    void validateOrgAllowsServiceBasedTargeting_orgNotFound_failsResponse() {
+        ApiResponse response = new ApiResponse();
+        when(userAndOrgService.readOrgFromDB(anyString(), any())).thenReturn(new HashMap<>());
+        assertFalse(validationService.validateOrgAllowsServiceBasedTargeting(ORG_ID, response));
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getResponseCode());
+    }
+
+    @Test
+    void validateOrgAllowsServiceBasedTargeting_columnMissing_returnsFalse() {
+        Map<String, Object> orgMap = new HashMap<>();
+        orgMap.put(Constants.NAME, "someOrg");
+        when(userAndOrgService.readOrgFromDB(anyString(), any())).thenReturn(orgMap);
+        assertFalse(validationService.validateOrgAllowsServiceBasedTargeting(ORG_ID, new ApiResponse()));
+    }
+
+    @Test
+    void validateOrgAllowsServiceBasedTargeting_columnNull_returnsFalse() {
+        Map<String, Object> orgMap = new HashMap<>();
+        orgMap.put(Constants.ALLOW_SERVICE_BASED_TARGETING, null);
+        when(userAndOrgService.readOrgFromDB(anyString(), any())).thenReturn(orgMap);
+        assertFalse(validationService.validateOrgAllowsServiceBasedTargeting(ORG_ID, new ApiResponse()));
+    }
 }

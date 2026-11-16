@@ -1947,4 +1947,101 @@ class CbPlanServiceV4ImplTest {
         assertEquals(HttpStatus.BAD_REQUEST, actual.getResponseCode());
         assertEquals(Constants.FAILED, actual.getParams().getStatus());
     }
+
+    private void mockCcaLookupFailure() {
+        when(validationService.validateOrgCCA(eq(ORG_ID), any())).thenAnswer(invocation -> {
+            ApiResponse response = invocation.getArgument(1);
+            response.getParams().setStatus(Constants.FAILED);
+            response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
+            return false;
+        });
+    }
+
+    @Test
+    void updateCbPlan_capabilityLookupFails_returnsWithoutValidatingRequest() throws JsonProcessingException {
+        mockAuthSuccess();
+        when(validationService.validatePlanIdExists(any(), any())).thenReturn(true);
+        Map<String, Object> requestMap = new HashMap<>();
+        requestMap.put(Constants.ID, PLAN_ID);
+        requestMap.put(Constants.CA_LINKED_ID, "ca-assessment-123");
+        Map<String, Object> existingPlan = new HashMap<>();
+        existingPlan.put(Constants.STATUS, Constants.DRAFT);
+        existingPlan.put(Constants.CREATED_BY, USER_ID);
+        mockExistingPlan(existingPlan);
+        when(validationService.isUnauthorizedToUpdate(eq(USER_ID), anyMap(), any(), any())).thenReturn(false);
+        when(validationService.validateUserOrganization(eq(USER_ID), any())).thenReturn(ORG_ID);
+        mockCcaLookupFailure();
+
+        ApiResponse response = cbPlanService.updateCbPlan(apiRequest(requestMap), TOKEN);
+
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        verify(validationService, never()).validateRequest(any(), anyBoolean(), anyString(), any(), anyBoolean());
+    }
+
+    @Test
+    void publishCbPlan_capabilityLookupFails_returnsWithoutPublishing() {
+        mockAuthSuccess();
+        when(validationService.validateAndExtractPlanId(anyMap(), any())).thenReturn(PLAN_ID);
+        Map<String, Object> existingCbPlan = new HashMap<>();
+        existingCbPlan.put(Constants.CREATED_BY, USER_ID);
+        existingCbPlan.put(Constants.STATUS, Constants.DRAFT);
+        mockExistingPlan(existingCbPlan);
+        when(validationService.isUnauthorizedToUpdate(eq(USER_ID), anyMap(), any(), any())).thenReturn(false);
+        mockCcaLookupFailure();
+
+        ApiResponse response = cbPlanService.publishCbPlan(requestWithPlanId(), TOKEN);
+
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        verify(validationService, never()).validateContextDataForLivePlanV4(anyMap(), anyBoolean(), anyString(),
+                any(), any(), any(), anyBoolean());
+    }
+
+    @Test
+    void publishCbPlan_livePlan_passesServiceBasedTargetingFlagToLiveRepublishValidation() {
+        mockAuthSuccess();
+        when(validationService.validateOrgAllowsServiceBasedTargeting(eq(ORG_ID), any())).thenReturn(true);
+        when(validationService.validateAndExtractPlanId(anyMap(), any())).thenReturn(PLAN_ID);
+        Map<String, Object> existingCbPlan = new HashMap<>();
+        existingCbPlan.put(Constants.CREATED_BY, USER_ID);
+        existingCbPlan.put(Constants.STATUS, Constants.LIVE);
+        existingCbPlan.put(Constants.PLAN_YEAR, PLAN_YEAR);
+        mockExistingPlan(existingCbPlan);
+        when(validationService.isUnauthorizedToUpdate(eq(USER_ID), anyMap(), any(), any())).thenReturn(false);
+        when(validationService.validateContextDataForLivePlanV4(anyMap(), anyBoolean(), anyString(), any(), any(),
+                any(), anyBoolean())).thenReturn(false);
+
+        cbPlanService.publishCbPlan(requestWithPlanId(), TOKEN);
+
+        verify(validationService).validateContextDataForLivePlanV4(anyMap(), eq(false), eq(ORG_ID), any(), any(),
+                any(), eq(true));
+    }
+
+    @Test
+    void createCbPlan_serviceBasedTargetingEnabled_passesFlagToValidateRequest() {
+        mockAuthSuccess();
+        when(validationService.validateOrgAllowsServiceBasedTargeting(eq(ORG_ID), any())).thenReturn(true);
+        when(validationService.validateRequest(any(), anyBoolean(), anyString(), any(), anyBoolean())).thenReturn(false);
+
+        cbPlanService.createCbPlan(apiRequest(new HashMap<>()), null, TOKEN);
+
+        verify(validationService).validateRequest(any(), eq(false), eq(ORG_ID), any(), eq(true));
+    }
+
+    @Test
+    void createCbPlan_serviceBasedTargetingLookupFails_returnsWithoutInsert() {
+        mockAuthSuccess();
+        when(validationService.validateOrgAllowsServiceBasedTargeting(eq(ORG_ID), any())).thenAnswer(invocation -> {
+            ApiResponse response = invocation.getArgument(1);
+            response.getParams().setStatus(Constants.FAILED);
+            response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
+            return false;
+        });
+
+        ApiResponse response = cbPlanService.createCbPlan(apiRequest(new HashMap<>()), null, TOKEN);
+
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        verify(validationService, never()).validateRequest(any(), anyBoolean(), anyString(), any(), anyBoolean());
+        verify(cassandraOperation, never()).insertRecord(anyString(), anyString(), anyMap(),
+                any(BooleanSupplier.class), any(Runnable.class));
+    }
 }

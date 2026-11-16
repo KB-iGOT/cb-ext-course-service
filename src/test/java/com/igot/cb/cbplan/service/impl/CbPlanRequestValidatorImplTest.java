@@ -654,4 +654,72 @@ class CbPlanRequestValidatorImplTest {
         orgMap.put(Constants.MINISTRY_OR_STATETYPE_DB, "OTHER");
         lenient().when(userAndOrgService.readOrgFromDB(eq(orgId), anyList())).thenReturn(orgMap);
     }
+
+    @Test
+    void validateContextData_serviceBasedTargetingWithNoRootOrgId_resolvesToAllScope() {
+        Map<String, Object> request = buildRequestWithOtherCriteria();
+        mockOrgAsNonL0(ORG_ID);
+
+        List<String> errors = validator.validateContextData(request, false, ORG_ID, null, false, true);
+
+        assertTrue(errors.isEmpty());
+        assertEquals(Constants.ALL, request.get(Constants.ORG_SCOPE));
+    }
+
+    @Test
+    void validateContextData_serviceBasedTargetingWithSingleRootOrgId_resolvesToSingleScope() {
+        Map<String, Object> request = buildRequestWithRootOrgId(ORG_ID);
+        mockOrgAsNonL0(ORG_ID);
+
+        List<String> errors = validator.validateContextData(request, false, ORG_ID, null, false, true);
+
+        assertTrue(errors.isEmpty());
+        assertEquals(Constants.SINGLE, request.get(Constants.ORG_SCOPE));
+    }
+
+    @Test
+    void validateContextData_serviceBasedTargetingWithMultipleRootOrgIds_resolvesToCustomScope() {
+        Map<String, Object> request = buildRequestWithMultipleRootOrgIds();
+        mockOrgAsNonL0(ORG_ID);
+
+        List<String> errors = validator.validateContextData(request, false, ORG_ID, null, false, true);
+
+        assertTrue(errors.isEmpty());
+        assertEquals(Constants.CUSTOM, request.get(Constants.ORG_SCOPE));
+    }
+
+    @Test
+    void validateContextData_serviceBasedTargetingWithMixedUserGroups_returnsError() {
+        Map<String, Object> request = buildRequestWithMixedUserGroups();
+        mockOrgAsNonL0(ORG_ID);
+
+        List<String> errors = validator.validateContextData(request, false, ORG_ID, null, false, true);
+
+        assertEquals(1, errors.size());
+        assertEquals(ALL_ORG_MSG, errors.get(0));
+    }
+
+    @Test
+    void validateContextData_ccaTakesPrecedenceOverServiceBasedTargeting_resolvesToAllScope() {
+        Map<String, Object> request = buildRequestWithOtherCriteria();
+        mockOrgAsNonL0(ORG_ID);
+
+        List<String> errors = validator.validateContextData(request, true, ORG_ID, null, false, true);
+
+        assertTrue(errors.isEmpty());
+        assertEquals(Constants.ALL, request.get(Constants.ORG_SCOPE));
+    }
+
+    @Test
+    void validateCbPlanCreateRequest_serviceBasedTargetingWithNoRootOrgId_passesValidation() {
+        Map<String, Object> request = buildRequestWithOtherCriteria();
+        mockOrgAsNonL0(ORG_ID);
+        ApiRequest apiRequest = new ApiRequest();
+        apiRequest.setRequest(request);
+
+        List<String> errors = validator.validateCbPlanCreateRequest(apiRequest, false, ORG_ID, false, true);
+
+        assertTrue(errors.isEmpty());
+        assertEquals(Constants.ALL, request.get(Constants.ORG_SCOPE));
+    }
 }

@@ -331,4 +331,24 @@ class CbPlanValidationServiceV4ImplTest {
 
         assertFalse(errors.isEmpty());
     }
+
+    @Test
+    void validateOrgAllowsServiceBasedTargeting_flagSet_delegatesToV3AndReturnsTrue() {
+        ApiResponse response = new ApiResponse();
+        when(validationServiceV3.validateOrgAllowsServiceBasedTargeting(ORG_ID, response)).thenReturn(true);
+
+        assertTrue(validationService.validateOrgAllowsServiceBasedTargeting(ORG_ID, response));
+
+        verify(validationServiceV3).validateOrgAllowsServiceBasedTargeting(ORG_ID, response);
+    }
+
+    @Test
+    void validateOrgAllowsServiceBasedTargeting_flagNotSet_delegatesToV3AndReturnsFalse() {
+        ApiResponse response = new ApiResponse();
+        when(validationServiceV3.validateOrgAllowsServiceBasedTargeting(ORG_ID, response)).thenReturn(false);
+
+        assertFalse(validationService.validateOrgAllowsServiceBasedTargeting(ORG_ID, response));
+
+        verify(validationServiceV3).validateOrgAllowsServiceBasedTargeting(ORG_ID, response);
+    }
 }

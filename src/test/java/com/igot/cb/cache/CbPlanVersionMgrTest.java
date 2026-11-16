@@ -35,6 +35,8 @@ class CbPlanVersionMgrTest {
     private static final String ORG_KEY = Constants.CB_PLAN_V4_VERSION_KEY_PREFIX + "org:" + ORG_ID + ":" + PLAN_YEAR;
     private static final String ALL_KEY = Constants.CB_PLAN_V4_VERSION_KEY_PREFIX + "all:" + PLAN_YEAR;
     private static final String MINISTRY_KEY = Constants.CB_PLAN_V4_VERSION_KEY_PREFIX + "ministry:" + MINISTRY_ID + ":" + PLAN_YEAR;
+    private static final String CREATOR_ORG_ID = "creatorOrg";
+    private static final String UG_KEY = Constants.CB_PLAN_V4_VERSION_KEY_PREFIX + "ug:" + CREATOR_ORG_ID;
 
     @Mock
     private CbExtRedisCacheMgr redisCacheMgr;
@@ -165,6 +167,56 @@ class CbPlanVersionMgrTest {
         assertFalse(result.containsKey(Constants.CB_PLAN_V4_CACHE_VERSIONS_KEY));
         assertTrue(stamped.containsKey(Constants.CB_PLAN_V4_CACHE_VERSIONS_KEY));
         assertEquals(new CbPlanCacheVersions(4, 0, 2, null), CbPlanCacheVersions.fromCacheMeta(stamped));
+    }
+
+    @Test
+    void stamp_withUserGroupVersions_addsUgVerBlock() {
+        Map<String, Object> stamped = versionMgr.stamp(Map.of(PLAN_YEAR, Map.of()),
+                new CbPlanCacheVersions(1, 0, 0, null), Map.of(CREATOR_ORG_ID, 5L));
+
+        Map<?, ?> meta = (Map<?, ?>) stamped.get(Constants.CB_PLAN_V4_CACHE_VERSIONS_KEY);
+        assertEquals(Map.of(CREATOR_ORG_ID, 5L), meta.get("ugVer"));
+        assertEquals(new CbPlanCacheVersions(1, 0, 0, null), CbPlanCacheVersions.fromCacheMeta(stamped));
+    }
+
+    @Test
+    void readValidatedDict_userGroupCounterUnchanged_isHit() {
+        when(redisCacheMgr.getFromCache(DICT_KEY))
+                .thenReturn(dictJson("\"_cv\":{\"orgVer\":1,\"ministryVer\":0,\"allVer\":0,\"ugVer\":{\"" + CREATOR_ORG_ID + "\":5}}"));
+        when(redisCacheMgr.mgetFromCache(UG_KEY)).thenReturn(List.of("5"));
+
+        Optional<Map<String, Object>> result = versionMgr.readValidatedDict(DICT_KEY, new CbPlanCacheVersions(1, 0, 0, null));
+
+        assertTrue(result.isPresent());
+        assertFalse(result.get().containsKey(Constants.CB_PLAN_V4_CACHE_VERSIONS_KEY));
+    }
+
+    @Test
+    void readValidatedDict_userGroupCounterMoved_isMiss() {
+        when(redisCacheMgr.getFromCache(DICT_KEY))
+                .thenReturn(dictJson("\"_cv\":{\"orgVer\":1,\"ministryVer\":0,\"allVer\":0,\"ugVer\":{\"" + CREATOR_ORG_ID + "\":5}}"));
+        when(redisCacheMgr.mgetFromCache(UG_KEY)).thenReturn(List.of("6"));
+
+        assertTrue(versionMgr.readValidatedDict(DICT_KEY, new CbPlanCacheVersions(1, 0, 0, null)).isEmpty());
+    }
+
+    @Test
+    void getUserGroupVersions_readsOneKeyPerOrgAndDefaultsMissingToZero() {
+        when(redisCacheMgr.mgetFromCache(UG_KEY, Constants.CB_PLAN_V4_VERSION_KEY_PREFIX + "ug:" + ORG_ID))
+                .thenReturn(Arrays.asList("3", null));
+
+        Map<String, Long> versions = versionMgr.getUserGroupVersions(List.of(CREATOR_ORG_ID, ORG_ID, "", CREATOR_ORG_ID));
+
+        assertEquals(Map.of(CREATOR_ORG_ID, 3L, ORG_ID, 0L), versions);
+    }
+
+    @Test
+    void bumpUserGroup_incrementsOwningOrgCounterAndSkipsBlank() {
+        versionMgr.bumpUserGroup(CREATOR_ORG_ID);
+        versionMgr.bumpUserGroup(" ");
+
+        verify(redisCacheMgr).incrementCounter(UG_KEY);
+        verifyNoMoreInteractions(redisCacheMgr);
     }
 
     @Test

@@ -131,25 +131,27 @@ public class CbPlanDictionaryServiceV4Impl {
             }
             log.info("getCBPlanDictionaryForUser: Cache miss - userId={}, orgId={}, planYear={}", userId, userOrgId, planYear);
             AtomicBoolean isCacheEnabled = new AtomicBoolean(false);
+            // Owning-org user-group counters the groups below are read under; stamped onto the cached entry.
+            Map<String, Long> ugVersions = new HashMap<>();
             List<Map<String, Object>> activePlans = fetchPlansForUser(userProfile, userOrgId, planYear, isCacheEnabled, versions);
             if (CollectionUtils.isEmpty(activePlans)) {
                 log.info("getCBPlanDictionaryForUser: No active plans - userId={}, planYear={}", userId, planYear);
                 if (StringUtils.isNotBlank(requestedPlanYear)) {
                     response.getResult().put(planYear, buildYearResult(new LinkedHashMap<>(), new LinkedHashMap<>()));
                     fetchAndAppendPreviousYear(response, userProfile, userOrgId,
-                            CbPlanYearUtil.resolvePreviousYear(planYear));
+                            CbPlanYearUtil.resolvePreviousYear(planYear), ugVersions);
                     response.setParams(new ApiRespParam());
                     response.getParams().setStatus(Constants.SUCCESS);
                     response.setResponseCode(HttpStatus.OK);
                 } else {
                     populateEmptyResponse(response, planYear);
                 }
-                cacheResult(cacheKey, response.getResult(), isCacheEnabled.get(), versions);
+                cacheResult(cacheKey, response.getResult(), isCacheEnabled.get(), versions, ugVersions);
                 return response;
             }
             Map<String, Map<String, Object>> aparPlanMap = new LinkedHashMap<>();
             Map<String, Map<String, Object>> nonAparPlanMap = new LinkedHashMap<>();
-            buildPlanPartitions(activePlans, userProfile, aparPlanMap, nonAparPlanMap);
+            buildPlanPartitions(activePlans, userProfile, aparPlanMap, nonAparPlanMap, ugVersions);
             Set<String> orgIds = collectCreatedByOrgIds(aparPlanMap, nonAparPlanMap);
             Map<String, Map<String, String>> orgDetailsMap = fetchOrgDetails(orgIds);
             enrichOrgDetails(aparPlanMap, orgDetailsMap);
@@ -160,12 +162,12 @@ public class CbPlanDictionaryServiceV4Impl {
             if (StringUtils.isNotBlank(requestedPlanYear) && aparPlanMap.isEmpty() && nonAparPlanMap.isEmpty()) {
                 log.info("getCBPlanDictionaryForUser: Plans found but none accessible - userId={}, planYear={}, fetching previous year", userId, planYear);
                 fetchAndAppendPreviousYear(response, userProfile, userOrgId,
-                        CbPlanYearUtil.resolvePreviousYear(planYear));
+                        CbPlanYearUtil.resolvePreviousYear(planYear), ugVersions);
             }
             response.setParams(new ApiRespParam());
             response.getParams().setStatus(Constants.SUCCESS);
             response.setResponseCode(HttpStatus.OK);
-            cacheResult(cacheKey, response.getResult(), isCacheEnabled.get(), versions);
+            cacheResult(cacheKey, response.getResult(), isCacheEnabled.get(), versions, ugVersions);
             log.info("getCBPlanDictionaryForUser: Success - userId={}, planYear={}, aparCount={}, nonAparCount={}",
                     userId, planYear, aparPlanMap.size(), nonAparPlanMap.size());
         } catch (IllegalArgumentException e) {
@@ -274,7 +276,7 @@ public class CbPlanDictionaryServiceV4Impl {
         }
         Map<String, Map<String, Object>> aparPlanMap = new LinkedHashMap<>();
         Map<String, Map<String, Object>> nonAparPlanMap = new LinkedHashMap<>();
-        buildPlanPartitions(activePlans, userProfile, aparPlanMap, nonAparPlanMap);
+        buildPlanPartitions(activePlans, userProfile, aparPlanMap, nonAparPlanMap, new HashMap<>());
         Set<String> orgIds = collectCreatedByOrgIds(aparPlanMap, nonAparPlanMap);
         Map<String, Map<String, String>> orgDetailsMap = fetchOrgDetails(orgIds);
         enrichOrgDetails(aparPlanMap, orgDetailsMap);
@@ -469,7 +471,8 @@ public class CbPlanDictionaryServiceV4Impl {
      * so the lookup must use the plan's orgId, not the requesting user's orgId.
      */
     private Map<String, Map<String, Object>> batchFetchUserGroupsForPlans(List<Map<String, Object>> plans,
-                                                                          Map<String, Map<String, Object>> parsedContextData) {
+                                                                          Map<String, Map<String, Object>> parsedContextData,
+                                                                          Map<String, Long> ugVersions) {
         Map<String, Set<String>> orgToGroupIds = new HashMap<>();
         for (Map<String, Object> plan : plans) {
             String planOrgId = extractCreatedByOrgId(plan);
@@ -488,6 +491,10 @@ public class CbPlanDictionaryServiceV4Impl {
         int totalGroups = orgToGroupIds.values().stream().mapToInt(Set::size).sum();
         log.debug("batchFetchUserGroupsForPlans: Pre-fetching {} user groups across {} plan orgIds",
                 totalGroups, orgToGroupIds.size());
+        // Snapshot the owning orgs' user-group counters before reading the groups, so a group edit
+        // racing this request can only make the entry we cache stale, never wrongly fresh. An org
+        // already snapshotted by an earlier pass of the same request keeps its earlier (older) value.
+        versionMgr.getUserGroupVersions(orgToGroupIds.keySet()).forEach(ugVersions::putIfAbsent);
         Map<String, Map<String, Object>> groups = new HashMap<>();
         for (Map.Entry<String, Set<String>> entry : orgToGroupIds.entrySet()) {
             userGroupCacheMgrV4.fetchUserGroupsByIds(
@@ -864,12 +871,12 @@ public class CbPlanDictionaryServiceV4Impl {
      * never mutated.
      */
     private void cacheResult(String cacheKey, Map<String, Object> result, boolean isCacheEnabled,
-                             CbPlanCacheVersions versions) {
+                             CbPlanCacheVersions versions, Map<String, Long> ugVersions) {
         if (!isCacheEnabled) {
             return;
         }
         try {
-            String json = mapper.writeValueAsString(versionMgr.stamp(result, versions));
+            String json = mapper.writeValueAsString(versionMgr.stamp(result, versions, ugVersions));
             redisCacheMgr.putInCache(cacheKey, json, serverProperties.getCbPlanV4DictionaryRedisCacheTtlSeconds());
             log.debug("cacheResult: Cached dictionary result - key={}", cacheKey);
         } catch (JsonProcessingException e) {
@@ -929,7 +936,7 @@ public class CbPlanDictionaryServiceV4Impl {
      * If no plans are found for the previous year, an empty entry is still added.
      */
     private void fetchAndAppendPreviousYear(ApiResponse response, Map<String, String> userProfile,
-                                            String userOrgId, String previousYear) {
+                                            String userOrgId, String previousYear, Map<String, Long> ugVersions) {
         AtomicBoolean prevCacheEnabled = new AtomicBoolean(false);
         CbPlanCacheVersions prevVersions = versionMgr.getVersions(userOrgId,
                 userProfile.get(Constants.MINISTRY_OR_STATE_ID_RQST), previousYear);
@@ -942,7 +949,7 @@ public class CbPlanDictionaryServiceV4Impl {
         }
         Map<String, Map<String, Object>> aparPlanMap = new LinkedHashMap<>();
         Map<String, Map<String, Object>> nonAparPlanMap = new LinkedHashMap<>();
-        buildPlanPartitions(prevPlans, userProfile, aparPlanMap, nonAparPlanMap);
+        buildPlanPartitions(prevPlans, userProfile, aparPlanMap, nonAparPlanMap, ugVersions);
         Set<String> orgIds = collectCreatedByOrgIds(aparPlanMap, nonAparPlanMap);
         Map<String, Map<String, String>> orgDetailsMap = fetchOrgDetails(orgIds);
         enrichOrgDetails(aparPlanMap, orgDetailsMap);
@@ -1015,9 +1022,11 @@ public class CbPlanDictionaryServiceV4Impl {
     private void buildPlanPartitions(List<Map<String, Object>> plans,
                                      Map<String, String> userProfile,
                                      Map<String, Map<String, Object>> aparPlanMap,
-                                     Map<String, Map<String, Object>> nonAparPlanMap) {
+                                     Map<String, Map<String, Object>> nonAparPlanMap,
+                                     Map<String, Long> ugVersions) {
         Map<String, Map<String, Object>> parsedContextData = parseContextDataForPlans(plans);
-        Map<String, Map<String, Object>> prefetchedUserGroups = batchFetchUserGroupsForPlans(plans, parsedContextData);
+        Map<String, Map<String, Object>> prefetchedUserGroups = batchFetchUserGroupsForPlans(plans, parsedContextData,
+                ugVersions);
         processPlans(plans, userProfile, prefetchedUserGroups, parsedContextData, aparPlanMap, nonAparPlanMap);
     }
 
@@ -1186,7 +1195,7 @@ public class CbPlanDictionaryServiceV4Impl {
         }
         Map<String, Map<String, Object>> aparPlanMap = new LinkedHashMap<>();
         Map<String, Map<String, Object>> nonAparPlanMap = new LinkedHashMap<>();
-        buildPlanPartitions(activePlans, userProfile, aparPlanMap, nonAparPlanMap);
+        buildPlanPartitions(activePlans, userProfile, aparPlanMap, nonAparPlanMap, new HashMap<>());
         return new ArrayList<>(aparPlanMap.values());
     }
 

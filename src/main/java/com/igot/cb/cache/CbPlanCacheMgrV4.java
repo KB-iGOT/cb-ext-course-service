@@ -16,12 +16,20 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 /**
  * Cache Manager for CB Plan V4 with year-scoped caching.
  * All table and keyspace names are driven by {@link CbExtServerProperties}
  * so that V4 tables can be configured independently of V3.
+ * <p>
+ * Every cached list carries the publish-version stamp ({@link CbPlanCacheVersions}) it was
+ * loaded under. Callers that hold the live stamp pass it in; an entry whose stamp no longer
+ * matches is reloaded from Cassandra, so a publish on any pod is picked up by every pod on its
+ * next read instead of after the TTL. Callers that pass no stamp get plain TTL behaviour.
+ * Loads go through {@code Cache.get(key, loader)} so concurrent misses for one key perform a
+ * single Cassandra read.
  *
  * @version 4.0
  */
@@ -39,8 +47,15 @@ public class CbPlanCacheMgrV4 {
     private int maxCacheSize;
     private final CassandraOperation cassandraOperation;
     private final CbExtServerProperties serverProperties;
-    private Cache<String, List<Map<String, Object>>> cbPlanCache;
+    private Cache<String, VersionedList> cbPlanCache;
     private Cache<String, Map<String, Object>> planIdCache;
+
+    /**
+     * A cached plan list together with the version stamp it was loaded under
+     * ({@code null} when loaded by a caller that supplied no stamp).
+     */
+    private record VersionedList(String stamp, List<Map<String, Object>> plans) {
+    }
 
     public CbPlanCacheMgrV4(CassandraOperation cassandraOperation, CbExtServerProperties serverProperties) {
         this.cassandraOperation = cassandraOperation;
@@ -67,12 +82,22 @@ public class CbPlanCacheMgrV4 {
      * @return list of active CB Plans visible to all orgs, or empty list if none
      */
     public List<Map<String, Object>> getCbPlanForAllOrgs(String planYear) {
+        return getCbPlanForAllOrgs(planYear, null);
+    }
+
+    /**
+     * Version-checked variant of {@link #getCbPlanForAllOrgs(String)}.
+     *
+     * @param planYear the plan year
+     * @param stamp    live ALL-scope version; {@code null} skips the check
+     * @return list of active CB Plans visible to all orgs, or empty list if none
+     */
+    public List<Map<String, Object>> getCbPlanForAllOrgs(String planYear, String stamp) {
         String cacheKey = ALL_LOOKUP_PREFIX + planYear;
-        List<Map<String, Object>> allCbPlanList = cbPlanCache.getIfPresent(cacheKey);
-        if (Objects.isNull(allCbPlanList)) {
+        return getOrLoad(cacheKey, stamp, () -> {
             log.debug("getCbPlanForAllOrgs: Caffeine cache miss - planYear={}", planYear);
             Map<String, Object> propertiesMap = Map.of(Constants.PLAN_YEAR, planYear);
-            allCbPlanList = cassandraOperation.getRecordsByProperties(
+            List<Map<String, Object>> allCbPlanList = cassandraOperation.getRecordsByProperties(
                     serverProperties.getCbPlanV4Keyspace(),
                     serverProperties.getCbPlanV4LookupByAllOrgTable(),
                     propertiesMap,
@@ -85,14 +110,10 @@ public class CbPlanCacheMgrV4 {
             allCbPlanList = allCbPlanList.stream()
                     .filter(plan -> Boolean.TRUE.equals(plan.get(Constants.IS_ACTIVE)))
                     .toList();
-            cbPlanCache.put(cacheKey, allCbPlanList);
             log.info("getCbPlanForAllOrgs: Loaded from Cassandra - planYear={}, activeCount={}",
                     planYear, allCbPlanList.size());
-        } else {
-            log.debug("getCbPlanForAllOrgs: Caffeine cache hit - planYear={}, count={}",
-                    planYear, allCbPlanList.size());
-        }
-        return allCbPlanList;
+            return allCbPlanList;
+        }, false).plans();
     }
 
     /**
@@ -103,14 +124,25 @@ public class CbPlanCacheMgrV4 {
      * @return list of active CB Plans for this org, or empty list if none
      */
     public List<Map<String, Object>> getCbPlanForOrgId(String orgId, String planYear) {
+        return getCbPlanForOrgId(orgId, planYear, null);
+    }
+
+    /**
+     * Version-checked variant of {@link #getCbPlanForOrgId(String, String)}.
+     *
+     * @param orgId    the organization ID
+     * @param planYear the plan year
+     * @param stamp    live org version; {@code null} skips the check
+     * @return list of active CB Plans for this org, or empty list if none
+     */
+    public List<Map<String, Object>> getCbPlanForOrgId(String orgId, String planYear, String stamp) {
         String cacheKey = orgId + LOOKUP_SUFFIX + planYear;
-        List<Map<String, Object>> cbPlanList = cbPlanCache.getIfPresent(cacheKey);
-        if (Objects.isNull(cbPlanList)) {
+        return getOrLoad(cacheKey, stamp, () -> {
             log.debug("getCbPlanForOrgId: Caffeine cache miss - orgId={}, planYear={}", orgId, planYear);
             Map<String, Object> propertiesMap = Map.of(
                     Constants.ORG_ID, orgId,
                     Constants.PLAN_YEAR, planYear);
-            cbPlanList = cassandraOperation.getRecordsByProperties(
+            List<Map<String, Object>> cbPlanList = cassandraOperation.getRecordsByProperties(
                     serverProperties.getCbPlanV4Keyspace(),
                     serverProperties.getCbPlanV4LookupByOrgTable(),
                     propertiesMap,
@@ -123,14 +155,10 @@ public class CbPlanCacheMgrV4 {
             cbPlanList = cbPlanList.stream()
                     .filter(plan -> Boolean.TRUE.equals(plan.get(Constants.IS_ACTIVE)))
                     .toList();
-            cbPlanCache.put(cacheKey, cbPlanList);
             log.info("getCbPlanForOrgId: Loaded from Cassandra - orgId={}, planYear={}, activeCount={}",
                     orgId, planYear, cbPlanList.size());
-        } else {
-            log.debug("getCbPlanForOrgId: Caffeine cache hit - orgId={}, planYear={}, count={}",
-                    orgId, planYear, cbPlanList.size());
-        }
-        return cbPlanList;
+            return cbPlanList;
+        }, false).plans();
     }
 
     /**
@@ -143,20 +171,45 @@ public class CbPlanCacheMgrV4 {
      */
     public List<Map<String, Object>> getCbPlanForAllAndOrgId(String orgId, String planYear,
                                                              AtomicBoolean isCacheEnabled) {
+        return getCbPlanForAllAndOrgId(orgId, planYear, isCacheEnabled, null);
+    }
+
+    /**
+     * Version-checked variant of {@link #getCbPlanForAllAndOrgId(String, String, AtomicBoolean)}.
+     * The combined list depends on both the org and the ALL-scope counters; when either moved,
+     * the stale combined list is dropped along with the {@code planIdCache} rows of the plans it
+     * held, so republished plan content is re-read rather than served from the row cache.
+     *
+     * @param orgId          the user's organization ID
+     * @param planYear       the plan year
+     * @param isCacheEnabled flag to indicate if result came from cache
+     * @param versions       live version snapshot; {@code null} skips the check
+     * @return combined list of active LIVE CB Plans
+     */
+    public List<Map<String, Object>> getCbPlanForAllAndOrgId(String orgId, String planYear,
+                                                             AtomicBoolean isCacheEnabled,
+                                                             CbPlanCacheVersions versions) {
+        String combinedStamp = Objects.isNull(versions) ? null : versions.orgAllStamp();
+        String orgStamp = Objects.isNull(versions) ? null : String.valueOf(versions.orgVersion());
+        String allStamp = Objects.isNull(versions) ? null : String.valueOf(versions.allVersion());
         String cacheKey = orgId + ":" + planYear;
-        List<Map<String, Object>> activeCbPlans = cbPlanCache.getIfPresent(cacheKey);
-        if (CollectionUtils.isNotEmpty(activeCbPlans)) {
-            log.info("Cache hit for orgId: {}, planYear: {}, found {} active CB Plans", orgId, planYear, activeCbPlans.size());
-            isCacheEnabled.set(true);
-            return activeCbPlans;
+        VersionedList cached = cbPlanCache.getIfPresent(cacheKey);
+        if (Objects.nonNull(cached) && CollectionUtils.isNotEmpty(cached.plans())) {
+            if (stampMatches(cached.stamp(), combinedStamp)) {
+                log.info("Cache hit for orgId: {}, planYear: {}, found {} active CB Plans", orgId, planYear,
+                        cached.plans().size());
+                isCacheEnabled.set(true);
+                return cached.plans();
+            }
+            evictStale(cacheKey, cached, combinedStamp, true);
         }
-        List<Map<String, Object>> orgPlans = getCbPlanForOrgId(orgId, planYear);
-        List<Map<String, Object>> allOrgPlans = getCbPlanForAllOrgs(planYear);
+        List<Map<String, Object>> orgPlans = getCbPlanForOrgId(orgId, planYear, orgStamp);
+        List<Map<String, Object>> allOrgPlans = getCbPlanForAllOrgs(planYear, allStamp);
         List<Map<String, Object>> combinedList = new ArrayList<>(orgPlans);
         combinedList.addAll(allOrgPlans);
         if (combinedList.isEmpty()) {
             log.info("No CB Plans found for orgId: {}, planYear: {}", orgId, planYear);
-            cbPlanCache.put(cacheKey, new ArrayList<>());
+            cbPlanCache.put(cacheKey, new VersionedList(combinedStamp, new ArrayList<>()));
             return new ArrayList<>();
         }
         Map<String, Map<String, Object>> planMap = combinedList.stream()
@@ -176,14 +229,55 @@ public class CbPlanCacheMgrV4 {
                 .map(plan -> (String) plan.get(Constants.PLAN_ID))
                 .toList();
         List<Map<String, Object>> fullPlans = getCbPlansByPlanIdsInBatch(planIds);
-        activeCbPlans = fullPlans.stream()
+        List<Map<String, Object>> activeCbPlans = fullPlans.stream()
                 .filter(plan -> Constants.LIVE.equalsIgnoreCase((String) plan.get(Constants.STATUS)))
                 .toList();
         log.info("Found {} CB Plans for orgId: {}, planYear: {}, active LIVE count: {}",
                 fullPlans.size(), orgId, planYear, activeCbPlans.size());
-        cbPlanCache.put(cacheKey, activeCbPlans);
+        cbPlanCache.put(cacheKey, new VersionedList(combinedStamp, activeCbPlans));
         isCacheEnabled.set(true);
         return activeCbPlans;
+    }
+
+    /**
+     * Returns the cached list for {@code cacheKey} when present and its stamp matches
+     * {@code stamp}; otherwise loads it (single-flight across concurrent callers) and caches it
+     * under {@code stamp}. A present-but-stale entry is evicted first.
+     *
+     * @param cacheKey        Caffeine key
+     * @param stamp           expected version stamp; {@code null} accepts any cached entry
+     * @param loader          Cassandra load for a miss
+     * @param evictPlanRows   when true, a stale entry's plan IDs are also dropped from
+     *                        {@code planIdCache} (for lists that hold full plan rows)
+     */
+    private VersionedList getOrLoad(String cacheKey, String stamp, Supplier<List<Map<String, Object>>> loader,
+                                    boolean evictPlanRows) {
+        VersionedList cached = cbPlanCache.getIfPresent(cacheKey);
+        if (Objects.nonNull(cached)) {
+            if (stampMatches(cached.stamp(), stamp)) {
+                log.debug("CbPlanCacheMgrV4: Caffeine cache hit - key={}, count={}", cacheKey, cached.plans().size());
+                return cached;
+            }
+            evictStale(cacheKey, cached, stamp, evictPlanRows);
+        }
+        return cbPlanCache.get(cacheKey, k -> new VersionedList(stamp, loader.get()));
+    }
+
+    private static boolean stampMatches(String cachedStamp, String expectedStamp) {
+        return Objects.isNull(expectedStamp) || expectedStamp.equals(cachedStamp);
+    }
+
+    private void evictStale(String cacheKey, VersionedList stale, String liveStamp, boolean evictPlanRows) {
+        log.info("CbPlanCacheMgrV4: Stale entry - key={}, cachedStamp={}, liveStamp={}",
+                cacheKey, stale.stamp(), liveStamp);
+        cbPlanCache.invalidate(cacheKey);
+        if (evictPlanRows) {
+            List<String> planIds = stale.plans().stream()
+                    .map(plan -> (String) plan.get(Constants.PLAN_ID))
+                    .filter(Objects::nonNull)
+                    .toList();
+            planIdCache.invalidateAll(planIds);
+        }
     }
 
     /**
@@ -291,15 +385,28 @@ public class CbPlanCacheMgrV4 {
      * @return list of active CB Plans for this ministry/state, or empty list if none
      */
     public List<Map<String, Object>> getCbPlanForMinistryOrStateId(String ministryOrStateId, String planYear) {
+        return getCbPlanForMinistryOrStateId(ministryOrStateId, planYear, null);
+    }
+
+    /**
+     * Version-checked variant of {@link #getCbPlanForMinistryOrStateId(String, String)}. This list
+     * holds full plan rows, so a stale entry also drops its plans from {@code planIdCache}.
+     *
+     * @param ministryOrStateId the ministry or state ID
+     * @param planYear          the plan year
+     * @param stamp             live ministry version; {@code null} skips the check
+     * @return list of active LIVE CB Plans for this ministry/state, or empty list if none
+     */
+    public List<Map<String, Object>> getCbPlanForMinistryOrStateId(String ministryOrStateId, String planYear,
+                                                                   String stamp) {
         String cacheKey = MINISTRY_PREFIX + ministryOrStateId + LOOKUP_SUFFIX + planYear;
-        List<Map<String, Object>> cbPlanList = cbPlanCache.getIfPresent(cacheKey);
-        if (Objects.isNull(cbPlanList)) {
+        return getOrLoad(cacheKey, stamp, () -> {
             log.debug("getCbPlanForMinistryOrStateId: Caffeine cache miss - ministryOrStateId={}, planYear={}",
                     ministryOrStateId, planYear);
             Map<String, Object> propertiesMap = Map.of(
                     "ministryorstateid", ministryOrStateId,
                     Constants.PLAN_YEAR, planYear);
-            cbPlanList = cassandraOperation.getRecordsByProperties(
+            List<Map<String, Object>> cbPlanList = cassandraOperation.getRecordsByProperties(
                     serverProperties.getCbPlanV4Keyspace(),
                     serverProperties.getCbPlanV4LookupByMinistryOrStateIdTable(),
                     propertiesMap,
@@ -321,14 +428,10 @@ public class CbPlanCacheMgrV4 {
             cbPlanList = fullPlans.stream()
                     .filter(plan -> Constants.LIVE.equalsIgnoreCase((String) plan.get(Constants.STATUS)))
                     .toList();
-            cbPlanCache.put(cacheKey, cbPlanList);
             log.info("getCbPlanForMinistryOrStateId: Loaded from Cassandra - ministryOrStateId={}, planYear={}, activeCount={}",
                     ministryOrStateId, planYear, cbPlanList.size());
-        } else {
-            log.debug("getCbPlanForMinistryOrStateId: Caffeine cache hit - ministryOrStateId={}, planYear={}, count={}",
-                    ministryOrStateId, planYear, cbPlanList.size());
-        }
-        return cbPlanList;
+            return cbPlanList;
+        }, true).plans();
     }
 
     /**
@@ -346,7 +449,7 @@ public class CbPlanCacheMgrV4 {
         }
         planIdCache.invalidate(planId);
         List<String> affectedKeys = cbPlanCache.asMap().entrySet().stream()
-                .filter(entry -> entry.getValue().stream().anyMatch(row ->
+                .filter(entry -> entry.getValue().plans().stream().anyMatch(row ->
                         planId.equals(row.get(Constants.PLAN_ID)) && row.containsKey(Constants.CA_LINKED_ID_DB)))
                 .map(Map.Entry::getKey)
                 .toList();

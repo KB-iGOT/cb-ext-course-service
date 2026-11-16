@@ -440,7 +440,7 @@ public class CbPlanOrgLookupServiceV4Impl {
      * @param existingCbPlan plan record from Cassandra
      * @return set of rootOrgId values resolved from all referenced userGroups
      */
-    private Set<String> resolveRootOrgIdsFromUserGroups(Map<String, Object> existingCbPlan) {
+    public Set<String> resolveRootOrgIdsFromUserGroups(Map<String, Object> existingCbPlan) {
         List<String> userGroupIds = extractUserGroupIdsFromContextData(existingCbPlan);
         if (CollectionUtils.isEmpty(userGroupIds)) {
             log.debug("CbPlanOrgLookupServiceV4.resolveRootOrgIdsFromUserGroups: no userGroupIds in contextData, skipping rootOrgId resolution");
@@ -472,7 +472,7 @@ public class CbPlanOrgLookupServiceV4Impl {
      * @param existingCbPlan plan record from Cassandra
      * @return set of ministryOrStateId values resolved from all referenced userGroups
      */
-    private Set<String> resolveMinistryOrStateIdsFromUserGroups(Map<String, Object> existingCbPlan) {
+    public Set<String> resolveMinistryOrStateIdsFromUserGroups(Map<String, Object> existingCbPlan) {
         List<String> userGroupIds = extractUserGroupIdsFromContextData(existingCbPlan);
         if (CollectionUtils.isEmpty(userGroupIds)) {
             log.debug("CbPlanOrgLookupServiceV4.resolveMinistryOrStateIdsFromUserGroups: no userGroupIds in contextData, skipping ministryOrStateId resolution");

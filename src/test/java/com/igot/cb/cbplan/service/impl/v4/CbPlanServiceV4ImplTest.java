@@ -4,7 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.igot.cb.cache.CbPlanCacheMgrV4;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
-import com.igot.cb.cache.CbExtRedisCacheMgr;
+import com.igot.cb.cache.CbPlanVersionMgr;
 import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.cbplan.dto.CbPlanReadResponseDto;
 import com.igot.cb.cbplan.service.impl.CbPlanDataTransformServiceV3Impl;
@@ -98,7 +98,7 @@ class CbPlanServiceV4ImplTest {
     private UserProfileUtil userProfileUtil;
 
     @Mock
-    private CbExtRedisCacheMgr redisCacheMgr;
+    private CbPlanVersionMgr versionMgr;
 
     @Mock
     private CbPlanCacheMgrV4 cbPlanCacheMgrV4;
@@ -651,6 +651,7 @@ class CbPlanServiceV4ImplTest {
         verify(cbPlanCacheMgrV4).invalidateOrgLookup(ORG_ID, PLAN_YEAR);
         verify(cbPlanCacheMgrV4, never()).invalidateAllOrgLookup(anyString());
         verify(cbPlanCacheMgrV4, never()).invalidateMinistryLookup(anyString(), anyString());
+        verify(versionMgr).bump(eq(Set.of(ORG_ID)), eq(Collections.emptySet()), eq(false), eq(PLAN_YEAR));
     }
 
     private static ApiResponse successApiResponse() {
@@ -949,6 +950,7 @@ class CbPlanServiceV4ImplTest {
         assertNotEquals(Constants.FAILED, response.getParams().getStatus());
         verify(contentLookupService).removeFromContentLookup(eq(PLAN_ID), anyMap());
         verify(orgLookupService).deactivateOrgLookupEntries(eq(PLAN_ID), eq(PLAN_YEAR), anyMap(), any());
+        verify(versionMgr).bump(any(), any(), eq(false), eq(PLAN_YEAR));
     }
 
     @Test
@@ -1073,6 +1075,10 @@ class CbPlanServiceV4ImplTest {
         when(cassandraOperation.updateRecord(eq(Constants.KEYSPACE_SUNBIRD),
                 eq(Constants.TABLE_CB_PLAN_V3), anyMap(), anyMap()))
                 .thenReturn(Map.of(Constants.RESPONSE, Constants.SUCCESS));
+        Map<String, Object> planRecord = new HashMap<>();
+        planRecord.put(Constants.PLAN_YEAR, PLAN_YEAR);
+        planRecord.put(Constants.ORG_SCOPE, Constants.ALL);
+        mockExistingPlan(planRecord);
 
         boolean result = cbPlanService.updateCaLinkedId(PLAN_ID, "ca-assessment-123", Constants.SYSTEM_USER);
 
@@ -1083,7 +1089,21 @@ class CbPlanServiceV4ImplTest {
                 eq(Map.of(Constants.PLAN_ID, PLAN_ID)));
         verify(elasticSearchService).updateElasticSearchForPlan(eq(PLAN_ID), anyMap());
         verify(cbPlanCacheMgrV4).invalidatePlan(PLAN_ID);
-        verify(redisCacheMgr).deleteKeysByPatternAsync(Constants.CB_PLAN_V4_REDIS_KEY_PREFIX + "*");
+        verify(versionMgr).bump(any(), any(), eq(true), eq(PLAN_YEAR));
+    }
+
+    @Test
+    void updateCaLinkedId_planNotFound_skipsVersionBump() {
+        when(cassandraOperation.updateRecord(eq(Constants.KEYSPACE_SUNBIRD),
+                eq(Constants.TABLE_CB_PLAN_V3), anyMap(), anyMap()))
+                .thenReturn(Map.of(Constants.RESPONSE, Constants.SUCCESS));
+        mockNoExistingPlan();
+
+        boolean result = cbPlanService.updateCaLinkedId(PLAN_ID, "ca-assessment-123", Constants.SYSTEM_USER);
+
+        assertTrue(result);
+        verify(cbPlanCacheMgrV4).invalidatePlan(PLAN_ID);
+        verify(versionMgr, never()).bump(any(), any(), anyBoolean(), anyString());
     }
 
     @Test
@@ -1113,7 +1133,7 @@ class CbPlanServiceV4ImplTest {
         assertFalse(result);
         verify(elasticSearchService, never()).updateElasticSearchForPlan(anyString(), anyMap());
         verify(cbPlanCacheMgrV4, never()).invalidatePlan(anyString());
-        verify(redisCacheMgr, never()).deleteKeysByPatternAsync(anyString());
+        verify(versionMgr, never()).bump(any(), any(), anyBoolean(), anyString());
     }
 
     @Test
@@ -1354,10 +1374,15 @@ class CbPlanServiceV4ImplTest {
     }
 
     @Test
-    void updateCaLinkedIdV2_success_withOrgIdList_invalidatesOrgScopedRedisPattern() {
+    void updateCaLinkedIdV2_success_withOrgIdList_bumpsPlanScopeVersions() {
         when(cassandraOperation.updateRecord(eq(Constants.KEYSPACE_SUNBIRD),
                 eq(Constants.TABLE_CB_PLAN_V3), anyMap(), anyMap()))
                 .thenReturn(Map.of(Constants.RESPONSE, Constants.SUCCESS));
+        Map<String, Object> planRecord = new HashMap<>();
+        planRecord.put(Constants.PLAN_YEAR, PLAN_YEAR);
+        planRecord.put(Constants.ORG_SCOPE, Constants.SINGLE);
+        mockExistingPlan(planRecord);
+        when(orgLookupService.resolveRootOrgIdsFromUserGroups(anyMap())).thenReturn(Set.of(ORG_ID));
 
         boolean result = cbPlanService.updateCaLinkedIdV2(PLAN_ID, CA_LINKED_ID_VALUE,
                 Constants.SYSTEM_USER, List.of(ORG_ID));
@@ -1369,15 +1394,18 @@ class CbPlanServiceV4ImplTest {
                 eq(Map.of(Constants.PLAN_ID, PLAN_ID)));
         verify(elasticSearchService).updateElasticSearchForPlan(eq(PLAN_ID), anyMap());
         verify(cbPlanCacheMgrV4).invalidatePlan(PLAN_ID);
-        verify(redisCacheMgr).deleteKeysByPatternAsync(
-                Constants.CB_PLAN_V4_REDIS_KEY_PREFIX + ORG_ID + ":*");
+        verify(versionMgr).bump(eq(Set.of(ORG_ID)), any(), eq(false), eq(PLAN_YEAR));
     }
 
     @Test
-    void updateCaLinkedIdV2_success_emptyOrgIdList_invalidatesFullRedisPrefix() {
+    void updateCaLinkedIdV2_success_emptyOrgIdList_stillBumpsPlanScopeVersions() {
         when(cassandraOperation.updateRecord(eq(Constants.KEYSPACE_SUNBIRD),
                 eq(Constants.TABLE_CB_PLAN_V3), anyMap(), anyMap()))
                 .thenReturn(Map.of(Constants.RESPONSE, Constants.SUCCESS));
+        Map<String, Object> planRecord = new HashMap<>();
+        planRecord.put(Constants.PLAN_YEAR, PLAN_YEAR);
+        planRecord.put(Constants.ORG_SCOPE, Constants.ALL);
+        mockExistingPlan(planRecord);
 
         boolean result = cbPlanService.updateCaLinkedIdV2(PLAN_ID, CA_LINKED_ID_VALUE,
                 Constants.SYSTEM_USER, List.of());
@@ -1385,7 +1413,7 @@ class CbPlanServiceV4ImplTest {
         assertTrue(result);
         verify(elasticSearchService).updateElasticSearchForPlan(eq(PLAN_ID), anyMap());
         verify(cbPlanCacheMgrV4).invalidatePlan(PLAN_ID);
-        verify(redisCacheMgr).deleteKeysByPatternAsync(Constants.CB_PLAN_V4_REDIS_KEY_PREFIX + "*");
+        verify(versionMgr).bump(any(), any(), eq(true), eq(PLAN_YEAR));
     }
 
     @Test
@@ -1417,7 +1445,7 @@ class CbPlanServiceV4ImplTest {
         assertFalse(result);
         verify(elasticSearchService, never()).updateElasticSearchForPlan(anyString(), anyMap());
         verify(cbPlanCacheMgrV4, never()).invalidatePlan(anyString());
-        verify(redisCacheMgr, never()).deleteKeysByPatternAsync(anyString());
+        verify(versionMgr, never()).bump(any(), any(), anyBoolean(), anyString());
     }
 
     @Test
@@ -1782,6 +1810,7 @@ class CbPlanServiceV4ImplTest {
         verify(cbPlanCacheMgrV4).invalidateOrgLookup(ORG_ID, PLAN_YEAR);
         verify(cbPlanCacheMgrV4, never()).invalidateAllOrgLookup(anyString());
         verify(cbPlanCacheMgrV4, never()).invalidateMinistryLookup(anyString(), anyString());
+        verify(versionMgr).bump(eq(Set.of(ORG_ID)), eq(Collections.emptySet()), eq(false), eq(PLAN_YEAR));
     }
 
     @Test
@@ -1793,6 +1822,7 @@ class CbPlanServiceV4ImplTest {
 
         verify(cbPlanCacheMgrV4).invalidateAllOrgLookup(PLAN_YEAR);
         verify(cbPlanCacheMgrV4, never()).invalidateOrgLookup(anyString(), anyString());
+        verify(versionMgr).bump(eq(Collections.emptySet()), eq(Collections.emptySet()), eq(true), eq(PLAN_YEAR));
     }
 
     @Test
@@ -1803,6 +1833,7 @@ class CbPlanServiceV4ImplTest {
         invokeInvalidateDictionaryCaches(Constants.SINGLE, updatedRequest, existingPlanWithOrgScope(Constants.ALL));
 
         verify(cbPlanCacheMgrV4).invalidateAllOrgLookup(PLAN_YEAR);
+        verify(versionMgr).bump(any(), any(), eq(true), eq(PLAN_YEAR));
     }
 
     @Test
@@ -1828,6 +1859,8 @@ class CbPlanServiceV4ImplTest {
 
         verify(cbPlanCacheMgrV4).invalidateMinistryLookup(oldMinistryId, PLAN_YEAR);
         verify(cbPlanCacheMgrV4).invalidateMinistryLookup(newMinistryId, PLAN_YEAR);
+        verify(versionMgr).bump(eq(Collections.emptySet()), eq(Set.of(oldMinistryId, newMinistryId)), eq(false),
+                eq(PLAN_YEAR));
     }
 
     @Test

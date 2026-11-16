@@ -1,11 +1,12 @@
 package com.igot.cb.cbplan.service.impl.v4;
 
 import com.igot.cb.cache.CbExtRedisCacheMgr;
+import com.igot.cb.cache.CbPlanVersionMgr;
 import com.igot.cb.model.ApiResponse;
 import com.igot.cb.util.Constants;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
@@ -37,6 +38,9 @@ class CbPlanLookupServiceV4ImplTest {
     private static final String COURSE_2 = "do_222";
     private static final String END_DATE_1 = "2027-03-31T18:29:59Z";
     private static final String END_DATE_2 = "2026-12-15T18:29:59Z";
+    private static final String MINISTRY_ID = "ministry-1";
+    /** Version stamp matching the counters an un-stubbed (null-returning) MGET yields. */
+    private static final String CV_ZERO = "\"_cv\":{\"orgVer\":0,\"ministryVer\":0,\"allVer\":0}";
 
     @Mock
     private CbPlanDictionaryServiceV4Impl dictionaryService;
@@ -44,8 +48,12 @@ class CbPlanLookupServiceV4ImplTest {
     @Mock
     private CbExtRedisCacheMgr redisCacheMgr;
 
-    @InjectMocks
     private CbPlanLookupServiceV4Impl lookupService;
+
+    @BeforeEach
+    void setUp() {
+        lookupService = new CbPlanLookupServiceV4Impl(dictionaryService, new CbPlanVersionMgr(redisCacheMgr));
+    }
 
     private static Map<String, Object> aparPlan(String endDate, Object contentList) {
         Map<String, Object> plan = new LinkedHashMap<>();
@@ -189,7 +197,7 @@ class CbPlanLookupServiceV4ImplTest {
 
     @Test
     void getCBPlanCourseListForUser_cacheMissingYearResult_fallsBackToPipeline() {
-        String cachedJson = "{\"otherYear\":{\"aparPlanList\":{}}}";
+        String cachedJson = "{" + CV_ZERO + ",\"otherYear\":{\"aparPlanList\":{}}}";
         when(redisCacheMgr.getFromCache(anyString())).thenReturn(cachedJson);
         stubPipelineReturning(List.of(aparPlan(END_DATE_1, List.of(contentItem(COURSE_1)))));
 
@@ -201,7 +209,7 @@ class CbPlanLookupServiceV4ImplTest {
 
     @Test
     void getCBPlanCourseListForUser_cacheYearResultWrongType_fallsBackToPipeline() {
-        String cachedJson = "{\"" + currentPlanYear() + "\":\"not-a-map\"}";
+        String cachedJson = "{" + CV_ZERO + ",\"" + currentPlanYear() + "\":\"not-a-map\"}";
         when(redisCacheMgr.getFromCache(anyString())).thenReturn(cachedJson);
         stubPipelineReturning(List.of(aparPlan(END_DATE_1, List.of(contentItem(COURSE_1)))));
 
@@ -213,7 +221,7 @@ class CbPlanLookupServiceV4ImplTest {
 
     @Test
     void getCBPlanCourseListForUser_cacheMissingAparList_fallsBackToPipeline() {
-        String cachedJson = "{\"" + currentPlanYear() + "\":{\"nonAparPlanList\":{}}}";
+        String cachedJson = "{" + CV_ZERO + ",\"" + currentPlanYear() + "\":{\"nonAparPlanList\":{}}}";
         when(redisCacheMgr.getFromCache(anyString())).thenReturn(cachedJson);
         stubPipelineReturning(List.of());
 
@@ -225,7 +233,7 @@ class CbPlanLookupServiceV4ImplTest {
 
     @Test
     void getCBPlanCourseListForUser_cacheAparListWrongType_fallsBackToPipeline() {
-        String cachedJson = "{\"" + currentPlanYear() + "\":{\"aparPlanList\":[]}}";
+        String cachedJson = "{" + CV_ZERO + ",\"" + currentPlanYear() + "\":{\"aparPlanList\":[]}}";
         when(redisCacheMgr.getFromCache(anyString())).thenReturn(cachedJson);
         stubPipelineReturning(List.of(aparPlan(END_DATE_1, List.of(contentItem(COURSE_1)))));
 
@@ -237,7 +245,7 @@ class CbPlanLookupServiceV4ImplTest {
 
     @Test
     void getCBPlanCourseListForUser_cacheAparListEmpty_returnsEmptyContents() {
-        String cachedJson = "{\"" + currentPlanYear() + "\":{\"aparPlanList\":{}}}";
+        String cachedJson = "{" + CV_ZERO + ",\"" + currentPlanYear() + "\":{\"aparPlanList\":{}}}";
         when(redisCacheMgr.getFromCache(anyString())).thenReturn(cachedJson);
 
         ApiResponse response = lookupService.getCBPlanCourseListForUser(USER_ID, USER_ORG_ID);
@@ -334,6 +342,81 @@ class CbPlanLookupServiceV4ImplTest {
         verify(redisCacheMgr).getFromCache(expectedKey);
     }
 
+    @Test
+    void getCBPlanCourseListForUser_cacheUnstamped_fallsBackToPipeline() {
+        String cachedJson = buildCachedJson(List.of(aparPlan(END_DATE_1, List.of(contentItem(COURSE_1)))), null);
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn(cachedJson);
+        stubPipelineReturning(List.of(aparPlan(END_DATE_2, List.of(contentItem(COURSE_2)))));
+
+        ApiResponse response = lookupService.getCBPlanCourseListForUser(USER_ID, USER_ORG_ID);
+
+        Map<String, String> contents = castContents(response);
+        assertEquals(1, contents.size());
+        assertEquals(END_DATE_2, contents.get(COURSE_2));
+        verify(redisCacheMgr, never()).mgetFromCache(any(String[].class));
+    }
+
+    @Test
+    void getCBPlanCourseListForUser_cacheStaleOrgVersion_fallsBackToPipeline() {
+        String cachedJson = buildCachedJson(List.of(aparPlan(END_DATE_1, List.of(contentItem(COURSE_1)))));
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn(cachedJson);
+        when(redisCacheMgr.mgetFromCache(any(String[].class))).thenReturn(java.util.Arrays.asList("1", null));
+        stubPipelineReturning(List.of(aparPlan(END_DATE_2, List.of(contentItem(COURSE_2)))));
+
+        ApiResponse response = lookupService.getCBPlanCourseListForUser(USER_ID, USER_ORG_ID);
+
+        Map<String, String> contents = castContents(response);
+        assertEquals(1, contents.size());
+        assertEquals(END_DATE_2, contents.get(COURSE_2));
+        verify(dictionaryService).resolveAccessibleAparPlansByUserId(eq(USER_ID), eq(USER_ORG_ID), anyString(), any());
+    }
+
+    @Test
+    void getCBPlanCourseListForUser_cacheStaleAllVersion_fallsBackToPipeline() {
+        String cachedJson = buildCachedJson(List.of(aparPlan(END_DATE_1, List.of(contentItem(COURSE_1)))));
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn(cachedJson);
+        when(redisCacheMgr.mgetFromCache(any(String[].class))).thenReturn(java.util.Arrays.asList(null, "3"));
+        stubPipelineReturning(List.of());
+
+        ApiResponse response = lookupService.getCBPlanCourseListForUser(USER_ID, USER_ORG_ID);
+
+        assertTrue(castContents(response).isEmpty());
+        verify(dictionaryService).resolveAccessibleAparPlansByUserId(eq(USER_ID), eq(USER_ORG_ID), anyString(), any());
+    }
+
+    @Test
+    void getCBPlanCourseListForUser_cacheMatchingVersions_servedWithoutPipeline() {
+        String cv = "\"_cv\":{\"orgVer\":7,\"ministryVer\":0,\"allVer\":3}";
+        String cachedJson = buildCachedJson(List.of(aparPlan(END_DATE_1, List.of(contentItem(COURSE_1)))), cv);
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn(cachedJson);
+        when(redisCacheMgr.mgetFromCache(any(String[].class))).thenReturn(List.of("7", "3"));
+
+        ApiResponse response = lookupService.getCBPlanCourseListForUser(USER_ID, USER_ORG_ID);
+
+        assertEquals(END_DATE_1, castContents(response).get(COURSE_1));
+        verify(dictionaryService, never())
+                .resolveAccessibleAparPlansByUserId(anyString(), anyString(), anyString(), any());
+    }
+
+    @Test
+    void getCBPlanCourseListForUser_cacheStampedWithMinistry_checksMinistryCounterFromStamp() {
+        String cv = "\"_cv\":{\"orgVer\":1,\"ministryVer\":2,\"allVer\":0,\"ministryId\":\"" + MINISTRY_ID + "\"}";
+        String cachedJson = buildCachedJson(List.of(aparPlan(END_DATE_1, List.of(contentItem(COURSE_1)))), cv);
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn(cachedJson);
+        when(redisCacheMgr.mgetFromCache(any(String[].class))).thenReturn(java.util.Arrays.asList("1", null, "2"));
+
+        ApiResponse response = lookupService.getCBPlanCourseListForUser(USER_ID, USER_ORG_ID);
+
+        assertEquals(END_DATE_1, castContents(response).get(COURSE_1));
+        String year = currentPlanYear();
+        verify(redisCacheMgr).mgetFromCache(
+                Constants.CB_PLAN_V4_VERSION_KEY_PREFIX + "org:" + USER_ORG_ID + ":" + year,
+                Constants.CB_PLAN_V4_VERSION_KEY_PREFIX + "all:" + year,
+                Constants.CB_PLAN_V4_VERSION_KEY_PREFIX + "ministry:" + MINISTRY_ID + ":" + year);
+        verify(dictionaryService, never())
+                .resolveAccessibleAparPlansByUserId(anyString(), anyString(), anyString(), any());
+    }
+
     private void stubPipelineReturning(List<Map<String, Object>> plans) {
         when(dictionaryService.resolveAccessibleAparPlansByUserId(anyString(), anyString(), anyString(), any()))
                 .thenReturn(plans);
@@ -347,8 +430,16 @@ class CbPlanLookupServiceV4ImplTest {
     }
 
     private String buildCachedJson(List<Map<String, Object>> plans) {
+        return buildCachedJson(plans, CV_ZERO);
+    }
+
+    private String buildCachedJson(List<Map<String, Object>> plans, String cvBlock) {
         StringBuilder sb = new StringBuilder();
-        sb.append("{\"").append(currentPlanYear()).append("\":{\"")
+        sb.append('{');
+        if (cvBlock != null) {
+            sb.append(cvBlock).append(',');
+        }
+        sb.append('"').append(currentPlanYear()).append("\":{\"")
                 .append(Constants.RESPONSE_KEY_APAR_PLAN_LIST).append("\":{");
         for (int i = 0; i < plans.size(); i++) {
             if (i > 0) sb.append(',');

@@ -113,4 +113,33 @@ class PayloadValidationTest {
     String result = payloadValidation.validateAccessControlPayload(payload);
     assertTrue(result.contains("criteriaValue"));
   }
+
+  @Test
+  void testProviderPayloadValid() {
+    Map<String, Object> payload = new HashMap<>();
+    payload.put(Constants.PARTNER_ID, "partner1");
+    Map<String, Object> criteria = new HashMap<>();
+    criteria.put(Constants.CRITERIA_VALUE, Collections.singletonList("val1"));
+    Map<String, Object> userGroup = new HashMap<>();
+    userGroup.put(Constants.USER_GROUP_CRITERIA_LIST, List.of(criteria));
+    payload.put(Constants.ACCESS_CONTROL, Map.of(Constants.USER_GROUPS, List.of(userGroup)));
+
+    assertTrue(payloadValidation.validateProviderAccessControlPayload(payload).isEmpty());
+  }
+
+  @Test
+  void testProviderPayloadMissingPartnerIdAndAccessControl() {
+    Map<String, Object> payload = new HashMap<>();
+    payload.put(Constants.PARTNER_ID, " ");
+
+    String result = payloadValidation.validateProviderAccessControlPayload(payload);
+    assertTrue(result.contains(Constants.PARTNER_ID));
+    assertTrue(result.contains(Constants.ACCESS_CONTROL));
+  }
+
+  @Test
+  void testProviderPayloadEmpty() {
+    assertEquals(Constants.USER_GROUPDETAILS_ERR_VALIDATION_MSG,
+        payloadValidation.validateProviderAccessControlPayload(new HashMap<>()));
+  }
 }

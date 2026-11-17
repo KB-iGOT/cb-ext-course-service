@@ -262,7 +262,49 @@ public class CbExtServerProperties {
     @Value("${cbplan.v4.cache.invalidate.async:true}")
     private boolean cbPlanV4CacheInvalidateAsync;
 
+    @Value("${cbpores.service.host}")
+    private String cbPoresServiceHost;
+
+    @Value("${cbpores.content.partner.read.endpoint}")
+    private String contentPartnerReadEndPoint;
+
+    @Value("${provider.access.settings.max.user.groups:5}")
+    private int providerAccessSettingsMaxUserGroups;
+
+    @Value("${provider.access.settings.max.criteria.values:500}")
+    private int providerAccessSettingsMaxCriteriaValues;
+
+    @Value("${provider.access.settings.limited.criteria.keys:user,rootorgid,designation}")
+    private String providerAccessSettingsLimitedCriteriaKeys;
+
+    @Value("${provider.access.settings.allowed.criteria.keys:user,rootorgid,group,designation,service,batch,cadre,profilestatus}")
+    private String providerAccessSettingsAllowedCriteriaKeys;
+
+    @Value("${provider.licence.alert.thresholds:50,75,90,100}")
+    private String providerLicenceAlertThresholds;
+
+    @Value("${provider.licence.alert.max.thresholds:5}")
+    private int providerLicenceAlertMaxThresholds;
+
+    @Value("${provider.licence.alert.max.recipients:100}")
+    private int providerLicenceAlertMaxRecipients;
+
+    @Value("${provider.licence.alert.email.regex}")
+    private String providerLicenceAlertEmailRegex;
+
     public List<String> getCbPlanEnrichedContentFieldsList() {
         return Arrays.asList(cbPlanEnrichedContentFields.split(",", -1));
+    }
+
+    public List<String> getProviderAccessSettingsLimitedCriteriaKeysList() {
+        return Arrays.asList(providerAccessSettingsLimitedCriteriaKeys.split(",", -1));
+    }
+
+    public List<String> getProviderAccessSettingsAllowedCriteriaKeysList() {
+        return Arrays.asList(providerAccessSettingsAllowedCriteriaKeys.split(",", -1));
+    }
+
+    public List<String> getProviderLicenceAlertThresholdsList() {
+        return Arrays.asList(providerLicenceAlertThresholds.split(",", -1));
     }
 }

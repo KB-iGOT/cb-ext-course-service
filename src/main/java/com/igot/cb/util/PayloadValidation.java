@@ -29,6 +29,16 @@ public class PayloadValidation {
       errList.add("contentId");
     }
 
+    validateAccessControl(payload, errList);
+
+    if (!errList.isEmpty()) {
+      return "Missing or invalid fields: " + errList;
+    }
+    return "";
+  }
+
+  @SuppressWarnings("unchecked")
+  private void validateAccessControl(Map<String, Object> payload, List<String> errList) {
     // Check accessControl
     Object accessControlObj = payload.get(Constants.ACCESS_CONTROL);
     if (ObjectUtils.isEmpty(accessControlObj) || !(accessControlObj instanceof Map)) {
@@ -70,10 +80,23 @@ public class PayloadValidation {
         }
       }
     }
+  }
+
+  public String validateProviderAccessControlPayload(Map<String, Object> payload) {
+    List<String> errList = new ArrayList<>();
+
+    if (MapUtils.isEmpty(payload)) {
+      log.error("Provider access settings payload is null or empty");
+      return Constants.USER_GROUPDETAILS_ERR_VALIDATION_MSG;
+    }
+    if (!(payload.get(Constants.PARTNER_ID) instanceof String partnerId) || StringUtils.isBlank(partnerId)) {
+      errList.add(Constants.PARTNER_ID);
+    }
+    validateAccessControl(payload, errList);
 
     if (!errList.isEmpty()) {
-      return "Missing or invalid fields: " + errList;
+      return Constants.MSG_MISSING_OR_INVALID_FIELDS + errList;
     }
-    return "";
+    return StringUtils.EMPTY;
   }
 }

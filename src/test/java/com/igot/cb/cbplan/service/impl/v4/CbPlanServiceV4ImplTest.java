@@ -169,7 +169,7 @@ class CbPlanServiceV4ImplTest {
     @Test
     void createCbPlan_success_returnsCreatedWithId() throws JsonProcessingException {
         mockAuthSuccess();
-        when(validationService.validateRequest(any(), anyBoolean(), anyString(), any())).thenReturn(true);
+        when(validationService.validateRequest(any(), anyBoolean(), anyString(), any(), anyBoolean())).thenReturn(true);
         Map<String, Object> planData = new HashMap<>();
         planData.put(Constants.PLAN_ID, PLAN_ID);
         when(dataTransformService.prepareCbPlanForInsert(any(), eq(USER_ID))).thenReturn(planData);
@@ -214,7 +214,7 @@ class CbPlanServiceV4ImplTest {
     @Test
     void createCbPlan_validationFails_returns400WithoutInsert() {
         mockAuthSuccess();
-        when(validationService.validateRequest(any(), anyBoolean(), anyString(), any())).thenReturn(false);
+        when(validationService.validateRequest(any(), anyBoolean(), anyString(), any(), anyBoolean())).thenReturn(false);
 
         ApiResponse response = cbPlanService.createCbPlan(apiRequest(new HashMap<>()), null, TOKEN);
 
@@ -226,7 +226,7 @@ class CbPlanServiceV4ImplTest {
     @Test
     void createCbPlan_insertFails_returns500() throws JsonProcessingException {
         mockAuthSuccess();
-        when(validationService.validateRequest(any(), anyBoolean(), anyString(), any())).thenReturn(true);
+        when(validationService.validateRequest(any(), anyBoolean(), anyString(), any(), anyBoolean())).thenReturn(true);
         Map<String, Object> planData = new HashMap<>();
         planData.put(Constants.PLAN_ID, PLAN_ID);
         when(dataTransformService.prepareCbPlanForInsert(any(), eq(USER_ID))).thenReturn(planData);
@@ -244,7 +244,7 @@ class CbPlanServiceV4ImplTest {
     @Test
     void createCbPlan_prepareThrowsJsonProcessingException_returns500() throws JsonProcessingException {
         mockAuthSuccess();
-        when(validationService.validateRequest(any(), anyBoolean(), anyString(), any())).thenReturn(true);
+        when(validationService.validateRequest(any(), anyBoolean(), anyString(), any(), anyBoolean())).thenReturn(true);
         when(dataTransformService.prepareCbPlanForInsert(any(), eq(USER_ID)))
                 .thenThrow(new JsonProcessingException("boom") {
                 });
@@ -321,7 +321,7 @@ class CbPlanServiceV4ImplTest {
         existingCbPlan.put(Constants.STATUS, Constants.DRAFT);
         mockExistingPlan(existingCbPlan);
         when(validationService.isUnauthorizedToUpdate(eq(USER_ID), anyMap(), any(), any())).thenReturn(false);
-        when(validationService.validateRequest(any(), anyBoolean(), anyString(), any())).thenReturn(true);
+        when(validationService.validateRequest(any(), anyBoolean(), anyString(), any(), anyBoolean())).thenReturn(true);
         Map<String, Object> updatedRequest = new HashMap<>();
         when(dataTransformService.prepareCbPlanForUpdate(anyMap(), eq(USER_ID))).thenReturn(updatedRequest);
         when(elasticSearchService.sanitizeForElastic(any())).thenReturn(new HashMap<>());
@@ -350,7 +350,7 @@ class CbPlanServiceV4ImplTest {
         existingCbPlan.put(Constants.STATUS, Constants.DRAFT);
         mockExistingPlan(existingCbPlan);
         when(validationService.isUnauthorizedToUpdate(eq(USER_ID), anyMap(), any(), any())).thenReturn(false);
-        when(validationService.validateRequest(any(), anyBoolean(), anyString(), any())).thenReturn(false);
+        when(validationService.validateRequest(any(), anyBoolean(), anyString(), any(), anyBoolean())).thenReturn(false);
 
         cbPlanService.updateCbPlan(requestWithPlanId(), TOKEN);
 
@@ -367,7 +367,7 @@ class CbPlanServiceV4ImplTest {
         existingCbPlan.put(Constants.STATUS, Constants.DRAFT);
         mockExistingPlan(existingCbPlan);
         when(validationService.isUnauthorizedToUpdate(eq(USER_ID), anyMap(), any(), any())).thenReturn(false);
-        when(validationService.validateRequest(any(), anyBoolean(), anyString(), any())).thenReturn(true);
+        when(validationService.validateRequest(any(), anyBoolean(), anyString(), any(), anyBoolean())).thenReturn(true);
         when(dataTransformService.prepareCbPlanForUpdate(anyMap(), eq(USER_ID))).thenReturn(new HashMap<>());
         when(elasticSearchService.sanitizeForElastic(any())).thenReturn(new HashMap<>());
         when(cassandraOperation.updateRecord(anyString(), anyString(), anyMap(), anyMap(),
@@ -389,7 +389,7 @@ class CbPlanServiceV4ImplTest {
         existingCbPlan.put(Constants.STATUS, Constants.DRAFT);
         mockExistingPlan(existingCbPlan);
         when(validationService.isUnauthorizedToUpdate(eq(USER_ID), anyMap(), any(), any())).thenReturn(false);
-        when(validationService.validateRequest(any(), anyBoolean(), anyString(), any())).thenReturn(true);
+        when(validationService.validateRequest(any(), anyBoolean(), anyString(), any(), anyBoolean())).thenReturn(true);
         String contentItemJson = "{\"identifier\":\"do_123\",\"mandatory\":true}";
         Map<String, Object> updatedRequestMap = new HashMap<>();
         updatedRequestMap.put(Constants.CONTENT_LIST, List.of(contentItemJson));
@@ -404,9 +404,7 @@ class CbPlanServiceV4ImplTest {
                 any(Supplier.class), any(Runnable.class)))
                 .thenAnswer(invocation -> {
                     Supplier<Boolean> preCommit = invocation.getArgument(4);
-                    return preCommit.get()
-                            ? Map.of(Constants.RESPONSE, Constants.SUCCESS)
-                            : Map.of(Constants.RESPONSE, Constants.FAILED);
+                    return Map.of(Constants.RESPONSE, preCommit.get() ? Constants.SUCCESS : Constants.FAILED);
                 });
         when(readService.extractIdentifiers(any())).thenReturn(List.of());
 
@@ -434,7 +432,7 @@ class CbPlanServiceV4ImplTest {
         existingCbPlan.put(Constants.PLAN_ID, PLAN_ID);
         mockExistingPlan(existingCbPlan);
         when(validationService.isUnauthorizedToUpdate(eq(USER_ID), anyMap(), any(), any())).thenReturn(false);
-        when(validationService.validateContextDataForLivePlanV4(anyMap(), anyBoolean(), anyString(), any(), any(), any()))
+        when(validationService.validateContextDataForLivePlanV4(anyMap(), anyBoolean(), anyString(), any(), any(), any(), anyBoolean()))
                 .thenReturn(true);
         when(dataTransformService.buildUpdatedPlanForLive(anyMap(), anyMap(), eq(USER_ID), any(), any()))
                 .thenReturn(Map.of(Constants.NAME, "updatedName"));
@@ -462,7 +460,7 @@ class CbPlanServiceV4ImplTest {
         mockExistingPlan(existingCbPlan);
         when(validationService.isUnauthorizedToUpdate(eq(USER_ID), anyMap(), any(), any())).thenReturn(false);
         when(validationService.validateAndNormalizeContentList(anyMap())).thenReturn(List.of());
-        when(validationService.validateContextDataForLivePlanV4(anyMap(), anyBoolean(), anyString(), any(), any(), any()))
+        when(validationService.validateContextDataForLivePlanV4(anyMap(), anyBoolean(), anyString(), any(), any(), any(), anyBoolean()))
                 .thenReturn(true);
         when(dataTransformService.buildUpdatedPlanForLive(anyMap(), anyMap(), eq(USER_ID), any(), any()))
                 .thenReturn(Map.of(Constants.CONTENT_LIST, List.of("do_1")));
@@ -515,7 +513,7 @@ class CbPlanServiceV4ImplTest {
         existingCbPlan.put(Constants.STATUS, Constants.LIVE);
         mockExistingPlan(existingCbPlan);
         when(validationService.isUnauthorizedToUpdate(eq(USER_ID), anyMap(), any(), any())).thenReturn(false);
-        when(validationService.validateContextDataForLivePlanV4(anyMap(), anyBoolean(), anyString(), any(), any(), any()))
+        when(validationService.validateContextDataForLivePlanV4(anyMap(), anyBoolean(), anyString(), any(), any(), any(), anyBoolean()))
                 .thenAnswer(invocation -> {
                     markFailed(invocation.getArgument(5), HttpStatus.BAD_REQUEST);
                     return false;
@@ -608,7 +606,7 @@ class CbPlanServiceV4ImplTest {
         existingCbPlan.put(Constants.STATUS, Constants.DRAFT);
         mockExistingPlan(existingCbPlan);
         when(validationService.isUnauthorizedToUpdate(eq(USER_ID), anyMap(), any(), any())).thenReturn(false);
-        when(validationService.validateContextDataForLivePlanV4(anyMap(), anyBoolean(), anyString(), any(), any(), any()))
+        when(validationService.validateContextDataForLivePlanV4(anyMap(), anyBoolean(), anyString(), any(), any(), any(), anyBoolean()))
                 .thenAnswer(invocation -> {
                     markFailed(invocation.getArgument(5), HttpStatus.BAD_REQUEST);
                     return false;
@@ -631,7 +629,7 @@ class CbPlanServiceV4ImplTest {
         existingCbPlan.put(Constants.ORG_SCOPE, Constants.SINGLE);
         mockExistingPlan(existingCbPlan);
         when(validationService.isUnauthorizedToUpdate(eq(USER_ID), anyMap(), any(), any())).thenReturn(false);
-        when(validationService.validateContextDataForLivePlanV4(anyMap(), anyBoolean(), anyString(), any(), any(), any()))
+        when(validationService.validateContextDataForLivePlanV4(anyMap(), anyBoolean(), anyString(), any(), any(), any(), anyBoolean()))
                 .thenAnswer(invocation -> {
                     java.util.Set<String> rootOrgIdsOut = invocation.getArgument(3);
                     rootOrgIdsOut.add(ORG_ID);
@@ -669,14 +667,14 @@ class CbPlanServiceV4ImplTest {
         existingCbPlan.put(Constants.STATUS, Constants.DRAFT);
         mockExistingPlan(existingCbPlan);
         when(validationService.isUnauthorizedToUpdate(eq(USER_ID), anyMap(), any(), any())).thenReturn(false);
-        when(validationService.validateContextDataForLivePlanV4(anyMap(), anyBoolean(), anyString(), any(), any(), any()))
+        when(validationService.validateContextDataForLivePlanV4(anyMap(), anyBoolean(), anyString(), any(), any(), any(), anyBoolean()))
                 .thenReturn(false);
 
         cbPlanService.publishCbPlan(requestWithPlanId(), TOKEN);
 
         verify(userProfileUtil).buildUserProfile(eq(USER_ID), any());
         verify(validationService).validateOrgCCA(eq(ORG_ID), any());
-        verify(validationService).validateContextDataForLivePlanV4(anyMap(), eq(false), eq(ORG_ID), any(), any(), any());
+        verify(validationService).validateContextDataForLivePlanV4(anyMap(), eq(false), eq(ORG_ID), any(), any(), any(), anyBoolean());
     }
 
     @Test
@@ -689,7 +687,7 @@ class CbPlanServiceV4ImplTest {
         existingCbPlan.put(Constants.PLAN_YEAR, PLAN_YEAR);
         mockExistingPlan(existingCbPlan);
         when(validationService.isUnauthorizedToUpdate(eq(USER_ID), anyMap(), any(), any())).thenReturn(false);
-        when(validationService.validateContextDataForLivePlanV4(anyMap(), anyBoolean(), anyString(), any(), any(), any()))
+        when(validationService.validateContextDataForLivePlanV4(anyMap(), anyBoolean(), anyString(), any(), any(), any(), anyBoolean()))
                 .thenReturn(true);
         when(cassandraOperation.updateRecord(anyString(), anyString(), anyMap(), anyMap(), any(), any()))
                 .thenReturn(Map.of(Constants.RESPONSE, Constants.FAILED, Constants.ERROR_MESSAGE, "commit failed"));
@@ -1056,7 +1054,7 @@ class CbPlanServiceV4ImplTest {
         when(validationService.isUnauthorizedToUpdate(eq(USER_ID), anyMap(), any(), any())).thenReturn(false);
         when(validationService.validateUserOrganization(eq(USER_ID), any())).thenReturn(ORG_ID);
         when(validationService.validateOrgCCA(eq(ORG_ID), any())).thenReturn(false);
-        when(validationService.validateRequest(any(), anyBoolean(), anyString(), any())).thenReturn(true);
+        when(validationService.validateRequest(any(), anyBoolean(), anyString(), any(), anyBoolean())).thenReturn(true);
         when(dataTransformService.prepareCbPlanForUpdate(anyMap(), eq(USER_ID)))
                 .thenReturn(new HashMap<>());
         when(elasticSearchService.sanitizeForElastic(any())).thenReturn(new HashMap<>());
@@ -1566,7 +1564,7 @@ class CbPlanServiceV4ImplTest {
         ApiRequest request = apiRequest(aiCbpRequestMap());
         mockAiCbpToken("PUBLIC", Constants.ROLE_AICBP_ADMIN);
         when(validationService.validateOrgCCA(eq(TARGET_ORG_ID), any())).thenReturn(false);
-        when(validationService.validateRequest(any(), eq(false), eq(TARGET_ORG_ID), any())).thenReturn(true);
+        when(validationService.validateRequest(any(), eq(false), eq(TARGET_ORG_ID), any(), anyBoolean())).thenReturn(true);
         mockInsertSuccess();
 
         ApiResponse response = cbPlanService.createCbPlanByAdmin(request, TOKEN);
@@ -1575,7 +1573,7 @@ class CbPlanServiceV4ImplTest {
         assertEquals(PLAN_ID, response.getResult().get(Constants.ID));
         Map<String, Object> injected = (Map<String, Object>) request.getRequest();
         assertEquals(Constants.PLAN_TYPE_AI_CBP, injected.get(Constants.PLAN_TYPE));
-        verify(validationService).validateRequest(any(), eq(false), eq(TARGET_ORG_ID), any());
+        verify(validationService).validateRequest(any(), eq(false), eq(TARGET_ORG_ID), any(), anyBoolean());
         verify(validationService, never()).validateAndExtractUserId(anyString(), any());
         verify(validationService, never()).validateUserOrganization(anyString(), any());
     }
@@ -1610,7 +1608,7 @@ class CbPlanServiceV4ImplTest {
         mockAiCbpToken(Constants.ROLE_AICBP_ADMIN);
         when(validationService.validateUserOrganization(eq(USER_ID), any())).thenReturn(ORG_ID);
         when(validationService.validateOrgCCA(eq(ORG_ID), any())).thenReturn(false);
-        when(validationService.validateRequest(any(), eq(false), eq(ORG_ID), any())).thenReturn(true);
+        when(validationService.validateRequest(any(), eq(false), eq(ORG_ID), any(), anyBoolean())).thenReturn(true);
         mockInsertSuccess();
 
         ApiResponse response = cbPlanService.createCbPlan(apiRequest(new HashMap<>()), null, TOKEN);
@@ -1746,7 +1744,7 @@ class CbPlanServiceV4ImplTest {
         existingCbPlan.put(Constants.ORG_SCOPE, Constants.SINGLE);
         mockExistingPlan(existingCbPlan);
         when(validationService.validateOrgCCA(eq(TARGET_ORG_ID), any())).thenReturn(false);
-        when(validationService.validateContextDataForLivePlanV4(anyMap(), eq(false), eq(TARGET_ORG_ID), any(), any(), any()))
+        when(validationService.validateContextDataForLivePlanV4(anyMap(), eq(false), eq(TARGET_ORG_ID), any(), any(), any(), anyBoolean()))
                 .thenAnswer(invocation -> {
                     java.util.Set<String> rootOrgIdsOut = invocation.getArgument(3);
                     rootOrgIdsOut.add(TARGET_ORG_ID);
@@ -1948,5 +1946,102 @@ class CbPlanServiceV4ImplTest {
 
         assertEquals(HttpStatus.BAD_REQUEST, actual.getResponseCode());
         assertEquals(Constants.FAILED, actual.getParams().getStatus());
+    }
+
+    private void mockCcaLookupFailure() {
+        when(validationService.validateOrgCCA(eq(ORG_ID), any())).thenAnswer(invocation -> {
+            ApiResponse response = invocation.getArgument(1);
+            response.getParams().setStatus(Constants.FAILED);
+            response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
+            return false;
+        });
+    }
+
+    @Test
+    void updateCbPlan_capabilityLookupFails_returnsWithoutValidatingRequest() {
+        mockAuthSuccess();
+        when(validationService.validatePlanIdExists(any(), any())).thenReturn(true);
+        Map<String, Object> requestMap = new HashMap<>();
+        requestMap.put(Constants.ID, PLAN_ID);
+        requestMap.put(Constants.CA_LINKED_ID, "ca-assessment-123");
+        Map<String, Object> existingPlan = new HashMap<>();
+        existingPlan.put(Constants.STATUS, Constants.DRAFT);
+        existingPlan.put(Constants.CREATED_BY, USER_ID);
+        mockExistingPlan(existingPlan);
+        when(validationService.isUnauthorizedToUpdate(eq(USER_ID), anyMap(), any(), any())).thenReturn(false);
+        when(validationService.validateUserOrganization(eq(USER_ID), any())).thenReturn(ORG_ID);
+        mockCcaLookupFailure();
+
+        ApiResponse response = cbPlanService.updateCbPlan(apiRequest(requestMap), TOKEN);
+
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        verify(validationService, never()).validateRequest(any(), anyBoolean(), anyString(), any(), anyBoolean());
+    }
+
+    @Test
+    void publishCbPlan_capabilityLookupFails_returnsWithoutPublishing() {
+        mockAuthSuccess();
+        when(validationService.validateAndExtractPlanId(anyMap(), any())).thenReturn(PLAN_ID);
+        Map<String, Object> existingCbPlan = new HashMap<>();
+        existingCbPlan.put(Constants.CREATED_BY, USER_ID);
+        existingCbPlan.put(Constants.STATUS, Constants.DRAFT);
+        mockExistingPlan(existingCbPlan);
+        when(validationService.isUnauthorizedToUpdate(eq(USER_ID), anyMap(), any(), any())).thenReturn(false);
+        mockCcaLookupFailure();
+
+        ApiResponse response = cbPlanService.publishCbPlan(requestWithPlanId(), TOKEN);
+
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        verify(validationService, never()).validateContextDataForLivePlanV4(anyMap(), anyBoolean(), anyString(),
+                any(), any(), any(), anyBoolean());
+    }
+
+    @Test
+    void publishCbPlan_livePlan_passesServiceBasedTargetingFlagToLiveRepublishValidation() {
+        mockAuthSuccess();
+        when(validationService.validateOrgAllowsServiceBasedTargeting(eq(ORG_ID), any())).thenReturn(true);
+        when(validationService.validateAndExtractPlanId(anyMap(), any())).thenReturn(PLAN_ID);
+        Map<String, Object> existingCbPlan = new HashMap<>();
+        existingCbPlan.put(Constants.CREATED_BY, USER_ID);
+        existingCbPlan.put(Constants.STATUS, Constants.LIVE);
+        existingCbPlan.put(Constants.PLAN_YEAR, PLAN_YEAR);
+        mockExistingPlan(existingCbPlan);
+        when(validationService.isUnauthorizedToUpdate(eq(USER_ID), anyMap(), any(), any())).thenReturn(false);
+        when(validationService.validateContextDataForLivePlanV4(anyMap(), anyBoolean(), anyString(), any(), any(),
+                any(), anyBoolean())).thenReturn(false);
+
+        cbPlanService.publishCbPlan(requestWithPlanId(), TOKEN);
+
+        verify(validationService).validateContextDataForLivePlanV4(anyMap(), eq(false), eq(ORG_ID), any(), any(),
+                any(), eq(true));
+    }
+
+    @Test
+    void createCbPlan_serviceBasedTargetingEnabled_passesFlagToValidateRequest() {
+        mockAuthSuccess();
+        when(validationService.validateOrgAllowsServiceBasedTargeting(eq(ORG_ID), any())).thenReturn(true);
+        when(validationService.validateRequest(any(), anyBoolean(), anyString(), any(), anyBoolean())).thenReturn(false);
+
+        cbPlanService.createCbPlan(apiRequest(new HashMap<>()), null, TOKEN);
+
+        verify(validationService).validateRequest(any(), eq(false), eq(ORG_ID), any(), eq(true));
+    }
+
+    @Test
+    void createCbPlan_serviceBasedTargetingLookupFails_returnsWithoutInsert() {
+        mockAuthSuccess();
+        when(validationService.validateOrgAllowsServiceBasedTargeting(eq(ORG_ID), any())).thenAnswer(invocation -> {
+            ApiResponse response = invocation.getArgument(1);
+            response.getParams().setStatus(Constants.FAILED);
+            response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
+            return false;
+        });
+
+        ApiResponse response = cbPlanService.createCbPlan(apiRequest(new HashMap<>()), null, TOKEN);
+
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        verify(validationService, never()).validateRequest(any(), anyBoolean(), anyString(), any(), anyBoolean());
+        verify(cassandraOperation, never()).insertRecord(anyString(), anyString(), anyMap(),
+                any(BooleanSupplier.class), any(Runnable.class));
     }
 }

@@ -188,10 +188,8 @@ public class CbPlanDictionaryServiceV4Impl {
         ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_CBPLAN_V4_ASSESSMENT_ELIGIBILITY);
         try {
             String userId = accessTokenValidator.fetchUserIdFromAccessToken(authToken, response);
-            if (StringUtils.isBlank(userId)) {
+            if (isAuthTokenInvalid(userId, response)) {
                 log.warn("getComprehensiveAssessmentEligibility: Invalid or missing token");
-                response.getParams().setErr(Constants.ERR_INVALID_OR_MISSING_AUTH_TOKEN);
-                response.setResponseCode(HttpStatus.UNAUTHORIZED);
                 return response;
             }
             Map<String, String> userProfile = buildUserProfile(userId, response);
@@ -921,8 +919,7 @@ public class CbPlanDictionaryServiceV4Impl {
             response.getResult().put(previousYear, buildYearResult(new LinkedHashMap<>(), new LinkedHashMap<>()));
             return;
         }
-        PartitionedPlans partitioned = partitionAndEnrichPlans(prevPlans, userProfile);
-        response.getResult().put(previousYear, buildYearResult(partitioned.aparPlanMap(), partitioned.nonAparPlanMap()));
+        PartitionedPlans partitioned = appendPartitionedYearResult(response, previousYear, prevPlans, userProfile);
         log.info("fetchAndAppendPreviousYear: previousYear={}, aparCount={}, nonAparCount={}",
                 previousYear, partitioned.aparPlanMap().size(), partitioned.nonAparPlanMap().size());
     }
@@ -1331,8 +1328,7 @@ public class CbPlanDictionaryServiceV4Impl {
             response.getResult().put(previousYear, buildYearResult(new LinkedHashMap<>(), new LinkedHashMap<>()));
             return;
         }
-        PartitionedPlans partitioned = partitionAndEnrichPlans(prevPlans, evaluationProfile);
-        response.getResult().put(previousYear, buildYearResult(partitioned.aparPlanMap(), partitioned.nonAparPlanMap()));
+        PartitionedPlans partitioned = appendPartitionedYearResult(response, previousYear, prevPlans, evaluationProfile);
         log.info("fetchAndAppendPreviousYearForPosting: previousYear={}, aparCount={}, nonAparCount={}",
                 previousYear, partitioned.aparPlanMap().size(), partitioned.nonAparPlanMap().size());
     }
@@ -1389,6 +1385,19 @@ public class CbPlanDictionaryServiceV4Impl {
         enrichOrgDetails(nonAparPlanMap, orgDetailsMap);
         filterLiveContentInPlans(aparPlanMap, nonAparPlanMap);
         return new PartitionedPlans(aparPlanMap, nonAparPlanMap);
+    }
+
+    /**
+     * Partitions/enriches {@code plans} and appends the resulting year entry onto
+     * {@code response} at {@code year}, returning the partitioned maps so the caller can still
+     * log their sizes. Shared by the previous-year fallback for both the standard and
+     * previous-posting pipelines.
+     */
+    private PartitionedPlans appendPartitionedYearResult(ApiResponse response, String year,
+                                                          List<Map<String, Object>> plans, Map<String, String> profile) {
+        PartitionedPlans partitioned = partitionAndEnrichPlans(plans, profile);
+        response.getResult().put(year, buildYearResult(partitioned.aparPlanMap(), partitioned.nonAparPlanMap()));
+        return partitioned;
     }
 
     /**

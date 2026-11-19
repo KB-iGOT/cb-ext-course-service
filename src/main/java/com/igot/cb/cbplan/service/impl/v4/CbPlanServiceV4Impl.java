@@ -1418,6 +1418,9 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
      */
     @Override
     public ApiResponse getCBPlanDictionaryForUser(ApiRequest request, String authToken) {
+        if (hasPreviousPostingFields(request)) {
+            return dictionaryService.getCBPlanDictionaryForPreviousPosting(request, authToken);
+        }
         return dictionaryService.getCBPlanDictionaryForUser(request, authToken);
     }
 
@@ -2148,5 +2151,32 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
             return null;
         }
         return new OrgCapabilities(isCCA, allowsServiceBasedTargeting);
+    }
+
+    /**
+     * Routing guard for {@link #getCBPlanDictionaryForUser(ApiRequest, String)}: true when the
+     * request body carries a non-blank String value for either previousRootOrgId or
+     * previousDesignation. A non-String value (e.g. a number) is treated as absent and routes to
+     * the standard dictionary path.
+     *
+     * @param request the API request to inspect
+     * @return true when either previous-posting field is present as a non-blank String
+     */
+    private boolean hasPreviousPostingFields(ApiRequest request) {
+        if (!(request.getRequest() instanceof Map<?, ?> requestMap)) {
+            return false;
+        }
+        return isNonBlankString(requestMap.get(Constants.REQUEST_PARAM_PREVIOUS_ROOT_ORG_ID))
+                || isNonBlankString(requestMap.get(Constants.REQUEST_PARAM_PREVIOUS_DESIGNATION));
+    }
+
+    /**
+     * Checks whether the given value is a String with non-blank content.
+     *
+     * @param value raw request field value
+     * @return true when value is a String and not blank
+     */
+    private boolean isNonBlankString(Object value) {
+        return value instanceof String str && StringUtils.isNotBlank(str);
     }
 }

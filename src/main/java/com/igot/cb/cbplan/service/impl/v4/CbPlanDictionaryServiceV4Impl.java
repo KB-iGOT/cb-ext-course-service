@@ -107,16 +107,13 @@ public class CbPlanDictionaryServiceV4Impl {
                 response.setResponseCode(HttpStatus.UNAUTHORIZED);
                 return response;
             }
-            Map<String, Object> requestData = extractRequestData(request);
-            String requestedPlanYear = (String) requestData.get(Constants.REQUEST_PARAM_PLAN_YEAR);
-            String planYear = resolvePlanYear(requestedPlanYear, response);
-            if (Objects.isNull(planYear)) {
+            PlanYearAndProfile context = resolvePlanYearAndProfile(request, userId, response);
+            if (Objects.isNull(context)) {
                 return response;
             }
-            Map<String, String> userProfile = buildUserProfile(userId, response);
-            if (userProfile.isEmpty()) {
-                return response;
-            }
+            String requestedPlanYear = context.requestedPlanYear();
+            String planYear = context.planYear();
+            Map<String, String> userProfile = context.userProfile();
             String userOrgId = userProfile.get(Constants.USER_ROOT_ORG_ID);
             String cacheKey = Constants.CB_PLAN_V4_REDIS_KEY_PREFIX + userOrgId + ":" + userId + ":" + planYear + ":dict";
             // Snapshot the publish versions before any read so a publish racing this request
@@ -147,14 +144,9 @@ public class CbPlanDictionaryServiceV4Impl {
                 cacheResult(cacheKey, response.getResult(), isCacheEnabled.get(), versions);
                 return response;
             }
-            Map<String, Map<String, Object>> aparPlanMap = new LinkedHashMap<>();
-            Map<String, Map<String, Object>> nonAparPlanMap = new LinkedHashMap<>();
-            buildPlanPartitions(activePlans, userProfile, aparPlanMap, nonAparPlanMap);
-            Set<String> orgIds = collectCreatedByOrgIds(aparPlanMap, nonAparPlanMap);
-            Map<String, Map<String, String>> orgDetailsMap = fetchOrgDetails(orgIds);
-            enrichOrgDetails(aparPlanMap, orgDetailsMap);
-            enrichOrgDetails(nonAparPlanMap, orgDetailsMap);
-            filterLiveContentInPlans(aparPlanMap, nonAparPlanMap);
+            PartitionedPlans partitioned = partitionAndEnrichPlans(activePlans, userProfile);
+            Map<String, Map<String, Object>> aparPlanMap = partitioned.aparPlanMap();
+            Map<String, Map<String, Object>> nonAparPlanMap = partitioned.nonAparPlanMap();
             Map<String, Object> yearResult = buildYearResult(aparPlanMap, nonAparPlanMap);
             response.getResult().put(planYear, yearResult);
             if (StringUtils.isNotBlank(requestedPlanYear) && aparPlanMap.isEmpty() && nonAparPlanMap.isEmpty()) {
@@ -170,14 +162,10 @@ public class CbPlanDictionaryServiceV4Impl {
                     userId, planYear, aparPlanMap.size(), nonAparPlanMap.size());
         } catch (IllegalArgumentException e) {
             log.error("getCBPlanDictionaryForUser: Invalid argument", e);
-            response.getParams().setStatus(Constants.FAILED);
-            response.getParams().setErr("Invalid request parameters");
-            response.setResponseCode(HttpStatus.BAD_REQUEST);
+            populateInvalidRequestFailure(response);
         } catch (Exception e) {
             log.error("getCBPlanDictionaryForUser: Unexpected error", e);
-            response.getParams().setStatus(Constants.FAILED);
-            response.getParams().setErr("Failed to fetch CB Plan dictionary");
-            response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
+            populateDictionaryFetchFailure(response);
         }
         return response;
     }
@@ -272,15 +260,8 @@ public class CbPlanDictionaryServiceV4Impl {
         if (CollectionUtils.isEmpty(activePlans)) {
             return buildYearResult(new LinkedHashMap<>(), new LinkedHashMap<>());
         }
-        Map<String, Map<String, Object>> aparPlanMap = new LinkedHashMap<>();
-        Map<String, Map<String, Object>> nonAparPlanMap = new LinkedHashMap<>();
-        buildPlanPartitions(activePlans, userProfile, aparPlanMap, nonAparPlanMap);
-        Set<String> orgIds = collectCreatedByOrgIds(aparPlanMap, nonAparPlanMap);
-        Map<String, Map<String, String>> orgDetailsMap = fetchOrgDetails(orgIds);
-        enrichOrgDetails(aparPlanMap, orgDetailsMap);
-        enrichOrgDetails(nonAparPlanMap, orgDetailsMap);
-        filterLiveContentInPlans(aparPlanMap, nonAparPlanMap);
-        return buildYearResult(aparPlanMap, nonAparPlanMap);
+        PartitionedPlans partitioned = partitionAndEnrichPlans(activePlans, userProfile);
+        return buildYearResult(partitioned.aparPlanMap(), partitioned.nonAparPlanMap());
     }
 
     /**
@@ -940,17 +921,10 @@ public class CbPlanDictionaryServiceV4Impl {
             response.getResult().put(previousYear, buildYearResult(new LinkedHashMap<>(), new LinkedHashMap<>()));
             return;
         }
-        Map<String, Map<String, Object>> aparPlanMap = new LinkedHashMap<>();
-        Map<String, Map<String, Object>> nonAparPlanMap = new LinkedHashMap<>();
-        buildPlanPartitions(prevPlans, userProfile, aparPlanMap, nonAparPlanMap);
-        Set<String> orgIds = collectCreatedByOrgIds(aparPlanMap, nonAparPlanMap);
-        Map<String, Map<String, String>> orgDetailsMap = fetchOrgDetails(orgIds);
-        enrichOrgDetails(aparPlanMap, orgDetailsMap);
-        enrichOrgDetails(nonAparPlanMap, orgDetailsMap);
-        filterLiveContentInPlans(aparPlanMap, nonAparPlanMap);
-        response.getResult().put(previousYear, buildYearResult(aparPlanMap, nonAparPlanMap));
+        PartitionedPlans partitioned = partitionAndEnrichPlans(prevPlans, userProfile);
+        response.getResult().put(previousYear, buildYearResult(partitioned.aparPlanMap(), partitioned.nonAparPlanMap()));
         log.info("fetchAndAppendPreviousYear: previousYear={}, aparCount={}, nonAparCount={}",
-                previousYear, aparPlanMap.size(), nonAparPlanMap.size());
+                previousYear, partitioned.aparPlanMap().size(), partitioned.nonAparPlanMap().size());
     }
 
     /**
@@ -1218,22 +1192,19 @@ public class CbPlanDictionaryServiceV4Impl {
                 response.setResponseCode(HttpStatus.UNAUTHORIZED);
                 return response;
             }
-            Map<String, Object> requestData = extractRequestData(request);
-            String requestedPlanYear = (String) requestData.get(Constants.REQUEST_PARAM_PLAN_YEAR);
-            String planYear = resolvePlanYear(requestedPlanYear, response);
-            if (Objects.isNull(planYear)) {
+            PlanYearAndProfile context = resolvePlanYearAndProfile(request, userId, response);
+            if (Objects.isNull(context)) {
                 return response;
             }
-            Map<String, String> userProfile = buildUserProfile(userId, response);
-            if (userProfile.isEmpty()) {
-                return response;
-            }
-            Map<String, String> evaluationProfile = resolveEvaluationProfile(requestData, userProfile);
+            String requestedPlanYear = context.requestedPlanYear();
+            String planYear = context.planYear();
+            Map<String, String> userProfile = context.userProfile();
+            Map<String, String> evaluationProfile = resolveEvaluationProfile(context.requestData(), userProfile);
             String userOrgId = evaluationProfile.get(Constants.USER_ROOT_ORG_ID);
             String cacheKey = Constants.CB_PLAN_V4_REDIS_KEY_PREFIX + userOrgId + ":" + userId + ":" + planYear
                     + Constants.CB_PLAN_V4_PREV_POSTING_DICT_KEY_SUFFIX;
             Map<String, Object> cachedResult = readPreviousPostingCache(cacheKey);
-            if (Objects.nonNull(cachedResult)) {
+            if (MapUtils.isNotEmpty(cachedResult)) {
                 log.info("getCBPlanDictionaryForPreviousPosting: Cache hit - userId={}, orgId={}, planYear={}",
                         userId, userOrgId, planYear);
                 populateResponseFromCache(response, cachedResult);
@@ -1259,14 +1230,9 @@ public class CbPlanDictionaryServiceV4Impl {
                 writePreviousPostingCache(cacheKey, response.getResult());
                 return response;
             }
-            Map<String, Map<String, Object>> aparPlanMap = new LinkedHashMap<>();
-            Map<String, Map<String, Object>> nonAparPlanMap = new LinkedHashMap<>();
-            buildPlanPartitions(activePlans, evaluationProfile, aparPlanMap, nonAparPlanMap);
-            Set<String> orgIds = collectCreatedByOrgIds(aparPlanMap, nonAparPlanMap);
-            Map<String, Map<String, String>> orgDetailsMap = fetchOrgDetails(orgIds);
-            enrichOrgDetails(aparPlanMap, orgDetailsMap);
-            enrichOrgDetails(nonAparPlanMap, orgDetailsMap);
-            filterLiveContentInPlans(aparPlanMap, nonAparPlanMap);
+            PartitionedPlans partitioned = partitionAndEnrichPlans(activePlans, evaluationProfile);
+            Map<String, Map<String, Object>> aparPlanMap = partitioned.aparPlanMap();
+            Map<String, Map<String, Object>> nonAparPlanMap = partitioned.nonAparPlanMap();
             Map<String, Object> yearResult = buildYearResult(aparPlanMap, nonAparPlanMap);
             response.getResult().put(planYear, yearResult);
             if (StringUtils.isNotBlank(requestedPlanYear) && aparPlanMap.isEmpty() && nonAparPlanMap.isEmpty()) {
@@ -1283,32 +1249,28 @@ public class CbPlanDictionaryServiceV4Impl {
                     userId, planYear, aparPlanMap.size(), nonAparPlanMap.size());
         } catch (IllegalArgumentException e) {
             log.error("getCBPlanDictionaryForPreviousPosting: Invalid argument", e);
-            response.getParams().setStatus(Constants.FAILED);
-            response.getParams().setErr("Invalid request parameters");
-            response.setResponseCode(HttpStatus.BAD_REQUEST);
+            populateInvalidRequestFailure(response);
         } catch (Exception e) {
             log.error("getCBPlanDictionaryForPreviousPosting: Unexpected error", e);
-            response.getParams().setStatus(Constants.FAILED);
-            response.getParams().setErr("Failed to fetch CB Plan dictionary");
-            response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
+            populateDictionaryFetchFailure(response);
         }
         return response;
     }
 
     /**
-     * Plain Redis get: returns the deserialized entry, or {@code null} on a miss or malformed
-     * JSON (treated as a miss rather than failing the request).
+     * Plain Redis get: returns the deserialized entry, or an empty map on a miss or malformed
+     * JSON (both treated as a miss rather than failing the request).
      */
     private Map<String, Object> readPreviousPostingCache(String cacheKey) {
         String cachedJson = redisCacheMgr.getFromCache(cacheKey);
         if (StringUtils.isBlank(cachedJson)) {
-            return null;
+            return Map.of();
         }
         try {
             return mapper.readValue(cachedJson, MAP_TYPE_REF);
         } catch (JsonProcessingException e) {
             log.warn("readPreviousPostingCache: Failed to deserialize cached entry - key={}", cacheKey, e);
-            return null;
+            return Map.of();
         }
     }
 
@@ -1369,17 +1331,84 @@ public class CbPlanDictionaryServiceV4Impl {
             response.getResult().put(previousYear, buildYearResult(new LinkedHashMap<>(), new LinkedHashMap<>()));
             return;
         }
+        PartitionedPlans partitioned = partitionAndEnrichPlans(prevPlans, evaluationProfile);
+        response.getResult().put(previousYear, buildYearResult(partitioned.aparPlanMap(), partitioned.nonAparPlanMap()));
+        log.info("fetchAndAppendPreviousYearForPosting: previousYear={}, aparCount={}, nonAparCount={}",
+                previousYear, partitioned.aparPlanMap().size(), partitioned.nonAparPlanMap().size());
+    }
+
+    /**
+     * Holds the outcome of resolving the requested plan year and the caller's profile together,
+     * since every dictionary entry point needs both before it can do anything else.
+     */
+    private record PlanYearAndProfile(Map<String, Object> requestData, String requestedPlanYear, String planYear,
+                                       Map<String, String> userProfile) {
+    }
+
+    /**
+     * Resolves the requested plan year (defaulting/validating it) and the caller's profile in one
+     * step, shared by every dictionary entry point so this validation sequence exists exactly
+     * once. Returns {@code null} when either step already populated an error on {@code response}
+     * - the caller must return it immediately in that case.
+     */
+    private PlanYearAndProfile resolvePlanYearAndProfile(ApiRequest request, String userId, ApiResponse response) {
+        Map<String, Object> requestData = extractRequestData(request);
+        String requestedPlanYear = (String) requestData.get(Constants.REQUEST_PARAM_PLAN_YEAR);
+        String planYear = resolvePlanYear(requestedPlanYear, response);
+        if (Objects.isNull(planYear)) {
+            return null;
+        }
+        Map<String, String> userProfile = buildUserProfile(userId, response);
+        if (userProfile.isEmpty()) {
+            return null;
+        }
+        return new PlanYearAndProfile(requestData, requestedPlanYear, planYear, userProfile);
+    }
+
+    /**
+     * Holds a plan list already partitioned into APAR/non-APAR, with org details and live-content
+     * filtering applied.
+     */
+    private record PartitionedPlans(Map<String, Map<String, Object>> aparPlanMap,
+                                     Map<String, Map<String, Object>> nonAparPlanMap) {
+    }
+
+    /**
+     * Partitions plans into APAR/non-APAR, resolves and attaches creator org name/logo, and strips
+     * non-Live caLinkedId references. Shared by every pipeline that turns a raw plan list into a
+     * dictionary year result (current year and previous-year fallback, standard and
+     * previous-posting), so this sequence exists exactly once.
+     */
+    private PartitionedPlans partitionAndEnrichPlans(List<Map<String, Object>> plans, Map<String, String> profile) {
         Map<String, Map<String, Object>> aparPlanMap = new LinkedHashMap<>();
         Map<String, Map<String, Object>> nonAparPlanMap = new LinkedHashMap<>();
-        buildPlanPartitions(prevPlans, evaluationProfile, aparPlanMap, nonAparPlanMap);
+        buildPlanPartitions(plans, profile, aparPlanMap, nonAparPlanMap);
         Set<String> orgIds = collectCreatedByOrgIds(aparPlanMap, nonAparPlanMap);
         Map<String, Map<String, String>> orgDetailsMap = fetchOrgDetails(orgIds);
         enrichOrgDetails(aparPlanMap, orgDetailsMap);
         enrichOrgDetails(nonAparPlanMap, orgDetailsMap);
         filterLiveContentInPlans(aparPlanMap, nonAparPlanMap);
-        response.getResult().put(previousYear, buildYearResult(aparPlanMap, nonAparPlanMap));
-        log.info("fetchAndAppendPreviousYearForPosting: previousYear={}, aparCount={}, nonAparCount={}",
-                previousYear, aparPlanMap.size(), nonAparPlanMap.size());
+        return new PartitionedPlans(aparPlanMap, nonAparPlanMap);
+    }
+
+    /**
+     * Populates the standard "invalid request" failure shape, shared by every dictionary entry
+     * point's {@code IllegalArgumentException} handler.
+     */
+    private void populateInvalidRequestFailure(ApiResponse response) {
+        response.getParams().setStatus(Constants.FAILED);
+        response.getParams().setErr("Invalid request parameters");
+        response.setResponseCode(HttpStatus.BAD_REQUEST);
+    }
+
+    /**
+     * Populates the standard "unexpected error" failure shape, shared by every dictionary entry
+     * point's generic {@code Exception} handler.
+     */
+    private void populateDictionaryFetchFailure(ApiResponse response) {
+        response.getParams().setStatus(Constants.FAILED);
+        response.getParams().setErr("Failed to fetch CB Plan dictionary");
+        response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
 }

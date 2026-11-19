@@ -101,10 +101,8 @@ public class CbPlanDictionaryServiceV4Impl {
         ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_CBPLAN_V4_GET_USER_DICTIONARY);
         try {
             String userId = accessTokenValidator.fetchUserIdFromAccessToken(authToken, response);
-            if (StringUtils.isBlank(userId)) {
+            if (isAuthTokenInvalid(userId, response)) {
                 log.warn("getCBPlanDictionaryForUser: Invalid or missing token");
-                response.getParams().setErr(Constants.ERR_INVALID_OR_MISSING_AUTH_TOKEN);
-                response.setResponseCode(HttpStatus.UNAUTHORIZED);
                 return response;
             }
             PlanYearAndProfile context = resolvePlanYearAndProfile(request, userId, response);
@@ -1183,10 +1181,8 @@ public class CbPlanDictionaryServiceV4Impl {
         ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_CBPLAN_V4_GET_USER_DICTIONARY);
         try {
             String userId = accessTokenValidator.fetchUserIdFromAccessToken(authToken, response);
-            if (StringUtils.isBlank(userId)) {
+            if (isAuthTokenInvalid(userId, response)) {
                 log.warn("getCBPlanDictionaryForPreviousPosting: Invalid or missing token");
-                response.getParams().setErr(Constants.ERR_INVALID_OR_MISSING_AUTH_TOKEN);
-                response.setResponseCode(HttpStatus.UNAUTHORIZED);
                 return response;
             }
             PlanYearAndProfile context = resolvePlanYearAndProfile(request, userId, response);
@@ -1331,6 +1327,20 @@ public class CbPlanDictionaryServiceV4Impl {
         PartitionedPlans partitioned = appendPartitionedYearResult(response, previousYear, prevPlans, evaluationProfile);
         log.info("fetchAndAppendPreviousYearForPosting: previousYear={}, aparCount={}, nonAparCount={}",
                 previousYear, partitioned.aparPlanMap().size(), partitioned.nonAparPlanMap().size());
+    }
+
+    /**
+     * Short-circuit check shared by every dictionary entry point: true when the token didn't
+     * resolve to a user ID, after populating the standard 401 shape on {@code response}. The
+     * caller still logs its own context-specific warning before returning.
+     */
+    private boolean isAuthTokenInvalid(String userId, ApiResponse response) {
+        if (StringUtils.isNotBlank(userId)) {
+            return false;
+        }
+        response.getParams().setErr(Constants.ERR_INVALID_OR_MISSING_AUTH_TOKEN);
+        response.setResponseCode(HttpStatus.UNAUTHORIZED);
+        return true;
     }
 
     /**

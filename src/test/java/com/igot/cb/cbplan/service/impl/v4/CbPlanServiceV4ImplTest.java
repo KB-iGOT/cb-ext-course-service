@@ -37,6 +37,7 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -54,6 +55,8 @@ import org.mockito.ArgumentCaptor;
 class CbPlanServiceV4ImplTest {
 
     private static final String TOKEN = "token";
+    private static final String PREVIOUS_ORG_ID = "org_previous_002";
+    private static final String PREVIOUS_DESIGNATION = "Director";
     private static final String USER_ID = "user1";
     private static final String ORG_ID = "org1";
     private static final String PLAN_ID = "plan1";
@@ -105,6 +108,12 @@ class CbPlanServiceV4ImplTest {
 
     @Mock
     private CbPlanLookupServiceV4Impl lookupService;
+
+    @Mock
+    private CbPlanDictionaryServiceV4Impl dictionaryService;
+
+    @Mock
+    private CbPlanDictionaryPreviousPostingServiceV4Impl previousPostingDictionaryService;
 
     @InjectMocks
     private CbPlanServiceV4Impl cbPlanService;
@@ -2043,5 +2052,93 @@ class CbPlanServiceV4ImplTest {
         verify(validationService, never()).validateRequest(any(), anyBoolean(), anyString(), any(), anyBoolean());
         verify(cassandraOperation, never()).insertRecord(anyString(), anyString(), anyMap(),
                 any(BooleanSupplier.class), any(Runnable.class));
+    }
+
+    @Test
+    void getCBPlanDictionaryForUser_previousRootOrgIdPresent_routesToPreviousPostingService() {
+        Map<String, Object> requestMap = new HashMap<>();
+        requestMap.put(Constants.REQUEST_PARAM_PREVIOUS_ROOT_ORG_ID, PREVIOUS_ORG_ID);
+        ApiRequest request = apiRequest(requestMap);
+        ApiResponse expected = new ApiResponse();
+        when(previousPostingDictionaryService.getDictionaryForUserWithPreviousPosting(request, TOKEN))
+                .thenReturn(expected);
+
+        ApiResponse response = cbPlanService.getCBPlanDictionaryForUser(request, TOKEN);
+
+        assertSame(expected, response);
+        verify(dictionaryService, never()).getCBPlanDictionaryForUser(any(), anyString());
+    }
+
+    @Test
+    void getCBPlanDictionaryForUser_previousDesignationPresent_routesToPreviousPostingService() {
+        Map<String, Object> requestMap = new HashMap<>();
+        requestMap.put(Constants.REQUEST_PARAM_PREVIOUS_DESIGNATION, PREVIOUS_DESIGNATION);
+        ApiRequest request = apiRequest(requestMap);
+        ApiResponse expected = new ApiResponse();
+        when(previousPostingDictionaryService.getDictionaryForUserWithPreviousPosting(request, TOKEN))
+                .thenReturn(expected);
+
+        ApiResponse response = cbPlanService.getCBPlanDictionaryForUser(request, TOKEN);
+
+        assertSame(expected, response);
+        verify(dictionaryService, never()).getCBPlanDictionaryForUser(any(), anyString());
+    }
+
+    @Test
+    void getCBPlanDictionaryForUser_noPreviousPostingFields_routesToStandardService() {
+        ApiRequest request = apiRequest(new HashMap<>());
+        ApiResponse expected = new ApiResponse();
+        when(dictionaryService.getCBPlanDictionaryForUser(request, TOKEN)).thenReturn(expected);
+
+        ApiResponse response = cbPlanService.getCBPlanDictionaryForUser(request, TOKEN);
+
+        assertSame(expected, response);
+        verify(previousPostingDictionaryService, never())
+                .getDictionaryForUserWithPreviousPosting(any(), anyString());
+    }
+
+    @Test
+    void getCBPlanDictionaryForUser_blankPreviousValues_routesToStandardService() {
+        Map<String, Object> requestMap = new HashMap<>();
+        requestMap.put(Constants.REQUEST_PARAM_PREVIOUS_ROOT_ORG_ID, "   ");
+        requestMap.put(Constants.REQUEST_PARAM_PREVIOUS_DESIGNATION, "");
+        ApiRequest request = apiRequest(requestMap);
+        ApiResponse expected = new ApiResponse();
+        when(dictionaryService.getCBPlanDictionaryForUser(request, TOKEN)).thenReturn(expected);
+
+        ApiResponse response = cbPlanService.getCBPlanDictionaryForUser(request, TOKEN);
+
+        assertSame(expected, response);
+        verify(previousPostingDictionaryService, never())
+                .getDictionaryForUserWithPreviousPosting(any(), anyString());
+    }
+
+    @Test
+    void getCBPlanDictionaryForUser_nonStringPreviousValue_routesToStandardService() {
+        Map<String, Object> requestMap = new HashMap<>();
+        requestMap.put(Constants.REQUEST_PARAM_PREVIOUS_ROOT_ORG_ID, 42);
+        ApiRequest request = apiRequest(requestMap);
+        ApiResponse expected = new ApiResponse();
+        when(dictionaryService.getCBPlanDictionaryForUser(request, TOKEN)).thenReturn(expected);
+
+        ApiResponse response = cbPlanService.getCBPlanDictionaryForUser(request, TOKEN);
+
+        assertSame(expected, response);
+        verify(previousPostingDictionaryService, never())
+                .getDictionaryForUserWithPreviousPosting(any(), anyString());
+    }
+
+    @Test
+    void getCBPlanDictionaryForUser_requestBodyNotAMap_routesToStandardService() {
+        ApiRequest request = new ApiRequest();
+        request.setRequest(null);
+        ApiResponse expected = new ApiResponse();
+        when(dictionaryService.getCBPlanDictionaryForUser(request, TOKEN)).thenReturn(expected);
+
+        ApiResponse response = cbPlanService.getCBPlanDictionaryForUser(request, TOKEN);
+
+        assertSame(expected, response);
+        verify(previousPostingDictionaryService, never())
+                .getDictionaryForUserWithPreviousPosting(any(), anyString());
     }
 }

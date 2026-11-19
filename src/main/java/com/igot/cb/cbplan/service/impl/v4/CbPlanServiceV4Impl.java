@@ -59,6 +59,7 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
     private final CbPlanVersionMgr versionMgr;
     private final CbPlanContentSyncServiceV4Impl contentSyncService;
     private final CbPlanLookupServiceV4Impl lookupService;
+    private final CbPlanDictionaryPreviousPostingServiceV4Impl previousPostingDictionaryService;
     private final ObjectMapper mapper;
 
     public CbPlanServiceV4Impl(CassandraOperation cassandraOperation,
@@ -77,7 +78,8 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
                                CbPlanCacheMgrV4 cbPlanCacheMgrV4,
                                CbPlanVersionMgr versionMgr,
                                CbPlanContentSyncServiceV4Impl contentSyncService,
-                               CbPlanLookupServiceV4Impl lookupService) {
+                               CbPlanLookupServiceV4Impl lookupService,
+                               CbPlanDictionaryPreviousPostingServiceV4Impl previousPostingDictionaryService) {
         this.cassandraOperation = cassandraOperation;
         this.serverProperties = serverProperties;
         this.validationService = validationService;
@@ -95,6 +97,7 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
         this.versionMgr = versionMgr;
         this.contentSyncService = contentSyncService;
         this.lookupService = lookupService;
+        this.previousPostingDictionaryService = previousPostingDictionaryService;
         this.mapper = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
@@ -1418,6 +1421,9 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
      */
     @Override
     public ApiResponse getCBPlanDictionaryForUser(ApiRequest request, String authToken) {
+        if (hasPreviousPostingFields(request)) {
+            return previousPostingDictionaryService.getDictionaryForUserWithPreviousPosting(request, authToken);
+        }
         return dictionaryService.getCBPlanDictionaryForUser(request, authToken);
     }
 
@@ -2148,5 +2154,23 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
             return null;
         }
         return new OrgCapabilities(isCCA, allowsServiceBasedTargeting);
+    }
+
+
+    /**
+     * Returns true when the request body carries a previous posting (previousRootOrgId and/or
+     * previousDesignation), which routes resolution to the standalone previous-posting dictionary
+     * service; absence leaves the normal cached dictionary path untouched.
+     */
+    private boolean hasPreviousPostingFields(ApiRequest request) {
+        if (!(request.getRequest() instanceof Map<?, ?> requestMap)) {
+            return false;
+        }
+        return isNonBlankString(requestMap.get(Constants.REQUEST_PARAM_PREVIOUS_ROOT_ORG_ID))
+                || isNonBlankString(requestMap.get(Constants.REQUEST_PARAM_PREVIOUS_DESIGNATION));
+    }
+
+    private boolean isNonBlankString(Object value) {
+        return value instanceof String str && StringUtils.isNotBlank(str);
     }
 }

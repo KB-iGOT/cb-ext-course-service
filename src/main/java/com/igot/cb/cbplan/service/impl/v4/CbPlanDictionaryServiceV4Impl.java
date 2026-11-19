@@ -103,7 +103,7 @@ public class CbPlanDictionaryServiceV4Impl {
             String userId = accessTokenValidator.fetchUserIdFromAccessToken(authToken, response);
             if (StringUtils.isBlank(userId)) {
                 log.warn("getCBPlanDictionaryForUser: Invalid or missing token");
-                response.getParams().setErr("Invalid or missing authentication token");
+                response.getParams().setErr(Constants.ERR_INVALID_OR_MISSING_AUTH_TOKEN);
                 response.setResponseCode(HttpStatus.UNAUTHORIZED);
                 return response;
             }
@@ -202,7 +202,7 @@ public class CbPlanDictionaryServiceV4Impl {
             String userId = accessTokenValidator.fetchUserIdFromAccessToken(authToken, response);
             if (StringUtils.isBlank(userId)) {
                 log.warn("getComprehensiveAssessmentEligibility: Invalid or missing token");
-                response.getParams().setErr("Invalid or missing authentication token");
+                response.getParams().setErr(Constants.ERR_INVALID_OR_MISSING_AUTH_TOKEN);
                 response.setResponseCode(HttpStatus.UNAUTHORIZED);
                 return response;
             }
@@ -1188,6 +1188,198 @@ public class CbPlanDictionaryServiceV4Impl {
         Map<String, Map<String, Object>> nonAparPlanMap = new LinkedHashMap<>();
         buildPlanPartitions(activePlans, userProfile, aparPlanMap, nonAparPlanMap);
         return new ArrayList<>(aparPlanMap.values());
+    }
+
+    /**
+     * Same as {@link #getCBPlanDictionaryForUser(ApiRequest, String)}, but access control is
+     * evaluated against an overlaid profile: supplied {@code previousRootOrgId}/
+     * {@code previousDesignation} replace (not OR with) the user's current rootorgid/designation;
+     * every other field stays live. The plan fetch is scoped <b>strictly</b> to the evaluated org
+     * only — ALL-scope plus that single org, via {@code cbPlanCacheMgrV4.getCbPlanForAllAndOrgId}
+     * — with no widening into the user's own org and no ministry-scoped plans. The response is
+     * cached as a plain key/value in Redis (get-then-put, TTL only — no publish-version stamp,
+     * unlike the standard dictionary's versioned cache), so a publish anywhere does not
+     * invalidate this entry; it goes stale until the TTL expires. Known gaps, deliberately not
+     * fixed here: no entitlement check that the supplied posting ever belonged to this user, and
+     * the pre-existing N+1 in live-CA resolution gets worse here.
+     *
+     * @param request   API request optionally containing previousRootOrgId/previousDesignation and planYear
+     * @param authToken authentication token
+     * @return ApiResponse with aparPlanList and nonAparPlanList keyed by planYear
+     */
+    public ApiResponse getCBPlanDictionaryForPreviousPosting(ApiRequest request, String authToken) {
+        log.debug("getCBPlanDictionaryForPreviousPosting: Entry");
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_CBPLAN_V4_GET_USER_DICTIONARY);
+        try {
+            String userId = accessTokenValidator.fetchUserIdFromAccessToken(authToken, response);
+            if (StringUtils.isBlank(userId)) {
+                log.warn("getCBPlanDictionaryForPreviousPosting: Invalid or missing token");
+                response.getParams().setErr(Constants.ERR_INVALID_OR_MISSING_AUTH_TOKEN);
+                response.setResponseCode(HttpStatus.UNAUTHORIZED);
+                return response;
+            }
+            Map<String, Object> requestData = extractRequestData(request);
+            String requestedPlanYear = (String) requestData.get(Constants.REQUEST_PARAM_PLAN_YEAR);
+            String planYear = resolvePlanYear(requestedPlanYear, response);
+            if (Objects.isNull(planYear)) {
+                return response;
+            }
+            Map<String, String> userProfile = buildUserProfile(userId, response);
+            if (userProfile.isEmpty()) {
+                return response;
+            }
+            Map<String, String> evaluationProfile = resolveEvaluationProfile(requestData, userProfile);
+            String userOrgId = evaluationProfile.get(Constants.USER_ROOT_ORG_ID);
+            String cacheKey = Constants.CB_PLAN_V4_REDIS_KEY_PREFIX + userOrgId + ":" + userId + ":" + planYear
+                    + Constants.CB_PLAN_V4_PREV_POSTING_DICT_KEY_SUFFIX;
+            Map<String, Object> cachedResult = readPreviousPostingCache(cacheKey);
+            if (Objects.nonNull(cachedResult)) {
+                log.info("getCBPlanDictionaryForPreviousPosting: Cache hit - userId={}, orgId={}, planYear={}",
+                        userId, userOrgId, planYear);
+                populateResponseFromCache(response, cachedResult);
+                return response;
+            }
+            log.info("getCBPlanDictionaryForPreviousPosting: Cache miss - userId={}, orgId={}, planYear={}",
+                    userId, userOrgId, planYear);
+            AtomicBoolean isCacheEnabled = new AtomicBoolean(false);
+            List<Map<String, Object>> activePlans = cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(userOrgId, planYear,
+                    isCacheEnabled, null);
+            if (CollectionUtils.isEmpty(activePlans)) {
+                log.info("getCBPlanDictionaryForPreviousPosting: No active plans - userId={}, planYear={}", userId, planYear);
+                if (StringUtils.isNotBlank(requestedPlanYear)) {
+                    response.getResult().put(planYear, buildYearResult(new LinkedHashMap<>(), new LinkedHashMap<>()));
+                    fetchAndAppendPreviousYearForPosting(response, evaluationProfile,
+                            CbPlanYearUtil.resolvePreviousYear(planYear));
+                    response.setParams(new ApiRespParam());
+                    response.getParams().setStatus(Constants.SUCCESS);
+                    response.setResponseCode(HttpStatus.OK);
+                } else {
+                    populateEmptyResponse(response, planYear);
+                }
+                writePreviousPostingCache(cacheKey, response.getResult());
+                return response;
+            }
+            Map<String, Map<String, Object>> aparPlanMap = new LinkedHashMap<>();
+            Map<String, Map<String, Object>> nonAparPlanMap = new LinkedHashMap<>();
+            buildPlanPartitions(activePlans, evaluationProfile, aparPlanMap, nonAparPlanMap);
+            Set<String> orgIds = collectCreatedByOrgIds(aparPlanMap, nonAparPlanMap);
+            Map<String, Map<String, String>> orgDetailsMap = fetchOrgDetails(orgIds);
+            enrichOrgDetails(aparPlanMap, orgDetailsMap);
+            enrichOrgDetails(nonAparPlanMap, orgDetailsMap);
+            filterLiveContentInPlans(aparPlanMap, nonAparPlanMap);
+            Map<String, Object> yearResult = buildYearResult(aparPlanMap, nonAparPlanMap);
+            response.getResult().put(planYear, yearResult);
+            if (StringUtils.isNotBlank(requestedPlanYear) && aparPlanMap.isEmpty() && nonAparPlanMap.isEmpty()) {
+                log.info("getCBPlanDictionaryForPreviousPosting: Plans found but none accessible - userId={}, planYear={}, fetching previous year",
+                        userId, planYear);
+                fetchAndAppendPreviousYearForPosting(response, evaluationProfile,
+                        CbPlanYearUtil.resolvePreviousYear(planYear));
+            }
+            response.setParams(new ApiRespParam());
+            response.getParams().setStatus(Constants.SUCCESS);
+            response.setResponseCode(HttpStatus.OK);
+            writePreviousPostingCache(cacheKey, response.getResult());
+            log.info("getCBPlanDictionaryForPreviousPosting: Success - userId={}, planYear={}, aparCount={}, nonAparCount={}",
+                    userId, planYear, aparPlanMap.size(), nonAparPlanMap.size());
+        } catch (IllegalArgumentException e) {
+            log.error("getCBPlanDictionaryForPreviousPosting: Invalid argument", e);
+            response.getParams().setStatus(Constants.FAILED);
+            response.getParams().setErr("Invalid request parameters");
+            response.setResponseCode(HttpStatus.BAD_REQUEST);
+        } catch (Exception e) {
+            log.error("getCBPlanDictionaryForPreviousPosting: Unexpected error", e);
+            response.getParams().setStatus(Constants.FAILED);
+            response.getParams().setErr("Failed to fetch CB Plan dictionary");
+            response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+        return response;
+    }
+
+    /**
+     * Plain Redis get: returns the deserialized entry, or {@code null} on a miss or malformed
+     * JSON (treated as a miss rather than failing the request).
+     */
+    private Map<String, Object> readPreviousPostingCache(String cacheKey) {
+        String cachedJson = redisCacheMgr.getFromCache(cacheKey);
+        if (StringUtils.isBlank(cachedJson)) {
+            return null;
+        }
+        try {
+            return mapper.readValue(cachedJson, MAP_TYPE_REF);
+        } catch (JsonProcessingException e) {
+            log.warn("readPreviousPostingCache: Failed to deserialize cached entry - key={}", cacheKey, e);
+            return null;
+        }
+    }
+
+    /**
+     * Plain Redis put: serializes {@code result} as-is (no version stamp) with the standard
+     * dictionary TTL. A serialization failure is logged and swallowed — caching is best-effort.
+     */
+    private void writePreviousPostingCache(String cacheKey, Map<String, Object> result) {
+        try {
+            String json = mapper.writeValueAsString(result);
+            redisCacheMgr.putInCache(cacheKey, json, serverProperties.getCbPlanV4DictionaryRedisCacheTtlSeconds());
+            log.debug("writePreviousPostingCache: Cached result - key={}", cacheKey);
+        } catch (JsonProcessingException e) {
+            log.warn("writePreviousPostingCache: Failed to serialize result for caching - key={}", cacheKey, e);
+        }
+    }
+
+    /**
+     * Overlays non-blank previousRootOrgId/previousDesignation String values onto a copy of
+     * {@code userProfile}; a non-String value is treated as absent. Returns {@code userProfile}
+     * itself, unmutated, when neither is supplied.
+     */
+    private Map<String, String> resolveEvaluationProfile(Map<String, Object> requestData, Map<String, String> userProfile) {
+        Object rawPreviousRootOrgId = requestData.get(Constants.REQUEST_PARAM_PREVIOUS_ROOT_ORG_ID);
+        Object rawPreviousDesignation = requestData.get(Constants.REQUEST_PARAM_PREVIOUS_DESIGNATION);
+        String previousRootOrgId = rawPreviousRootOrgId instanceof String str ? str.trim() : StringUtils.EMPTY;
+        String previousDesignation = rawPreviousDesignation instanceof String str ? str.trim() : StringUtils.EMPTY;
+        if (StringUtils.isBlank(previousRootOrgId) && StringUtils.isBlank(previousDesignation)) {
+            return userProfile;
+        }
+        Map<String, String> evaluationProfile = new HashMap<>(userProfile);
+        if (StringUtils.isNotBlank(previousRootOrgId)) {
+            evaluationProfile.put(Constants.USER_ROOT_ORG_ID, previousRootOrgId);
+        }
+        if (StringUtils.isNotBlank(previousDesignation)) {
+            evaluationProfile.put(Constants.DESIGNATION, previousDesignation);
+        }
+        log.info("resolveEvaluationProfile: userId={}, currentOrgId={}, evaluatedOrgId={}, designationOverlaid={}",
+                userProfile.get(Constants.USER), userProfile.get(Constants.USER_ROOT_ORG_ID),
+                evaluationProfile.get(Constants.USER_ROOT_ORG_ID), StringUtils.isNotBlank(previousDesignation));
+        return evaluationProfile;
+    }
+
+    /**
+     * Previous-posting sibling of {@link #fetchAndAppendPreviousYear}: fetches the previous
+     * year's plans scoped strictly to the evaluated org, evaluates them against the overlaid
+     * profile, and appends the result to the response. If no plans are found, an empty entry is
+     * still added.
+     */
+    private void fetchAndAppendPreviousYearForPosting(ApiResponse response, Map<String, String> evaluationProfile,
+                                                       String previousYear) {
+        String evaluatedOrgId = evaluationProfile.get(Constants.USER_ROOT_ORG_ID);
+        AtomicBoolean prevCacheEnabled = new AtomicBoolean(false);
+        List<Map<String, Object>> prevPlans = cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(evaluatedOrgId, previousYear,
+                prevCacheEnabled, null);
+        if (CollectionUtils.isEmpty(prevPlans)) {
+            log.info("fetchAndAppendPreviousYearForPosting: No plans found - previousYear={}", previousYear);
+            response.getResult().put(previousYear, buildYearResult(new LinkedHashMap<>(), new LinkedHashMap<>()));
+            return;
+        }
+        Map<String, Map<String, Object>> aparPlanMap = new LinkedHashMap<>();
+        Map<String, Map<String, Object>> nonAparPlanMap = new LinkedHashMap<>();
+        buildPlanPartitions(prevPlans, evaluationProfile, aparPlanMap, nonAparPlanMap);
+        Set<String> orgIds = collectCreatedByOrgIds(aparPlanMap, nonAparPlanMap);
+        Map<String, Map<String, String>> orgDetailsMap = fetchOrgDetails(orgIds);
+        enrichOrgDetails(aparPlanMap, orgDetailsMap);
+        enrichOrgDetails(nonAparPlanMap, orgDetailsMap);
+        filterLiveContentInPlans(aparPlanMap, nonAparPlanMap);
+        response.getResult().put(previousYear, buildYearResult(aparPlanMap, nonAparPlanMap));
+        log.info("fetchAndAppendPreviousYearForPosting: previousYear={}, aparCount={}, nonAparCount={}",
+                previousYear, aparPlanMap.size(), nonAparPlanMap.size());
     }
 
 }

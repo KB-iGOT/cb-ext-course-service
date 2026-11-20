@@ -226,17 +226,4 @@ public class RedisCacheMgr {
         cacheInvalidationExecutor.shutdown();
     }
 
-    /**
-     * Deletes the given keys.
-     *
-     * @param keys the keys to delete
-     */
-    public void deleteFromCache(String... keys) {
-        try (Jedis jedis = jedisPool.getResource()) {
-            jedis.del(keys);
-        } catch (Exception e) {
-            log.error("Failed to delete keys from Redis: ", e);
-        }
-    }
-
 }

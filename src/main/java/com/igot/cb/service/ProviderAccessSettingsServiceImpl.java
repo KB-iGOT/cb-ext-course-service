@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.UUID;
 import java.util.regex.Pattern;
 
@@ -22,7 +23,6 @@ import org.springframework.stereotype.Service;
 import com.datastax.oss.driver.api.core.uuid.Uuids;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.igot.cb.cache.RedisCacheMgr;
 import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.cassandra.CassandraPropertyReader;
 import com.igot.cb.model.ApiResponse;
@@ -51,7 +51,6 @@ public class ProviderAccessSettingsServiceImpl {
   private final PayloadValidation payloadValidation;
   private final AccessSettingMigrationServiceImpl accessSettingMigrationService;
   private final OutboundRequestHandlerServiceImpl outboundRequestHandlerService;
-  private final RedisCacheMgr redisCacheMgr;
   private final CbExtServerProperties serverProperties;
   private final UserAndOrgServiceImpl userAndOrgService;
   private final AccessTokenValidator accessTokenValidator;
@@ -62,7 +61,6 @@ public class ProviderAccessSettingsServiceImpl {
                                            PayloadValidation payloadValidation,
                                            AccessSettingMigrationServiceImpl accessSettingMigrationService,
                                            OutboundRequestHandlerServiceImpl outboundRequestHandlerService,
-                                           RedisCacheMgr redisCacheMgr,
                                            CbExtServerProperties serverProperties,
                                            UserAndOrgServiceImpl userAndOrgService,
                                            AccessTokenValidator accessTokenValidator) {
@@ -70,7 +68,6 @@ public class ProviderAccessSettingsServiceImpl {
     this.payloadValidation = payloadValidation;
     this.accessSettingMigrationService = accessSettingMigrationService;
     this.outboundRequestHandlerService = outboundRequestHandlerService;
-    this.redisCacheMgr = redisCacheMgr;
     this.serverProperties = serverProperties;
     this.userAndOrgService = userAndOrgService;
     this.accessTokenValidator = accessTokenValidator;
@@ -263,9 +260,9 @@ public class ProviderAccessSettingsServiceImpl {
       return response;
     }
     // Thresholds left out of the request keep the saved list.
-    Map<Integer, Boolean> newThresholds = null;
+    Set<Integer> newThresholds = null;
     if (thresholdsObj != null) {
-      newThresholds = new TreeMap<>();
+      newThresholds = new TreeSet<>();
       String errMsg = validateThresholds((List<?>) thresholdsObj, newThresholds);
       if (StringUtils.isNotBlank(errMsg)) {
         setFailedResponse(response, errMsg, HttpStatus.BAD_REQUEST);
@@ -312,14 +309,14 @@ public class ProviderAccessSettingsServiceImpl {
       String notificationDataJson = objectMapper.writeValueAsString(notificationData);
       Map<String, Object> updatedColumns = new HashMap<>();
       updatedColumns.put(Constants.NOTIFICATION_DATA, notificationDataJson);
-      if (newThresholds != null) {
-        updatedColumns.put(Constants.ALERT_THRESHOLDS_COL, newThresholds);
+      Map<Integer, Boolean> sentFlags = thresholdsOf(settingsRow);
+      if (newThresholds != null && !newThresholds.equals(sentFlags.keySet())) {
+        Map<Integer, Boolean> newSentFlags = new TreeMap<>();
+        newThresholds.forEach(threshold -> newSentFlags.put(threshold, Boolean.TRUE.equals(sentFlags.get(threshold))));
+        updatedColumns.put(Constants.ALERT_THRESHOLDS_COL, newSentFlags);
       }
       cassandraOperation.updateRecord(Constants.KEYSPACE_SUNBIRD_COURSE, Constants.PROVIDER_ACCESS_SETTINGS_TABLE,
               updatedColumns, Map.of(Constants.PARTNER_ID_COL, partnerId));
-      if (newThresholds != null) {
-        deleteAlertMarksNoLongerOn(partnerId, thresholdsOf(settingsRow), newThresholds);
-      }
       settingsRow.putAll(updatedColumns);
       writeAudit(partnerId, settingsRow, userId);
       response.getResult().put(Constants.MSG, Constants.PROVIDER_NOTIFICATION_SAVED);
@@ -345,16 +342,11 @@ public class ProviderAccessSettingsServiceImpl {
       }
       Map<String, Object> settingsRow = readSettingsRow(partnerId);
       Map<String, Object> notificationData = parseJson((String) settingsRow.get(Constants.NOTIFICATION_DATA));
-      List<Map<String, Object>> thresholds = new ArrayList<>();
-      Map<String, String> sent = new LinkedHashMap<>();
-      for (Map.Entry<Integer, Boolean> threshold : thresholdsOf(settingsRow).entrySet()) {
-        Map<String, Object> thresholdEntry = new LinkedHashMap<>();
-        thresholdEntry.put(Constants.THRESHOLD, threshold.getKey());
-        thresholdEntry.put(Constants.ENABLED, threshold.getValue());
-        thresholds.add(thresholdEntry);
-        sent.put(String.valueOf(threshold.getKey()),
-                redisCacheMgr.getFromCache(alertKey(partnerId, threshold.getKey())));
-      }
+      Map<Integer, Boolean> sentFlags = thresholdsOf(settingsRow);
+      List<Integer> thresholds = new ArrayList<>(sentFlags.keySet());
+      // Whether each threshold's alert has been sent.
+      Map<String, Boolean> sent = new LinkedHashMap<>();
+      sentFlags.forEach((threshold, isSent) -> sent.put(String.valueOf(threshold), isSent));
       response.getResult().put(Constants.PARTNER_ID, partnerId);
       response.getResult().put(Constants.ALERTS_ENABLED,
               Boolean.TRUE.equals(notificationData.get(Constants.ALERTS_ENABLED)));
@@ -911,66 +903,38 @@ public class ProviderAccessSettingsServiceImpl {
   }
 
   /**
-   * The provider's saved alert thresholds, or the default thresholds until it saves its own.
-   */
-  /**
-   * The provider's saved alert thresholds (threshold to on/off, ascending), or the default
-   * thresholds, all on, until it saves its own.
+   * The provider's saved alert thresholds, each mapped to whether its alert has been sent
+   * (ascending), or the default thresholds, none sent, until it saves its own.
    */
   private Map<Integer, Boolean> thresholdsOf(Map<String, Object> settingsRow) {
     Map<Integer, Boolean> thresholds = new TreeMap<>();
     if (settingsRow.get(Constants.ALERT_THRESHOLDS_COL) instanceof Map<?, ?> saved) {
-      saved.forEach((threshold, enabled) ->
-              thresholds.put(((Number) threshold).intValue(), Boolean.TRUE.equals(enabled)));
+      saved.forEach((threshold, sent) ->
+              thresholds.put(((Number) threshold).intValue(), Boolean.TRUE.equals(sent)));
     } else {
-      getThresholds().forEach(threshold -> thresholds.put(threshold, Boolean.TRUE));
+      getThresholds().forEach(threshold -> thresholds.put(threshold, Boolean.FALSE));
     }
     return thresholds;
   }
 
   /**
-   * Checks 1 to the configured maximum entries, each a unique whole number threshold from 1 to 100
-   * with enabled true or false, and puts them into sortedThresholds (threshold to enabled).
-   * Returns the error message, or null when valid.
+   * Checks 1 to the configured maximum thresholds, each a unique whole number from 1 to 100, and
+   * puts them into sortedThresholds. Returns the error message, or null when valid.
    */
-  private String validateThresholds(List<?> thresholds, Map<Integer, Boolean> sortedThresholds) {
+  private String validateThresholds(List<?> thresholds, Set<Integer> sortedThresholds) {
     int maxThresholds = serverProperties.getProviderLicenceAlertMaxThresholds();
     if (thresholds.isEmpty() || thresholds.size() > maxThresholds) {
       return String.format(Constants.ERR_THRESHOLDS_COUNT, maxThresholds);
     }
-    for (int i = 0; i < thresholds.size(); i++) {
-      Map<?, ?> entry = thresholds.get(i) instanceof Map<?, ?> map ? map : Map.of();
-      if (!(entry.get(Constants.THRESHOLD) instanceof Integer value) || value < 1 || value > MAX_THRESHOLD) {
+    for (Object threshold : thresholds) {
+      if (!(threshold instanceof Integer value) || value < 1 || value > MAX_THRESHOLD) {
         return Constants.ERR_INVALID_THRESHOLD;
       }
-      if (!(entry.get(Constants.ENABLED) instanceof Boolean enabled)) {
-        return Constants.MSG_MISSING_OR_INVALID_FIELDS
-                + List.of(String.format(Constants.THRESHOLD_FIELD_PATH, i, Constants.ENABLED));
-      }
-      if (sortedThresholds.put(value, enabled) != null) {
+      if (!sortedThresholds.add(value)) {
         return String.format(Constants.ERR_DUPLICATE_THRESHOLD, value);
       }
     }
     return null;
-  }
-
-  /**
-   * Deletes the sent marks of the thresholds the provider removed or switched off, so such a
-   * threshold is sent again once it is back on.
-   */
-  private void deleteAlertMarksNoLongerOn(String partnerId, Map<Integer, Boolean> oldThresholds,
-          Map<Integer, Boolean> newThresholds) {
-    String[] removedKeys = oldThresholds.keySet().stream()
-            .filter(threshold -> !Boolean.TRUE.equals(newThresholds.get(threshold)))
-            .map(threshold -> alertKey(partnerId, threshold))
-            .toArray(String[]::new);
-    if (removedKeys.length > 0) {
-      redisCacheMgr.deleteFromCache(removedKeys);
-    }
-  }
-
-  private String alertKey(String partnerId, int threshold) {
-    return Constants.LICENCE_ALERT_FIRED_KEY_PREFIX + partnerId + Constants.UNDERSCORE + threshold;
   }
 
   private List<Integer> getThresholds() {

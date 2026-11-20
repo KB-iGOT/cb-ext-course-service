@@ -843,12 +843,8 @@ public class Constants {
     public static final String ADDED_ON = "addedOn";
     public static final String THRESHOLDS = "thresholds";
     public static final String MAX_THRESHOLDS = "maxThresholds";
-    public static final String THRESHOLD = "threshold";
-    public static final String ENABLED = "enabled";
-    public static final String THRESHOLD_FIELD_PATH = "thresholds[%d].%s";
     public static final String ALERT_THRESHOLDS_COL = "alertthresholds";
     public static final String OVER_ALL_LIMIT = "overAllLimit";
-    public static final String LICENCE_ALERT_FIRED_KEY_PREFIX = "licenceAlertFired_";
     public static final String PROVIDER_ACCESS_SETTINGS_SAVED = "Provider access settings saved successfully";
     public static final String PROVIDER_NOTIFICATION_SAVED = "Licence notification settings saved successfully";
     public static final String API_PROVIDER_ACCESS_VALIDATE = "api.accessSettings.provider.validate";

@@ -213,21 +213,4 @@ class RedisCacheMgrTest {
         assertTrue(started.await(5, TimeUnit.SECONDS), "scan did not run in the background");
         assertEquals("redis-cache-invalidator", threadName.get());
     }
-
-    @Test
-    void testDeleteFromCache_success() {
-        when(jedisPool.getResource()).thenReturn(jedis);
-
-        redisCacheMgr.deleteFromCache("key1", "key2");
-
-        verify(jedis).del("key1", "key2");
-        verify(jedis).close();
-    }
-
-    @Test
-    void testDeleteFromCache_exception() {
-        when(jedisPool.getResource()).thenThrow(new RuntimeException("Redis unavailable"));
-
-        assertDoesNotThrow(() -> redisCacheMgr.deleteFromCache("key1"));
-    }
 }

@@ -15,13 +15,11 @@ import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -37,7 +35,6 @@ import org.springframework.http.HttpStatus;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.igot.cb.cache.RedisCacheMgr;
 import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.model.ApiResponse;
 import com.igot.cb.util.AccessTokenValidator;
@@ -57,8 +54,6 @@ class ProviderAccessSettingsServiceImplTest {
   @Mock
   private OutboundRequestHandlerServiceImpl outboundRequestHandlerService;
   @Mock
-  private RedisCacheMgr redisCacheMgr;
-  @Mock
   private UserAndOrgServiceImpl userAndOrgService;
   @Mock
   private AccessTokenValidator accessTokenValidator;
@@ -69,7 +64,7 @@ class ProviderAccessSettingsServiceImplTest {
   @BeforeEach
   void setUp() {
     service = new ProviderAccessSettingsServiceImpl(cassandraOperation, new PayloadValidation(),
-        accessSettingMigrationService, outboundRequestHandlerService, redisCacheMgr, serverProperties(), userAndOrgService,
+        accessSettingMigrationService, outboundRequestHandlerService, serverProperties(), userAndOrgService,
         accessTokenValidator);
     lenient().when(accessTokenValidator.fetchUserIdFromAccessToken(eq("token"), any())).thenReturn("user-1");
     lenient().when(cassandraOperation.getRecordsByProperties(eq(Constants.KEYSPACE_SUNBIRD_COURSE),
@@ -713,11 +708,11 @@ class ProviderAccessSettingsServiceImplTest {
 
   @Test
   @SuppressWarnings("unchecked")
-  void notificationUpsert_savesThresholdsWithOnOffAndDeletesMarksOfRemovedOrOffThresholds() {
+  void notificationUpsert_savesThresholdsKeepingSentFlagsOfKeptThresholds() {
     mockPartner(40000);
-    mockRow(Constants.NOTIFICATION_DATA, null);
+    mockRow(Map.of(Constants.ALERT_THRESHOLDS_COL, Map.of(50, true, 75, true, 90, false)));
     Map<String, Object> request = notificationRequest(true, Map.of(Constants.EMAIL, "ops@example.com"));
-    request.put(Constants.THRESHOLDS, List.of(threshold(90, true), threshold(50, true), threshold(100, false)));
+    request.put(Constants.THRESHOLDS, List.of(90, 50, 100));
 
     ApiResponse response = service.notificationUpsert(request, "token");
 
@@ -729,14 +724,27 @@ class ProviderAccessSettingsServiceImplTest {
     // Only the notification columns are written: contextdata is never part of this update.
     assertEquals(Set.of(Constants.NOTIFICATION_DATA, Constants.ALERT_THRESHOLDS_COL), captor.getValue().keySet());
     Map<Integer, Boolean> saved = (Map<Integer, Boolean>) captor.getValue().get(Constants.ALERT_THRESHOLDS_COL);
-    assertEquals(Map.of(50, true, 90, true, 100, false), saved);
+    // 50 and 90 are kept with their flags, 75 is removed and 100 is added as not sent.
+    assertEquals(Map.of(50, true, 90, false, 100, false), saved);
     assertEquals(List.of(50, 90, 100), List.copyOf(saved.keySet()));
     assertTrue(captor.getValue().get(Constants.NOTIFICATION_DATA) instanceof String);
-    // Nothing saved before, so the defaults 50, 75, 90, 100 (all on) were in use: 75 is removed
-    // and 100 is switched off, so both sent marks are deleted.
-    verify(redisCacheMgr).deleteFromCache(Constants.LICENCE_ALERT_FIRED_KEY_PREFIX + PARTNER_ID + "_75",
-        Constants.LICENCE_ALERT_FIRED_KEY_PREFIX + PARTNER_ID + "_100");
-    assertEquals(Map.of(50, true, 90, true, 100, false), auditRow().get(Constants.ALERT_THRESHOLDS_COL));
+    assertEquals(Map.of(50, true, 90, false, 100, false), auditRow().get(Constants.ALERT_THRESHOLDS_COL));
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void notificationUpsert_savesThresholdsAsNotSentWhenNothingSaved() {
+    mockPartner(40000);
+    mockRow(Constants.NOTIFICATION_DATA, null);
+    Map<String, Object> request = notificationRequest(true);
+    request.put(Constants.THRESHOLDS, List.of(60, 80));
+
+    ApiResponse response = service.notificationUpsert(request, "token");
+
+    assertEquals(HttpStatus.OK, response.getResponseCode());
+    ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
+    verify(cassandraOperation).updateRecord(anyString(), anyString(), captor.capture(), anyMap());
+    assertEquals(Map.of(60, false, 80, false), captor.getValue().get(Constants.ALERT_THRESHOLDS_COL));
   }
 
   @Test
@@ -748,21 +756,23 @@ class ProviderAccessSettingsServiceImplTest {
 
     assertEquals(HttpStatus.OK, response.getResponseCode());
     assertEquals(false, savedJson(Constants.NOTIFICATION_DATA).get(Constants.ALERTS_ENABLED));
-    verifyNoInteractions(redisCacheMgr);
     assertEquals(Map.of(60, true, 80, false), auditRow().get(Constants.ALERT_THRESHOLDS_COL));
   }
 
   @Test
-  void notificationUpsert_deletesNoMarksWhenNoSavedThresholdIsRemovedOrSwitchedOff() {
+  @SuppressWarnings("unchecked")
+  void notificationUpsert_doesNotRewriteThresholdsWhenTheListIsUnchanged() {
     mockPartner(40000);
-    mockRow(Map.of(Constants.ALERT_THRESHOLDS_COL, Map.of(50, true)));
+    mockRow(Map.of(Constants.ALERT_THRESHOLDS_COL, Map.of(50, true, 75, false)));
     Map<String, Object> request = notificationRequest(true);
-    request.put(Constants.THRESHOLDS, List.of(threshold(50, true), threshold(60, false)));
+    request.put(Constants.THRESHOLDS, List.of(75, 50));
 
     ApiResponse response = service.notificationUpsert(request, "token");
 
     assertEquals(HttpStatus.OK, response.getResponseCode());
-    verifyNoInteractions(redisCacheMgr);
+    ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
+    verify(cassandraOperation).updateRecord(anyString(), anyString(), captor.capture(), anyMap());
+    assertEquals(Set.of(Constants.NOTIFICATION_DATA), captor.getValue().keySet());
   }
 
   @Test
@@ -771,39 +781,23 @@ class ProviderAccessSettingsServiceImplTest {
     request.put(Constants.THRESHOLDS, List.of());
     assertBadRequest(service.notificationUpsert(request, "token"), "Enter between 1 and 5 thresholds");
 
-    request.put(Constants.THRESHOLDS, List.of(threshold(10, true), threshold(20, true), threshold(30, true),
-        threshold(40, true), threshold(50, true), threshold(60, true)));
+    request.put(Constants.THRESHOLDS, List.of(10, 20, 30, 40, 50, 60));
     assertBadRequest(service.notificationUpsert(request, "token"), "Enter between 1 and 5 thresholds");
   }
 
   @Test
   void notificationUpsert_rejectsThresholdsThatAreNotWholeNumbersFrom1To100() {
     Map<String, Object> request = notificationRequest(true);
-    for (Object value : List.of(0, 101, 50.5, "50")) {
-      request.put(Constants.THRESHOLDS, List.of(Map.of(Constants.THRESHOLD, value, Constants.ENABLED, true)));
+    for (Object value : List.of(0, 101, 50.5, "50", Map.of("threshold", 50))) {
+      request.put(Constants.THRESHOLDS, List.of(value));
       assertBadRequest(service.notificationUpsert(request, "token"), Constants.ERR_INVALID_THRESHOLD);
     }
-    // An entry that is not an object, e.g. the old shape [50, 75].
-    request.put(Constants.THRESHOLDS, List.of(50));
-    assertBadRequest(service.notificationUpsert(request, "token"), Constants.ERR_INVALID_THRESHOLD);
-  }
-
-  @Test
-  void notificationUpsert_rejectsThresholdWithoutEnabledFlag() {
-    Map<String, Object> request = notificationRequest(true);
-    request.put(Constants.THRESHOLDS, List.of(threshold(50, true), Map.of(Constants.THRESHOLD, 75)));
-    assertBadRequest(service.notificationUpsert(request, "token"),
-        Constants.MSG_MISSING_OR_INVALID_FIELDS + List.of("thresholds[1].enabled"));
-
-    request.put(Constants.THRESHOLDS, List.of(Map.of(Constants.THRESHOLD, 75, Constants.ENABLED, "yes")));
-    assertBadRequest(service.notificationUpsert(request, "token"),
-        Constants.MSG_MISSING_OR_INVALID_FIELDS + List.of("thresholds[0].enabled"));
   }
 
   @Test
   void notificationUpsert_rejectsDuplicateThreshold() {
     Map<String, Object> request = notificationRequest(true);
-    request.put(Constants.THRESHOLDS, List.of(threshold(50, true), threshold(75, true), threshold(50, false)));
+    request.put(Constants.THRESHOLDS, List.of(50, 75, 50));
 
     assertBadRequest(service.notificationUpsert(request, "token"), "Duplicate threshold: 50");
   }
@@ -825,7 +819,6 @@ class ProviderAccessSettingsServiceImplTest {
     Map<String, Object> saved = Map.of(Constants.ALERTS_ENABLED, true, Constants.RECIPIENTS,
         List.of(Map.of(Constants.EMAIL, "ops@example.com", Constants.ADDED_ON, "2026-10-01T00:00:00Z")));
     mockRow(Constants.NOTIFICATION_DATA, mapper.writeValueAsString(saved));
-    when(redisCacheMgr.getFromCache("licenceAlertFired_" + PARTNER_ID + "_50")).thenReturn("2026-10-21T10:00:00Z");
 
     ApiResponse response = service.notificationRead(PARTNER_ID, "token");
 
@@ -834,12 +827,8 @@ class ProviderAccessSettingsServiceImplTest {
     assertEquals(100, response.getResult().get(Constants.MAX_RECIPIENTS));
     assertEquals(5, response.getResult().get(Constants.MAX_THRESHOLDS));
     assertEquals(defaultThresholds(), response.getResult().get(Constants.THRESHOLDS));
-    Map<String, String> expectedSent = new LinkedHashMap<>();
-    expectedSent.put("50", "2026-10-21T10:00:00Z");
-    expectedSent.put("75", null);
-    expectedSent.put("90", null);
-    expectedSent.put("100", null);
-    assertEquals(expectedSent, response.getResult().get(Constants.SENT));
+    // No thresholds saved: the defaults, none sent.
+    assertEquals(Map.of("50", false, "75", false, "90", false, "100", false), response.getResult().get(Constants.SENT));
     assertEquals(List.of("50", "75", "90", "100"),
         List.copyOf(((Map<?, ?>) response.getResult().get(Constants.SENT)).keySet()));
     assertEquals(1, ((List<?>) response.getResult().get(Constants.RECIPIENTS)).size());
@@ -853,11 +842,9 @@ class ProviderAccessSettingsServiceImplTest {
     ApiResponse response = service.notificationRead(PARTNER_ID, "token");
 
     assertEquals(HttpStatus.OK, response.getResponseCode());
-    assertEquals(List.of(threshold(60, true), threshold(80, false)), response.getResult().get(Constants.THRESHOLDS));
-    Map<String, String> expectedSent = new LinkedHashMap<>();
-    expectedSent.put("60", null);
-    expectedSent.put("80", null);
-    assertEquals(expectedSent, response.getResult().get(Constants.SENT));
+    assertEquals(List.of(60, 80), response.getResult().get(Constants.THRESHOLDS));
+    assertEquals(Map.of("60", true, "80", false), response.getResult().get(Constants.SENT));
+    assertEquals(List.of("60", "80"), List.copyOf(((Map<?, ?>) response.getResult().get(Constants.SENT)).keySet()));
   }
 
   @Test
@@ -1158,15 +1145,8 @@ class ProviderAccessSettingsServiceImplTest {
         Map.of(Constants.ACCESS_CONTROL, Map.of(Constants.USER_GROUPS, numbered(groups)))));
   }
 
-  private static Map<String, Object> threshold(int threshold, boolean enabled) {
-    Map<String, Object> entry = new LinkedHashMap<>();
-    entry.put(Constants.THRESHOLD, threshold);
-    entry.put(Constants.ENABLED, enabled);
-    return entry;
-  }
-
-  private static List<Map<String, Object>> defaultThresholds() {
-    return List.of(threshold(50, true), threshold(75, true), threshold(90, true), threshold(100, true));
+  private static List<Integer> defaultThresholds() {
+    return List.of(50, 75, 90, 100);
   }
 
   @SafeVarargs

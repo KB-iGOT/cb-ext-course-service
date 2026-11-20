@@ -680,6 +680,9 @@ public class Constants {
     public static final String API_CB_PLAN_V3_AICBP_CREATE = "api.cb.plan.v3.aicbp.create";
     public static final String API_CB_PLAN_V3_AICBP_PUBLISH = "api.cb.plan.v3.aicbp.publish";
     public static final String ERR_TARGETED_ORGANISATION_REQUIRED = "targetedOrganisation is required";
+    public static final String TOKEN_USER_ROLES = "user_roles";
+    public static final String ROLE_AICBP_ADMIN = "AICBP_ADMIN";
+    public static final String ERR_AICBP_ROLE_REQUIRED = "User is not authorized to create or publish a CB Plan for targetedOrganisation";
     public static final String ERR_CB_PLAN_ID_MISSING = "CbPlanId is missing.";
 
     public static final String ERR_PREFIX = "Validation Error: ";
@@ -793,6 +796,8 @@ public class Constants {
     public static final String ELIGIBLE = "eligible";
     public static final String MANDATORY_COURSES = "mandatoryCourses";
     public static final String CB_PLAN_V4_REDIS_KEY_PREFIX = "cbplan:v4:userlookup:";
+    public static final String CB_PLAN_V4_VERSION_KEY_PREFIX = "cbplan:v4ver:";
+    public static final String CB_PLAN_V4_CACHE_VERSIONS_KEY = "_cv";
     public static final String RESPONSE_KEY_APAR_PLAN_LIST = "aparPlanList";
     public static final String RESPONSE_KEY_NON_APAR_PLAN_LIST = "nonAparPlanList";
     public static final String RESPONSE_KEY_APAR_PLAN_COUNT = "aparPlanCount";
@@ -826,6 +831,7 @@ public class Constants {
     public static final String MSG_USERGROUP_NOT_FOUND_BY_NAME_ORG = "User group not found with the provided name and organization";
     public static final String API_USER_GROUP_ADMIN_CREATE = "api.user.group.v1.admin.create";
     public static final String MSG_ROOTORGID_REQUIRED_IN_BODY = "rootOrgId is required in request body";
+    public static final String CB_PLAN_USER_LOOKUP_V4_API = "api.cbplan.user.V4.lookup";
     public static final String PROVIDER_ACCESS_SETTINGS_TABLE = "provider_access_settings";
     public static final String PARTNER_ID_COL = "partnerid";
     public static final String NOTIFICATION_DATA = "notificationdata";

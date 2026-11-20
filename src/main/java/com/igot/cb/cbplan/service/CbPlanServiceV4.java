@@ -14,13 +14,15 @@ public interface CbPlanServiceV4 {
 
     /**
      * Creates a new CB Plan with user group references.
-     * User org ID is extracted from the authentication token.
+     * User org ID is extracted from the authentication token, unless targetedOrganisation is given
+     * (AI CBP), in which case the token must carry AICBP_ADMIN and targetedOrganisation is used.
      *
-     * @param request   the API request containing CB Plan details
-     * @param authToken the authentication token
+     * @param request              the API request containing CB Plan details
+     * @param targetedOrganisation org to create the plan for (AI CBP), or null for the caller's own org
+     * @param authToken            the authentication token
      * @return ApiResponse containing the created plan ID and status
      */
-    ApiResponse createCbPlan(ApiRequest request, String authToken);
+    ApiResponse createCbPlan(ApiRequest request, String targetedOrganisation, String authToken);
 
     /**
      * Updates an existing CB Plan with user group references.
@@ -153,5 +155,16 @@ public interface CbPlanServiceV4 {
      * @return ApiResponse containing the publish status
      */
     ApiResponse publishCbPlanByAdmin(ApiRequest request, String authToken);
+
+    /**
+     * Returns the flat courseId -&gt; planEndDate map for the given user across their active CB Plans.
+     * Intended for private service-to-service lookups where the caller already has the resolved userId
+     * and userOrgId (no token validation performed).
+     *
+     * @param userId    the resolved user ID
+     * @param userOrgId the user's root organisation ID
+     * @return ApiResponse with result.contents = Map&lt;courseId, planEndDate&gt;
+     */
+    ApiResponse getCBPlanCourseListForUser(String userId, String userOrgId);
 
 }

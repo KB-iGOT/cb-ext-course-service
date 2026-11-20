@@ -197,6 +197,24 @@ class AccessTokenValidatorTest {
     }
 
     @Test
+    void testFetchUserIdAndOrg_returnsUserIdOrgAndRoles() {
+        AccessTokenValidator spy = spy(validator);
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("iss", ssoUrl + "realms/" + realm);
+        payload.put("sub", "f:abc:user123");
+        payload.put("org", "org1");
+        payload.put("user_roles", java.util.List.of("PUBLIC", "AICBP_ADMIN"));
+
+        doReturn(payload).when(spy).validateToken(any());
+        doReturn(true).when(spy).checkIss(any());
+
+        Map<String, Object> result = spy.fetchUserIdAndOrg("valid-token");
+        assertEquals("user123", result.get("userId"));
+        assertEquals("org1", result.get("org"));
+        assertEquals(java.util.List.of("PUBLIC", "AICBP_ADMIN"), result.get("roles"));
+    }
+
+    @Test
     void testVerifyUserToken_EmptyPayload() {
         AccessTokenValidator spy = spy(validator);
         doReturn(Collections.emptyMap()).when(spy).validateToken(any());

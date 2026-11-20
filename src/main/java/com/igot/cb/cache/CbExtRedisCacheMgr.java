@@ -7,6 +7,7 @@ import redis.clients.jedis.JedisPool;
 import redis.clients.jedis.params.ScanParams;
 import redis.clients.jedis.resps.ScanResult;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -72,6 +73,45 @@ public class CbExtRedisCacheMgr {
             log.debug("CbExtRedisCacheMgr.putInCache: key={}, ttl={}s", key, ttlSeconds);
         } catch (Exception e) {
             log.error("CbExtRedisCacheMgr.putInCache: key={}", key, e);
+        }
+    }
+
+    /**
+     * Reads several values in one round trip.
+     * Best-effort like {@link #getFromCache}: on any Redis failure every slot is {@code null},
+     * so callers see a uniform cache miss rather than an exception.
+     *
+     * @param keys cache keys to read, in order
+     * @return values positionally matching {@code keys}; {@code null} for absent or failed slots
+     */
+    public List<String> mgetFromCache(String... keys) {
+        if (keys == null || keys.length == 0) {
+            return List.of();
+        }
+        try (Jedis jedis = jedisPool.getResource()) {
+            jedis.select(dbIndex);
+            return jedis.mget(keys);
+        } catch (Exception e) {
+            log.error("CbExtRedisCacheMgr.mgetFromCache: keys={}", Arrays.toString(keys), e);
+            return Arrays.asList(new String[keys.length]);
+        }
+    }
+
+    /**
+     * Atomically increments a counter key (created as 1 when absent). Counter keys carry no TTL.
+     *
+     * @param key counter key
+     * @return the value after increment, or {@code -1} when the increment failed
+     */
+    public long incrementCounter(String key) {
+        try (Jedis jedis = jedisPool.getResource()) {
+            jedis.select(dbIndex);
+            long value = jedis.incr(key);
+            log.debug("CbExtRedisCacheMgr.incrementCounter: key={}, value={}", key, value);
+            return value;
+        } catch (Exception e) {
+            log.error("CbExtRedisCacheMgr.incrementCounter: key={}", key, e);
+            return -1L;
         }
     }
 

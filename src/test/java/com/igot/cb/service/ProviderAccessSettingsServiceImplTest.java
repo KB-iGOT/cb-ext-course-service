@@ -15,6 +15,7 @@ import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.time.Instant;
@@ -129,7 +130,7 @@ class ProviderAccessSettingsServiceImplTest {
   }
 
   @Test
-  void upsert_rejectsUnknownGroupId() throws Exception {
+  void upsert_rejectsUnknownGroupId() {
     mockRow(Constants.CONTEXT_DATA, null);
 
     ApiResponse response = service.upsert(request(group("missing", 10, "group", List.of("A"))), "token");
@@ -255,7 +256,7 @@ class ProviderAccessSettingsServiceImplTest {
   }
 
   @Test
-  void upsert_allowsUserConditionAlone() throws Exception {
+  void upsert_allowsUserConditionAlone() {
     mockPartner(100);
     mockRow(Constants.CONTEXT_DATA, null);
     mockIdMapSuccess();
@@ -384,7 +385,7 @@ class ProviderAccessSettingsServiceImplTest {
   }
 
   @Test
-  void upsert_savesWhenAuditInsertFails() throws Exception {
+  void upsert_savesWhenAuditInsertFails() {
     mockPartner(100);
     mockRow(Constants.CONTEXT_DATA, null);
     mockIdMapSuccess();
@@ -442,7 +443,7 @@ class ProviderAccessSettingsServiceImplTest {
   }
 
   @Test
-  void upsert_failsWhenIdMappingFails() throws Exception {
+  void upsert_failsWhenIdMappingFails() {
     mockPartner(40000);
     mockRow(Constants.CONTEXT_DATA, null);
     when(accessSettingMigrationService.updateContextDataWithIdMap(anyString(), anyMap(), anyMap())).thenReturn(false);
@@ -459,6 +460,85 @@ class ProviderAccessSettingsServiceImplTest {
 
     assertEquals(HttpStatus.BAD_REQUEST, response.getResponseCode());
     assertTrue(response.getParams().getErrMsg().contains(Constants.PARTNER_ID));
+  }
+
+  @Test
+  void upsert_rejectsGroupWithoutConditions() {
+    Map<String, Object> group = group(null, 1, "group", List.of("A"));
+    group.remove(Constants.USER_GROUP_CRITERIA_LIST);
+
+    assertBadRequest(service.upsert(request(group), "token"),
+        Constants.MSG_MISSING_OR_INVALID_FIELDS + List.of("userGroups[0].userGroupCriteriaList"));
+
+    group.put(Constants.USER_GROUP_CRITERIA_LIST, List.of());
+    assertBadRequest(service.upsert(request(group), "token"),
+        Constants.MSG_MISSING_OR_INVALID_FIELDS + List.of("userGroups[0].userGroupCriteriaList"));
+  }
+
+  @Test
+  void upsert_rejectsBlankConditionValue() {
+    Map<String, Object> group = group(null, 1, "group", List.of("A"));
+    group.put(Constants.USER_GROUP_CRITERIA_LIST, List.of(Map.of(Constants.CRITERIA_KEY, "group", Constants.CRITERIA_VALUE, " ")));
+
+    assertBadRequest(service.upsert(request(group), "token"), "Criteria key and value must not be empty");
+  }
+
+  @Test
+  void upsert_allowsSingleValueForLimitedKey() {
+    mockPartner(40000);
+    mockRow(Constants.CONTEXT_DATA, null);
+    mockIdMapSuccess();
+    Map<String, Object> group = group(null, 1, "user", List.of());
+    group.put(Constants.USER_GROUP_CRITERIA_LIST, List.of(Map.of(Constants.CRITERIA_KEY, "user", Constants.CRITERIA_VALUE, "u1")));
+
+    assertEquals(HttpStatus.OK, service.upsert(request(group), "token").getResponseCode());
+  }
+
+  @Test
+  void upsert_withoutUserGroupList_savesNoGroups() throws Exception {
+    mockPartner(40000);
+    mockRow(Constants.CONTEXT_DATA, null);
+    mockIdMapSuccess();
+    Map<String, Object> request = new HashMap<>();
+    request.put(Constants.PARTNER_ID, PARTNER_ID);
+    request.put(Constants.ACCESS_CONTROL, Map.of(Constants.VERSION, 1));
+
+    ApiResponse response = service.upsert(request, "token");
+
+    assertEquals(HttpStatus.OK, response.getResponseCode());
+    assertEquals(List.of(), groupsOf(savedJson(Constants.CONTEXT_DATA)));
+  }
+
+  @Test
+  void upsert_failsWhenIdMappingMissesAGroup() {
+    mockPartner(40000);
+    mockRow(Constants.CONTEXT_DATA, null);
+    when(accessSettingMigrationService.updateContextDataWithIdMap(anyString(), anyMap(), anyMap())).thenAnswer(inv -> {
+      Map<String, Object> idMap = inv.getArgument(2);
+      idMap.put(Constants.USER_GROUPS, List.of());
+      return true;
+    });
+
+    ApiResponse response = service.upsert(request(group(null, 1, "group", List.of("A"))), "token");
+
+    assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getResponseCode());
+    assertEquals(Constants.ERR_ACCESS_CONTROL_ID_MAP_FAILED, response.getParams().getErrMsg());
+    verify(cassandraOperation, never()).updateRecord(anyString(), anyString(), anyMap(), anyMap());
+  }
+
+  @Test
+  void upsert_failsWhenSaveFails() {
+    mockPartner(40000);
+    mockRow(Constants.CONTEXT_DATA, null);
+    mockIdMapSuccess();
+    when(cassandraOperation.updateRecord(anyString(), anyString(), anyMap(), anyMap()))
+        .thenThrow(new RuntimeException("cassandra down"));
+
+    ApiResponse response = service.upsert(request(group(null, 1, "group", List.of("A"))), "token");
+
+    assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getResponseCode());
+    assertEquals(String.format(Constants.ERR_PROVIDER_ACCESS_SETTINGS_SAVE, "cassandra down"),
+        response.getParams().getErrMsg());
   }
 
   // ---------- read ----------
@@ -665,19 +745,15 @@ class ProviderAccessSettingsServiceImplTest {
 
   @Test
   void notificationUpsert_rejectsInvalidEmail() {
-    mockPartner(40000);
-    mockRow(Constants.NOTIFICATION_DATA, null);
-
     ApiResponse response = service.notificationUpsert(notificationRequest(true, Map.of(Constants.EMAIL, "bad")), "token");
 
     assertBadRequest(response, "Enter a valid email address: bad");
+    // Rejected before the provider is read or anything is saved.
+    verifyNoInteractions(cassandraOperation, outboundRequestHandlerService);
   }
 
   @Test
   void notificationUpsert_rejectsDuplicateEmailIgnoringCase() {
-    mockPartner(40000);
-    mockRow(Constants.NOTIFICATION_DATA, null);
-
     ApiResponse response = service.notificationUpsert(notificationRequest(true,
         Map.of(Constants.EMAIL, "a@example.com"), Map.of(Constants.EMAIL, "A@Example.com")), "token");
 
@@ -809,6 +885,39 @@ class ProviderAccessSettingsServiceImplTest {
 
     assertBadRequest(service.notificationUpsert(request, "token"),
         Constants.MSG_MISSING_OR_INVALID_FIELDS + List.of(Constants.THRESHOLDS));
+  }
+
+  @Test
+  void notificationUpsert_rejectsEmptyRequestAndBlankPartnerId() {
+    assertBadRequest(service.notificationUpsert(Map.of(), "token"), Constants.USER_GROUPDETAILS_ERR_VALIDATION_MSG);
+
+    Map<String, Object> request = notificationRequest(true);
+    request.put(Constants.PARTNER_ID, " ");
+    assertBadRequest(service.notificationUpsert(request, "token"),
+        Constants.MSG_MISSING_OR_INVALID_FIELDS + List.of(Constants.PARTNER_ID));
+  }
+
+  @Test
+  void notificationUpsert_rejectsRecipientWithoutEmailOrNotAnObject() {
+    Map<String, Object> request = notificationRequest(true, Map.of(Constants.NAME, "No email"));
+    assertBadRequest(service.notificationUpsert(request, "token"), "Enter a valid email address: ");
+
+    request.put(Constants.RECIPIENTS, List.of("ops@example.com"));
+    assertBadRequest(service.notificationUpsert(request, "token"), "Enter a valid email address: ");
+  }
+
+  @Test
+  void notificationUpsert_failsWhenSaveFails() {
+    mockPartner(40000);
+    mockRow(Constants.NOTIFICATION_DATA, null);
+    when(cassandraOperation.updateRecord(anyString(), anyString(), anyMap(), anyMap()))
+        .thenThrow(new RuntimeException("cassandra down"));
+
+    ApiResponse response = service.notificationUpsert(notificationRequest(true), "token");
+
+    assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getResponseCode());
+    assertEquals(String.format(Constants.ERR_PROVIDER_NOTIFICATION_SAVE, "cassandra down"),
+        response.getParams().getErrMsg());
   }
 
   // ---------- notification read ----------

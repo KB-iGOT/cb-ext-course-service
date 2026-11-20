@@ -21,6 +21,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 import com.datastax.oss.driver.api.core.uuid.Uuids;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.igot.cb.cassandra.CassandraOperation;
@@ -113,31 +114,8 @@ public class ProviderAccessSettingsServiceImpl {
         return response;
       }
 
-      // The request is in priority order (validated); groups without an id are new.
-      List<Map<String, Object>> activeGroups = new ArrayList<>();
-      Set<String> incomingIds = new HashSet<>();
-      for (Map<String, Object> userGroup : userGroups) {
-        String userGroupId = (String) userGroup.get(Constants.USER_GROUP_ID);
-        if (StringUtils.isBlank(userGroupId)) {
-          userGroupId = UUID.randomUUID().toString();
-        }
-        incomingIds.add(userGroupId);
-        Map<String, Object> group = new LinkedHashMap<>();
-        group.put(Constants.USER_GROUP_ID, userGroupId);
-        group.put(Constants.USER_GROUP_NUMBER, groupNumber(userGroup));
-        group.put(Constants.LICENCE_ALLOCATION, ((Number) userGroup.get(Constants.LICENCE_ALLOCATION)).longValue());
-        group.put(Constants.STATUS, Constants.USER_GROUP_STATUS_ACTIVE);
-        group.put(Constants.USER_GROUP_CRITERIA_LIST, userGroup.get(Constants.USER_GROUP_CRITERIA_LIST));
-        activeGroups.add(group);
-      }
-
-      List<Map<String, Object>> allGroups = new ArrayList<>(activeGroups);
-      for (Map<String, Object> group : existingGroups) {
-        if (!incomingIds.contains((String) group.get(Constants.USER_GROUP_ID))) {
-          group.put(Constants.STATUS, Constants.USER_GROUP_STATUS_DELETED);
-          allGroups.add(group);
-        }
-      }
+      List<Map<String, Object>> activeGroups = toActiveGroups(userGroups);
+      List<Map<String, Object>> allGroups = withDeletedGroups(activeGroups, existingGroups);
 
       Map<String, Object> accessControlIdMap = new HashMap<>();
       Map<String, Object> activeAccessControl = new HashMap<>();
@@ -149,15 +127,8 @@ public class ProviderAccessSettingsServiceImpl {
         return response;
       }
 
-      Map<String, Object> newAccessControl = new LinkedHashMap<>();
-      newAccessControl.put(Constants.VERSION, accessControl.getOrDefault(Constants.VERSION, 1));
-      newAccessControl.put(Constants.USER_GROUPS, allGroups);
-      Map<String, Object> contextData = new LinkedHashMap<>();
-      contextData.put(Constants.PARTNER_ID, partnerId);
-      contextData.put(Constants.ACCESS_CONTROL, newAccessControl);
-      contextData.put(Constants.ACCESS_CONTROL_ID, accessControlIdMap);
-
-      String contextDataJson = objectMapper.writeValueAsString(contextData);
+      String contextDataJson = objectMapper.writeValueAsString(contextDataOf(partnerId,
+              accessControl.getOrDefault(Constants.VERSION, 1), allGroups, accessControlIdMap));
       cassandraOperation.updateRecord(Constants.KEYSPACE_SUNBIRD_COURSE, Constants.PROVIDER_ACCESS_SETTINGS_TABLE,
               Map.of(Constants.CONTEXT_DATA, contextDataJson),
               Map.of(Constants.PARTNER_ID_COL, partnerId));
@@ -171,6 +142,54 @@ public class ProviderAccessSettingsServiceImpl {
               HttpStatus.INTERNAL_SERVER_ERROR);
       return response;
     }
+  }
+
+  /**
+   * The request's groups, saved as active in the request's (priority) order; a group without an id
+   * is new and gets one.
+   */
+  private List<Map<String, Object>> toActiveGroups(List<Map<String, Object>> userGroups) {
+    List<Map<String, Object>> activeGroups = new ArrayList<>();
+    for (Map<String, Object> userGroup : userGroups) {
+      String userGroupId = (String) userGroup.get(Constants.USER_GROUP_ID);
+      Map<String, Object> group = new LinkedHashMap<>();
+      group.put(Constants.USER_GROUP_ID, StringUtils.isBlank(userGroupId) ? UUID.randomUUID().toString() : userGroupId);
+      group.put(Constants.USER_GROUP_NUMBER, groupNumber(userGroup));
+      group.put(Constants.LICENCE_ALLOCATION, ((Number) userGroup.get(Constants.LICENCE_ALLOCATION)).longValue());
+      group.put(Constants.STATUS, Constants.USER_GROUP_STATUS_ACTIVE);
+      group.put(Constants.USER_GROUP_CRITERIA_LIST, userGroup.get(Constants.USER_GROUP_CRITERIA_LIST));
+      activeGroups.add(group);
+    }
+    return activeGroups;
+  }
+
+  /**
+   * The active groups followed by the saved groups left out of the request, marked deleted.
+   */
+  private List<Map<String, Object>> withDeletedGroups(List<Map<String, Object>> activeGroups,
+          List<Map<String, Object>> existingGroups) {
+    Set<Object> activeIds = new HashSet<>();
+    activeGroups.forEach(group -> activeIds.add(group.get(Constants.USER_GROUP_ID)));
+    List<Map<String, Object>> allGroups = new ArrayList<>(activeGroups);
+    for (Map<String, Object> group : existingGroups) {
+      if (!activeIds.contains(group.get(Constants.USER_GROUP_ID))) {
+        group.put(Constants.STATUS, Constants.USER_GROUP_STATUS_DELETED);
+        allGroups.add(group);
+      }
+    }
+    return allGroups;
+  }
+
+  private Map<String, Object> contextDataOf(String partnerId, Object version, List<Map<String, Object>> allGroups,
+          Map<String, Object> accessControlIdMap) {
+    Map<String, Object> accessControl = new LinkedHashMap<>();
+    accessControl.put(Constants.VERSION, version);
+    accessControl.put(Constants.USER_GROUPS, allGroups);
+    Map<String, Object> contextData = new LinkedHashMap<>();
+    contextData.put(Constants.PARTNER_ID, partnerId);
+    contextData.put(Constants.ACCESS_CONTROL, accessControl);
+    contextData.put(Constants.ACCESS_CONTROL_ID, accessControlIdMap);
+    return contextData;
   }
 
   /**
@@ -221,7 +240,6 @@ public class ProviderAccessSettingsServiceImpl {
     }
   }
 
-  @SuppressWarnings("unchecked")
   public ApiResponse notificationUpsert(Map<String, Object> request, String authToken) {
     log.info("ProviderAccessSettingsService::notificationUpsert:inside");
     ApiResponse response = ApiResponse.createDefaultResponse(Constants.API_PROVIDER_NOTIFICATION_UPSERT);
@@ -229,90 +247,25 @@ public class ProviderAccessSettingsServiceImpl {
     if (StringUtils.isEmpty(userId)) {
       return response;
     }
-    if (MapUtils.isEmpty(request)) {
-      setFailedResponse(response, Constants.USER_GROUPDETAILS_ERR_VALIDATION_MSG, HttpStatus.BAD_REQUEST);
-      return response;
-    }
-    List<String> errList = new ArrayList<>();
-    if (!(request.get(Constants.PARTNER_ID) instanceof String partnerId) || StringUtils.isBlank(partnerId)) {
-      errList.add(Constants.PARTNER_ID);
-    }
-    if (!(request.get(Constants.ALERTS_ENABLED) instanceof Boolean)) {
-      errList.add(Constants.ALERTS_ENABLED);
-    }
-    Object recipientsObj = request.getOrDefault(Constants.RECIPIENTS, new ArrayList<>());
-    if (!(recipientsObj instanceof List)) {
-      errList.add(Constants.RECIPIENTS);
-    }
-    Object thresholdsObj = request.get(Constants.THRESHOLDS);
-    if (thresholdsObj != null && !(thresholdsObj instanceof List)) {
-      errList.add(Constants.THRESHOLDS);
-    }
-    if (!errList.isEmpty()) {
-      setFailedResponse(response, Constants.MSG_MISSING_OR_INVALID_FIELDS + errList, HttpStatus.BAD_REQUEST);
+    String errMsg = validateNotificationRequest(request);
+    if (StringUtils.isNotBlank(errMsg)) {
+      setFailedResponse(response, errMsg, HttpStatus.BAD_REQUEST);
       return response;
     }
     String partnerId = (String) request.get(Constants.PARTNER_ID);
-    List<Object> recipients = (List<Object>) recipientsObj;
-    int maxRecipients = serverProperties.getProviderLicenceAlertMaxRecipients();
-    if (recipients.size() > maxRecipients) {
-      setFailedResponse(response, String.format(Constants.ERR_MAX_RECIPIENTS, maxRecipients), HttpStatus.BAD_REQUEST);
-      return response;
-    }
-    // Thresholds left out of the request keep the saved list.
-    Set<Integer> newThresholds = null;
-    if (thresholdsObj != null) {
-      newThresholds = new TreeSet<>();
-      String errMsg = validateThresholds((List<?>) thresholdsObj, newThresholds);
-      if (StringUtils.isNotBlank(errMsg)) {
-        setFailedResponse(response, errMsg, HttpStatus.BAD_REQUEST);
-        return response;
-      }
-    }
     try {
       if (!isValidPartner(readContentPartnerData(partnerId), partnerId, response)) {
         return response;
       }
       Map<String, Object> settingsRow = readSettingsRow(partnerId);
-      Map<String, String> existingAddedOn = new HashMap<>();
-      for (Map<String, Object> recipient : getRecipients(parseJson((String) settingsRow.get(Constants.NOTIFICATION_DATA)))) {
-        existingAddedOn.put(String.valueOf(recipient.get(Constants.EMAIL)).toLowerCase(),
-                (String) recipient.get(Constants.ADDED_ON));
-      }
-      String now = Instant.now().toString();
-      Set<String> seen = new HashSet<>();
-      List<Map<String, Object>> newRecipients = new ArrayList<>();
-      for (Object recipientObj : recipients) {
-        Map<String, Object> recipient = recipientObj instanceof Map ? (Map<String, Object>) recipientObj : Map.of();
-        String email = StringUtils.trimToEmpty(String.valueOf(recipient.getOrDefault(Constants.EMAIL, StringUtils.EMPTY)));
-        if (!emailPattern.matcher(email).matches()) {
-          setFailedResponse(response, String.format(Constants.ERR_INVALID_EMAIL, email), HttpStatus.BAD_REQUEST);
-          return response;
-        }
-        if (!seen.add(email.toLowerCase())) {
-          setFailedResponse(response, String.format(Constants.ERR_DUPLICATE_EMAIL, email), HttpStatus.BAD_REQUEST);
-          return response;
-        }
-        Map<String, Object> newRecipient = new LinkedHashMap<>();
-        String name = StringUtils.trimToNull((String) recipient.get(Constants.NAME));
-        if (name != null) {
-          newRecipient.put(Constants.NAME, name);
-        }
-        newRecipient.put(Constants.EMAIL, email);
-        newRecipient.put(Constants.ADDED_ON, existingAddedOn.getOrDefault(email.toLowerCase(), now));
-        newRecipients.add(newRecipient);
-      }
       Map<String, Object> notificationData = new LinkedHashMap<>();
       notificationData.put(Constants.ALERTS_ENABLED, request.get(Constants.ALERTS_ENABLED));
-      notificationData.put(Constants.RECIPIENTS, newRecipients);
-
-      String notificationDataJson = objectMapper.writeValueAsString(notificationData);
+      notificationData.put(Constants.RECIPIENTS,
+              toRecipients((List<?>) request.getOrDefault(Constants.RECIPIENTS, List.of()), settingsRow));
       Map<String, Object> updatedColumns = new HashMap<>();
-      updatedColumns.put(Constants.NOTIFICATION_DATA, notificationDataJson);
-      Map<Integer, Boolean> sentFlags = thresholdsOf(settingsRow);
-      if (newThresholds != null && !newThresholds.equals(sentFlags.keySet())) {
-        Map<Integer, Boolean> newSentFlags = new TreeMap<>();
-        newThresholds.forEach(threshold -> newSentFlags.put(threshold, Boolean.TRUE.equals(sentFlags.get(threshold))));
+      updatedColumns.put(Constants.NOTIFICATION_DATA, objectMapper.writeValueAsString(notificationData));
+      Map<Integer, Boolean> newSentFlags = newSentFlags(request.get(Constants.THRESHOLDS), settingsRow);
+      if (!newSentFlags.isEmpty()) {
         updatedColumns.put(Constants.ALERT_THRESHOLDS_COL, newSentFlags);
       }
       cassandraOperation.updateRecord(Constants.KEYSPACE_SUNBIRD_COURSE, Constants.PROVIDER_ACCESS_SETTINGS_TABLE,
@@ -327,6 +280,111 @@ public class ProviderAccessSettingsServiceImpl {
               HttpStatus.INTERNAL_SERVER_ERROR);
       return response;
     }
+  }
+
+  /**
+   * Checks the notification upsert request: its fields, the recipient limit, the thresholds and the
+   * recipients' emails. Returns the error message, or null when valid.
+   */
+  private String validateNotificationRequest(Map<String, Object> request) {
+    if (MapUtils.isEmpty(request)) {
+      return Constants.USER_GROUPDETAILS_ERR_VALIDATION_MSG;
+    }
+    List<String> errList = new ArrayList<>();
+    if (!(request.get(Constants.PARTNER_ID) instanceof String partnerId) || StringUtils.isBlank(partnerId)) {
+      errList.add(Constants.PARTNER_ID);
+    }
+    if (!(request.get(Constants.ALERTS_ENABLED) instanceof Boolean)) {
+      errList.add(Constants.ALERTS_ENABLED);
+    }
+    Object recipients = request.getOrDefault(Constants.RECIPIENTS, new ArrayList<>());
+    if (!(recipients instanceof List)) {
+      errList.add(Constants.RECIPIENTS);
+    }
+    Object thresholds = request.get(Constants.THRESHOLDS);
+    if (thresholds != null && !(thresholds instanceof List)) {
+      errList.add(Constants.THRESHOLDS);
+    }
+    if (!errList.isEmpty()) {
+      return Constants.MSG_MISSING_OR_INVALID_FIELDS + errList;
+    }
+    int maxRecipients = serverProperties.getProviderLicenceAlertMaxRecipients();
+    if (((List<?>) recipients).size() > maxRecipients) {
+      return String.format(Constants.ERR_MAX_RECIPIENTS, maxRecipients);
+    }
+    String errMsg = thresholds == null ? null : validateThresholds((List<?>) thresholds, new TreeSet<>());
+    return errMsg != null ? errMsg : validateRecipientEmails((List<?>) recipients);
+  }
+
+  /**
+   * Every recipient needs a valid email, and no email may repeat (ignoring case). Returns the error
+   * message, or null when valid.
+   */
+  private String validateRecipientEmails(List<?> recipients) {
+    Set<String> seen = new HashSet<>();
+    for (Object recipient : recipients) {
+      String email = emailOf(recipient);
+      if (!emailPattern.matcher(email).matches()) {
+        return String.format(Constants.ERR_INVALID_EMAIL, email);
+      }
+      if (!seen.add(email.toLowerCase())) {
+        return String.format(Constants.ERR_DUPLICATE_EMAIL, email);
+      }
+    }
+    return null;
+  }
+
+  private String emailOf(Object recipient) {
+    Object email = recipient instanceof Map<?, ?> map && map.containsKey(Constants.EMAIL)
+            ? map.get(Constants.EMAIL) : StringUtils.EMPTY;
+    return StringUtils.trimToEmpty(String.valueOf(email));
+  }
+
+  /**
+   * The recipients to save: name (when given), email, and addedOn kept from the saved recipient
+   * with the same email (ignoring case), or now for a new one.
+   */
+  private List<Map<String, Object>> toRecipients(List<?> recipients, Map<String, Object> settingsRow)
+          throws JsonProcessingException {
+    Map<String, String> existingAddedOn = new HashMap<>();
+    for (Map<String, Object> recipient : getRecipients(parseJson((String) settingsRow.get(Constants.NOTIFICATION_DATA)))) {
+      existingAddedOn.put(String.valueOf(recipient.get(Constants.EMAIL)).toLowerCase(),
+              (String) recipient.get(Constants.ADDED_ON));
+    }
+    String now = Instant.now().toString();
+    List<Map<String, Object>> newRecipients = new ArrayList<>();
+    for (Object recipient : recipients) {
+      String email = emailOf(recipient);
+      Map<String, Object> newRecipient = new LinkedHashMap<>();
+      String name = StringUtils.trimToNull((String) ((Map<?, ?>) recipient).get(Constants.NAME));
+      if (name != null) {
+        newRecipient.put(Constants.NAME, name);
+      }
+      newRecipient.put(Constants.EMAIL, email);
+      newRecipient.put(Constants.ADDED_ON, existingAddedOn.getOrDefault(email.toLowerCase(), now));
+      newRecipients.add(newRecipient);
+    }
+    return newRecipients;
+  }
+
+  /**
+   * The thresholds to save, each with its sent flag (kept for a threshold still on the list, false
+   * for an added one). Empty when thresholds are left out or the list is unchanged, so the column is
+   * not rewritten and a sent flag the enrolment service sets meanwhile is not overwritten.
+   */
+  private Map<Integer, Boolean> newSentFlags(Object thresholds, Map<String, Object> settingsRow) {
+    if (thresholds == null) {
+      return Map.of();
+    }
+    Set<Integer> newThresholds = new TreeSet<>();
+    ((List<?>) thresholds).forEach(threshold -> newThresholds.add((Integer) threshold));
+    Map<Integer, Boolean> sentFlags = thresholdsOf(settingsRow);
+    if (newThresholds.equals(sentFlags.keySet())) {
+      return Map.of();
+    }
+    Map<Integer, Boolean> newSentFlags = new TreeMap<>();
+    newThresholds.forEach(threshold -> newSentFlags.put(threshold, Boolean.TRUE.equals(sentFlags.get(threshold))));
+    return newSentFlags;
   }
 
   public ApiResponse notificationRead(String partnerId, String authToken) {
@@ -395,7 +453,7 @@ public class ProviderAccessSettingsServiceImpl {
         }
         Map<String, Integer> userProfile = userAndOrgService.getUserProfile(userId);
         activeGroupsInOrder(getUserGroups(contextData)).stream()
-                .filter(group -> matchesUserGroup(idGroupById.get((String) group.get(Constants.USER_GROUP_ID)), userProfile))
+                .filter(group -> matchesUserGroup(idGroupById.get(group.get(Constants.USER_GROUP_ID)), userProfile))
                 .forEach(matchedGroups::add);
       }
       List<String> matchingGroups = matchedGroups.stream()
@@ -537,16 +595,9 @@ public class ProviderAccessSettingsServiceImpl {
         errList.add(String.format(Constants.USER_GROUP_FIELD_PATH, i, Constants.USER_GROUP_CRITERIA_LIST));
         continue;
       }
-      for (Map<String, Object> criteria : (List<Map<String, Object>>) criteriaList) {
-        String criteriaKey = String.valueOf(criteria.get(Constants.CRITERIA_KEY));
-        if (!allowedKeys.contains(criteriaKey.toLowerCase())) {
-          return String.format(Constants.ERR_INVALID_CRITERIA_KEY, criteriaKey);
-        }
-        if (limitedKeys.contains(criteriaKey.toLowerCase())
-                && criteria.get(Constants.CRITERIA_VALUE) instanceof List<?> values
-                && values.size() > maxCriteriaValues) {
-          return String.format(Constants.ERR_CRITERIA_VALUES_LIMIT, criteriaKey, maxCriteriaValues);
-        }
+      errMsg = validateCriteria((List<Map<String, Object>>) criteriaList, allowedKeys, limitedKeys, maxCriteriaValues);
+      if (errMsg != null) {
+        return errMsg;
       }
     }
     if (!errList.isEmpty()) {
@@ -554,6 +605,26 @@ public class ProviderAccessSettingsServiceImpl {
     }
     errMsg = validateGroupNumbersAndAllocations(userGroups);
     return errMsg != null ? errMsg : validateUserCriteriaAlone(userGroups);
+  }
+
+  /**
+   * Every criteria key must be allowed, and a limited key can have at most maxCriteriaValues values.
+   * Returns the error message, or null when valid.
+   */
+  private String validateCriteria(List<Map<String, Object>> criteriaList, Set<String> allowedKeys,
+          Set<String> limitedKeys, int maxCriteriaValues) {
+    for (Map<String, Object> criteria : criteriaList) {
+      String criteriaKey = String.valueOf(criteria.get(Constants.CRITERIA_KEY));
+      if (!allowedKeys.contains(criteriaKey.toLowerCase())) {
+        return String.format(Constants.ERR_INVALID_CRITERIA_KEY, criteriaKey);
+      }
+      if (limitedKeys.contains(criteriaKey.toLowerCase())
+              && criteria.get(Constants.CRITERIA_VALUE) instanceof List<?> values
+              && values.size() > maxCriteriaValues) {
+        return String.format(Constants.ERR_CRITERIA_VALUES_LIMIT, criteriaKey, maxCriteriaValues);
+      }
+    }
+    return null;
   }
 
   /**
@@ -687,7 +758,7 @@ public class ProviderAccessSettingsServiceImpl {
     Set<Object> keptIds = new HashSet<>();
     userGroups.forEach(group -> keptIds.add(group.get(Constants.USER_GROUP_ID)));
     for (Map<String, Object> group : existingGroups) {
-      long consumed = consumedByGroup.getOrDefault((String) group.get(Constants.USER_GROUP_ID), 0L);
+      long consumed = consumedByGroup.getOrDefault(group.get(Constants.USER_GROUP_ID), 0L);
       if (!isDeleted(group) && !keptIds.contains(group.get(Constants.USER_GROUP_ID)) && consumed > 0) {
         return String.format(Constants.ERR_USER_GROUP_IN_USE_DELETE, groupLabel(group), consumed);
       }
@@ -830,7 +901,7 @@ public class ProviderAccessSettingsServiceImpl {
     return (Map<String, Object>) result.get(Constants.DATA);
   }
 
-  private Map<String, Object> readContextData(String partnerId) throws Exception {
+  private Map<String, Object> readContextData(String partnerId) throws JsonProcessingException {
     return parseJson((String) readSettingsRow(partnerId).get(Constants.CONTEXT_DATA));
   }
 
@@ -858,7 +929,7 @@ public class ProviderAccessSettingsServiceImpl {
     return settingsRow;
   }
 
-  private Map<String, Object> parseJson(String json) throws Exception {
+  private Map<String, Object> parseJson(String json) throws JsonProcessingException {
     if (json == null) {
       return new HashMap<>();
     }

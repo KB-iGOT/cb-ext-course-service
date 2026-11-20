@@ -113,4 +113,67 @@ class PayloadValidationTest {
     String result = payloadValidation.validateAccessControlPayload(payload);
     assertTrue(result.contains("criteriaValue"));
   }
+
+  @Test
+  void testProviderPayloadValid() {
+    Map<String, Object> payload = new HashMap<>();
+    payload.put(Constants.PARTNER_ID, "partner1");
+    Map<String, Object> criteria = new HashMap<>();
+    criteria.put(Constants.CRITERIA_VALUE, Collections.singletonList("val1"));
+    Map<String, Object> userGroup = new HashMap<>();
+    userGroup.put(Constants.USER_GROUP_CRITERIA_LIST, List.of(criteria));
+    payload.put(Constants.ACCESS_CONTROL, Map.of(Constants.USER_GROUPS, List.of(userGroup)));
+
+    assertTrue(payloadValidation.validateProviderAccessControlPayload(payload).isEmpty());
+  }
+
+  @Test
+  void testProviderPayloadMissingPartnerIdAndAccessControl() {
+    Map<String, Object> payload = new HashMap<>();
+    payload.put(Constants.PARTNER_ID, " ");
+
+    String result = payloadValidation.validateProviderAccessControlPayload(payload);
+    assertTrue(result.contains(Constants.PARTNER_ID));
+    assertTrue(result.contains(Constants.ACCESS_CONTROL));
+  }
+
+  @Test
+  void testProviderPayloadEmpty() {
+    assertEquals(Constants.USER_GROUPDETAILS_ERR_VALIDATION_MSG,
+        payloadValidation.validateProviderAccessControlPayload(new HashMap<>()));
+  }
+
+  @Test
+  void testProviderPayloadAccessControlWithoutUserGroupList() {
+    Map<String, Object> payload = new HashMap<>();
+    payload.put(Constants.PARTNER_ID, "partner1");
+    payload.put(Constants.ACCESS_CONTROL, Map.of(Constants.USER_GROUPS, "not a list"));
+
+    assertTrue(payloadValidation.validateProviderAccessControlPayload(payload).isEmpty());
+  }
+
+  @Test
+  void testProviderPayloadReportsEachInvalidCriteriaValue() {
+    Map<String, Object> nullValue = new HashMap<>();
+    nullValue.put(Constants.CRITERIA_VALUE, null);
+    List<Object> criteriaList = List.of(
+        Map.of(Constants.CRITERIA_VALUE, true),
+        Map.of(Constants.CRITERIA_VALUE, "value"),
+        Map.of(Constants.CRITERIA_VALUE, List.of()),
+        Map.of(Constants.CRITERIA_VALUE, 5),
+        nullValue,
+        "not a criteria");
+    Map<String, Object> payload = new HashMap<>();
+    payload.put(Constants.PARTNER_ID, "partner1");
+    payload.put(Constants.ACCESS_CONTROL, Map.of(Constants.USER_GROUPS, List.of(
+        "not a group",
+        Map.of(Constants.USER_GROUP_CRITERIA_LIST, "not a list"),
+        Map.of(Constants.USER_GROUP_CRITERIA_LIST, criteriaList))));
+
+    assertEquals(Constants.MSG_MISSING_OR_INVALID_FIELDS + List.of(
+            "userGroups[2].userGroupCriteriaList[2].criteriaValue",
+            "userGroups[2].userGroupCriteriaList[3].criteriaValue",
+            "userGroups[2].userGroupCriteriaList[4].criteriaValue"),
+        payloadValidation.validateProviderAccessControlPayload(payload));
+  }
 }

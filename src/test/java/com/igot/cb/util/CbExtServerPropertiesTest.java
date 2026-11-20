@@ -119,4 +119,34 @@ class CbExtServerPropertiesTest {
         assertEquals(6382, properties.getExtContentRedisPort());
         assertEquals(3, properties.getExtContentRedisDbIndex());
     }
+
+    @Test
+    void testProviderAccessSettingsProperties() {
+        CbExtServerProperties properties = new CbExtServerProperties();
+
+        properties.setCbPoresServiceHost("http://pores");
+        properties.setContentPartnerReadEndPoint("/contentpartner/v1/read/");
+        properties.setProviderAccessSettingsMaxUserGroups(5);
+        properties.setProviderAccessSettingsMaxCriteriaValues(500);
+        properties.setProviderAccessSettingsLimitedCriteriaKeys("user,rootorgid");
+        properties.setProviderAccessSettingsAllowedCriteriaKeys("user,rootorgid,group");
+        properties.setProviderLicenceAlertThresholds("50,100");
+        properties.setProviderLicenceAlertMaxRecipients(100);
+        properties.setProviderLicenceAlertMaxThresholds(5);
+        properties.setProviderLicenceAlertEmailRegex("^.+@.+$");
+
+        assertEquals("http://pores", properties.getCbPoresServiceHost());
+        assertEquals("/contentpartner/v1/read/", properties.getContentPartnerReadEndPoint());
+        assertEquals(5, properties.getProviderAccessSettingsMaxUserGroups());
+        assertEquals(500, properties.getProviderAccessSettingsMaxCriteriaValues());
+        assertEquals(List.of("user", "rootorgid"), properties.getProviderAccessSettingsLimitedCriteriaKeysList());
+        assertEquals(List.of("user", "rootorgid", "group"), properties.getProviderAccessSettingsAllowedCriteriaKeysList());
+        assertEquals(List.of("50", "100"), properties.getProviderLicenceAlertThresholdsList());
+        assertEquals(100, properties.getProviderLicenceAlertMaxRecipients());
+        assertEquals(5, properties.getProviderLicenceAlertMaxThresholds());
+        assertEquals("^.+@.+$", properties.getProviderLicenceAlertEmailRegex());
+        assertEquals("user,rootorgid", properties.getProviderAccessSettingsLimitedCriteriaKeys());
+        assertEquals("user,rootorgid,group", properties.getProviderAccessSettingsAllowedCriteriaKeys());
+        assertEquals("50,100", properties.getProviderLicenceAlertThresholds());
+    }
 }

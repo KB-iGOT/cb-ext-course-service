@@ -910,6 +910,7 @@ public class Constants {
     public static final String ERR_PROVIDER_ACCESS_REBALANCE = "Failed to rebalance provider licence allocations";
     public static final String ERR_USER_GROUP_CONDITIONS_LOCKED = "Conditions of %s cannot be changed";
     public static final String ERR_USER_GROUP_REORDER = "User groups cannot be reordered; new groups are added at the end";
+    public static final String SENT = "sent";
 
     private Constants() {
     }

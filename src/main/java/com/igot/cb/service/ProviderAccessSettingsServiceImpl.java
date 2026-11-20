@@ -346,11 +346,14 @@ public class ProviderAccessSettingsServiceImpl {
       Map<String, Object> settingsRow = readSettingsRow(partnerId);
       Map<String, Object> notificationData = parseJson((String) settingsRow.get(Constants.NOTIFICATION_DATA));
       List<Map<String, Object>> thresholds = new ArrayList<>();
+      Map<String, String> sent = new LinkedHashMap<>();
       for (Map.Entry<Integer, Boolean> threshold : thresholdsOf(settingsRow).entrySet()) {
         Map<String, Object> thresholdEntry = new LinkedHashMap<>();
         thresholdEntry.put(Constants.THRESHOLD, threshold.getKey());
         thresholdEntry.put(Constants.ENABLED, threshold.getValue());
         thresholds.add(thresholdEntry);
+        sent.put(String.valueOf(threshold.getKey()),
+                redisCacheMgr.getFromCache(alertKey(partnerId, threshold.getKey())));
       }
       response.getResult().put(Constants.PARTNER_ID, partnerId);
       response.getResult().put(Constants.ALERTS_ENABLED,
@@ -358,6 +361,7 @@ public class ProviderAccessSettingsServiceImpl {
       response.getResult().put(Constants.MAX_RECIPIENTS, serverProperties.getProviderLicenceAlertMaxRecipients());
       response.getResult().put(Constants.MAX_THRESHOLDS, serverProperties.getProviderLicenceAlertMaxThresholds());
       response.getResult().put(Constants.THRESHOLDS, thresholds);
+      response.getResult().put(Constants.SENT, sent);
       response.getResult().put(Constants.RECIPIENTS, getRecipients(notificationData));
       return response;
     } catch (Exception e) {

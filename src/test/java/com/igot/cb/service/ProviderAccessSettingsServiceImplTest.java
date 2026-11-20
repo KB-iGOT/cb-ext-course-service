@@ -825,6 +825,7 @@ class ProviderAccessSettingsServiceImplTest {
     Map<String, Object> saved = Map.of(Constants.ALERTS_ENABLED, true, Constants.RECIPIENTS,
         List.of(Map.of(Constants.EMAIL, "ops@example.com", Constants.ADDED_ON, "2026-10-01T00:00:00Z")));
     mockRow(Constants.NOTIFICATION_DATA, mapper.writeValueAsString(saved));
+    when(redisCacheMgr.getFromCache("licenceAlertFired_" + PARTNER_ID + "_50")).thenReturn("2026-10-21T10:00:00Z");
 
     ApiResponse response = service.notificationRead(PARTNER_ID, "token");
 
@@ -833,7 +834,14 @@ class ProviderAccessSettingsServiceImplTest {
     assertEquals(100, response.getResult().get(Constants.MAX_RECIPIENTS));
     assertEquals(5, response.getResult().get(Constants.MAX_THRESHOLDS));
     assertEquals(defaultThresholds(), response.getResult().get(Constants.THRESHOLDS));
-    assertFalse(response.getResult().containsKey("sent"));
+    Map<String, String> expectedSent = new LinkedHashMap<>();
+    expectedSent.put("50", "2026-10-21T10:00:00Z");
+    expectedSent.put("75", null);
+    expectedSent.put("90", null);
+    expectedSent.put("100", null);
+    assertEquals(expectedSent, response.getResult().get(Constants.SENT));
+    assertEquals(List.of("50", "75", "90", "100"),
+        List.copyOf(((Map<?, ?>) response.getResult().get(Constants.SENT)).keySet()));
     assertEquals(1, ((List<?>) response.getResult().get(Constants.RECIPIENTS)).size());
   }
 
@@ -846,7 +854,10 @@ class ProviderAccessSettingsServiceImplTest {
 
     assertEquals(HttpStatus.OK, response.getResponseCode());
     assertEquals(List.of(threshold(60, true), threshold(80, false)), response.getResult().get(Constants.THRESHOLDS));
-    verifyNoInteractions(redisCacheMgr);
+    Map<String, String> expectedSent = new LinkedHashMap<>();
+    expectedSent.put("60", null);
+    expectedSent.put("80", null);
+    assertEquals(expectedSent, response.getResult().get(Constants.SENT));
   }
 
   @Test

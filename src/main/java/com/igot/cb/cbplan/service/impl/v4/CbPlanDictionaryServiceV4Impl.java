@@ -1233,7 +1233,7 @@ public class CbPlanDictionaryServiceV4Impl {
             String cacheKey = Constants.CB_PLAN_V4_REDIS_KEY_PREFIX + userOrgId + ":" + userId + ":" + planYear
                     + Constants.CB_PLAN_V4_PREV_POSTING_DICT_KEY_SUFFIX;
             Map<String, Object> cachedResult = readPreviousPostingCache(cacheKey);
-            if (Objects.nonNull(cachedResult)) {
+            if (MapUtils.isNotEmpty(cachedResult)) {
                 log.info("getCBPlanDictionaryForPreviousPosting: Cache hit - userId={}, orgId={}, planYear={}",
                         userId, userOrgId, planYear);
                 populateResponseFromCache(response, cachedResult);
@@ -1296,19 +1296,19 @@ public class CbPlanDictionaryServiceV4Impl {
     }
 
     /**
-     * Plain Redis get: returns the deserialized entry, or {@code null} on a miss or malformed
+     * Plain Redis get: returns the deserialized entry, or an empty map on a miss or malformed
      * JSON (treated as a miss rather than failing the request).
      */
     private Map<String, Object> readPreviousPostingCache(String cacheKey) {
         String cachedJson = redisCacheMgr.getFromCache(cacheKey);
         if (StringUtils.isBlank(cachedJson)) {
-            return null;
+            return Collections.emptyMap();
         }
         try {
             return mapper.readValue(cachedJson, MAP_TYPE_REF);
         } catch (JsonProcessingException e) {
             log.warn("readPreviousPostingCache: Failed to deserialize cached entry - key={}", cacheKey, e);
-            return null;
+            return Collections.emptyMap();
         }
     }
 

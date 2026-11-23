@@ -2498,7 +2498,7 @@ class CbPlanDictionaryServiceV4ImplTest {
         assertThat(response.getResponseCode()).isEqualTo(HttpStatus.OK);
         String resolvedYear = CbPlanYearUtil.resolveCurrentFinancialYear();
         Map<String, Object> yearResult = (Map<String, Object>) response.getResult().get(resolvedYear);
-        assertThat(yearResult.get(Constants.RESPONSE_KEY_APAR_PLAN_LIST)).isEqualTo(Collections.emptyMap());
+        assertThat(yearResult).containsEntry(Constants.RESPONSE_KEY_APAR_PLAN_LIST, Collections.emptyMap());
         assertThat(response.getResult()).doesNotContainKey(CbPlanYearUtil.resolvePreviousYear(resolvedYear));
     }
 
@@ -2514,7 +2514,7 @@ class CbPlanDictionaryServiceV4ImplTest {
         assertThat(response.getResponseCode()).isEqualTo(HttpStatus.OK);
         String previousYear = CbPlanYearUtil.resolvePreviousYear(TEST_PLAN_YEAR);
         Map<String, Object> prevYearResult = (Map<String, Object>) response.getResult().get(previousYear);
-        assertThat(prevYearResult.get(Constants.RESPONSE_KEY_APAR_PLAN_LIST)).isEqualTo(Collections.emptyMap());
+        assertThat(prevYearResult).containsEntry(Constants.RESPONSE_KEY_APAR_PLAN_LIST, Collections.emptyMap());
     }
 
     @Test

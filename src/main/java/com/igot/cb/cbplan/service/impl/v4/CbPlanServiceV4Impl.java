@@ -2105,4 +2105,9 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
     public ApiResponse getCBPlanCourseListForUser(String userId, String userOrgId) {
         return lookupService.getCBPlanCourseListForUser(userId, userOrgId);
     }
+
+    @Override
+    public ApiResponse getCBPlanDictionaryForAdmin(ApiRequest request) {
+        return dictionaryService.getCBPlanDictionaryForAdmin(request);
+    }
 }

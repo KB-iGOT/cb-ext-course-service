@@ -167,4 +167,5 @@ public interface CbPlanServiceV4 {
      */
     ApiResponse getCBPlanCourseListForUser(String userId, String userOrgId);
 
+    ApiResponse getCBPlanDictionaryForAdmin(ApiRequest request);
 }

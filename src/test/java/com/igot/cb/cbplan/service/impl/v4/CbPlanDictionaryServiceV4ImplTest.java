@@ -2356,13 +2356,13 @@ class CbPlanDictionaryServiceV4ImplTest {
     void getCBPlanDictionaryForPreviousPosting_malformedCachedJson_treatedAsMiss_rebuildsFresh() {
         setupValidUserProfileMocks();
         when(redisCacheMgr.getFromCache(anyString())).thenReturn("{not-valid-json");
-        when(cbPlanCacheMgrV4.getCbPlanForOrgIdOnly(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR)))
+        when(cbPlanCacheMgrV4.getCbPlanForOrgIdOnly(TEST_ORG_ID, TEST_PLAN_YEAR))
                 .thenReturn(Collections.emptyList());
 
         ApiResponse response = dictionaryService.getCBPlanDictionaryForPreviousPosting(testRequest, TEST_AUTH_TOKEN);
 
         assertThat(response.getResponseCode()).isEqualTo(HttpStatus.OK);
-        verify(cbPlanCacheMgrV4).getCbPlanForOrgIdOnly(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR));
+        verify(cbPlanCacheMgrV4).getCbPlanForOrgIdOnly(TEST_ORG_ID, TEST_PLAN_YEAR);
     }
 
     @Test
@@ -2371,7 +2371,7 @@ class CbPlanDictionaryServiceV4ImplTest {
         when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
         stubOrgDetailsEmpty();
         Map<String, Object> plan = createMockPlan("plan_own_org", false, null);
-        when(cbPlanCacheMgrV4.getCbPlanForOrgIdOnly(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR)))
+        when(cbPlanCacheMgrV4.getCbPlanForOrgIdOnly(TEST_ORG_ID, TEST_PLAN_YEAR))
                 .thenReturn(List.of(plan));
 
         ApiResponse response = dictionaryService.getCBPlanDictionaryForPreviousPosting(testRequest, TEST_AUTH_TOKEN);
@@ -2394,7 +2394,7 @@ class CbPlanDictionaryServiceV4ImplTest {
         testRequest.setRequest(requestMap);
         Map<String, Object> plan = createMockPlan("plan_prev_org", false, null);
         plan.put(Constants.ORG_ID_LIST, List.of(PREVIOUS_ORG_ID));
-        when(cbPlanCacheMgrV4.getCbPlanForOrgIdOnly(eq(PREVIOUS_ORG_ID), eq(TEST_PLAN_YEAR)))
+        when(cbPlanCacheMgrV4.getCbPlanForOrgIdOnly(PREVIOUS_ORG_ID, TEST_PLAN_YEAR))
                 .thenReturn(List.of(plan));
 
         ApiResponse response = dictionaryService.getCBPlanDictionaryForPreviousPosting(testRequest, TEST_AUTH_TOKEN);
@@ -2416,13 +2416,13 @@ class CbPlanDictionaryServiceV4ImplTest {
         requestMap.put(Constants.REQUEST_PARAM_PLAN_YEAR, TEST_PLAN_YEAR);
         requestMap.put(Constants.REQUEST_PARAM_PREVIOUS_ROOT_ORG_ID, "   ");
         testRequest.setRequest(requestMap);
-        when(cbPlanCacheMgrV4.getCbPlanForOrgIdOnly(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR)))
+        when(cbPlanCacheMgrV4.getCbPlanForOrgIdOnly(TEST_ORG_ID, TEST_PLAN_YEAR))
                 .thenReturn(Collections.emptyList());
 
         ApiResponse response = dictionaryService.getCBPlanDictionaryForPreviousPosting(testRequest, TEST_AUTH_TOKEN);
 
         assertThat(response.getResponseCode()).isEqualTo(HttpStatus.OK);
-        verify(cbPlanCacheMgrV4).getCbPlanForOrgIdOnly(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR));
+        verify(cbPlanCacheMgrV4).getCbPlanForOrgIdOnly(TEST_ORG_ID, TEST_PLAN_YEAR);
     }
 
     @Test
@@ -2434,13 +2434,13 @@ class CbPlanDictionaryServiceV4ImplTest {
         requestMap.put(Constants.REQUEST_PARAM_PLAN_YEAR, TEST_PLAN_YEAR);
         requestMap.put(Constants.REQUEST_PARAM_PREVIOUS_ROOT_ORG_ID, 12345);
         testRequest.setRequest(requestMap);
-        when(cbPlanCacheMgrV4.getCbPlanForOrgIdOnly(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR)))
+        when(cbPlanCacheMgrV4.getCbPlanForOrgIdOnly(TEST_ORG_ID, TEST_PLAN_YEAR))
                 .thenReturn(Collections.emptyList());
 
         ApiResponse response = dictionaryService.getCBPlanDictionaryForPreviousPosting(testRequest, TEST_AUTH_TOKEN);
 
         assertThat(response.getResponseCode()).isEqualTo(HttpStatus.OK);
-        verify(cbPlanCacheMgrV4).getCbPlanForOrgIdOnly(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR));
+        verify(cbPlanCacheMgrV4).getCbPlanForOrgIdOnly(TEST_ORG_ID, TEST_PLAN_YEAR);
     }
 
     @Test
@@ -2455,7 +2455,7 @@ class CbPlanDictionaryServiceV4ImplTest {
         List<Map<String, Object>> criteriaList = List.of(
                 Map.of(Constants.CRITERIA_KEY, Constants.DESIGNATION, Constants.CRITERIA_VALUE, Set.of("director")));
         Map<String, Object> plan = createV3PlanWithInlineCriteria("plan_director_only", criteriaList);
-        when(cbPlanCacheMgrV4.getCbPlanForOrgIdOnly(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR)))
+        when(cbPlanCacheMgrV4.getCbPlanForOrgIdOnly(TEST_ORG_ID, TEST_PLAN_YEAR))
                 .thenReturn(List.of(plan));
 
         ApiResponse response = dictionaryService.getCBPlanDictionaryForPreviousPosting(testRequest, TEST_AUTH_TOKEN);
@@ -2476,13 +2476,13 @@ class CbPlanDictionaryServiceV4ImplTest {
         requestMap.put(Constants.REQUEST_PARAM_PLAN_YEAR, TEST_PLAN_YEAR);
         requestMap.put(Constants.REQUEST_PARAM_PREVIOUS_DESIGNATION, "Director");
         testRequest.setRequest(requestMap);
-        when(cbPlanCacheMgrV4.getCbPlanForOrgIdOnly(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR)))
+        when(cbPlanCacheMgrV4.getCbPlanForOrgIdOnly(TEST_ORG_ID, TEST_PLAN_YEAR))
                 .thenReturn(Collections.emptyList());
 
         ApiResponse response = dictionaryService.getCBPlanDictionaryForPreviousPosting(testRequest, TEST_AUTH_TOKEN);
 
         assertThat(response.getResponseCode()).isEqualTo(HttpStatus.OK);
-        verify(cbPlanCacheMgrV4).getCbPlanForOrgIdOnly(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR));
+        verify(cbPlanCacheMgrV4).getCbPlanForOrgIdOnly(TEST_ORG_ID, TEST_PLAN_YEAR);
     }
 
     @Test
@@ -2524,9 +2524,9 @@ class CbPlanDictionaryServiceV4ImplTest {
         stubOrgDetailsEmpty();
         String previousYear = CbPlanYearUtil.resolvePreviousYear(TEST_PLAN_YEAR);
         Map<String, Object> prevPlan = createMockPlan("plan_prev_year", false, null);
-        when(cbPlanCacheMgrV4.getCbPlanForOrgIdOnly(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR)))
+        when(cbPlanCacheMgrV4.getCbPlanForOrgIdOnly(TEST_ORG_ID, TEST_PLAN_YEAR))
                 .thenReturn(Collections.emptyList());
-        when(cbPlanCacheMgrV4.getCbPlanForOrgIdOnly(eq(TEST_ORG_ID), eq(previousYear)))
+        when(cbPlanCacheMgrV4.getCbPlanForOrgIdOnly(TEST_ORG_ID, previousYear))
                 .thenReturn(List.of(prevPlan));
 
         ApiResponse response = dictionaryService.getCBPlanDictionaryForPreviousPosting(testRequest, TEST_AUTH_TOKEN);
@@ -2547,9 +2547,9 @@ class CbPlanDictionaryServiceV4ImplTest {
                 Map.of(Constants.CRITERIA_KEY, Constants.DESIGNATION, Constants.CRITERIA_VALUE, Set.of("director")));
         Map<String, Object> inaccessiblePlan = createV3PlanWithInlineCriteria("plan_inaccessible", criteriaList);
         String previousYear = CbPlanYearUtil.resolvePreviousYear(TEST_PLAN_YEAR);
-        when(cbPlanCacheMgrV4.getCbPlanForOrgIdOnly(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR)))
+        when(cbPlanCacheMgrV4.getCbPlanForOrgIdOnly(TEST_ORG_ID, TEST_PLAN_YEAR))
                 .thenReturn(List.of(inaccessiblePlan));
-        when(cbPlanCacheMgrV4.getCbPlanForOrgIdOnly(eq(TEST_ORG_ID), eq(previousYear)))
+        when(cbPlanCacheMgrV4.getCbPlanForOrgIdOnly(TEST_ORG_ID, previousYear))
                 .thenReturn(Collections.emptyList());
 
         ApiResponse response = dictionaryService.getCBPlanDictionaryForPreviousPosting(testRequest, TEST_AUTH_TOKEN);
@@ -2560,7 +2560,7 @@ class CbPlanDictionaryServiceV4ImplTest {
                 (Map<String, Map<String, Object>>) yearResult.get(Constants.RESPONSE_KEY_NON_APAR_PLAN_LIST);
         assertThat(nonAparList).isEmpty();
         assertThat(response.getResult()).containsKey(previousYear);
-        verify(cbPlanCacheMgrV4).getCbPlanForOrgIdOnly(eq(TEST_ORG_ID), eq(previousYear));
+        verify(cbPlanCacheMgrV4).getCbPlanForOrgIdOnly(TEST_ORG_ID, previousYear);
     }
 
     @Test
@@ -2570,7 +2570,7 @@ class CbPlanDictionaryServiceV4ImplTest {
         stubOrgDetailsEmpty();
         Map<String, Object> aparPlan = createMockPlan("plan_apar_prev", true, null);
         Map<String, Object> nonAparPlan = createMockPlan("plan_non_apar_prev", false, null);
-        when(cbPlanCacheMgrV4.getCbPlanForOrgIdOnly(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR)))
+        when(cbPlanCacheMgrV4.getCbPlanForOrgIdOnly(TEST_ORG_ID, TEST_PLAN_YEAR))
                 .thenReturn(List.of(aparPlan, nonAparPlan));
 
         ApiResponse response = dictionaryService.getCBPlanDictionaryForPreviousPosting(testRequest, TEST_AUTH_TOKEN);
@@ -2603,7 +2603,7 @@ class CbPlanDictionaryServiceV4ImplTest {
     void getCBPlanDictionaryForPreviousPosting_unexpectedException_returnsInternalServerError() {
         setupValidUserProfileMocks();
         when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
-        when(cbPlanCacheMgrV4.getCbPlanForOrgIdOnly(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR)))
+        when(cbPlanCacheMgrV4.getCbPlanForOrgIdOnly(TEST_ORG_ID, TEST_PLAN_YEAR))
                 .thenThrow(new RuntimeException("boom"));
 
         ApiResponse response = dictionaryService.getCBPlanDictionaryForPreviousPosting(testRequest, TEST_AUTH_TOKEN);

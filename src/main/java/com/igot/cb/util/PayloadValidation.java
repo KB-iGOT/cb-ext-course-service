@@ -29,51 +29,64 @@ public class PayloadValidation {
       errList.add("contentId");
     }
 
-    // Check accessControl
-    Object accessControlObj = payload.get(Constants.ACCESS_CONTROL);
-    if (ObjectUtils.isEmpty(accessControlObj) || !(accessControlObj instanceof Map)) {
-      errList.add(Constants.ACCESS_CONTROL);
-    } else {
-      Map<String, Object> accessControl = (Map<String, Object>) accessControlObj;
-      Object userGroupsObj = accessControl.get(Constants.USER_GROUPS);
-      if (userGroupsObj instanceof List) {
-        List<?> userGroups = (List<?>) userGroupsObj;
-        for (int i = 0; i < userGroups.size(); i++) {
-          Object ugObj = userGroups.get(i);
-          if (ugObj instanceof Map) {
-            Map<String, Object> userGroup = (Map<String, Object>) ugObj;
-            Object criteriaListObj = userGroup.get(Constants.USER_GROUP_CRITERIA_LIST);
-            if (criteriaListObj instanceof List) {
-              List<?> criteriaList = (List<?>) criteriaListObj;
-              for (int j = 0; j < criteriaList.size(); j++) {
-                Object criteriaObj = criteriaList.get(j);
-                if (criteriaObj instanceof Map) {
-                  Map<String, Object> criteria = (Map<String, Object>) criteriaObj;
-                  Object criteriaValueObj = criteria.get(Constants.CRITERIA_VALUE);
-                    boolean isError = false;
-                    if (criteriaValueObj == null) {
-                        isError = true;
-                    } else if (criteriaValueObj instanceof List<?> valueList) {
-                        if (valueList.isEmpty()) {
-                            isError = true;
-                        }
-                    } else if (!(criteriaValueObj instanceof Boolean) && !(criteriaValueObj instanceof String)) {
-                        isError = true;
-                    }
-                    if (isError) {
-                        errList.add("userGroups[" + i + "].userGroupCriteriaList[" + j + "].criteriaValue");
-                    }
-                }
-              }
-            }
-          }
-        }
-      }
-    }
+    validateAccessControl(payload, errList);
 
     if (!errList.isEmpty()) {
       return "Missing or invalid fields: " + errList;
     }
     return "";
+  }
+
+  private void validateAccessControl(Map<String, Object> payload, List<String> errList) {
+    if (!(payload.get(Constants.ACCESS_CONTROL) instanceof Map<?, ?> accessControl) || accessControl.isEmpty()) {
+      errList.add(Constants.ACCESS_CONTROL);
+      return;
+    }
+    if (!(accessControl.get(Constants.USER_GROUPS) instanceof List<?> userGroups)) {
+      return;
+    }
+    for (int i = 0; i < userGroups.size(); i++) {
+      if (userGroups.get(i) instanceof Map<?, ?> userGroup
+          && userGroup.get(Constants.USER_GROUP_CRITERIA_LIST) instanceof List<?> criteriaList) {
+        addInvalidCriteriaValues(criteriaList, i, errList);
+      }
+    }
+  }
+
+  private void addInvalidCriteriaValues(List<?> criteriaList, int groupIndex, List<String> errList) {
+    for (int j = 0; j < criteriaList.size(); j++) {
+      if (criteriaList.get(j) instanceof Map<?, ?> criteria
+          && !isValidCriteriaValue(criteria.get(Constants.CRITERIA_VALUE))) {
+        errList.add("userGroups[" + groupIndex + "].userGroupCriteriaList[" + j + "].criteriaValue");
+      }
+    }
+  }
+
+  /**
+   * A criteria value is a non-empty list, a boolean or a string.
+   */
+  private boolean isValidCriteriaValue(Object criteriaValue) {
+    if (criteriaValue instanceof List<?> values) {
+      return !values.isEmpty();
+    }
+    return criteriaValue instanceof Boolean || criteriaValue instanceof String;
+  }
+
+  public String validateProviderAccessControlPayload(Map<String, Object> payload) {
+    List<String> errList = new ArrayList<>();
+
+    if (MapUtils.isEmpty(payload)) {
+      log.error("Provider access settings payload is null or empty");
+      return Constants.USER_GROUPDETAILS_ERR_VALIDATION_MSG;
+    }
+    if (!(payload.get(Constants.PARTNER_ID) instanceof String partnerId) || StringUtils.isBlank(partnerId)) {
+      errList.add(Constants.PARTNER_ID);
+    }
+    validateAccessControl(payload, errList);
+
+    if (!errList.isEmpty()) {
+      return Constants.MSG_MISSING_OR_INVALID_FIELDS + errList;
+    }
+    return StringUtils.EMPTY;
   }
 }

@@ -141,14 +141,16 @@ public class CbPlanValidationServiceV4Impl {
      * @param rootOrgIdsInContextData set populated with the rootOrgId values resolved from the referenced groups
      * @param ministryOrStateIdsInContextData set populated with the ministryOrStateId values resolved from the referenced groups
      * @param response                API response object
+     * @param allowsServiceBasedTargeting whether the logged in org may target by service criteria
+     *                                    across every organisation without CCA status
      * @return true if valid, false otherwise
      */
     public boolean validateContextDataForLivePlanV4(Map<String, Object> incomingRequest, boolean isCCA,
                                                      String rootOrgId, Set<String> rootOrgIdsInContextData,
                                                      Set<String> ministryOrStateIdsInContextData,
-                                                     ApiResponse response) {
+                                                     ApiResponse response, boolean allowsServiceBasedTargeting) {
         List<String> errors = orgScopeService.resolveOrgScope(incomingRequest, isCCA, rootOrgId,
-                rootOrgIdsInContextData, ministryOrStateIdsInContextData);
+                rootOrgIdsInContextData, ministryOrStateIdsInContextData, allowsServiceBasedTargeting);
         if (CollectionUtils.isNotEmpty(errors)) {
             log.warn("CbPlanValidationServiceV4.validateContextDataForLivePlanV4: Validation failed - errorCount={}",
                     errors.size());
@@ -168,9 +170,12 @@ public class CbPlanValidationServiceV4Impl {
      * @param isCCA     whether the logged in org is CCA
      * @param userOrgId logged in user's organization ID
      * @param response  API response object, populated with an error on failure
+     * @param allowsServiceBasedTargeting whether the logged in org may target by service criteria
+     *                                    across every organisation without CCA status
      * @return true when the request is valid
      */
-    public boolean validateRequest(ApiRequest request, boolean isCCA, String userOrgId, ApiResponse response) {
+    public boolean validateRequest(ApiRequest request, boolean isCCA, String userOrgId, ApiResponse response,
+                                   boolean allowsServiceBasedTargeting) {
         log.debug("CbPlanValidationServiceV4.validateRequest: Entry - userOrgId={}", userOrgId);
         try {
             List<String> validations = new ArrayList<>();
@@ -182,7 +187,8 @@ public class CbPlanValidationServiceV4Impl {
             if (CollectionUtils.isNotEmpty(contentListValidations)) {
                 validations.addAll(contentListValidations);
             }
-            List<String> basicValidations = validateBasicFieldsAndOrgScope(request, isCCA, userOrgId);
+            List<String> basicValidations = validateBasicFieldsAndOrgScope(request, isCCA, userOrgId,
+                    allowsServiceBasedTargeting);
             if (CollectionUtils.isNotEmpty(basicValidations)) {
                 validations.addAll(basicValidations);
             }
@@ -211,15 +217,18 @@ public class CbPlanValidationServiceV4Impl {
      * @param request   the API request containing CB Plan details
      * @param isCCA     whether the logged in org is CCA
      * @param userOrgId logged in user's organization ID
+     * @param allowsServiceBasedTargeting whether the logged in org may target by service criteria
+     *                                    across every organisation without CCA status
      * @return validation errors, empty when the request is valid
      */
-    private List<String> validateBasicFieldsAndOrgScope(ApiRequest request, boolean isCCA, String userOrgId) {
+    private List<String> validateBasicFieldsAndOrgScope(ApiRequest request, boolean isCCA, String userOrgId,
+                                                         boolean allowsServiceBasedTargeting) {
         Map<String, Object> requestMap = (Map<String, Object>) request.getRequest();
         List<String> errors = cbPlanRequestValidator.validateMandatoryFields(requestMap);
         if (CollectionUtils.isNotEmpty(errors)) {
             return errors;
         }
-        return orgScopeService.resolveOrgScope(requestMap, isCCA, userOrgId, null, null);
+        return orgScopeService.resolveOrgScope(requestMap, isCCA, userOrgId, null, null, allowsServiceBasedTargeting);
     }
 
     /**
@@ -324,5 +333,17 @@ public class CbPlanValidationServiceV4Impl {
             validateSingleContent(content, i, validations);
         }
         return validations;
+    }
+
+    /**
+     * Checks whether the given root org is flagged allowServiceBasedTargeting.
+     * Delegates to the shared V3 logic.
+     *
+     * @param rootOrgId root org ID
+     * @param response  API response object, populated with an error on failure
+     * @return true when the flag is set
+     */
+    public boolean validateOrgAllowsServiceBasedTargeting(String rootOrgId, ApiResponse response) {
+        return validationServiceV3.validateOrgAllowsServiceBasedTargeting(rootOrgId, response);
     }
 }

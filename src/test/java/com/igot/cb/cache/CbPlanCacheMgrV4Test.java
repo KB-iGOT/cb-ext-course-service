@@ -776,4 +776,58 @@ class CbPlanCacheMgrV4Test {
         verify(cassandraOperation, times(2)).getRecordsByProperties(anyString(),
                 eq(V4_PLAN_TABLE), anyMap(), any(), any());
     }
+
+    @Test
+    void getCbPlanForOrgIdOnly_hydratesOrgLookupRowsToFullLivePlans() {
+        stubOrgLookup(List.of(lookupEntry("plan1", true, Instant.parse("2026-12-31T00:00:00Z"))));
+        stubFullPlanFetch(List.of(fullPlan("plan1", Constants.LIVE)));
+        List<Map<String, Object>> result = cbPlanCacheMgrV4.getCbPlanForOrgIdOnly(ORG_ID, PLAN_YEAR);
+        assertEquals(1, result.size());
+        assertEquals("plan1", result.get(0).get(Constants.PLAN_ID));
+        assertEquals(Constants.LIVE, result.get(0).get(Constants.STATUS));
+    }
+
+    @Test
+    void getCbPlanForOrgIdOnly_excludesAllOrgScopePlans_neverQueriesAllOrgTable() {
+        stubOrgLookup(List.of(lookupEntry("plan1", true, Instant.EPOCH)));
+        stubFullPlanFetch(List.of(fullPlan("plan1", Constants.LIVE)));
+        cbPlanCacheMgrV4.getCbPlanForOrgIdOnly(ORG_ID, PLAN_YEAR);
+        verify(cassandraOperation, never()).getRecordsByProperties(anyString(),
+                eq(V4_LOOKUP_BY_ALL_ORG_TABLE), anyMap(), any(), any());
+    }
+
+    @Test
+    void getCbPlanForOrgIdOnly_keepsOnlyLivePlans() {
+        stubOrgLookup(List.of(lookupEntry("plan1", true, Instant.EPOCH)));
+        stubFullPlanFetch(List.of(fullPlan("plan1", Constants.DRAFT)));
+        List<Map<String, Object>> result = cbPlanCacheMgrV4.getCbPlanForOrgIdOnly(ORG_ID, PLAN_YEAR);
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    void getCbPlanForOrgIdOnly_returnsEmptyWhenNoOrgPlans_neverFetchesFullPlans() {
+        stubOrgLookup(List.of());
+        List<Map<String, Object>> result = cbPlanCacheMgrV4.getCbPlanForOrgIdOnly(ORG_ID, PLAN_YEAR);
+        assertTrue(result.isEmpty());
+        verify(cassandraOperation, never()).getRecordsByProperties(anyString(),
+                eq(V4_PLAN_TABLE), anyMap(), any(), any());
+    }
+
+    @Test
+    void getCbPlanForOrgIdOnly_deduplicatesByPlanId() {
+        Instant endDate = Instant.parse("2026-12-31T00:00:00Z");
+        stubOrgLookup(List.of(lookupEntry("plan1", true, endDate), lookupEntry("plan1", true, endDate)));
+        stubFullPlanFetch(List.of(fullPlan("plan1", Constants.LIVE)));
+        List<Map<String, Object>> result = cbPlanCacheMgrV4.getCbPlanForOrgIdOnly(ORG_ID, PLAN_YEAR);
+        assertEquals(1, result.size());
+    }
+
+    @Test
+    void getCbPlanForOrgIdOnly_skipsEntriesMissingEndDateOrPlanId() {
+        stubOrgLookup(List.of(lookupEntry("plan1", true, null), lookupEntry(null, true, Instant.EPOCH)));
+        List<Map<String, Object>> result = cbPlanCacheMgrV4.getCbPlanForOrgIdOnly(ORG_ID, PLAN_YEAR);
+        assertTrue(result.isEmpty());
+        verify(cassandraOperation, never()).getRecordsByProperties(anyString(),
+                eq(V4_PLAN_TABLE), anyMap(), any(), any());
+    }
 }

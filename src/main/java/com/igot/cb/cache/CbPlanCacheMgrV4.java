@@ -212,28 +212,9 @@ public class CbPlanCacheMgrV4 {
             cbPlanCache.put(cacheKey, new VersionedList(combinedStamp, new ArrayList<>()));
             return new ArrayList<>();
         }
-        Map<String, Map<String, Object>> planMap = combinedList.stream()
-                .filter(m -> Objects.nonNull(m.get(Constants.END_DATE_REQUEST)) && Objects.nonNull(m.get(Constants.PLAN_ID)))
-                .collect(Collectors.toMap(
-                        m -> (String) m.get(Constants.PLAN_ID),
-                        m -> m,
-                        (existing, replacement) -> existing
-                ));
-        List<Map<String, Object>> dedupedList = planMap.values().stream()
-                .sorted(Comparator.comparing(
-                        m -> (Instant) m.get(Constants.END_DATE_REQUEST),
-                        Comparator.nullsLast(Comparator.reverseOrder())
-                ))
-                .toList();
-        List<String> planIds = dedupedList.stream()
-                .map(plan -> (String) plan.get(Constants.PLAN_ID))
-                .toList();
-        List<Map<String, Object>> fullPlans = getCbPlansByPlanIdsInBatch(planIds);
-        List<Map<String, Object>> activeCbPlans = fullPlans.stream()
-                .filter(plan -> Constants.LIVE.equalsIgnoreCase((String) plan.get(Constants.STATUS)))
-                .toList();
+        List<Map<String, Object>> activeCbPlans = hydrateLivePlans(combinedList);
         log.info("Found {} CB Plans for orgId: {}, planYear: {}, active LIVE count: {}",
-                fullPlans.size(), orgId, planYear, activeCbPlans.size());
+                combinedList.size(), orgId, planYear, activeCbPlans.size());
         cbPlanCache.put(cacheKey, new VersionedList(combinedStamp, activeCbPlans));
         isCacheEnabled.set(true);
         return activeCbPlans;
@@ -511,5 +492,59 @@ public class CbPlanCacheMgrV4 {
         cbPlanCache.invalidate(MINISTRY_PREFIX + ministryOrStateId + LOOKUP_SUFFIX + planYear);
         log.info("CbPlanCacheMgrV4.invalidateMinistryLookup: ministryOrStateId={}, planYear={}",
                 ministryOrStateId, planYear);
+    }
+
+    /**
+     * Gets CB Plans targeted at a specific org only, fully hydrated - like
+     * {@link #getCbPlanForAllAndOrgId} but deliberately excluding the platform-wide ALL-scope
+     * plans (those live in a separate all-org lookup table). The thin org-lookup rows are
+     * hydrated to full LIVE plan records via {@link #getCbPlansByPlanIdsInBatch}, so callers get
+     * complete plan details (name, contentList, createdByOrgId, ...), not just lookup-index fields.
+     *
+     * @param orgId    the organization ID
+     * @param planYear the plan year
+     * @return list of active LIVE CB Plans targeted at this org only
+     */
+    public List<Map<String, Object>> getCbPlanForOrgIdOnly(String orgId, String planYear) {
+        List<Map<String, Object>> orgPlans = getCbPlanForOrgId(orgId, planYear);
+        if (CollectionUtils.isEmpty(orgPlans)) {
+            log.info("getCbPlanForOrgIdOnly: No CB Plans found for orgId: {}, planYear: {}", orgId, planYear);
+            return new ArrayList<>();
+        }
+        List<Map<String, Object>> activeCbPlans = hydrateLivePlans(orgPlans);
+        log.info("getCbPlanForOrgIdOnly: orgId={}, planYear={}, thinCount={}, active LIVE count={}",
+                orgId, planYear, orgPlans.size(), activeCbPlans.size());
+        return activeCbPlans;
+    }
+
+    /**
+     * Dedupes thin lookup rows by planId (latest endDate first), hydrates them to full plan
+     * records via {@link #getCbPlansByPlanIdsInBatch}, and keeps only LIVE plans. Shared by the
+     * combined org+ALL fetch and the org-only fetch so the hydration/filter logic lives once.
+     *
+     * @param thinRows thin lookup rows (planId + endDate, from a lookup table)
+     * @return full LIVE plan records, ordered by endDate descending
+     */
+    private List<Map<String, Object>> hydrateLivePlans(List<Map<String, Object>> thinRows) {
+        Map<String, Map<String, Object>> planMap = thinRows.stream()
+                .filter(m -> Objects.nonNull(m.get(Constants.END_DATE_REQUEST)) && Objects.nonNull(m.get(Constants.PLAN_ID)))
+                .collect(Collectors.toMap(
+                        m -> (String) m.get(Constants.PLAN_ID),
+                        m -> m,
+                        (existing, replacement) -> existing
+                ));
+        List<Map<String, Object>> dedupedList = planMap.values().stream()
+                .sorted(Comparator.comparing(
+                        m -> (Instant) m.get(Constants.END_DATE_REQUEST),
+                        Comparator.nullsLast(Comparator.reverseOrder())
+                ))
+                .toList();
+        List<String> planIds = dedupedList.stream()
+                .map(plan -> (String) plan.get(Constants.PLAN_ID))
+                .toList();
+        List<Map<String, Object>> fullPlans = getCbPlansByPlanIdsInBatch(planIds);
+        return fullPlans.stream()
+                .filter(plan -> Constants.LIVE.equalsIgnoreCase((String) plan.get(Constants.STATUS)))
+                .toList();
     }
 }

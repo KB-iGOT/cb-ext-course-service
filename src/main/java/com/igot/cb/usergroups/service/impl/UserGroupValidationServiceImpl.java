@@ -190,12 +190,18 @@ public class UserGroupValidationServiceImpl {
         if (Constants.FAILED.equals(response.getParams().getStatus())) {
             return false;
         }
+        boolean allowsServiceBasedTargeting = getAllowsServiceBasedTargetingFromOrg(userRootOrgId, response);
+        if (Constants.FAILED.equals(response.getParams().getStatus())) {
+            return false;
+        }
 
         boolean isAdmin = checkIfUserIsAdmin(userRoles);
         Set<String> rootOrgIdsInCriteria = extractRootOrgIds(criteria);
 
         if (isCCA) {
             return validateRootOrgIdForCCA(rootOrgIdsInCriteria);
+        } else if (allowsServiceBasedTargeting) {
+            return validateRootOrgIdForServiceBasedTargeting(rootOrgIdsInCriteria);
         } else if (hasMinistryOrStateIdCriteria(criteria)) {
             if (!validateMinistryOrStateIdCriteria(criteria, response)) {
                 return false;
@@ -476,5 +482,45 @@ public class UserGroupValidationServiceImpl {
         }
         log.debug("batchFetchOrgMinistryOrStateTypes: Fetched {} ministryOrStateType value(s)", orgMinistryTypeMap.size());
         return orgMinistryTypeMap;
+    }
+
+    /**
+     * Checks whether the given organization is flagged allowServiceBasedTargeting - a parallel,
+     * narrower capability to CCA that lets the org target by service criteria across every
+     * organisation without full CCA reach. Same logic as
+     * CbPlanValidationServiceV3Impl.getAllowsServiceBasedTargetingFromOrg.
+     *
+     * @param orgId    organization ID
+     * @param response API response object
+     * @return true when the flag is set, false otherwise
+     */
+    private boolean getAllowsServiceBasedTargetingFromOrg(String orgId, ApiResponse response) {
+        Map<String, Object> orgMap = userAndOrgService.readOrgFromDB(orgId,
+                List.of(Constants.ID, Constants.ALLOW_SERVICE_BASED_TARGETING));
+        if (MapUtils.isEmpty(orgMap)) {
+            log.error("getAllowsServiceBasedTargetingFromOrg: Failed to read organization for orgId={}", orgId);
+            response.getParams().setStatus(Constants.FAILED);
+            response.getParams().setErr(Constants.ERR_FAILED_TO_READ_ORG_DETAILS + orgId);
+            response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
+            return false;
+        }
+
+        Object allowsServiceBasedTargetingObj = orgMap.get(Constants.ALLOW_SERVICE_BASED_TARGETING);
+        boolean allowsServiceBasedTargeting = allowsServiceBasedTargetingObj instanceof Boolean booleanValue && booleanValue;
+        log.debug("Organization {} allowsServiceBasedTargeting: {}", orgId, allowsServiceBasedTargeting);
+        return allowsServiceBasedTargeting;
+    }
+
+    /**
+     * Validates rootOrgId criteria for organizations flagged allowServiceBasedTargeting, mirroring
+     * validateRootOrgIdForCCA without touching the existing CCA code path: no rootOrgId criteria is
+     * required, since the group is expected to target by service criteria across every organisation.
+     *
+     * @param rootOrgIdsInCriteria rootOrgIds found in criteria
+     * @return true if validation passes (always true)
+     */
+    private boolean validateRootOrgIdForServiceBasedTargeting(Set<String> rootOrgIdsInCriteria) {
+        log.debug("Validating rootOrgId for service-based-targeting org: rootOrgIds count={}", rootOrgIdsInCriteria.size());
+        return true;
     }
 }

@@ -28,6 +28,7 @@ class UserGroupValidationServiceImplTest {
     private static final String TEST_USER_ID = "user_123";
     private static final String TEST_ORG_ID = "org_456";
     private static final String L0_ORG_ID = "l0_org_123";
+    private static final String DIFFERENT_ORG_ID = "different_org_id";
     private static final String TEST_USER_GROUP_ID = "ug_789";
     private static final String TEST_USER_GROUP_NAME = "Test Group";
     private static final String TEST_AUTHORIZED_ROLE = "MDO_LEADER";
@@ -322,7 +323,7 @@ class UserGroupValidationServiceImplTest {
     @Test
     void validateCreateRequest_nonCCA_rootOrgIdMismatch_nonAdmin_shouldFail() {
         List<CriteriaItem> criteriaWithDifferentOrg = List.of(
-                new CriteriaItem("rootOrgId", List.of("different_org_id"))
+                new CriteriaItem("rootOrgId", List.of(DIFFERENT_ORG_ID))
         );
         ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_USER_GROUP_CREATE);
 
@@ -338,7 +339,7 @@ class UserGroupValidationServiceImplTest {
     @Test
     void validateCreateRequest_nonCCA_rootOrgIdMismatch_admin_shouldPass() {
         List<CriteriaItem> criteriaWithDifferentOrg = List.of(
-                new CriteriaItem("rootOrgId", List.of("different_org_id"))
+                new CriteriaItem("rootOrgId", List.of(DIFFERENT_ORG_ID))
         );
         ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_USER_GROUP_CREATE);
 
@@ -666,6 +667,128 @@ class UserGroupValidationServiceImplTest {
 
         boolean result = validationService.validateCreateRequest(
                 TEST_USER_GROUP_NAME, criteria, TEST_ORG_ID, "USER", response);
+
+        assertTrue(result);
+    }
+
+    private void mockOrgAsServiceBasedTargeting() {
+        Map<String, Object> orgMap = new HashMap<>();
+        orgMap.put(Constants.IS_CCA, false);
+        orgMap.put(Constants.ALLOW_SERVICE_BASED_TARGETING, Boolean.TRUE);
+        when(userAndOrgService.readOrgFromDB(eq(TEST_ORG_ID), any())).thenReturn(orgMap);
+    }
+
+    @Test
+    void validateCreateRequest_serviceBasedTargeting_withoutRootOrgId_shouldPass() {
+        mockOrgAsServiceBasedTargeting();
+        List<CriteriaItem> criteriaWithoutRootOrgId = List.of(
+                new CriteriaItem("department", List.of("HR"))
+        );
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_USER_GROUP_CREATE);
+
+        boolean result = validationService.validateCreateRequest(
+                TEST_USER_GROUP_NAME, criteriaWithoutRootOrgId, TEST_ORG_ID, "USER", response);
+
+        assertTrue(result);
+    }
+
+    @Test
+    void validateCreateRequest_serviceBasedTargeting_withMultipleRootOrgIds_shouldPass() {
+        mockOrgAsServiceBasedTargeting();
+        List<CriteriaItem> criteriaWithMultipleRootOrgIds = List.of(
+                new CriteriaItem("rootOrgId", List.of(TEST_ORG_ID, "different_org"))
+        );
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_USER_GROUP_CREATE);
+
+        boolean result = validationService.validateCreateRequest(
+                TEST_USER_GROUP_NAME, criteriaWithMultipleRootOrgIds, TEST_ORG_ID, "USER", response);
+
+        assertTrue(result);
+    }
+
+    @Test
+    void validateCreateRequest_serviceBasedTargeting_rootOrgIdMismatch_shouldPass() {
+        mockOrgAsServiceBasedTargeting();
+        List<CriteriaItem> criteriaWithDifferentOrg = List.of(
+                new CriteriaItem("rootOrgId", List.of(DIFFERENT_ORG_ID))
+        );
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_USER_GROUP_CREATE);
+
+        boolean result = validationService.validateCreateRequest(
+                TEST_USER_GROUP_NAME, criteriaWithDifferentOrg, TEST_ORG_ID, "USER", response);
+
+        assertTrue(result);
+    }
+
+    @Test
+    void validateCreateRequest_serviceBasedTargetingFlagAsString_isIgnoredAndFails() {
+        Map<String, Object> orgMap = new HashMap<>();
+        orgMap.put(Constants.IS_CCA, false);
+        orgMap.put(Constants.ALLOW_SERVICE_BASED_TARGETING, "true");
+        when(userAndOrgService.readOrgFromDB(eq(TEST_ORG_ID), any())).thenReturn(orgMap);
+        List<CriteriaItem> criteriaWithoutRootOrgId = List.of(
+                new CriteriaItem("department", List.of("HR"))
+        );
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_USER_GROUP_CREATE);
+
+        boolean result = validationService.validateCreateRequest(
+                TEST_USER_GROUP_NAME, criteriaWithoutRootOrgId, TEST_ORG_ID, "USER", response);
+
+        assertFalse(result);
+        assertEquals(Constants.MSG_ROOTORGID_REQUIRED_NON_CCA, response.getParams().getErr());
+    }
+
+    @Test
+    void validateCreateRequest_serviceBasedTargetingFlagExplicitlyFalse_fallsThroughToNonCcaRules() {
+        Map<String, Object> orgMap = new HashMap<>();
+        orgMap.put(Constants.IS_CCA, false);
+        orgMap.put(Constants.ALLOW_SERVICE_BASED_TARGETING, Boolean.FALSE);
+        when(userAndOrgService.readOrgFromDB(eq(TEST_ORG_ID), any())).thenReturn(orgMap);
+        List<CriteriaItem> criteriaWithoutRootOrgId = List.of(
+                new CriteriaItem("department", List.of("HR"))
+        );
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_USER_GROUP_CREATE);
+
+        boolean result = validationService.validateCreateRequest(
+                TEST_USER_GROUP_NAME, criteriaWithoutRootOrgId, TEST_ORG_ID, "USER", response);
+
+        assertFalse(result);
+        assertEquals(Constants.MSG_ROOTORGID_REQUIRED_NON_CCA, response.getParams().getErr());
+    }
+
+    @Test
+    void validateCreateRequest_serviceBasedTargetingOrgReadFails_returnsFalseWith500() {
+        Map<String, Object> ccaOrgMap = new HashMap<>();
+        ccaOrgMap.put(Constants.IS_CCA, false);
+        when(userAndOrgService.readOrgFromDB(eq(TEST_ORG_ID), isNull())).thenReturn(ccaOrgMap);
+        when(userAndOrgService.readOrgFromDB(eq(TEST_ORG_ID), anyList())).thenReturn(new HashMap<>());
+        List<CriteriaItem> criteria = List.of(
+                new CriteriaItem("rootOrgId", List.of(TEST_ORG_ID))
+        );
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_USER_GROUP_CREATE);
+
+        boolean result = validationService.validateCreateRequest(
+                TEST_USER_GROUP_NAME, criteria, TEST_ORG_ID, "USER", response);
+
+        assertFalse(result);
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getResponseCode());
+        assertEquals(Constants.ERR_FAILED_TO_READ_ORG_DETAILS + TEST_ORG_ID, response.getParams().getErr());
+    }
+
+    @Test
+    void validateCreateRequest_ccaTakesPrecedenceOverServiceBasedTargeting_shouldPass() {
+        Map<String, Object> orgMap = new HashMap<>();
+        orgMap.put(Constants.IS_CCA, true);
+        orgMap.put(Constants.ALLOW_SERVICE_BASED_TARGETING, Boolean.TRUE);
+        when(userAndOrgService.readOrgFromDB(eq(TEST_ORG_ID), any())).thenReturn(orgMap);
+        List<CriteriaItem> criteriaWithoutRootOrgId = List.of(
+                new CriteriaItem("department", List.of("HR"))
+        );
+        ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_USER_GROUP_CREATE);
+
+        boolean result = validationService.validateCreateRequest(
+                TEST_USER_GROUP_NAME, criteriaWithoutRootOrgId, TEST_ORG_ID, "USER", response);
 
         assertTrue(result);
     }

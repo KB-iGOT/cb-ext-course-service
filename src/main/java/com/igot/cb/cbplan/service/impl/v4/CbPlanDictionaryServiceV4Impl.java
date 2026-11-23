@@ -1199,4 +1199,127 @@ public class CbPlanDictionaryServiceV4Impl {
         return new ArrayList<>(aparPlanMap.values());
     }
 
+
+    public ApiResponse getCBPlanDictionaryForAdmin(ApiRequest request) {
+        log.debug("getCBPlanDictionaryForAdmin: Entry");
+        ApiResponse response = ProjectUtil.createDefaultResponse(
+                Constants.API_CBPLAN_V4_GET_USER_DICTIONARY
+        );
+        try {
+            Map<String, Object> requestData = extractRequestData(request);
+            String userId = (String) requestData.get("userId");
+            if (StringUtils.isBlank(userId)) {
+                log.warn("getCBPlanDictionaryForAdmin: Missing userId");
+                response.getParams().setErr("User ID is required");
+                response.setResponseCode(HttpStatus.BAD_REQUEST);
+                return response;
+            }
+            String requestedPlanYear = (String) requestData.get("plan_year");
+            String planYear = resolvePlanYear(requestedPlanYear, response);
+            if (Objects.isNull(planYear)) {
+                return response;
+            }
+            Map<String, String> userProfile = buildUserProfile(userId, response);
+            if (userProfile == null || userProfile.isEmpty()) {
+                log.warn("getCBPlanDictionaryForAdmin: User profile not found - userId={}",
+                        userId
+                );
+                return response;
+            }
+            String userOrgId = userProfile.get(Constants.USER_ROOT_ORG_ID);
+            if (StringUtils.isBlank(userOrgId)) {
+                log.warn("getCBPlanDictionaryForAdmin: Organisation not found - userId={}",
+                        userId
+                );
+                response.getParams().setErr("User organisation not found");
+                response.getParams().setStatus(Constants.FAILED);
+                response.setResponseCode(HttpStatus.BAD_REQUEST);
+                return response;
+            }
+            String cacheKey = Constants.CB_PLAN_V4_REDIS_KEY_PREFIX + userOrgId + ":" + userId + ":" + planYear + ":dict";
+            CbPlanCacheVersions versions = versionMgr.getVersions(
+                    userOrgId, userProfile.get(Constants.MINISTRY_OR_STATE_ID_RQST), planYear
+            );
+            Optional<Map<String, Object>> cached = versionMgr.readValidatedDict(cacheKey, versions);
+            if (cached.isPresent()) {
+                log.info("getCBPlanDictionaryForAdmin: Cache hit - userId={}, orgId={}, planYear={}",
+                        userId, userOrgId, planYear
+                );
+                populateResponseFromCache(response, cached.get());
+                return response;
+            }
+            log.info("getCBPlanDictionaryForAdmin: Cache miss - userId={}, orgId={}, planYear={}",
+                    userId, userOrgId, planYear
+            );
+            AtomicBoolean isCacheEnabled = new AtomicBoolean(false);
+            List<Map<String, Object>> activePlans = fetchPlansForUser(
+                    userProfile, userOrgId, planYear, isCacheEnabled, versions
+            );
+            if (CollectionUtils.isEmpty(activePlans)) {
+                log.info("getCBPlanDictionaryForAdmin: No active plans - userId={}, planYear={}",
+                        userId, planYear
+                );
+                if (StringUtils.isNotBlank(requestedPlanYear)) {
+                    response.getResult().put(planYear,
+                            buildYearResult(new LinkedHashMap<>(), new LinkedHashMap<>())
+                    );
+
+                    fetchAndAppendPreviousYear(response,
+                            userProfile, userOrgId, CbPlanYearUtil.resolvePreviousYear(planYear)
+                    );
+                    response.setParams(new ApiRespParam());
+                    response.getParams().setStatus(Constants.SUCCESS);
+                    response.setResponseCode(HttpStatus.OK);
+                } else {
+                    populateEmptyResponse(response, planYear);
+                }
+                cacheResult(
+                        cacheKey, response.getResult(), isCacheEnabled.get(), versions
+                );
+                return response;
+            }
+            Map<String, Map<String, Object>> aparPlanMap = new LinkedHashMap<>();
+            Map<String, Map<String, Object>> nonAparPlanMap = new LinkedHashMap<>();
+            buildPlanPartitions(
+                    activePlans, userProfile, aparPlanMap, nonAparPlanMap
+            );
+            Set<String> orgIds = collectCreatedByOrgIds(aparPlanMap, nonAparPlanMap);
+            Map<String, Map<String, String>> orgDetailsMap = fetchOrgDetails(orgIds);
+            enrichOrgDetails(aparPlanMap, orgDetailsMap);
+            enrichOrgDetails(nonAparPlanMap, orgDetailsMap);
+            filterLiveContentInPlans(aparPlanMap, nonAparPlanMap);
+            Map<String, Object> yearResult = buildYearResult(aparPlanMap, nonAparPlanMap);
+            response.getResult().put(planYear, yearResult);
+            if (StringUtils.isNotBlank(requestedPlanYear)
+                    && aparPlanMap.isEmpty() && nonAparPlanMap.isEmpty()) {
+                log.info("getCBPlanDictionaryForAdmin: Plans found but none accessible - userId={}, planYear={}",
+                        userId, planYear
+                );
+                fetchAndAppendPreviousYear(
+                        response, userProfile, userOrgId, CbPlanYearUtil.resolvePreviousYear(planYear)
+                );
+            }
+            response.setParams(new ApiRespParam());
+            response.getParams().setStatus(Constants.SUCCESS);
+            response.setResponseCode(HttpStatus.OK);
+            cacheResult(
+                    cacheKey, response.getResult(), isCacheEnabled.get(), versions
+            );
+            log.info("getCBPlanDictionaryForAdmin: Success - userId={}, planYear={}, aparCount={}, nonAparCount={}",
+                    userId, planYear, aparPlanMap.size(), nonAparPlanMap.size()
+            );
+        } catch (IllegalArgumentException e) {
+            log.error("getCBPlanDictionaryForAdmin: Invalid argument", e);
+            response.getParams().setStatus(Constants.FAILED);
+            response.getParams().setErr("Invalid request parameters");
+            response.setResponseCode(HttpStatus.BAD_REQUEST);
+        } catch (Exception e) {
+            log.error("getCBPlanDictionaryForAdmin: Unexpected error", e);
+            response.getParams().setStatus(Constants.FAILED);
+            response.getParams().setErr("Failed to fetch CB Plan dictionary");
+            response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+        return response;
+    }
+
 }

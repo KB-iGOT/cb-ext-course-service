@@ -231,4 +231,12 @@ public class CbPlanWithAccessSettingsV4 {
         ApiResponse response = cbPlanServiceV4.getCBPlanCourseListForUser(userId, userOrgId);
         return new ResponseEntity<>(response, response.getResponseCode());
     }
+
+    @PostMapping("/admin/user/dictionary")
+    public ResponseEntity<ApiResponse> getCBPlanDictionaryForAdmin(
+            @RequestBody ApiRequest request) {
+
+        ApiResponse response = cbPlanServiceV4.getCBPlanDictionaryForAdmin(request);
+        return new ResponseEntity<>(response, response.getResponseCode());
+    }
 }

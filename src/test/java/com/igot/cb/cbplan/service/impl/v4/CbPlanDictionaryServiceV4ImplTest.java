@@ -2273,4 +2273,29 @@ class CbPlanDictionaryServiceV4ImplTest {
         verify(contentLookupService, never()).getContentMetadata(anyString());
     }
 
+    @Test
+    void getCBPlanDictionaryForAdmin_blankUserId_returnsBadRequest() {
+        Map<String, Object> requestMap = new HashMap<>();
+        requestMap.put("userId", "");
+        requestMap.put(Constants.REQUEST_PARAM_PLAN_YEAR, TEST_PLAN_YEAR);
+        testRequest.setRequest(requestMap);
+        ApiResponse response = dictionaryService.getCBPlanDictionaryForAdmin(testRequest);
+        assertThat(response.getResponseCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getParams().getErr()).isEqualTo("User ID is required");
+    }
+
+    @Test
+    void getCBPlanDictionaryForAdmin_invalidPlanYear_returnsBadRequest() {
+        setupValidUserProfileMocks();
+        Map<String, Object> requestMap = new HashMap<>();
+        requestMap.put("userId", TEST_USER_ID);
+        requestMap.put(Constants.REQUEST_PARAM_PLAN_YEAR, "invalid-year");
+        testRequest.setRequest(requestMap);
+        ApiResponse response = dictionaryService.getCBPlanDictionaryForAdmin(testRequest);
+        assertThat(response.getResponseCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getParams().getErr())
+                .isEqualTo("Invalid planYear format. Expected: YYYY-YY (e.g., '2026-27')");
+    }
+
+
 }

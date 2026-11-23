@@ -21,5 +21,6 @@ public class OrgScopeContext {
     private final Set<String> criteriaOrgIds;
     private final boolean rootOrgMissingInSomeGroup;
     private final boolean ministryOrStateIdUsed;
+    private final boolean allowsServiceBasedTargeting;
 
 }

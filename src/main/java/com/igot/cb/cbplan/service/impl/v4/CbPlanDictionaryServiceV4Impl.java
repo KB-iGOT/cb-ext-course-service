@@ -1195,8 +1195,9 @@ public class CbPlanDictionaryServiceV4Impl {
      * evaluated against an overlaid profile: supplied {@code previousRootOrgId}/
      * {@code previousDesignation} replace (not OR with) the user's current rootorgid/designation;
      * every other field stays live. The plan fetch is scoped <b>strictly</b> to the evaluated org
-     * only — ALL-scope plus that single org, via {@code cbPlanCacheMgrV4.getCbPlanForAllAndOrgId}
-     * — with no widening into the user's own org and no ministry-scoped plans. The response is
+     * only — plans targeted at that single org, fully hydrated via
+     * {@code cbPlanCacheMgrV4.getCbPlanForOrgIdOnly} — deliberately excluding the platform-wide
+     * ALL-scope plans, with no widening into the user's own org and no ministry-scoped plans. The response is
      * cached as a plain key/value in Redis (get-then-put, TTL only — no publish-version stamp,
      * unlike the standard dictionary's versioned cache), so a publish anywhere does not
      * invalidate this entry; it goes stale until the TTL expires. Known gaps, deliberately not
@@ -1241,9 +1242,7 @@ public class CbPlanDictionaryServiceV4Impl {
             }
             log.info("getCBPlanDictionaryForPreviousPosting: Cache miss - userId={}, orgId={}, planYear={}",
                     userId, userOrgId, planYear);
-            AtomicBoolean isCacheEnabled = new AtomicBoolean(false);
-            List<Map<String, Object>> activePlans = cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(userOrgId, planYear,
-                    isCacheEnabled, null);
+            List<Map<String, Object>> activePlans = cbPlanCacheMgrV4.getCbPlanForOrgIdOnly(userOrgId, planYear);
             if (CollectionUtils.isEmpty(activePlans)) {
                 log.info("getCBPlanDictionaryForPreviousPosting: No active plans - userId={}, planYear={}", userId, planYear);
                 if (StringUtils.isNotBlank(requestedPlanYear)) {
@@ -1361,9 +1360,7 @@ public class CbPlanDictionaryServiceV4Impl {
     private void fetchAndAppendPreviousYearForPosting(ApiResponse response, Map<String, String> evaluationProfile,
                                                        String previousYear) {
         String evaluatedOrgId = evaluationProfile.get(Constants.USER_ROOT_ORG_ID);
-        AtomicBoolean prevCacheEnabled = new AtomicBoolean(false);
-        List<Map<String, Object>> prevPlans = cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(evaluatedOrgId, previousYear,
-                prevCacheEnabled, null);
+        List<Map<String, Object>> prevPlans = cbPlanCacheMgrV4.getCbPlanForOrgIdOnly(evaluatedOrgId, previousYear);
         if (CollectionUtils.isEmpty(prevPlans)) {
             log.info("fetchAndAppendPreviousYearForPosting: No plans found - previousYear={}", previousYear);
             response.getResult().put(previousYear, buildYearResult(new LinkedHashMap<>(), new LinkedHashMap<>()));

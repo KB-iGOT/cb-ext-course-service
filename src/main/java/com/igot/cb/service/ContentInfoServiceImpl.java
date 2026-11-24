@@ -148,10 +148,14 @@ public class ContentInfoServiceImpl {
         return readContent(contentId, fields).getOrDefault(Constants.COURSE_CATEGORY, "").toString();
     }
 
-    public List<Map<String, Object>> enrichContentInfoForCBPlan(List<String> contentIdList) {
+    public List<Map<String, Object>> enrichContentInfoForCBPlan(List<?> contentIdList) {
         List<Map<String, Object>> enrichContentInfoMap = new ArrayList<>();
         for (Object contentIdObj : contentIdList) {
-            String contentId = String.valueOf(contentIdObj);
+            String contentId = extractContentId(contentIdObj);
+            if (!StringUtils.hasText(contentId)) {
+                log.warn("enrichContentInfoForCBPlan: Skipping unrecognised contentList entry: {}", contentIdObj);
+                continue;
+            }
             Map<String, Object> contentResponse = readContent(contentId, null);
 
             if (MapUtils.isNotEmpty(contentResponse) &&
@@ -185,6 +189,23 @@ public class ContentInfoServiceImpl {
             }
         }
         return enrichContentInfoMap;
+    }
+
+    /**
+     * Resolves a contentList entry to its content ID. Supports both the legacy plain-string form
+     * ({@code "do_123"}) and the V4 object form ({@code {identifier: "do_123", mandatory: true}}),
+     * since plans published through V4 store the latter while this enrichment is shared with the
+     * V3 search/read paths.
+     *
+     * @param entry raw contentList element
+     * @return the content ID, or null when the entry is not recognisable
+     */
+    private String extractContentId(Object entry) {
+        if (entry instanceof Map<?, ?> map) {
+            Object identifier = map.get(Constants.IDENTIFIER);
+            return identifier instanceof String s ? s : null;
+        }
+        return entry instanceof String s ? s : null;
     }
 
     public Map<String, Object> readExternalContent(String contentId) {

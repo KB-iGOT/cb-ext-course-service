@@ -33,6 +33,9 @@ class UserGroupCacheMgrV4Test {
     @Mock
     private CbPlanUserGroupLookupServiceV4Impl userGroupLookupService;
 
+    @Mock
+    private CbPlanVersionMgr versionMgr;
+
     @InjectMocks
     private UserGroupCacheMgrV4 cacheMgr;
 
@@ -142,6 +145,39 @@ class UserGroupCacheMgrV4Test {
 
         cacheMgr.fetchUserGroupById(UG_ID_1, ORG_ID);
         cacheMgr.invalidateUserGroup(ORG_ID, UG_ID_1);
+        cacheMgr.fetchUserGroupById(UG_ID_1, ORG_ID);
+
+        verify(userGroupLookupService, times(2)).fetchUserGroupById(UG_ID_1, ORG_ID);
+    }
+
+    @Test
+    void invalidateUserGroup_bumpsOwningOrgCounter() {
+        cacheMgr.invalidateUserGroup(ORG_ID, UG_ID_1);
+
+        verify(versionMgr, times(1)).bumpUserGroup(ORG_ID);
+    }
+
+    @Test
+    void fetchUserGroupsByIds_counterBumpedOnAnotherPod_reloadsFromLookupService() {
+        Map<String, Object> group1 = buildGroup(UG_ID_1);
+        when(userGroupLookupService.fetchUserGroupsByIds(List.of(UG_ID_1), ORG_ID))
+                .thenReturn(Map.of(UG_ID_1, group1));
+        when(versionMgr.getUserGroupVersion(ORG_ID)).thenReturn(1L, 1L, 2L);
+
+        cacheMgr.fetchUserGroupsByIds(List.of(UG_ID_1), ORG_ID);
+        cacheMgr.fetchUserGroupsByIds(List.of(UG_ID_1), ORG_ID);
+        cacheMgr.fetchUserGroupsByIds(List.of(UG_ID_1), ORG_ID);
+
+        verify(userGroupLookupService, times(2)).fetchUserGroupsByIds(List.of(UG_ID_1), ORG_ID);
+    }
+
+    @Test
+    void fetchUserGroupById_counterBumpedOnAnotherPod_reloadsFromLookupService() {
+        Map<String, Object> group = buildGroup(UG_ID_1);
+        when(userGroupLookupService.fetchUserGroupById(UG_ID_1, ORG_ID)).thenReturn(group);
+        when(versionMgr.getUserGroupVersion(ORG_ID)).thenReturn(1L, 2L);
+
+        cacheMgr.fetchUserGroupById(UG_ID_1, ORG_ID);
         cacheMgr.fetchUserGroupById(UG_ID_1, ORG_ID);
 
         verify(userGroupLookupService, times(2)).fetchUserGroupById(UG_ID_1, ORG_ID);

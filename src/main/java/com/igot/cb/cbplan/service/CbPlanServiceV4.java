@@ -100,6 +100,8 @@ public interface CbPlanServiceV4 {
      */
     ApiResponse getCBPlanDictionaryForUser(ApiRequest request, String authToken);
 
+    ApiResponse getCBPlanDictionaryForAdmin(ApiRequest request);
+
     /**
      * Checks whether the given Comprehensive Assessment do_id is linked (via caLinkedId) to any
      * plan the user is eligible for, searching the current and previous financial year.

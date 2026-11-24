@@ -2273,4 +2273,83 @@ class CbPlanDictionaryServiceV4ImplTest {
         verify(contentLookupService, never()).getContentMetadata(anyString());
     }
 
+    @Test
+    void getCBPlanDictionaryForAdmin_missingUserId_returnsBadRequest() {
+        ApiRequest request = new ApiRequest();
+        request.setRequest(new HashMap<>());
+        ApiResponse response = dictionaryService.getCBPlanDictionaryForAdmin(request);
+        assertThat(response.getResponseCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getParams().getErr()).isEqualTo("User ID is required");
+        verifyNoInteractions(cassandraOperation, cbPlanCacheMgrV4);
+    }
+
+    @Test
+    void getCBPlanDictionaryForAdmin_invalidPlanYear_returnsBadRequest() {
+        Map<String, Object> requestMap = new HashMap<>();
+        requestMap.put("userId", TEST_USER_ID);
+        requestMap.put("plan_year", "invalid-year");
+        ApiRequest request = new ApiRequest();
+        request.setRequest(requestMap);
+        ApiResponse response = dictionaryService.getCBPlanDictionaryForAdmin(request);
+        assertThat(response.getResponseCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getParams().getErr()).contains("Invalid planYear format");
+        verifyNoInteractions(cbPlanCacheMgrV4);
+    }
+
+    @Test
+    void getCBPlanDictionaryForAdmin_userNotFound_returnsBadRequest() {
+        Map<String, Object> requestMap = new HashMap<>();
+        requestMap.put("userId", TEST_USER_ID);
+        requestMap.put("plan_year", TEST_PLAN_YEAR);
+        ApiRequest request = new ApiRequest();
+        request.setRequest(requestMap);
+        when(userProfileRedisCacheMgr.getFromCache(anyString())).thenReturn(null);
+        when(cassandraOperation.getRecordsByProperties(eq(Constants.KEYSPACE_SUNBIRD), eq(Constants.USER),
+                any(Map.class), any(List.class), anyInt())).thenReturn(Collections.emptyList());
+        ApiResponse response = dictionaryService.getCBPlanDictionaryForAdmin(request);
+        assertThat(response.getResponseCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getParams().getErr()).contains("User does not exist");
+    }
+
+    @Test
+    void getCBPlanDictionaryForAdmin_cacheHit_returnsCachedResponse() {
+        Map<String, Object> requestMap = new HashMap<>();
+        requestMap.put("userId", TEST_USER_ID);
+        requestMap.put("plan_year", TEST_PLAN_YEAR);
+        ApiRequest request = new ApiRequest();
+        request.setRequest(requestMap);
+        String userCacheKey = Constants.USER + ":basicProfile:" + TEST_USER_ID;
+        String cachedUserProfile = "{\"id\":\"" + TEST_USER_ID + "\",\"rootOrgId\":\"" + TEST_ORG_ID + "\"}";
+        String dictCacheKey = Constants.CB_PLAN_V4_REDIS_KEY_PREFIX + TEST_ORG_ID + ":" + TEST_USER_ID + ":" + TEST_PLAN_YEAR + ":dict";
+        String cachedJson = "{\"_cv\":{\"orgVer\":0,\"ministryVer\":0,\"allVer\":0}," + "\"" + TEST_PLAN_YEAR + "\":{\"aparPlanList\":{},\"nonAparPlanList\":{}}}";
+        when(userProfileRedisCacheMgr.getFromCache(userCacheKey)).thenReturn(cachedUserProfile);
+        when(redisCacheMgr.getFromCache(dictCacheKey)).thenReturn(cachedJson);
+        ApiResponse response = dictionaryService.getCBPlanDictionaryForAdmin(request);
+        assertThat(response.getResponseCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getResult()).containsKey(TEST_PLAN_YEAR);
+        verify(redisCacheMgr).getFromCache(dictCacheKey);
+        verifyNoInteractions(cassandraOperation, cbPlanCacheMgrV4);
+    }
+
+    @Test
+    void getCBPlanDictionaryForAdmin_requestedPlanYear_fetchesCorrectYear() {
+        String requestedYear = "2025-26";
+        Map<String, Object> requestMap = new HashMap<>();
+        requestMap.put("userId", TEST_USER_ID);
+        requestMap.put("plan_year", requestedYear);
+        ApiRequest request = new ApiRequest();
+        request.setRequest(requestMap);
+        String userCacheKey = Constants.USER + ":basicProfile:" + TEST_USER_ID;
+        String cachedUserProfile = "{\"id\":\"" + TEST_USER_ID + "\",\"rootOrgId\":\"" + TEST_ORG_ID + "\"}";
+        when(userProfileRedisCacheMgr.getFromCache(userCacheKey)).thenReturn(cachedUserProfile);
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(requestedYear), any(AtomicBoolean.class), any(CbPlanCacheVersions.class)
+        )).thenReturn(Collections.emptyList());
+        ApiResponse response = dictionaryService.getCBPlanDictionaryForAdmin(request);
+        assertThat(response.getResponseCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getResult()).containsKey(requestedYear);
+        assertThat(response.getResult()).doesNotContainKey("2026-27");
+        verify(cbPlanCacheMgrV4).getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(requestedYear), any(AtomicBoolean.class), any(CbPlanCacheVersions.class));
+    }
+
 }

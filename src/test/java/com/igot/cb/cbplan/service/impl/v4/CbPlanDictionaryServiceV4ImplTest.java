@@ -2406,4 +2406,42 @@ class CbPlanDictionaryServiceV4ImplTest {
         verify(cassandraOperation).getRecordsByProperties(eq(Constants.KEYSPACE_SUNBIRD), eq(Constants.ORG_TABLE),
                 any(Map.class), any(List.class), isNull());
     }
+
+    @Test
+    void getCBPlanDictionaryForAdmin_illegalArgumentException_returnsBadRequest() {
+        Map<String, Object> requestMap = new HashMap<>();
+        requestMap.put("userId", TEST_USER_ID);
+        requestMap.put("plan_year", TEST_PLAN_YEAR);
+        ApiRequest request = new ApiRequest();
+        request.setRequest(requestMap);
+        String userCacheKey = Constants.USER + ":basicProfile:" + TEST_USER_ID;
+        String cachedUserProfile = "{\"id\":\"" + TEST_USER_ID + "\",\"rootOrgId\":\"" + TEST_ORG_ID + "\"}";
+        when(userProfileRedisCacheMgr.getFromCache(userCacheKey)).thenReturn(cachedUserProfile);
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR),
+                any(AtomicBoolean.class), any(CbPlanCacheVersions.class))).thenThrow(new IllegalArgumentException("Invalid argument"));
+        ApiResponse response = dictionaryService.getCBPlanDictionaryForAdmin(request);
+        assertThat(response.getResponseCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getParams().getStatus()).isEqualTo(Constants.FAILED);
+        assertThat(response.getParams().getErr()).isEqualTo("Invalid request parameters");
+    }
+
+    @Test
+    void getCBPlanDictionaryForAdmin_unexpectedException_returnsInternalServerError() {
+        Map<String, Object> requestMap = new HashMap<>();
+        requestMap.put("userId", TEST_USER_ID);
+        requestMap.put("plan_year", TEST_PLAN_YEAR);
+        ApiRequest request = new ApiRequest();
+        request.setRequest(requestMap);
+        String userCacheKey = Constants.USER + ":basicProfile:" + TEST_USER_ID;
+        String cachedUserProfile = "{\"id\":\"" + TEST_USER_ID + "\",\"rootOrgId\":\"" + TEST_ORG_ID + "\"}";
+        when(userProfileRedisCacheMgr.getFromCache(userCacheKey)).thenReturn(cachedUserProfile);
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR),
+                any(AtomicBoolean.class), any(CbPlanCacheVersions.class))).thenThrow(new RuntimeException("Unexpected error"));
+        ApiResponse response = dictionaryService.getCBPlanDictionaryForAdmin(request);
+        assertThat(response.getResponseCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+        assertThat(response.getParams().getStatus()).isEqualTo(Constants.FAILED);
+        assertThat(response.getParams().getErr()).isEqualTo("Failed to fetch CB Plan dictionary");
+    }
 }

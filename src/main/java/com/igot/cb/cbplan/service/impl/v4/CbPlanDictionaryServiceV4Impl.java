@@ -61,6 +61,7 @@ public class CbPlanDictionaryServiceV4Impl {
     private final CbPlanContentLookupServiceV3Impl contentLookupService;
     private final ObjectMapper mapper;
     private static final TypeReference<Map<String, Object>> MAP_TYPE_REF = new TypeReference<>() {};
+    private static final String DICT_CACHE_KEY_SUFFIX = ":dict";
 
     public CbPlanDictionaryServiceV4Impl(CassandraOperation cassandraOperation,
                                          CbPlanCacheMgrV4 cbPlanCacheMgrV4,
@@ -118,7 +119,7 @@ public class CbPlanDictionaryServiceV4Impl {
                 return response;
             }
             String userOrgId = userProfile.get(Constants.USER_ROOT_ORG_ID);
-            String cacheKey = Constants.CB_PLAN_V4_REDIS_KEY_PREFIX + userOrgId + ":" + userId + ":" + planYear + ":dict";
+            String cacheKey = Constants.CB_PLAN_V4_REDIS_KEY_PREFIX + userOrgId + ":" + userId + ":" + planYear + DICT_CACHE_KEY_SUFFIX;
             // Snapshot the publish versions before any read so a publish racing this request
             // can only make the entry we write stale, never wrongly fresh.
             CbPlanCacheVersions versions = versionMgr.getVersions(userOrgId,
@@ -256,7 +257,7 @@ public class CbPlanDictionaryServiceV4Impl {
      */
     private Map<String, Object> resolveYearResult(String userId, Map<String, String> userProfile,
             String userOrgId, String planYear, AtomicBoolean isCacheEnabled) {
-        String cacheKey = Constants.CB_PLAN_V4_REDIS_KEY_PREFIX + userOrgId + ":" + userId + ":" + planYear + ":dict";
+        String cacheKey = Constants.CB_PLAN_V4_REDIS_KEY_PREFIX + userOrgId + ":" + userId + ":" + planYear + DICT_CACHE_KEY_SUFFIX;
         CbPlanCacheVersions versions = versionMgr.getVersions(userOrgId,
                 userProfile.get(Constants.MINISTRY_OR_STATE_ID_RQST), planYear);
         Optional<Map<String, Object>> cached = versionMgr.readValidatedDict(cacheKey, versions);
@@ -1234,7 +1235,7 @@ public class CbPlanDictionaryServiceV4Impl {
                 response.setResponseCode(HttpStatus.BAD_REQUEST);
                 return response;
             }
-            String cacheKey = Constants.CB_PLAN_V4_REDIS_KEY_PREFIX + userOrgId + ":" + userId + ":" + planYear + ":dict";
+            String cacheKey = Constants.CB_PLAN_V4_REDIS_KEY_PREFIX + userOrgId + ":" + userId + ":" + planYear + DICT_CACHE_KEY_SUFFIX;
             CbPlanCacheVersions versions = versionMgr.getVersions(
                     userOrgId, userProfile.get(Constants.MINISTRY_OR_STATE_ID_RQST), planYear
             );

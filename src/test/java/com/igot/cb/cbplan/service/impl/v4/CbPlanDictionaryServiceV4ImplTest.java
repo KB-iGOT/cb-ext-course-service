@@ -2352,4 +2352,58 @@ class CbPlanDictionaryServiceV4ImplTest {
         verify(cbPlanCacheMgrV4).getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(requestedYear), any(AtomicBoolean.class), any(CbPlanCacheVersions.class));
     }
 
+    @Test
+    void getCBPlanDictionaryForAdmin_missingOrganisation_returnsBadRequest() {
+        Map<String, Object> requestMap = new HashMap<>();
+        requestMap.put("userId", TEST_USER_ID);
+        requestMap.put("plan_year", TEST_PLAN_YEAR);
+        ApiRequest request = new ApiRequest();
+        request.setRequest(requestMap);
+        String userCacheKey = Constants.USER + ":basicProfile:" + TEST_USER_ID;
+        String cachedUserProfile = "{\"id\":\"" + TEST_USER_ID + "\"}";
+        when(userProfileRedisCacheMgr.getFromCache(userCacheKey)).thenReturn(cachedUserProfile);
+        ApiResponse response = dictionaryService.getCBPlanDictionaryForAdmin(request);
+        assertThat(response.getResponseCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getParams().getErr()).isEqualTo("User organisation not found");
+        assertThat(response.getParams().getStatus()).isEqualTo(Constants.FAILED);
+        verifyNoInteractions(cbPlanCacheMgrV4);
+    }
+
+    @Test
+    void getCBPlanDictionaryForAdmin_activePlans_returnsSuccessfulResponse() {
+        Map<String, Object> requestMap = new HashMap<>();
+        requestMap.put("userId", TEST_USER_ID);
+        requestMap.put("plan_year", TEST_PLAN_YEAR);
+        ApiRequest request = new ApiRequest();
+        request.setRequest(requestMap);
+        String userCacheKey = Constants.USER + ":basicProfile:" + TEST_USER_ID;
+        String cachedUserProfile = "{\"id\":\"" + TEST_USER_ID + "\",\"rootOrgId\":\"" + TEST_ORG_ID + "\"}";
+        when(userProfileRedisCacheMgr.getFromCache(userCacheKey)).thenReturn(cachedUserProfile);
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
+        Map<String, Object> plan = new HashMap<>();
+        plan.put(Constants.PLAN_ID, "test-plan-1");
+        plan.put(Constants.NAME, "Test Plan");
+        plan.put(Constants.END_DATE_REQUEST, "2026-12-31");
+        plan.put(Constants.PLAN_TYPE, "APAR");
+        plan.put(Constants.CONTENT_LIST, Collections.emptyList());
+        plan.put(Constants.CA_LINKED_ID_DB, "test-ca-id");
+        plan.put(Constants.ORG_ID_LIST, Collections.singletonList(TEST_ORG_ID));
+        plan.put(Constants.IS_APAR, true);
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR), any(AtomicBoolean.class),
+                any(CbPlanCacheVersions.class))).thenReturn(Collections.singletonList(plan));
+        Map<String, Object> orgDetails = new HashMap<>();
+        orgDetails.put(Constants.ID, TEST_ORG_ID);
+        orgDetails.put(Constants.ORG_NAME, "Test Organisation");
+        orgDetails.put(Constants.LOGO, "test-logo");
+        when(cassandraOperation.getRecordsByProperties(eq(Constants.KEYSPACE_SUNBIRD), eq(Constants.ORG_TABLE),
+                any(Map.class), any(List.class), isNull())).thenReturn(Collections.singletonList(orgDetails));
+        ApiResponse response = dictionaryService.getCBPlanDictionaryForAdmin(request);
+        assertThat(response.getResponseCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getParams().getStatus()).isEqualTo(Constants.SUCCESS);
+        assertThat(response.getResult()).containsKey(TEST_PLAN_YEAR);
+        verify(cbPlanCacheMgrV4).getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR),
+                any(AtomicBoolean.class), any(CbPlanCacheVersions.class));
+        verify(cassandraOperation).getRecordsByProperties(eq(Constants.KEYSPACE_SUNBIRD), eq(Constants.ORG_TABLE),
+                any(Map.class), any(List.class), isNull());
+    }
 }

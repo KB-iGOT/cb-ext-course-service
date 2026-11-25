@@ -2444,4 +2444,46 @@ class CbPlanDictionaryServiceV4ImplTest {
         assertThat(response.getParams().getStatus()).isEqualTo(Constants.FAILED);
         assertThat(response.getParams().getErr()).isEqualTo("Failed to fetch CB Plan dictionary");
     }
+
+    @Test
+    void getCBPlanDictionaryForAdmin_noRequestedPlanYear_noActivePlans_returnsEmptyResponse() {
+        Map<String, Object> requestMap = new HashMap<>();
+        requestMap.put("userId", TEST_USER_ID);
+        ApiRequest request = new ApiRequest();
+        request.setRequest(requestMap);
+        String userCacheKey = Constants.USER + ":basicProfile:" + TEST_USER_ID;
+        String cachedUserProfile = "{\"id\":\"" + TEST_USER_ID + "\",\"rootOrgId\":\"" + TEST_ORG_ID + "\"}";
+        when(userProfileRedisCacheMgr.getFromCache(userCacheKey)).thenReturn(cachedUserProfile);
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), anyString(),
+                any(AtomicBoolean.class), any(CbPlanCacheVersions.class))).thenReturn(Collections.emptyList());
+        ApiResponse response = dictionaryService.getCBPlanDictionaryForAdmin(request);
+        assertThat(response.getResponseCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getParams().getStatus()).isEqualTo(Constants.SUCCESS);
+    }
+
+    @Test
+    void getCBPlanDictionaryForAdmin_plansNotAccessible_fetchesPreviousYear() {
+        Map<String, Object> requestMap = new HashMap<>();
+        requestMap.put("userId", TEST_USER_ID);
+        requestMap.put("plan_year", TEST_PLAN_YEAR);
+        ApiRequest request = new ApiRequest();
+        request.setRequest(requestMap);
+        String userCacheKey = Constants.USER + ":basicProfile:" + TEST_USER_ID;
+        String cachedUserProfile = "{\"id\":\"" + TEST_USER_ID + "\",\"rootOrgId\":\"" + TEST_ORG_ID + "\"}";
+        when(userProfileRedisCacheMgr.getFromCache(userCacheKey)).thenReturn(cachedUserProfile);
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
+        Map<String, Object> contextData = new HashMap<>();
+        contextData.put("someOtherKey", "value");
+        Map<String, Object> plan = new HashMap<>();
+        plan.put(Constants.PLAN_ID, "test-plan-1");
+        plan.put(Constants.CONTEXT_DATA_REQUEST, contextData);
+        plan.put(Constants.ORG_ID_LIST, Collections.singletonList(TEST_ORG_ID));
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR),
+                any(AtomicBoolean.class), any(CbPlanCacheVersions.class))).thenReturn(Collections.singletonList(plan));
+        ApiResponse response = dictionaryService.getCBPlanDictionaryForAdmin(request);
+        assertThat(response.getResponseCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getParams().getStatus()).isEqualTo(Constants.SUCCESS);
+        assertThat(response.getResult()).containsKey(TEST_PLAN_YEAR);
+    }
 }

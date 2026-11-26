@@ -2410,4 +2410,25 @@ class CbPlanDictionaryServiceV4ImplTest {
         verifyNoInteractions(cbPlanCacheMgrV4);
     }
 
+    @Test
+    void getCBPlanDictionaryForUser_illegalArgumentException_returnsBadRequest() {
+        setupValidUserProfileMocks();
+        when(redisCacheMgr.getFromCache(anyString())).thenThrow(new IllegalArgumentException("Invalid argument"));
+        ApiResponse response = dictionaryService.getCBPlanDictionaryForUser(testRequest, TEST_AUTH_TOKEN);
+        assertThat(response.getResponseCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getParams().getStatus()).isEqualTo(Constants.FAILED);
+        assertThat(response.getParams().getErr()).isEqualTo("Invalid request parameters");
+    }
+
+
+    @Test
+    void getCBPlanDictionaryForUser_unexpectedException_returnsInternalServerError() {
+        setupValidUserProfileMocks();
+        when(redisCacheMgr.getFromCache(anyString())).thenThrow(new RuntimeException("Unexpected error"));
+        ApiResponse response = dictionaryService.getCBPlanDictionaryForUser(testRequest, TEST_AUTH_TOKEN);
+        assertThat(response.getResponseCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+        assertThat(response.getParams().getStatus()).isEqualTo(Constants.FAILED);
+        assertThat(response.getParams().getErr()).isEqualTo("Failed to fetch CB Plan dictionary");
+    }
+
 }

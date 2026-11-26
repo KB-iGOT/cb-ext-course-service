@@ -590,6 +590,36 @@ class CbPlanDictionaryServiceV4ImplTest {
         assertThat(nonAparList).isEmpty();
     }
 
+    @Test
+    void getCBPlanDictionaryForUser_userOrgIdBlank_returnsBadRequest() {
+        setupValidUserProfileMocks();
+        Map<String, Object> userRecord = new HashMap<>();
+        userRecord.put(Constants.ID, TEST_USER_ID);
+        userRecord.put(Constants.ROOT_ORG_ID, "");
+        Map<String, Object> profileDetails = new HashMap<>();
+        profileDetails.put(Constants.ROOT_ORG_ID, "");
+        try {
+            userRecord.put(Constants.PROFILE_DETAILS.toLowerCase(),
+                    mapper.writeValueAsString(profileDetails));
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+        when(cassandraOperation.getRecordsByProperties(
+                eq(Constants.KEYSPACE_SUNBIRD),
+                eq(Constants.USER),
+                any(Map.class),
+                any(List.class),
+                anyInt()
+        )).thenReturn(List.of(userRecord));
+        doAnswer(invocation -> null).when(enrichmentService)
+                .extractMinistryOrStateDetails(any(Map.class), any(Map.class));
+        ApiResponse response = dictionaryService.getCBPlanDictionaryForUser(
+                testRequest, TEST_AUTH_TOKEN);
+        assertThat(response.getResponseCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getParams().getErr()).isEqualTo("User organisation not found");
+        assertThat(response.getParams().getStatus()).isEqualTo(Constants.FAILED);
+    }
+
     private void setupValidUserProfileMocks() {
         // User API token validation
         when(accessTokenValidator.fetchUserIdFromAccessToken(
@@ -2298,7 +2328,7 @@ class CbPlanDictionaryServiceV4ImplTest {
     }
 
     @Test
-    void getCBPlanDictionaryForAdmin_validUserId_returnsDictionary() throws Exception {
+    void getCBPlanDictionaryForAdmin_validUserId_returnsDictionary() {
         setupValidUserProfileDataMocks();
         when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
         Map<String, Object> plan = createMockPlanWithCaId("plan_admin_test", false, "");

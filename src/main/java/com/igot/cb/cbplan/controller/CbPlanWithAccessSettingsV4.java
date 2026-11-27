@@ -164,10 +164,11 @@ public class CbPlanWithAccessSettingsV4 {
         return new ResponseEntity<>(response, response.getResponseCode());
     }
 
-    @PostMapping("/admin/user/dictionary")
+    @PostMapping("/admin/user/dictionary/{userId}")
     public ResponseEntity<ApiResponse> getCBPlanDictionaryForAdmin(
-            @RequestBody ApiRequest request) {
-        ApiResponse response = cbPlanServiceV4.getCBPlanDictionaryForAdmin(request);
+            @RequestBody ApiRequest request,
+            @PathVariable("userId") String userId) {
+        ApiResponse response = cbPlanServiceV4.getCBPlanDictionaryForAdmin(userId, request);
         return new ResponseEntity<>(response, response.getResponseCode());
     }
 

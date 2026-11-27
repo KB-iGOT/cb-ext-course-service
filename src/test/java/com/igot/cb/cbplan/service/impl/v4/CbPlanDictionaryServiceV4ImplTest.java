@@ -2314,7 +2314,7 @@ class CbPlanDictionaryServiceV4ImplTest {
     @Test
     void getCBPlanDictionaryForAdmin_missingUserId_returnsBadRequest() {
         ApiRequest request = createAdminRequest(null);
-        ApiResponse response = dictionaryService.getCBPlanDictionaryForAdmin(request);
+        ApiResponse response = dictionaryService.getCBPlanDictionaryForAdmin(null, request);
         assertThat(response.getResponseCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(response.getParams().getErr()).isEqualTo("User ID is required");
     }
@@ -2322,7 +2322,7 @@ class CbPlanDictionaryServiceV4ImplTest {
     @Test
     void getCBPlanDictionaryForAdmin_blankUserId_returnsBadRequest() {
         ApiRequest request = createAdminRequest("");
-        ApiResponse response = dictionaryService.getCBPlanDictionaryForAdmin(request);
+        ApiResponse response = dictionaryService.getCBPlanDictionaryForAdmin("", request);
         assertThat(response.getResponseCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(response.getParams().getErr()).isEqualTo("User ID is required");
     }
@@ -2336,8 +2336,8 @@ class CbPlanDictionaryServiceV4ImplTest {
                 any(AtomicBoolean.class), any())).thenReturn(List.of(plan));
         lenient().when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), isNull()))
                 .thenReturn(Collections.emptyList());
-        ApiRequest request = createAdminRequest(TEST_USER_ID);
-        ApiResponse response = dictionaryService.getCBPlanDictionaryForAdmin(request);
+        ApiRequest request = createAdminRequest(null);
+        ApiResponse response = dictionaryService.getCBPlanDictionaryForAdmin(TEST_USER_ID, request);
         assertThat(response.getResponseCode()).isEqualTo(HttpStatus.OK);
         Map<String, Object> yearResult = (Map<String, Object>) response.getResult().get(TEST_PLAN_YEAR);
         assertThat(yearResult).isNotNull();
@@ -2349,8 +2349,8 @@ class CbPlanDictionaryServiceV4ImplTest {
 
     @Test
     void getCBPlanDictionaryForAdmin_whitespaceUserId_returnsBadRequest() {
-        ApiRequest request = createAdminRequest("   ");
-        ApiResponse response = dictionaryService.getCBPlanDictionaryForAdmin(request);
+        ApiRequest request = createAdminRequest(null);
+        ApiResponse response = dictionaryService.getCBPlanDictionaryForAdmin("   ", request);
         assertThat(response.getResponseCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(response.getParams().getErr()).isEqualTo("User ID is required");
         verifyNoInteractions(cbPlanCacheMgrV4);
@@ -2359,11 +2359,10 @@ class CbPlanDictionaryServiceV4ImplTest {
     @Test
     void getCBPlanDictionaryForAdmin_invalidPlanYear_returnsBadRequest() {
         Map<String, Object> requestMap = new HashMap<>();
-        requestMap.put("userId", TEST_USER_ID);
         requestMap.put(Constants.REQUEST_PARAM_PLAN_YEAR, "invalid-year");
         ApiRequest request = new ApiRequest();
         request.setRequest(requestMap);
-        ApiResponse response = dictionaryService.getCBPlanDictionaryForAdmin(request);
+        ApiResponse response = dictionaryService.getCBPlanDictionaryForAdmin(TEST_USER_ID, request);
         assertThat(response.getResponseCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(response.getParams().getErr()).contains("Invalid planYear format");
         verifyNoInteractions(cbPlanCacheMgrV4);
@@ -2375,8 +2374,8 @@ class CbPlanDictionaryServiceV4ImplTest {
         when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
         when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR),
                 any(AtomicBoolean.class), any())).thenReturn(Collections.emptyList());
-        ApiRequest request = createAdminRequest(TEST_USER_ID);
-        ApiResponse response = dictionaryService.getCBPlanDictionaryForAdmin(request);
+        ApiRequest request = createAdminRequest(null);
+        ApiResponse response = dictionaryService.getCBPlanDictionaryForAdmin(TEST_USER_ID, request);
         assertThat(response.getResponseCode()).isEqualTo(HttpStatus.OK);
         verifyNoInteractions(accessTokenValidator);
     }
@@ -2403,8 +2402,8 @@ class CbPlanDictionaryServiceV4ImplTest {
                 any(Map.class), any(List.class), anyInt())).thenReturn(List.of(userRecord));
         doAnswer(invocation -> null).when(enrichmentService)
                 .extractMinistryOrStateDetails(any(Map.class), any(Map.class));
-        ApiRequest request = createAdminRequest(TEST_USER_ID);
-        ApiResponse response = dictionaryService.getCBPlanDictionaryForAdmin(request);
+        ApiRequest request = createAdminRequest(null);
+        ApiResponse response = dictionaryService.getCBPlanDictionaryForAdmin(TEST_USER_ID, request);
         assertThat(response.getResponseCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(response.getParams().getErr()).isEqualTo("User organisation not found");
         verifyNoInteractions(cbPlanCacheMgrV4);

@@ -100,7 +100,7 @@ public interface CbPlanServiceV4 {
      */
     ApiResponse getCBPlanDictionaryForUser(ApiRequest request, String authToken);
 
-    ApiResponse getCBPlanDictionaryForAdmin(ApiRequest request);
+    ApiResponse getCBPlanDictionaryForAdmin(String userId, ApiRequest request);
 
     /**
      * Checks whether the given Comprehensive Assessment do_id is linked (via caLinkedId) to any

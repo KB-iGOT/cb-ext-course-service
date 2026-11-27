@@ -109,11 +109,9 @@ public class CbPlanDictionaryServiceV4Impl {
         return getCBPlanDictionaryForUserCommon(userId, request, response);
     }
 
-    public ApiResponse getCBPlanDictionaryForAdmin(ApiRequest request) {
+    public ApiResponse getCBPlanDictionaryForAdmin(String userId, ApiRequest request) {
         log.debug("getCBPlanDictionaryForAdmin: Entry");
         ApiResponse response = ProjectUtil.createDefaultResponse(Constants.API_CBPLAN_V4_GET_USER_DICTIONARY);
-        Map<String, Object> requestData = extractRequestData(request);
-        String userId = (String) requestData.get("userId");
         if (StringUtils.isBlank(userId)) {
             log.warn("getCBPlanDictionaryForAdmin: Missing userId");
             response.getParams().setErr("User ID is required");

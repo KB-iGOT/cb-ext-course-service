@@ -1398,8 +1398,8 @@ public class CbPlanServiceV4Impl implements CbPlanServiceV4 {
     }
 
     @Override
-    public ApiResponse getCBPlanDictionaryForAdmin(ApiRequest request) {
-        return dictionaryService.getCBPlanDictionaryForAdmin(request);
+    public ApiResponse getCBPlanDictionaryForAdmin(String userId, ApiRequest request) {
+        return dictionaryService.getCBPlanDictionaryForAdmin(userId, request);
     }
 
     /**

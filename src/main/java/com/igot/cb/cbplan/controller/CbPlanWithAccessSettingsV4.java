@@ -164,6 +164,14 @@ public class CbPlanWithAccessSettingsV4 {
         return new ResponseEntity<>(response, response.getResponseCode());
     }
 
+    @PostMapping("/admin/user/dictionary/{userId}")
+    public ResponseEntity<ApiResponse> getCBPlanDictionaryForAdmin(
+            @RequestBody ApiRequest request,
+            @PathVariable("userId") String userId) {
+        ApiResponse response = cbPlanServiceV4.getCBPlanDictionaryForAdmin(userId, request);
+        return new ResponseEntity<>(response, response.getResponseCode());
+    }
+
     /**
      * Checks whether the given Comprehensive Assessment do_id is linked (via caLinkedId) to any
      * plan the authenticated user is eligible for, searching the current and previous financial

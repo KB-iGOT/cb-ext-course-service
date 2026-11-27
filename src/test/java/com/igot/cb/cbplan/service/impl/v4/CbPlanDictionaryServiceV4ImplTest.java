@@ -590,9 +590,47 @@ class CbPlanDictionaryServiceV4ImplTest {
         assertThat(nonAparList).isEmpty();
     }
 
+    @Test
+    void getCBPlanDictionaryForUser_userOrgIdBlank_returnsBadRequest() {
+        setupValidUserProfileMocks();
+        Map<String, Object> userRecord = new HashMap<>();
+        userRecord.put(Constants.ID, TEST_USER_ID);
+        userRecord.put(Constants.ROOT_ORG_ID, "");
+        Map<String, Object> profileDetails = new HashMap<>();
+        profileDetails.put(Constants.ROOT_ORG_ID, "");
+        try {
+            userRecord.put(Constants.PROFILE_DETAILS.toLowerCase(),
+                    mapper.writeValueAsString(profileDetails));
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+        when(cassandraOperation.getRecordsByProperties(
+                eq(Constants.KEYSPACE_SUNBIRD),
+                eq(Constants.USER),
+                any(Map.class),
+                any(List.class),
+                anyInt()
+        )).thenReturn(List.of(userRecord));
+        doAnswer(invocation -> null).when(enrichmentService)
+                .extractMinistryOrStateDetails(any(Map.class), any(Map.class));
+        ApiResponse response = dictionaryService.getCBPlanDictionaryForUser(
+                testRequest, TEST_AUTH_TOKEN);
+        assertThat(response.getResponseCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getParams().getErr()).isEqualTo("User organisation not found");
+        assertThat(response.getParams().getStatus()).isEqualTo(Constants.FAILED);
+    }
+
     private void setupValidUserProfileMocks() {
-        when(accessTokenValidator.fetchUserIdFromAccessToken(eq(TEST_AUTH_TOKEN), any(ApiResponse.class)))
+        // User API token validation
+        when(accessTokenValidator.fetchUserIdFromAccessToken(
+                eq(TEST_AUTH_TOKEN), any(ApiResponse.class)))
                 .thenReturn(TEST_USER_ID);
+        // Common profile setup
+        setupValidUserProfileDataMocks();
+    }
+
+    // Profile setup without token validation
+    private void setupValidUserProfileDataMocks() {
         lenient().when(userProfileRedisCacheMgr.getFromCache(anyString())).thenReturn(null);
 
         Map<String, Object> userRecord = new HashMap<>();
@@ -2271,6 +2309,125 @@ class CbPlanDictionaryServiceV4ImplTest {
         assertThat(nonAparList).containsKey("plan_blank_ca");
         assertThat(nonAparList.get("plan_blank_ca")).containsEntry(Constants.CA_LINKED_ID, "");
         verify(contentLookupService, never()).getContentMetadata(anyString());
+    }
+
+    @Test
+    void getCBPlanDictionaryForAdmin_missingUserId_returnsBadRequest() {
+        ApiRequest request = createAdminRequest(null);
+        ApiResponse response = dictionaryService.getCBPlanDictionaryForAdmin(null, request);
+        assertThat(response.getResponseCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getParams().getErr()).isEqualTo("User ID is required");
+    }
+
+    @Test
+    void getCBPlanDictionaryForAdmin_blankUserId_returnsBadRequest() {
+        ApiRequest request = createAdminRequest("");
+        ApiResponse response = dictionaryService.getCBPlanDictionaryForAdmin("", request);
+        assertThat(response.getResponseCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getParams().getErr()).isEqualTo("User ID is required");
+    }
+
+    @Test
+    void getCBPlanDictionaryForAdmin_validUserId_returnsDictionary() {
+        setupValidUserProfileDataMocks();
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
+        Map<String, Object> plan = createMockPlanWithCaId("plan_admin_test", false, "");
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR),
+                any(AtomicBoolean.class), any())).thenReturn(List.of(plan));
+        lenient().when(cassandraOperation.getRecordsByProperties(any(), any(), any(), any(), isNull()))
+                .thenReturn(Collections.emptyList());
+        ApiRequest request = createAdminRequest(null);
+        ApiResponse response = dictionaryService.getCBPlanDictionaryForAdmin(TEST_USER_ID, request);
+        assertThat(response.getResponseCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> yearResult = (Map<String, Object>) response.getResult().get(TEST_PLAN_YEAR);
+        assertThat(yearResult).isNotNull();
+        Map<String, Map<String, Object>> nonAparList = (Map<String, Map<String, Object>>) yearResult.get(Constants.RESPONSE_KEY_NON_APAR_PLAN_LIST);
+        assertThat(nonAparList).containsKey("plan_admin_test");
+        assertThat(nonAparList.get("plan_admin_test")).containsEntry(Constants.CA_LINKED_ID, "");
+    }
+
+
+    @Test
+    void getCBPlanDictionaryForAdmin_whitespaceUserId_returnsBadRequest() {
+        ApiRequest request = createAdminRequest(null);
+        ApiResponse response = dictionaryService.getCBPlanDictionaryForAdmin("   ", request);
+        assertThat(response.getResponseCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getParams().getErr()).isEqualTo("User ID is required");
+        verifyNoInteractions(cbPlanCacheMgrV4);
+    }
+
+    @Test
+    void getCBPlanDictionaryForAdmin_invalidPlanYear_returnsBadRequest() {
+        Map<String, Object> requestMap = new HashMap<>();
+        requestMap.put(Constants.REQUEST_PARAM_PLAN_YEAR, "invalid-year");
+        ApiRequest request = new ApiRequest();
+        request.setRequest(requestMap);
+        ApiResponse response = dictionaryService.getCBPlanDictionaryForAdmin(TEST_USER_ID, request);
+        assertThat(response.getResponseCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getParams().getErr()).contains("Invalid planYear format");
+        verifyNoInteractions(cbPlanCacheMgrV4);
+    }
+
+    @Test
+    void getCBPlanDictionaryForAdmin_validUserId_doesNotValidateAuthToken() {
+        setupValidUserProfileDataMocks();
+        when(redisCacheMgr.getFromCache(anyString())).thenReturn(null);
+        when(cbPlanCacheMgrV4.getCbPlanForAllAndOrgId(eq(TEST_ORG_ID), eq(TEST_PLAN_YEAR),
+                any(AtomicBoolean.class), any())).thenReturn(Collections.emptyList());
+        ApiRequest request = createAdminRequest(null);
+        ApiResponse response = dictionaryService.getCBPlanDictionaryForAdmin(TEST_USER_ID, request);
+        assertThat(response.getResponseCode()).isEqualTo(HttpStatus.OK);
+        verifyNoInteractions(accessTokenValidator);
+    }
+
+
+    private ApiRequest createAdminRequest(String userId) {
+        ApiRequest request = new ApiRequest();
+        Map<String, Object> requestMap = new HashMap<>();
+        requestMap.put("userId", userId);
+        requestMap.put(Constants.REQUEST_PARAM_PLAN_YEAR, TEST_PLAN_YEAR);
+        request.setRequest(requestMap);
+        return request;
+    }
+
+    @Test
+    void getCBPlanDictionaryForAdmin_userOrganisationMissing_returnsBadRequest() throws Exception {
+        Map<String, Object> userRecord = new HashMap<>();
+        userRecord.put(Constants.ID, TEST_USER_ID);
+        Map<String, Object> profileDetails = new HashMap<>();
+        profileDetails.put("department", "Engineering");
+        userRecord.put(Constants.PROFILE_DETAILS.toLowerCase(), mapper.writeValueAsString(profileDetails));
+        when(userProfileRedisCacheMgr.getFromCache(anyString())).thenReturn(null);
+        when(cassandraOperation.getRecordsByProperties(eq(Constants.KEYSPACE_SUNBIRD), eq(Constants.USER),
+                any(Map.class), any(List.class), anyInt())).thenReturn(List.of(userRecord));
+        doAnswer(invocation -> null).when(enrichmentService)
+                .extractMinistryOrStateDetails(any(Map.class), any(Map.class));
+        ApiRequest request = createAdminRequest(null);
+        ApiResponse response = dictionaryService.getCBPlanDictionaryForAdmin(TEST_USER_ID, request);
+        assertThat(response.getResponseCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getParams().getErr()).isEqualTo("User organisation not found");
+        verifyNoInteractions(cbPlanCacheMgrV4);
+    }
+
+    @Test
+    void getCBPlanDictionaryForUser_illegalArgumentException_returnsBadRequest() {
+        setupValidUserProfileMocks();
+        when(redisCacheMgr.getFromCache(anyString())).thenThrow(new IllegalArgumentException("Invalid argument"));
+        ApiResponse response = dictionaryService.getCBPlanDictionaryForUser(testRequest, TEST_AUTH_TOKEN);
+        assertThat(response.getResponseCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getParams().getStatus()).isEqualTo(Constants.FAILED);
+        assertThat(response.getParams().getErr()).isEqualTo("Invalid request parameters");
+    }
+
+
+    @Test
+    void getCBPlanDictionaryForUser_unexpectedException_returnsInternalServerError() {
+        setupValidUserProfileMocks();
+        when(redisCacheMgr.getFromCache(anyString())).thenThrow(new RuntimeException("Unexpected error"));
+        ApiResponse response = dictionaryService.getCBPlanDictionaryForUser(testRequest, TEST_AUTH_TOKEN);
+        assertThat(response.getResponseCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+        assertThat(response.getParams().getStatus()).isEqualTo(Constants.FAILED);
+        assertThat(response.getParams().getErr()).isEqualTo("Failed to fetch CB Plan dictionary");
     }
 
 }

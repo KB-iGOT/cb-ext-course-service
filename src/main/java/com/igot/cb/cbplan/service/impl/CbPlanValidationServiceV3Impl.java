@@ -100,15 +100,11 @@ public class CbPlanValidationServiceV3Impl {
      * @param isCCA     whether org is CCA
      * @param userOrgId user org ID
      * @param response  API response object
-     * @param allowsServiceBasedTargeting whether the org may target by service criteria
-     *                                    across every organisation without CCA status
      * @return true if valid, false otherwise
      */
-    public boolean validateRequest(ApiRequest request, boolean isCCA, String userOrgId, ApiResponse response,
-                                   boolean allowsServiceBasedTargeting) {
+    public boolean validateRequest(ApiRequest request, boolean isCCA, String userOrgId, ApiResponse response) {
         try {
-            List<String> validations = cbPlanRequestValidator.validateCbPlanCreateRequest(request, isCCA, userOrgId,
-                    false, allowsServiceBasedTargeting);
+            List<String> validations = cbPlanRequestValidator.validateCbPlanCreateRequest(request, isCCA, userOrgId, false);
             if (CollectionUtils.isNotEmpty(validations)) {
                 response.getParams().setStatus(Constants.FAILED);
                 response.getParams().setErr(mapper.writeValueAsString(validations));
@@ -178,15 +174,13 @@ public class CbPlanValidationServiceV3Impl {
      * @param rootOrgId               root org ID
      * @param rootOrgIdsInContextData set to populate with org IDs from context
      * @param response                API response object
-     * @param allowsServiceBasedTargeting whether the org may target by service criteria
-     *                                    across every organisation without CCA status
      * @return true if valid, false otherwise
      */
     public boolean validateContextDataForLivePlan(Map<String, Object> incomingRequest, boolean isCCA,
                                                   String rootOrgId, java.util.Set<String> rootOrgIdsInContextData,
-                                                  ApiResponse response, boolean allowsServiceBasedTargeting) {
+                                                  ApiResponse response) {
         List<String> errors = cbPlanRequestValidator.validateContextData(incomingRequest, isCCA, rootOrgId,
-                rootOrgIdsInContextData, false, allowsServiceBasedTargeting);
+                rootOrgIdsInContextData, false);
         if (CollectionUtils.isNotEmpty(errors)) {
             response.getParams().setStatus(Constants.FAILED);
             response.getParams().setErr(Constants.ERR_VALIDATION_ERRORS + String.join("; ", errors));
@@ -261,35 +255,5 @@ public class CbPlanValidationServiceV3Impl {
             return Boolean.parseBoolean(orgMap.get(Constants.IS_CCA).toString());
         }
         return false;
-    }
-
-    private boolean getAllowsServiceBasedTargetingFromOrg(String orgId, ApiResponse response) {
-        Map<String, Object> orgMap = userAndOrgService.readOrgFromDB(orgId,
-                Arrays.asList(Constants.ID, Constants.ALLOW_SERVICE_BASED_TARGETING));
-        if (MapUtils.isEmpty(orgMap)) {
-            response.getParams().setStatus(Constants.FAILED);
-            response.getParams().setErrMsg(Constants.ERR_FAILED_TO_READ_ORG_DETAILS + orgId);
-            response.setResponseCode(HttpStatus.INTERNAL_SERVER_ERROR);
-            log.error("CbPlanValidationService.getAllowsServiceBasedTargetingFromOrg: Org not found for orgId: {}", orgId);
-            return false;
-        }
-        if (orgMap.containsKey(Constants.ALLOW_SERVICE_BASED_TARGETING)
-                && Objects.nonNull(orgMap.get(Constants.ALLOW_SERVICE_BASED_TARGETING))) {
-            return Boolean.parseBoolean(orgMap.get(Constants.ALLOW_SERVICE_BASED_TARGETING).toString());
-        }
-        return false;
-    }
-
-    /**
-     * Validates whether the organization is flagged allowServiceBasedTargeting - a parallel,
-     * narrower capability to CCA that lets the org target by service criteria across every
-     * organisation without full CCA reach.
-     *
-     * @param rootOrgId root organization ID
-     * @param response  API response object
-     * @return true when the flag is set, false otherwise
-     */
-    public boolean validateOrgAllowsServiceBasedTargeting(String rootOrgId, ApiResponse response) {
-        return getAllowsServiceBasedTargetingFromOrg(rootOrgId, response);
     }
 }

@@ -1319,4 +1319,49 @@ class CbPlanServiceV3ImplTest {
         ApiResponse retireResponse = cbPlanService.retireCbPlan(apiRequest(request), ORG_ID, TOKEN, List.of());
         assertEquals(HttpStatus.OK, retireResponse.getResponseCode());
     }
+
+    @Test
+    void publishCbPlan_livePlan_republishesSuccessfully() {
+        mockValidUserAndOrg(false);
+        Map<String, Object> existingCbPlan = new HashMap<>();
+        existingCbPlan.put(Constants.CREATED_BY, USER_ID);
+        existingCbPlan.put(Constants.STATUS, Constants.LIVE);
+        existingCbPlan.put(Constants.PLAN_YEAR, PLAN_YEAR);
+        existingCbPlan.put(Constants.ORG_ID_LIST, List.of(ORG_ID));
+        existingCbPlan.put(Constants.CONTEXT_DATA_REQUEST, validContextData());
+        mockExistingPlan(existingCbPlan);
+        when(cassandraOperation.updateRecord(anyString(), anyString(), anyMap(), anyMap(), any(), any()))
+                .thenReturn(Map.of(Constants.RESPONSE, Constants.SUCCESS));
+        cbPlanService.publishCbPlan(requestWithPlanId(), ORG_ID, TOKEN, List.of());
+        verify(cassandraOperation).updateRecord(anyString(), anyString(), anyMap(), anyMap(), any(), any());
+    }
+
+    @Test
+    void aiCBPCreateCbPlan_createsPlanSuccessfully() {
+        mockValidUserAndOrg(false);
+        when(cassandraOperation.insertRecord(anyString(), anyString(), anyMap())).thenReturn(cassandraInsertSuccess());
+        ApiResponse response = cbPlanService.aiCBPCreateCbPlan(validPlanRequest(), ORG_ID, TOKEN);
+        assertEquals(HttpStatus.CREATED, response.getResponseCode());
+        assertNotNull(response.getResult().get(Constants.ID));
+    }
+
+    @Test
+    void aiCBPCreateCbPlan_ccaLookupFails_returnsWithoutInsert() {
+        mockAuthenticatedUser();
+        Map<String, Object> userMap = new HashMap<>();
+        userMap.put(Constants.ROOT_ORG_ID, ORG_ID);
+        lenient().when(userAndOrgService.readUserProfileFromDB(anyString(), anyList())).thenReturn(userMap);
+        lenient().when(userAndOrgService.readOrgFromDB(anyString(), any())).thenReturn(new HashMap<>());
+        ApiResponse response = cbPlanService.aiCBPCreateCbPlan(validPlanRequest(), ORG_ID, TOKEN);
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        verify(cassandraOperation, never()).insertRecord(anyString(), anyString(), anyMap());
+    }
+
+    @Test
+    void aiCBPCreateCbPlan_validationFails_returnsWithoutInsert() {
+        mockValidUserAndOrg(false);
+        ApiResponse response = cbPlanService.aiCBPCreateCbPlan(apiRequest(new HashMap<>()), ORG_ID, TOKEN);
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        verify(cassandraOperation, never()).insertRecord(anyString(), anyString(), anyMap());
+    }
 }

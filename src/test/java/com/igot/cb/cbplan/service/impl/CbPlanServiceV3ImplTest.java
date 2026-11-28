@@ -47,7 +47,6 @@ import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -1322,68 +1321,8 @@ class CbPlanServiceV3ImplTest {
     }
 
     @Test
-    void createCbPlan_serviceBasedTargetingEnabled_createsPlanSuccessfully() {
-        mockAuthenticatedUser();
-        Map<String, Object> userMap = new HashMap<>();
-        userMap.put(Constants.ROOT_ORG_ID, ORG_ID);
-        lenient().when(userAndOrgService.readUserProfileFromDB(anyString(), anyList())).thenReturn(userMap);
-        Map<String, Object> orgMap = new HashMap<>();
-        orgMap.put(Constants.IS_CCA, false);
-        orgMap.put(Constants.ALLOW_SERVICE_BASED_TARGETING, true);
-        lenient().when(userAndOrgService.readOrgFromDB(anyString(), any())).thenReturn(orgMap);
-        when(cassandraOperation.insertRecord(anyString(), anyString(), anyMap())).thenReturn(cassandraInsertSuccess());
-
-        ApiResponse response = cbPlanService.createCbPlan(validPlanRequest(), ORG_ID, TOKEN);
-
-        assertEquals(HttpStatus.CREATED, response.getResponseCode());
-        assertNotNull(response.getResult().get(Constants.ID));
-    }
-
-    private void mockCapabilityLookupFailure() {
-        mockAuthenticatedUser();
-        Map<String, Object> userMap = new HashMap<>();
-        userMap.put(Constants.ROOT_ORG_ID, ORG_ID);
-        lenient().when(userAndOrgService.readUserProfileFromDB(anyString(), anyList())).thenReturn(userMap);
-        lenient().when(userAndOrgService.readOrgFromDB(anyString(), isNull())).thenReturn(new HashMap<>());
-    }
-
-    @Test
-    void updateCbPlan_capabilityLookupFails_returnsWithoutUpdate() {
-        mockCapabilityLookupFailure();
-        Map<String, Object> existingCbPlan = new HashMap<>();
-        existingCbPlan.put(Constants.CREATED_BY, USER_ID);
-        existingCbPlan.put(Constants.STATUS, Constants.DRAFT);
-        mockExistingPlan(existingCbPlan);
-
-        ApiResponse response = cbPlanService.updateCbPlan(validPlanRequestWithId(), ORG_ID, TOKEN, List.of());
-
-        assertEquals(Constants.FAILED, response.getParams().getStatus());
-        verify(cassandraOperation, never()).updateRecord(anyString(), anyString(), anyMap(), anyMap());
-    }
-
-    @Test
-    void publishCbPlan_capabilityLookupFails_returnsWithoutPublish() {
-        mockCapabilityLookupFailure();
-        Map<String, Object> existingCbPlan = new HashMap<>();
-        existingCbPlan.put(Constants.CREATED_BY, USER_ID);
-        existingCbPlan.put(Constants.STATUS, Constants.DRAFT);
-        mockExistingPlan(existingCbPlan);
-
-        ApiResponse response = cbPlanService.publishCbPlan(requestWithPlanId(), ORG_ID, TOKEN, List.of());
-
-        assertEquals(Constants.FAILED, response.getParams().getStatus());
-    }
-
-    @Test
-    void publishCbPlan_livePlanWithServiceBasedTargeting_republishesSuccessfully() {
-        mockAuthenticatedUser();
-        Map<String, Object> userMap = new HashMap<>();
-        userMap.put(Constants.ROOT_ORG_ID, ORG_ID);
-        lenient().when(userAndOrgService.readUserProfileFromDB(anyString(), anyList())).thenReturn(userMap);
-        Map<String, Object> orgMap = new HashMap<>();
-        orgMap.put(Constants.IS_CCA, false);
-        orgMap.put(Constants.ALLOW_SERVICE_BASED_TARGETING, true);
-        lenient().when(userAndOrgService.readOrgFromDB(anyString(), any())).thenReturn(orgMap);
+    void publishCbPlan_livePlan_republishesSuccessfully() {
+        mockValidUserAndOrg(false);
         Map<String, Object> existingCbPlan = new HashMap<>();
         existingCbPlan.put(Constants.CREATED_BY, USER_ID);
         existingCbPlan.put(Constants.STATUS, Constants.LIVE);
@@ -1393,55 +1332,27 @@ class CbPlanServiceV3ImplTest {
         mockExistingPlan(existingCbPlan);
         when(cassandraOperation.updateRecord(anyString(), anyString(), anyMap(), anyMap(), any(), any()))
                 .thenReturn(Map.of(Constants.RESPONSE, Constants.SUCCESS));
-
         cbPlanService.publishCbPlan(requestWithPlanId(), ORG_ID, TOKEN, List.of());
-
         verify(cassandraOperation).updateRecord(anyString(), anyString(), anyMap(), anyMap(), any(), any());
     }
 
     @Test
-    void createCbPlan_ccaLookupFails_returnsWithoutInsert() {
-        mockAuthenticatedUser();
-        Map<String, Object> userMap = new HashMap<>();
-        userMap.put(Constants.ROOT_ORG_ID, ORG_ID);
-        lenient().when(userAndOrgService.readUserProfileFromDB(anyString(), anyList())).thenReturn(userMap);
-        lenient().when(userAndOrgService.readOrgFromDB(anyString(), isNull())).thenReturn(new HashMap<>());
-
-        ApiResponse response = cbPlanService.createCbPlan(validPlanRequest(), ORG_ID, TOKEN);
-
-        assertEquals(Constants.FAILED, response.getParams().getStatus());
-        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getResponseCode());
-        verify(cassandraOperation, never()).insertRecord(anyString(), anyString(), anyMap());
-    }
-
-    @Test
-    void aiCBPCreateCbPlan_serviceBasedTargetingEnabled_createsPlanSuccessfully() {
-        mockAuthenticatedUser();
-        Map<String, Object> userMap = new HashMap<>();
-        userMap.put(Constants.ROOT_ORG_ID, ORG_ID);
-        lenient().when(userAndOrgService.readUserProfileFromDB(anyString(), anyList())).thenReturn(userMap);
-        Map<String, Object> orgMap = new HashMap<>();
-        orgMap.put(Constants.IS_CCA, false);
-        orgMap.put(Constants.ALLOW_SERVICE_BASED_TARGETING, true);
-        lenient().when(userAndOrgService.readOrgFromDB(anyString(), any())).thenReturn(orgMap);
+    void aiCBPCreateCbPlan_createsPlanSuccessfully() {
+        mockValidUserAndOrg(false);
         when(cassandraOperation.insertRecord(anyString(), anyString(), anyMap())).thenReturn(cassandraInsertSuccess());
-
         ApiResponse response = cbPlanService.aiCBPCreateCbPlan(validPlanRequest(), ORG_ID, TOKEN);
-
         assertEquals(HttpStatus.CREATED, response.getResponseCode());
         assertNotNull(response.getResult().get(Constants.ID));
     }
 
     @Test
-    void aiCBPCreateCbPlan_capabilityLookupFails_returnsWithoutInsert() {
+    void aiCBPCreateCbPlan_ccaLookupFails_returnsWithoutInsert() {
         mockAuthenticatedUser();
         Map<String, Object> userMap = new HashMap<>();
         userMap.put(Constants.ROOT_ORG_ID, ORG_ID);
         lenient().when(userAndOrgService.readUserProfileFromDB(anyString(), anyList())).thenReturn(userMap);
-        lenient().when(userAndOrgService.readOrgFromDB(anyString(), isNull())).thenReturn(new HashMap<>());
-
+        lenient().when(userAndOrgService.readOrgFromDB(anyString(), any())).thenReturn(new HashMap<>());
         ApiResponse response = cbPlanService.aiCBPCreateCbPlan(validPlanRequest(), ORG_ID, TOKEN);
-
         assertEquals(Constants.FAILED, response.getParams().getStatus());
         verify(cassandraOperation, never()).insertRecord(anyString(), anyString(), anyMap());
     }
@@ -1449,28 +1360,8 @@ class CbPlanServiceV3ImplTest {
     @Test
     void aiCBPCreateCbPlan_validationFails_returnsWithoutInsert() {
         mockValidUserAndOrg(false);
-
         ApiResponse response = cbPlanService.aiCBPCreateCbPlan(apiRequest(new HashMap<>()), ORG_ID, TOKEN);
-
         assertEquals(Constants.FAILED, response.getParams().getStatus());
-        verify(cassandraOperation, never()).insertRecord(anyString(), anyString(), anyMap());
-    }
-
-    @Test
-    void createCbPlan_serviceBasedTargetingLookupFails_returnsWithoutInsert() {
-        mockAuthenticatedUser();
-        Map<String, Object> userMap = new HashMap<>();
-        userMap.put(Constants.ROOT_ORG_ID, ORG_ID);
-        lenient().when(userAndOrgService.readUserProfileFromDB(anyString(), anyList())).thenReturn(userMap);
-        Map<String, Object> ccaOrgMap = new HashMap<>();
-        ccaOrgMap.put(Constants.IS_CCA, false);
-        lenient().when(userAndOrgService.readOrgFromDB(anyString(), isNull())).thenReturn(ccaOrgMap);
-        lenient().when(userAndOrgService.readOrgFromDB(anyString(), anyList())).thenReturn(new HashMap<>());
-
-        ApiResponse response = cbPlanService.createCbPlan(validPlanRequest(), ORG_ID, TOKEN);
-
-        assertEquals(Constants.FAILED, response.getParams().getStatus());
-        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getResponseCode());
         verify(cassandraOperation, never()).insertRecord(anyString(), anyString(), anyMap());
     }
 }

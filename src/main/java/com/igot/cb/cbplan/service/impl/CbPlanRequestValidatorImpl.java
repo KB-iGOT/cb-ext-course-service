@@ -80,12 +80,10 @@ public class CbPlanRequestValidatorImpl {
      * @param isCCA         whether the logged in org is CCA
      * @param userRootOrgId logged in user's organization ID
      * @param isAdmin       whether the caller is acting through an admin flow
-     * @param allowsServiceBasedTargeting whether the logged in org may target by service criteria
-     *                                    across every organisation without CCA status
      * @return validation errors, empty when the payload is valid
      */
     public List<String> validateCbPlanCreateRequest(ApiRequest request, boolean isCCA, String userRootOrgId,
-                                                    boolean isAdmin, boolean allowsServiceBasedTargeting) {
+                                                    boolean isAdmin) {
         log.debug("CbPlanValidationService.validateCbPlanCreateRequest: orgId={}, isCCA={}", userRootOrgId, isCCA);
         Map<String, Object> rawRequest = (Map<String, Object>) request.getRequest();
         List<String> errors = validateMandatoryFields(rawRequest);
@@ -94,7 +92,7 @@ public class CbPlanRequestValidatorImpl {
                     errors.size());
             return errors;
         }
-        return validateContextData(rawRequest, isCCA, userRootOrgId, null, isAdmin, allowsServiceBasedTargeting);
+        return validateContextData(rawRequest, isCCA, userRootOrgId, null, isAdmin);
     }
 
     /**
@@ -115,7 +113,7 @@ public class CbPlanRequestValidatorImpl {
         for (ConstraintViolation<CbPlanDto> violation : VALIDATOR.validate(cbPlanDto)) {
             errors.add(Constants.ERR_PREFIX + violation.getPropertyPath() + " " + violation.getMessage());
         }
-        errors.sort(null);
+        Collections.sort(errors);
         return errors;
     }
 
@@ -129,13 +127,10 @@ public class CbPlanRequestValidatorImpl {
      * @param userRootOrgId        logged in user's organization ID
      * @param rootOrgIdsInCriteria set populated with the org IDs found in the criteria, may be null
      * @param isAdmin              when true, skips the check that the criteria org matches userOrgId
-     * @param allowsServiceBasedTargeting whether the logged in org may target by service criteria
-     *                                    across every organisation without CCA status
      * @return validation errors, empty when the contextData is valid
      */
     public List<String> validateContextData(Map<String, Object> request, boolean isCCA, String userRootOrgId,
-                                            Set<String> rootOrgIdsInCriteria, boolean isAdmin,
-                                            boolean allowsServiceBasedTargeting) {
+                                            Set<String> rootOrgIdsInCriteria, boolean isAdmin) {
         List<String> errors = new ArrayList<>();
         Map<String, Object> contextData = readContextData(request, errors);
         if (CollectionUtils.isNotEmpty(errors)) {
@@ -148,8 +143,7 @@ public class CbPlanRequestValidatorImpl {
         boolean userIsL0 = checkUserOrgIsL0(userRootOrgId);
         Set<String> criteriaOrgIds = Objects.nonNull(rootOrgIdsInCriteria) ? rootOrgIdsInCriteria : new HashSet<>();
         CriteriaFlags criteriaFlags = new CriteriaFlags();
-        boolean rootOrgMissingInSomeGroup = collectRootOrgIds(userGroups, isCCA, criteriaOrgIds, criteriaFlags,
-                errors, allowsServiceBasedTargeting);
+        boolean rootOrgMissingInSomeGroup = collectRootOrgIds(userGroups, isCCA, criteriaOrgIds, criteriaFlags, errors);
         if (CollectionUtils.isNotEmpty(errors)) {
             return errors;
         }
@@ -162,8 +156,8 @@ public class CbPlanRequestValidatorImpl {
             log.debug("CbPlanValidationService.validateContextData: scanned {} user group(s), collected {} root org id(s), ministryOrStateId={}, rootOrgId={}, userIsL0={}",
                     userGroups.size(), criteriaOrgIds.size(), criteriaFlags.isMinistryOrStateIdUsed(), criteriaFlags.isRootOrgIdUsed(), userIsL0);
         }
-        OrgScopeContext context = new OrgScopeContext(isCCA, userIsL0, userRootOrgId, isAdmin, criteriaOrgIds,
-                rootOrgMissingInSomeGroup, criteriaFlags.isMinistryOrStateIdUsed(), allowsServiceBasedTargeting);
+        OrgScopeContext context = new OrgScopeContext(isCCA, userIsL0, userRootOrgId, isAdmin,
+                criteriaOrgIds, rootOrgMissingInSomeGroup, criteriaFlags.isMinistryOrStateIdUsed());
         applyOrgScope(request, context, errors);
         if (CollectionUtils.isEmpty(errors)) {
             request.put(Constants.ORG_ID_LIST, Collections.singletonList(userRootOrgId));
@@ -238,14 +232,10 @@ public class CbPlanRequestValidatorImpl {
      * @param criteriaOrgIds set populated with the org IDs found in the criteria
      * @param criteriaFlags  holder for criteria type flags (ministryOrStateId used, rootOrgId used)
      * @param errors         collector for validation errors
-     * @param allowsServiceBasedTargeting whether the logged in org may target by service criteria
-     *                                    across every organisation without CCA status
-     * @return true when at least one group declared no root org criteria, which only CCA and
-     *         service-based-targeting orgs allow
+     * @return true when at least one group declared no root org criteria, which only CCA orgs allow
      */
     private boolean collectRootOrgIds(List<Map<String, Object>> userGroups, boolean isCCA,
-                                      Set<String> criteriaOrgIds, CriteriaFlags criteriaFlags, List<String> errors,
-                                      boolean allowsServiceBasedTargeting) {
+                                      Set<String> criteriaOrgIds, CriteriaFlags criteriaFlags, List<String> errors) {
         boolean rootOrgMissingInSomeGroup = false;
         for (Map<String, Object> userGroup : userGroups) {
             List<Map<String, Object>> criteriaList = readCriteriaList(userGroup, errors);
@@ -257,7 +247,7 @@ public class CbPlanRequestValidatorImpl {
                 return false;
             }
             if (!rootOrgFoundInGroup) {
-                if (!isCCA && !allowsServiceBasedTargeting) {
+                if (!isCCA) {
                     errors.add(Constants.ERR_ROOT_ORG_CRITERIA_MISSING);
                     return false;
                 }
@@ -403,10 +393,6 @@ public class CbPlanRequestValidatorImpl {
             applyCcaOrgScope(request, context, errors);
             return;
         }
-        if (context.isAllowsServiceBasedTargeting()) {
-            applyServiceBasedOrgScope(request, context, errors);
-            return;
-        }
         if (context.isUserIsL0()) {
             applyL0OrgScope(request, context.getCriteriaOrgIds(), errors);
             return;
@@ -534,22 +520,6 @@ public class CbPlanRequestValidatorImpl {
             log.info("CbPlanValidationService.applyL0OrgScope: Set orgScope to CUSTOM for L0 org with {} rootOrgIds",
                     criteriaOrgIds.size());
         }
-    }
-
-    /**
-     * Resolves the org scope for an organization flagged allowServiceBasedTargeting. The
-     * resolution rules are identical to a CCA caller's (no rootOrgId criteria anywhere means the
-     * group targets by service criteria alone, across every organisation), so this delegates to
-     * {@link #applyCcaOrgScope} rather than duplicating its body - kept as its own named method
-     * (and its own branch in {@link #applyOrgScope}) so the two capabilities stay independently
-     * callable and are free to diverge later without touching the CCA code path.
-     *
-     * @param request request map updated in place with the resolved ORG_SCOPE
-     * @param context org scope context holding criteria details
-     * @param errors  collector for validation errors
-     */
-    private void applyServiceBasedOrgScope(Map<String, Object> request, OrgScopeContext context, List<String> errors) {
-        applyCcaOrgScope(request, context, errors);
     }
 
 }

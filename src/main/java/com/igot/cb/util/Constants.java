@@ -913,7 +913,6 @@ public class Constants {
     public static final String ERR_USER_GROUP_CONDITIONS_LOCKED = "Conditions of %s cannot be changed";
     public static final String ERR_USER_GROUP_REORDER = "User groups cannot be reordered; new groups are added at the end";
     public static final String SENT = "sent";
-    public static final String ALLOW_SERVICE_BASED_TARGETING = "allowservicebasedtargeting";
     public static final String REQUEST_PARAM_PREVIOUS_ROOT_ORG_ID = "previousRootOrgId";
     public static final String REQUEST_PARAM_PREVIOUS_DESIGNATION = "previousDesignation";
     public static final String CB_PLAN_V4_PREV_POSTING_DICT_KEY_SUFFIX = ":prevdict";

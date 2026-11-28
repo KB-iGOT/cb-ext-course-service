@@ -24,7 +24,6 @@ import com.igot.cb.cassandra.CassandraOperation;
 import com.igot.cb.cbplan.dto.CbPlanContentOccurrence;
 import com.igot.cb.cbplan.dto.CbPlanDictionaryCacheEntry;
 import com.igot.cb.cbplan.dto.CbPlanReadResponseDto;
-import com.igot.cb.cbplan.model.OrgCapabilities;
 import com.igot.cb.cbplan.util.CbPlanYearUtil;
 import com.igot.cb.elasticsearch.dto.SearchCriteria;
 import com.igot.cb.elasticsearch.dto.SearchResult;
@@ -116,12 +115,11 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
                 return response;
             }
             log.info("CbPlanServiceV3Impl.createCbPlan: Creating CB Plan for userId: {}, orgId: {}", userId, userRootOrgId);
-            OrgCapabilities orgCapabilities = resolveOrgCapabilities(userRootOrgId, response);
-            if (Objects.isNull(orgCapabilities)) {
+            boolean isCCA = validationService.validateOrgCCA(userRootOrgId, response);
+            if (Constants.FAILED.equalsIgnoreCase(response.getParams().getStatus())) {
                 return response;
             }
-            if (!validationService.validateRequest(request, orgCapabilities.isCCA(), userRootOrgId, response,
-                    orgCapabilities.allowsServiceBasedTargeting())) {
+            if (!validationService.validateRequest(request, isCCA, userRootOrgId, response)) {
                 return response;
             }
             executePlanCreation(request, userId, userRootOrgId, response);
@@ -254,31 +252,23 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
         if (StringUtils.isEmpty(rootOrgId)) {
             return;
         }
-        OrgCapabilities orgCapabilities = resolveOrgCapabilities(rootOrgId, response);
-        if (Objects.isNull(orgCapabilities)) {
+        boolean isCCA = validationService.validateOrgCCA(rootOrgId, response);
+        if (Constants.FAILED.equalsIgnoreCase(response.getParams().getStatus())) {
             return;
         }
         String existingStatus = (String) existingCbPlan.get(Constants.STATUS);
         if (Constants.LIVE.equalsIgnoreCase(existingStatus)) {
-            handleUpdateOfLiveCbPlan(response, updatedCbPlan, existingCbPlan, userId, rootOrgId,
-                    orgCapabilities.isCCA(), orgCapabilities.allowsServiceBasedTargeting());
+            handleUpdateOfLiveCbPlan(response, updatedCbPlan, existingCbPlan, userId, rootOrgId, isCCA);
         } else if (Constants.DRAFT.equalsIgnoreCase(existingStatus)) {
             handleUpdateOfDraftCbPlan(request, userId, userOrgId, updatedCbPlan, existingCbPlan,
-                    orgCapabilities, response);
+                    isCCA, response);
         }
     }
 
-    /**
-     * Handles updating a DRAFT plan.
-     *
-     * @param orgCapabilities the logged in org's isCCA/allowsServiceBasedTargeting capabilities
-     */
     private void handleUpdateOfDraftCbPlan(ApiRequest request, String userId, String userOrgId,
                                            Map<String, Object> updatedCbPlan, Map<String, Object> existingCbPlan,
-                                           OrgCapabilities orgCapabilities,
-                                           ApiResponse response) throws JsonProcessingException {
-        List<String> validations = cbPlanRequestValidator.validateCbPlanCreateRequest(request, orgCapabilities.isCCA(),
-                userOrgId, false, orgCapabilities.allowsServiceBasedTargeting());
+                                           boolean isCCA, ApiResponse response) throws JsonProcessingException {
+        List<String> validations = cbPlanRequestValidator.validateCbPlanCreateRequest(request, isCCA, userOrgId, false);
         if (CollectionUtils.isNotEmpty(validations)) {
             response.getParams().setStatus(Constants.FAILED);
             response.getParams().setErr(mapper.writeValueAsString(validations));
@@ -316,11 +306,11 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
 
     private void handleUpdateOfLiveCbPlan(ApiResponse response, Map<String, Object> incomingCbPlanRequest,
                                           Map<String, Object> existingCbPlan, String userId,
-                                          String rootOrgId, boolean isCCA, boolean allowsServiceBasedTargeting) {
+                                          String rootOrgId, boolean isCCA) {
         try {
             Set<String> rootOrgIdsInContextData = new HashSet<>();
             if (!validationService.validateContextDataForLivePlan(incomingCbPlanRequest, isCCA, rootOrgId,
-                    rootOrgIdsInContextData, response, allowsServiceBasedTargeting)) {
+                    rootOrgIdsInContextData, response)) {
                 return;
             }
             Map<String, Object> updatedCbPlan = dataTransformService.buildUpdatedPlanForLive(incomingCbPlanRequest, existingCbPlan,
@@ -422,31 +412,26 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
             log.info("executePublishFlow: Admin endpoint - using targetedOrganisation={} instead of user's org", userOrgId);
             rootOrgId = userOrgId;
         }
-        OrgCapabilities orgCapabilities = resolveOrgCapabilities(rootOrgId, response);
-        if (Objects.isNull(orgCapabilities)) {
+        boolean isCCA = validationService.validateOrgCCA(rootOrgId, response);
+        if (Constants.FAILED.equalsIgnoreCase(response.getParams().getStatus())) {
             return;
         }
         Map<String, Object> incomingRequest = (Map<String, Object>) request.getRequest();
         String existingStatus = (String) existingCbPlan.get(Constants.STATUS);
         String planYear = (String) existingCbPlan.get(Constants.PLAN_YEAR);
         Map<String, Object> updatedRequest = preparePublishUpdate(incomingRequest, existingCbPlan,
-                userId, userOrgId, isAdmin, response, orgCapabilities);
+                userId, isCCA, userOrgId, isAdmin, response);
         if (MapUtils.isEmpty(updatedRequest)) {
             return;
         }
         executePublishTransaction(cbPlanId, planYear, updatedRequest, existingCbPlan, existingStatus, response);
     }
 
-    /**
-     * Builds the publish update, dispatching to the LIVE-republish or DRAFT-first-publish builder.
-     *
-     * @param orgCapabilities the logged in org's isCCA/allowsServiceBasedTargeting capabilities
-     */
     private Map<String, Object> preparePublishUpdate(Map<String, Object> incomingRequest,
                                                      Map<String, Object> existingCbPlan,
-                                                     String userId, String userOrgId, boolean isAdmin,
-                                                     ApiResponse response,
-                                                     OrgCapabilities orgCapabilities) throws JsonProcessingException {
+                                                     String userId, boolean isCCA,
+                                                     String userOrgId, boolean isAdmin,
+                                                     ApiResponse response) throws JsonProcessingException {
         String existingStatus = (String) existingCbPlan.get(Constants.STATUS);
         String comment = (String) incomingRequest.get(Constants.COMMENT);
         Map<String, Object> updatedRequest = new HashMap<>();
@@ -456,11 +441,10 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
         updatedRequest.put(Constants.COMMENT, comment);
         updatedRequest.put(Constants.UPDATED_BY, userId);
         if (Constants.LIVE.equalsIgnoreCase(existingStatus)) {
-            return handleLivePlanPublish(existingCbPlan, incomingRequest, userOrgId, updatedRequest, isAdmin,
-                    response, orgCapabilities);
+            return handleLivePlanPublish(existingCbPlan, incomingRequest, isCCA, userOrgId,
+                    updatedRequest, isAdmin, response);
         } else if (Constants.DRAFT.equalsIgnoreCase(existingStatus)) {
-            return handleDraftPlanPublish(existingCbPlan, orgCapabilities.isCCA(), userOrgId, updatedRequest, isAdmin,
-                    response, orgCapabilities.allowsServiceBasedTargeting());
+            return handleDraftPlanPublish(existingCbPlan, isCCA, userOrgId, updatedRequest, isAdmin, response);
         } else {
             response.getParams().setStatus(Constants.FAILED);
             response.getParams().setErr("CbPlan is in invalid state for publish. Status: " + existingStatus);
@@ -496,27 +480,18 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
         return extractedFields;
     }
 
-    /**
-     * Builds the publish update for republishing an already-LIVE plan.
-     *
-     * @param orgCapabilities the logged in org's isCCA/allowsServiceBasedTargeting capabilities
-     */
     private Map<String, Object> handleLivePlanPublish(Map<String, Object> existingCbPlan,
                                                       Map<String, Object> incomingRequest,
-                                                      String userOrgId,
+                                                      boolean isCCA, String userOrgId,
                                                       Map<String, Object> updatedRequest,
-                                                      boolean isAdmin, ApiResponse response,
-                                                      OrgCapabilities orgCapabilities) throws JsonProcessingException {
-        boolean isCCA = orgCapabilities.isCCA();
-        boolean allowsServiceBasedTargeting = orgCapabilities.allowsServiceBasedTargeting();
+                                                      boolean isAdmin, ApiResponse response) throws JsonProcessingException {
         Set<String> existingRootOrgIdsInCriteria = new HashSet<>();
         Set<String> rootOrgIdsInCriteria = new HashSet<>();
-        cbPlanRequestValidator.validateContextData(existingCbPlan, isCCA, userOrgId, existingRootOrgIdsInCriteria,
-                isAdmin, allowsServiceBasedTargeting);
+        cbPlanRequestValidator.validateContextData(existingCbPlan, isCCA, userOrgId, existingRootOrgIdsInCriteria, isAdmin);
         updatedRequest.putAll(prepareCbPlanForRePublish(existingCbPlan, incomingRequest));
         if (updatedRequest.containsKey(Constants.CONTEXT_DATA_REQUEST)) {
             List<String> errors = cbPlanRequestValidator.validateContextData(updatedRequest, isCCA, userOrgId,
-                    rootOrgIdsInCriteria, isAdmin, allowsServiceBasedTargeting);
+                    rootOrgIdsInCriteria, isAdmin);
             if (CollectionUtils.isNotEmpty(errors)) {
                 response.getParams().setStatus(Constants.FAILED);
                 response.getParams().setErr(mapper.writeValueAsString(errors));
@@ -533,13 +508,12 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
 
     private Map<String, Object> handleDraftPlanPublish(Map<String, Object> existingCbPlan, boolean isCCA,
                                                        String userOrgId, Map<String, Object> updatedRequest,
-                                                       boolean isAdmin, ApiResponse response,
-                                                       boolean allowsServiceBasedTargeting) throws JsonProcessingException {
+                                                       boolean isAdmin, ApiResponse response) throws JsonProcessingException {
         Set<String> rootOrgIdsInCriteria = new HashSet<>();
         updatedRequest.put(Constants.STATUS, Constants.LIVE);
         updatedRequest.put(Constants.END_DATE_REQUEST, dataTransformService.parseEndDate(existingCbPlan.get(Constants.END_DATE_REQUEST)));
         List<String> errors = cbPlanRequestValidator.validateContextData(existingCbPlan, isCCA, userOrgId,
-                rootOrgIdsInCriteria, isAdmin, allowsServiceBasedTargeting);
+                rootOrgIdsInCriteria, isAdmin);
         if (CollectionUtils.isNotEmpty(errors)) {
             response.getParams().setStatus(Constants.FAILED);
             response.getParams().setErr(mapper.writeValueAsString(errors));
@@ -1689,12 +1663,11 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
             if (StringUtils.isEmpty(rootOrgId)) {
                 return response;
             }
-            OrgCapabilities orgCapabilities = resolveOrgCapabilities(rootOrgId, response);
-            if (Objects.isNull(orgCapabilities)) {
+            boolean isCCA = validationService.validateOrgCCA(rootOrgId, response);
+            if (Constants.FAILED.equalsIgnoreCase(response.getParams().getStatus())) {
                 return response;
             }
-            if (!validationService.validateRequest(request, orgCapabilities.isCCA(), userOrgId, response,
-                    orgCapabilities.allowsServiceBasedTargeting())) {
+            if (!validationService.validateRequest(request, isCCA, userOrgId, response)) {
                 return response;
             }
             executePlanCreation(request, userId, userOrgId, response);
@@ -1880,25 +1853,5 @@ public class CbPlanServiceV3Impl implements CbPlanServiceV3 {
         entry.put(Constants.IDENTIFIER, item);
         entry.put(Constants.MANDATORY, false);
         return entry;
-    }
-
-    /**
-     * Resolves both org capability flags, short-circuiting with a failure response already
-     * populated when either lookup fails.
-     *
-     * @param orgId    organization ID to resolve capabilities for
-     * @param response API response object, populated with an error when a lookup fails
-     * @return the resolved capabilities, or null when a lookup failed
-     */
-    private OrgCapabilities resolveOrgCapabilities(String orgId, ApiResponse response) {
-        boolean isCCA = validationService.validateOrgCCA(orgId, response);
-        if (Constants.FAILED.equalsIgnoreCase(response.getParams().getStatus())) {
-            return null;
-        }
-        boolean allowsServiceBasedTargeting = validationService.validateOrgAllowsServiceBasedTargeting(orgId, response);
-        if (Constants.FAILED.equalsIgnoreCase(response.getParams().getStatus())) {
-            return null;
-        }
-        return new OrgCapabilities(isCCA, allowsServiceBasedTargeting);
     }
 }

@@ -135,10 +135,10 @@ class CbPlanValidationServiceV4ImplTest {
 
     @Test
     void validateContextDataForLivePlanV4_noErrors_returnsTrue() {
-        when(orgScopeService.resolveOrgScope(anyMap(), anyBoolean(), anyString(), any(), any(), anyBoolean())).thenReturn(List.of());
+        when(orgScopeService.resolveOrgScope(anyMap(), anyBoolean(), anyString(), any(), any())).thenReturn(List.of());
 
         boolean result = validationService.validateContextDataForLivePlanV4(new HashMap<>(), false, ORG_ID,
-                new HashSet<>(), new HashSet<>(), new ApiResponse(), false);
+                new HashSet<>(), new HashSet<>(), new ApiResponse());
 
         assertTrue(result);
     }
@@ -146,11 +146,11 @@ class CbPlanValidationServiceV4ImplTest {
     @Test
     void validateContextDataForLivePlanV4_hasErrors_returnsFalseAndPopulatesResponse() {
         ApiResponse response = new ApiResponse();
-        when(orgScopeService.resolveOrgScope(anyMap(), anyBoolean(), anyString(), any(), any(), anyBoolean()))
+        when(orgScopeService.resolveOrgScope(anyMap(), anyBoolean(), anyString(), any(), any()))
                 .thenReturn(List.of("bad group"));
 
         boolean result = validationService.validateContextDataForLivePlanV4(new HashMap<>(), false, ORG_ID,
-                new HashSet<>(), new HashSet<>(), response, false);
+                new HashSet<>(), new HashSet<>(), response);
 
         assertFalse(result);
         assertEquals(Constants.FAILED, response.getParams().getStatus());
@@ -162,9 +162,9 @@ class CbPlanValidationServiceV4ImplTest {
     @Test
     void validateRequest_allValid_returnsTrue() {
         when(cbPlanRequestValidator.validateMandatoryFields(anyMap())).thenReturn(List.of());
-        when(orgScopeService.resolveOrgScope(anyMap(), anyBoolean(), anyString(), any(), any(), anyBoolean())).thenReturn(List.of());
+        when(orgScopeService.resolveOrgScope(anyMap(), anyBoolean(), anyString(), any(), any())).thenReturn(List.of());
 
-        boolean result = validationService.validateRequest(apiRequest(requestMapWithValidContentList()), false, ORG_ID, new ApiResponse(), false);
+        boolean result = validationService.validateRequest(apiRequest(requestMapWithValidContentList()), false, ORG_ID, new ApiResponse());
 
         assertTrue(result);
     }
@@ -173,7 +173,7 @@ class CbPlanValidationServiceV4ImplTest {
     void validateRequest_contentListMissing_returnsFalse() {
         ApiResponse response = new ApiResponse();
 
-        boolean result = validationService.validateRequest(apiRequest(new HashMap<>()), false, ORG_ID, response, false);
+        boolean result = validationService.validateRequest(apiRequest(new HashMap<>()), false, ORG_ID, response);
 
         assertFalse(result);
         assertEquals(Constants.FAILED, response.getParams().getStatus());
@@ -186,7 +186,7 @@ class CbPlanValidationServiceV4ImplTest {
         when(cbPlanRequestValidator.validateMandatoryFields(anyMap())).thenReturn(List.of("name is required"));
         ApiResponse response = new ApiResponse();
 
-        boolean result = validationService.validateRequest(apiRequest(requestMapWithValidContentList()), false, ORG_ID, response, false);
+        boolean result = validationService.validateRequest(apiRequest(requestMapWithValidContentList()), false, ORG_ID, response);
 
         assertFalse(result);
         assertTrue(response.getParams().getErr().contains("name is required"));
@@ -195,11 +195,11 @@ class CbPlanValidationServiceV4ImplTest {
     @Test
     void validateRequest_orgScopeResolutionFails_returnsFalse() {
         when(cbPlanRequestValidator.validateMandatoryFields(anyMap())).thenReturn(List.of());
-        when(orgScopeService.resolveOrgScope(anyMap(), anyBoolean(), anyString(), any(), any(), anyBoolean()))
+        when(orgScopeService.resolveOrgScope(anyMap(), anyBoolean(), anyString(), any(), any()))
                 .thenReturn(List.of("userGroupId not found"));
         ApiResponse response = new ApiResponse();
 
-        boolean result = validationService.validateRequest(apiRequest(requestMapWithValidContentList()), false, ORG_ID, response, false);
+        boolean result = validationService.validateRequest(apiRequest(requestMapWithValidContentList()), false, ORG_ID, response);
 
         assertFalse(result);
         assertTrue(response.getParams().getErr().contains("userGroupId not found"));
@@ -208,11 +208,11 @@ class CbPlanValidationServiceV4ImplTest {
     @Test
     void validateRequest_normalizesContentListBeforeMandatoryFieldsCheck() {
         when(cbPlanRequestValidator.validateMandatoryFields(anyMap())).thenReturn(List.of());
-        when(orgScopeService.resolveOrgScope(anyMap(), anyBoolean(), anyString(), any(), any(), anyBoolean())).thenReturn(List.of());
+        when(orgScopeService.resolveOrgScope(anyMap(), anyBoolean(), anyString(), any(), any())).thenReturn(List.of());
         Map<String, Object> requestMap = requestMapWithValidContentList();
         ApiRequest request = apiRequest(requestMap);
 
-        validationService.validateRequest(request, false, ORG_ID, new ApiResponse(), false);
+        validationService.validateRequest(request, false, ORG_ID, new ApiResponse());
 
         // contentList remains as objects (not normalized)
         List<Map<String, Object>> resultList = (List<Map<String, Object>>) requestMap.get(Constants.CONTENT_LIST);
@@ -330,25 +330,5 @@ class CbPlanValidationServiceV4ImplTest {
         List<String> errors = validationService.validateAndNormalizeContentList(requestMap);
 
         assertFalse(errors.isEmpty());
-    }
-
-    @Test
-    void validateOrgAllowsServiceBasedTargeting_flagSet_delegatesToV3AndReturnsTrue() {
-        ApiResponse response = new ApiResponse();
-        when(validationServiceV3.validateOrgAllowsServiceBasedTargeting(ORG_ID, response)).thenReturn(true);
-
-        assertTrue(validationService.validateOrgAllowsServiceBasedTargeting(ORG_ID, response));
-
-        verify(validationServiceV3).validateOrgAllowsServiceBasedTargeting(ORG_ID, response);
-    }
-
-    @Test
-    void validateOrgAllowsServiceBasedTargeting_flagNotSet_delegatesToV3AndReturnsFalse() {
-        ApiResponse response = new ApiResponse();
-        when(validationServiceV3.validateOrgAllowsServiceBasedTargeting(ORG_ID, response)).thenReturn(false);
-
-        assertFalse(validationService.validateOrgAllowsServiceBasedTargeting(ORG_ID, response));
-
-        verify(validationServiceV3).validateOrgAllowsServiceBasedTargeting(ORG_ID, response);
     }
 }
